@@ -1042,9 +1042,10 @@ function renderCanvasListInto(list){
     if(!items.length){
         const empty = document.createElement('div');
         empty.className = 'gate-list-empty';
+        const emptyImg = trashMode ? 'https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=futuristic%20digital%20trash%20bin%20with%20glowing%20data%20fragments%2C%20cyber%20professional%20dark%20theme%2C%20minimalist%203d%20render&image_size=square' : 'https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=abstract%20minimalist%20empty%20state%20illustration%2C%20floating%20geometric%20shapes%2C%20creative%20workspace%2C%20cyber%20professional%20dark%20theme%2C%20indigo%20colors&image_size=square';
         empty.innerHTML = trashMode
-            ? `<div class="gate-list-empty-icon"><i data-lucide="trash-2" class="w-6 h-6"></i></div>${tr('canvas.trashEmpty')}`
-            : `<div class="gate-list-empty-icon"><i data-lucide="layout-grid" class="w-6 h-6"></i></div>${tr('canvas.noCanvas')}<br>${tr('canvas.startWithNewCanvas')}`;
+            ? `<img src="${emptyImg}" class="gate-list-empty-img"><span>${tr('canvas.trashEmpty')}</span>`
+            : `<img src="${emptyImg}" class="gate-list-empty-img"><span>${tr('canvas.noCanvas')}<br>${tr('canvas.startWithNewCanvas')}</span>`;
         list.appendChild(empty);
         refreshIcons();
         return;
