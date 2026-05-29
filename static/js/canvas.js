@@ -1034,53 +1034,17 @@ async function setTrashMode(active){
 function renderCanvasList(){
     renderCanvasListInto(gateCanvasList);
 }
-function updateFeaturedCard() {
-    const featuredCard = document.getElementById('featuredCard');
-    const featuredTitle = document.getElementById('featuredTitle');
-    const featuredSubtitle = document.getElementById('featuredSubtitle');
-    const featuredImg = document.getElementById('featuredImg');
-    const featuredAuthorName = document.getElementById('featuredAuthorName');
-    const featuredDesc = document.getElementById('featuredDesc');
-
-    if (!featuredCard) return;
-
-    if (trashMode) {
-        featuredCard.parentElement.style.display = 'none';
-        return;
-    }
-
-    const latest = canvases.length > 0 ? canvases[0] : null;
-
-    if (latest) {
-        featuredTitle.textContent = latest.title.toUpperCase();
-        featuredSubtitle.textContent = (latest.kind || 'CLASSIC').toUpperCase() + ' CANVAS';
-        featuredAuthorName.textContent = latest.author || 'WingsMT';
-        
-        const prompt = encodeURIComponent(`epic cinematic digital art for "${latest.title}", futuristic, cyber dark professional, high contrast, 8k`);
-        featuredImg.src = `https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=${prompt}&image_size=landscape_16_9`;
-        
-        featuredDesc.textContent = tr('canvas.lastEdited') + ': ' + (latest.updated_at ? new Date(latest.updated_at).toLocaleString() : tr('canvas.justNow'));
-        
-        featuredCard.onclick = () => openCanvas(latest.id);
-        featuredCard.parentElement.style.display = 'block';
-    } else {
-        featuredCard.parentElement.style.display = 'none';
-    }
-}
-
 function renderCanvasListInto(list){
     if(!list) return;
     refreshGateViewControls();
-    updateFeaturedCard();
     const items = trashMode ? deletedCanvases : canvases;
     list.innerHTML = '';
     if(!items.length){
         const empty = document.createElement('div');
         empty.className = 'gate-list-empty';
-        const emptyImg = trashMode ? 'https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=futuristic%20digital%20trash%20bin%20with%20glowing%20data%20fragments%2C%20cyber%20professional%20dark%20theme%2C%20minimalist%203d%20render&image_size=square' : 'https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=abstract%20minimalist%20empty%20state%20illustration%2C%20floating%20geometric%20shapes%2C%20creative%20workspace%2C%20cyber%20professional%20dark%20theme%2C%20indigo%20colors&image_size=square';
         empty.innerHTML = trashMode
-            ? `<img src="${emptyImg}" class="gate-list-empty-img"><span>${tr('canvas.trashEmpty')}</span>`
-            : `<img src="${emptyImg}" class="gate-list-empty-img"><span>${tr('canvas.noCanvas')}<br>${tr('canvas.startWithNewCanvas')}</span>`;
+            ? `<div class="gate-list-empty-icon"><i data-lucide="trash-2" class="w-6 h-6"></i></div>${tr('canvas.trashEmpty')}`
+            : `<div class="gate-list-empty-icon"><i data-lucide="layout-grid" class="w-6 h-6"></i></div>${tr('canvas.noCanvas')}<br>${tr('canvas.startWithNewCanvas')}`;
         list.appendChild(empty);
         refreshIcons();
         return;
@@ -1089,15 +1053,21 @@ function renderCanvasListInto(list){
         const row = document.createElement('div');
         const isSmartCanvas = (item.kind || 'classic') === 'smart';
         row.className = `canvas-item ${isSmartCanvas ? 'smart-canvas' : ''} ${canvas?.id === item.id ? 'active' : ''}`;
+        
+        // Generate a deterministic but unique image for each canvas based on its ID and title
+        const imagePrompt = encodeURIComponent(`${item.title} abstract cyber art, glass texture, cinematic lighting, professional digital design, high resolution`);
+        const imageUrl = `https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=${imagePrompt}&image_size=landscape_16_9`;
+        
         row.innerHTML = `
+            <img class="canvas-preview-image" src="${imageUrl}" loading="lazy" alt="">
+            <div class="canvas-item-overlay"></div>
             <div class="canvas-open" role="button" tabindex="${trashMode ? '-1' : '0'}">
-                <div class="canvas-card-icon-row">
-                    <span class="canvas-preview-mark" role="button" tabindex="0" title="${trashMode ? tr('canvas.deletedCanvas') : tr('canvas.changeIcon')}">${renderCanvasIcon(isSmartCanvas && /[^\x00-\x7F]/.test(item.icon || '') ? 'sparkles' : item.icon, 16)}</span>
-                    ${isSmartCanvas ? `<span class="canvas-kind-chip">${tr('canvas.smartCanvasShort')}</span>` : ''}
-                </div>
+                <span class="canvas-preview-mark" role="button" tabindex="0" title="${trashMode ? tr('canvas.deletedCanvas') : tr('canvas.changeIcon')}">
+                    ${renderCanvasIcon(isSmartCanvas && /[^\x00-\x7F]/.test(item.icon || '') ? 'sparkles' : item.icon, 20)}
+                </span>
+                ${isSmartCanvas ? `<span class="canvas-kind-badge">${tr('canvas.smartCanvasShort')}</span>` : ''}
                 <div class="canvas-card-title">${escapeHtml(item.title)}</div>
                 <div class="canvas-card-meta">
-                    <span class="canvas-card-meta-dot"></span>
                     <div class="canvas-card-time">${trashMode ? `${tr('canvas.deletedAt')} ${formatCanvasTime(item.deleted_at)}` : formatCanvasTime(item.updated_at || item.created_at)}</div>
                 </div>
             </div>
