@@ -258,7 +258,7 @@
         .logo-ring {
             width: 42px;
             height: 42px;
-            background: var(--accent);
+            background: #ffffff;
             border: none;
             border-radius: 50%;
             display: flex;
@@ -266,24 +266,20 @@
             justify-content: center;
             cursor: pointer;
             transition: all 0.3s var(--fluid-ease);
-            box-shadow: 0 0 20px var(--accent-glow);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
             flex-shrink: 0;
+            color: #000000;
         }
         
         .logo-ring:hover {
-            transform: scale(1.1);
-            background: #818cf8;
-            box-shadow: 0 0 30px var(--accent-glow);
-        }
-
-        .logo-ring:hover svg {
-            transform: rotate(90deg);
+            transform: scale(1.05);
+            background: #f3f4f6;
         }
 
         .logo-ring svg {
-            width: 20px;
-            height: 20px;
-            color: #ffffff;
+            width: 22px;
+            height: 22px;
+            color: #000000;
             transition: transform 0.3s var(--fluid-ease);
         }
 
@@ -582,6 +578,129 @@
             display: none;
         }
 
+        /* 添加内容菜单样式重构 - 适配 Cyber Theme */
+        .add-node-menu {
+            position: absolute;
+            left: 74px;
+            top: 0;
+            width: 240px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(24px);
+            border: 1px solid var(--glass-border);
+            border-radius: 20px;
+            padding: 12px;
+            box-shadow: 0 12px 48px rgba(0, 0, 0, 0.5);
+            z-index: 2000;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            opacity: 0;
+            transform: translateX(-10px);
+            pointer-events: none;
+            transition: all 0.3s var(--fluid-ease);
+        }
+
+        .add-node-menu.show {
+            opacity: 1;
+            transform: translateX(0);
+            pointer-events: auto;
+        }
+
+        .menu-section {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .menu-title {
+            font-size: 11px;
+            color: var(--muted);
+            padding: 8px 12px 4px 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            opacity: 0.5;
+        }
+
+        .menu-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 10px;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.25s var(--fluid-ease);
+            position: relative;
+            color: var(--muted);
+        }
+
+        .menu-item:hover {
+            background: var(--nav-hover-bg);
+            color: var(--text);
+            transform: translateX(4px);
+        }
+
+        .item-icon {
+            width: 36px;
+            height: 36px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: inherit;
+            transition: all 0.25s var(--fluid-ease);
+        }
+
+        .menu-item:hover .item-icon {
+            background: rgba(99, 102, 241, 0.1);
+            border-color: var(--accent);
+            color: var(--accent);
+            box-shadow: 0 0 15px var(--accent-glow);
+        }
+
+        .item-icon svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        .menu-item span {
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .badge {
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 6px;
+            margin-left: auto;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .badge.beta {
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--muted);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .badge.new {
+            background: var(--accent);
+            color: #fff;
+            box-shadow: 0 0 10px var(--accent-glow);
+        }
+
+        .menu-divider {
+            height: 1px;
+            background: var(--divider);
+            margin: 8px 12px;
+            opacity: 0.5;
+        }
+
+        .hidden { display: none !important; }
+
         /* Tooltip 样式重构 */
         [data-tooltip] {
             position: relative;
@@ -699,64 +818,50 @@
         </header>
 
         <aside class="sidebar">
-            <div class="logo-ring" onclick="triggerCreateCanvas()" data-tooltip="新建画布">
-                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <div class="logo-ring" id="add-toggle-btn" onclick="toggleAddMenu()">
+                <svg class="icon-plus" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                     <line x1="12" y1="5" x2="12" y2="19"></line>
                     <line x1="5" y1="12" x2="19" y2="12"></line>
                 </svg>
+                <svg class="icon-close hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
             </div>
 
-            <nav>
-                <div class="nav-item" onclick="switchUI(this, 'zimage')" data-tooltip="文生图">
-                    <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.587-1.587a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
-                    </svg>
-                    <span class="nav-text" data-i18n="nav.textToImage">文生图</span>
+            <div class="add-node-menu hidden" id="add-node-menu">
+                <div class="menu-section">
+                    <div class="menu-title">添加节点</div>
+                    <div class="menu-item" onclick="addNode('text')">
+                        <div class="item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7V4h16v3M9 20h6M12 4v16"/></svg></div>
+                        <span>文本</span>
+                    </div>
+                    <div class="menu-item" onclick="addNode('image')">
+                        <div class="item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></div>
+                        <span>图片</span>
+                    </div>
+                    <div class="menu-item" onclick="addNode('video')">
+                        <div class="item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m22 8-6 4 6 4V8Z"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg></div>
+                        <span>视频</span>
+                    </div>
+                    <div class="menu-item" onclick="addNode('audio')">
+                        <div class="item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></div>
+                        <span>音频</span>
+                    </div>
                 </div>
-                <div class="nav-item" onclick="switchUI(this, 'enhance')" data-tooltip="细节增强">
-                    <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path d="M13 10V3L4 14h7v7l9-11h-7z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
-                    </svg>
-                    <span class="nav-text" data-i18n="nav.enhance">细节增强</span>
+                <div class="menu-divider"></div>
+                <div class="menu-section">
+                    <div class="menu-title">添加资源</div>
+                    <div class="menu-item" onclick="addResource('upload')">
+                        <div class="item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div>
+                        <span>上传</span>
+                    </div>
+                    <div class="menu-item" onclick="addResource('history')">
+                        <div class="item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+                        <span>从生成历史选择</span>
+                    </div>
                 </div>
-                <div class="nav-item" onclick="switchUI(this, 'klein')" data-tooltip="图片编辑">
-                    <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
-                    </svg>
-                    <span class="nav-text" data-i18n="nav.imageEdit">图片编辑</span>
-                </div>
-                <div class="nav-item" onclick="switchUI(this, 'angle')" data-tooltip="角度控制">
-                    <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-                        <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
-                        <line x1="12" y1="22.08" x2="12" y2="12"></line>
-                    </svg>
-                    <span class="nav-text" data-i18n="nav.angle">角度控制</span>
-                </div>
-
-                <div class="nav-item" onclick="switchUI(this, 'online')" data-tooltip="在线生图">
-                    <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M12 2a10 10 0 1 0 0 20A10 10 0 0 0 12 2z"></path>
-                        <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
-                    </svg>
-                    <span class="nav-text" data-i18n="nav.online">在线生图</span>
-                </div>
-                <div class="nav-item" onclick="switchUI(this, 'gpt-chat')" data-tooltip="GPT 对话">
-                    <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                    </svg>
-                    <span class="nav-text" data-i18n="nav.gpt">GPT 对话</span>
-                </div>
-                <div class="nav-item active" onclick="switchUI(this, 'canvas')" data-tooltip="无限画布">
-                    <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <rect x="3" y="3" width="7" height="7"></rect>
-                        <rect x="14" y="3" width="7" height="7"></rect>
-                        <rect x="14" y="14" width="7" height="7"></rect>
-                        <rect x="3" y="14" width="7" height="7"></rect>
-                    </svg>
-                    <span class="nav-text" data-i18n="nav.canvas">无限画布</span>
-                </div>
-            </nav>
+            </div>
 
             <div class="side-actions">
                 <button class="side-pill" onclick="switchUI(this, 'api-settings')" data-tooltip="API 设置">
@@ -781,12 +886,12 @@
             </div>
         </aside>
         <script>
-            /* 在侧栏 DOM 解析完后立即把 active 类移到当前页对应的入口，避免首屏先在无限画布上闪一下 */
+            /* 在侧栏 DOM 解析完后立即把 active 类移到当前页对应的入口 */
             (function(){
                 try {
                     var pageId = localStorage.getItem('studio_active_page') || 'canvas';
                     if(pageId && pageId !== 'canvas') {
-                        document.querySelectorAll('.nav-item.active, .side-pill.active').forEach(function(n){
+                        document.querySelectorAll('.side-pill.active').forEach(function(n){
                             n.classList.remove('active');
                         });
                         var target = document.querySelector('[onclick*="\'' + pageId + '\'"]');
@@ -797,12 +902,6 @@
         </script>
 
         <main class="stage">
-            <iframe id="frame-zimage" data-src="/static/zimage.html?v=2026.05.27.2" scrolling="yes"></iframe>
-            <iframe id="frame-enhance" data-src="/static/enhance.html?v=2026.05.27.2" scrolling="yes"></iframe>
-            <iframe id="frame-klein" data-src="/static/klein.html?v=2026.05.27.2" scrolling="yes"></iframe>
-            <iframe id="frame-angle" data-src="/static/angle.html?v=2026.05.27.2" scrolling="yes"></iframe>
-            <iframe id="frame-online" data-src="/static/online.html?v=2026.05.27.2" scrolling="yes"></iframe>
-            <iframe id="frame-gpt-chat" data-src="/static/gpt-chat.html?v=2026.05.27.2" scrolling="yes"></iframe>
             <iframe id="frame-canvas" data-src="/static/canvas.html?v=2026.05.27.2" class="active" scrolling="yes"></iframe>
             <iframe id="frame-api-settings" data-src="/static/api-settings.html?v=2026.05.27.2" scrolling="yes"></iframe>
             <iframe id="frame-comfyui-settings" data-src="/static/comfyui-settings.html?v=2026.05.27.2" scrolling="yes"></iframe>
@@ -837,11 +936,11 @@
         localStorage.setItem("client_id", CID);
         const ACTIVE_PAGE_KEY = 'studio_active_page';
         const DEFAULT_PAGE_ID = 'canvas';
-        const PAGE_IDS = ['zimage','enhance','klein','angle','online','gpt-chat','canvas','api-settings','comfyui-settings'];
+        const PAGE_IDS = ['canvas','api-settings','comfyui-settings'];
 
         function switchUI(el, id, options = {}) {
             if(!PAGE_IDS.includes(id)) id = DEFAULT_PAGE_ID;
-            document.querySelectorAll('.nav-item,.side-pill').forEach(n => n.classList.remove('active'));
+            document.querySelectorAll('.side-pill').forEach(n => n.classList.remove('active'));
             if(el) el.classList.add('active');
             document.querySelectorAll('iframe').forEach(f => f.classList.remove('active'));
             const target = document.getElementById('frame-' + id);
@@ -865,19 +964,62 @@
 
         function triggerCreateCanvas() {
             const id = 'canvas';
-            const trigger = document.querySelector(`[onclick*="'${id}'"],[onclick*='"${id}"']`);
-            switchUI(trigger, id);
+            switchUI(null, id);
             const target = document.getElementById('frame-canvas');
             if (target && target.contentWindow) {
                 target.contentWindow.postMessage({ type: 'canvas-create' }, '*');
             }
         }
 
+        // --- 添加内容菜单逻辑 ---
+        let menuTimer = null;
+        const addBtn = document.getElementById('add-toggle-btn');
+        const addMenu = document.getElementById('add-node-menu');
+
+        function showAddMenu() {
+            clearTimeout(menuTimer);
+            addMenu.classList.remove('hidden');
+            setTimeout(() => addMenu.classList.add('show'), 10);
+            addBtn.querySelector('.icon-plus').classList.add('hidden');
+            addBtn.querySelector('.icon-close').classList.remove('hidden');
+        }
+
+        function hideAddMenu() {
+            menuTimer = setTimeout(() => {
+                addMenu.classList.remove('show');
+                addBtn.querySelector('.icon-plus').classList.remove('hidden');
+                addBtn.querySelector('.icon-close').classList.add('hidden');
+                setTimeout(() => addMenu.classList.add('hidden'), 300);
+            }, 200);
+        }
+
+        addBtn.addEventListener('mouseenter', showAddMenu);
+        addBtn.addEventListener('mouseleave', hideAddMenu);
+        addMenu.addEventListener('mouseenter', showAddMenu);
+        addMenu.addEventListener('mouseleave', hideAddMenu);
+
+        function addNode(type) {
+            console.log('Add node:', type);
+            const target = document.getElementById('frame-canvas');
+            if (target && target.contentWindow) {
+                target.contentWindow.postMessage({ type: 'canvas-add-node', nodeType: type }, '*');
+            }
+            hideAddMenu();
+        }
+
+        function addResource(type) {
+            console.log('Add resource:', type);
+            const target = document.getElementById('frame-canvas');
+            if (target && target.contentWindow) {
+                target.contentWindow.postMessage({ type: 'canvas-add-resource', resourceType: type }, '*');
+            }
+            hideAddMenu();
+        }
+
         function restoreActivePage() {
             // 强制每次刷新都回到默认页面 (无限画布)
             const id = DEFAULT_PAGE_ID;
-            const trigger = document.querySelector(`[onclick*="'${id}'"],[onclick*='"${id}"']`);
-            switchUI(trigger, id, { skipRemember:true });
+            switchUI(null, id, { skipRemember:true });
             document.documentElement.classList.remove('studio-route-booting');
         }
         document.addEventListener('DOMContentLoaded', restoreActivePage, { once:true });
