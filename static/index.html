@@ -226,29 +226,29 @@
             border-color: var(--text);
         }
 
-        /* 悬浮侧边栏样式 */
+        /* 侧边栏样式重构 - 玻璃拟态与 3D 质感 */
         .sidebar {
             position: fixed;
             left: 20px;
             top: 50%;
             transform: translateY(-50%);
-            width: 60px;
-            min-width: 60px;
-            height: auto;
-            max-height: 80vh;
-            background: var(--glass-bg);
-            backdrop-filter: blur(24px);
+            width: 64px;
+            background: rgba(15, 23, 42, 0.4);
+            backdrop-filter: blur(24px) saturate(180%);
+            -webkit-backdrop-filter: blur(24px) saturate(180%);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 32px;
+            padding: 12px 0;
             display: flex;
             flex-direction: column;
             align-items: center;
-            border: 1px solid var(--glass-border);
-            border-radius: 30px;
-            padding: 16px 0;
-            gap: 12px;
-            box-shadow: 0 12px 48px rgba(0, 0, 0, 0.5);
+            gap: 16px;
+            box-shadow: 
+                0 4px 24px -1px rgba(0, 0, 0, 0.5),
+                inset 0 1px 1px rgba(255, 255, 255, 0.1);
             z-index: 1000;
-            transition: all 0.4s var(--fluid-ease);
             overflow: visible !important;
+            transition: all 0.4s var(--fluid-ease);
         }
 
         nav {
@@ -256,31 +256,34 @@
         }
 
         .logo-ring {
-            width: 42px;
-            height: 42px;
-            background: #ffffff;
-            border: none;
+            width: 44px;
+            height: 44px;
+            background: #fff;
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
+            color: #000;
             cursor: pointer;
-            transition: all 0.3s var(--fluid-ease);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-            flex-shrink: 0;
-            color: #000000;
+            transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+            position: relative;
+            box-shadow: 
+                0 8px 16px rgba(255, 255, 255, 0.15),
+                0 0 0 1px rgba(255, 255, 255, 0.1);
+            margin-bottom: 8px;
         }
-        
+
         .logo-ring:hover {
-            transform: scale(1.05);
-            background: #f3f4f6;
+            transform: scale(1.1) translateY(-2px);
+            box-shadow: 
+                0 12px 24px rgba(255, 255, 255, 0.25),
+                0 0 20px rgba(255, 255, 255, 0.3);
         }
 
         .logo-ring svg {
-            width: 22px;
-            height: 22px;
-            color: #000000;
-            transition: transform 0.3s var(--fluid-ease);
+            width: 24px;
+            height: 24px;
+            transition: transform 0.6s var(--fluid-ease);
         }
 
         /* 导航项 */
@@ -551,58 +554,73 @@
             width: 42px;
             height: 42px;
             border-radius: 14px;
-            background: transparent;
-            border: none;
             display: flex;
             align-items: center;
             justify-content: center;
-            color: var(--muted);
+            color: rgba(255, 255, 255, 0.5);
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.05);
             cursor: pointer;
             transition: all 0.3s var(--fluid-ease);
+            position: relative;
+            margin: 0;
+            padding: 0;
         }
 
         .side-pill:hover {
-            background: var(--nav-hover-bg);
-            color: var(--text);
-            transform: translateX(4px);
+            background: rgba(255, 255, 255, 0.08);
+            color: #fff;
+            transform: translateY(-2px);
+            border-color: rgba(255, 255, 255, 0.15);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
         }
 
         .side-pill.active {
             background: var(--accent);
-            color: #ffffff;
-            box-shadow: 0 0 15px var(--accent-glow);
+            color: #fff;
+            border-color: rgba(255, 255, 255, 0.2);
+            box-shadow: 
+                0 0 20px var(--accent-glow),
+                inset 0 1px 1px rgba(255, 255, 255, 0.3);
+            transform: scale(1.05);
         }
 
-        .side-pill svg { width: 20px; height: 20px; }
+        .side-pill svg {
+            width: 20px;
+            height: 20px;
+        }
         .side-pill-text {
             display: none;
         }
 
-        /* 添加内容菜单样式重构 - 适配 Cyber Theme */
+        /* 添加菜单的 3D 玻璃拟态增强 - 精致化重构 */
         .add-node-menu {
             position: absolute;
-            left: 74px;
+            left: 78px;
             top: 0;
-            width: 240px;
-            background: var(--glass-bg);
-            backdrop-filter: blur(24px);
-            border: 1px solid var(--glass-border);
+            width: 180px; /* 缩减宽度，更精致 */
+            background: rgba(15, 23, 42, 0.88); /* 大幅提升不透明度，确保背景复杂时依然清晰 */
+            backdrop-filter: blur(40px) saturate(180%);
+            -webkit-backdrop-filter: blur(40px) saturate(180%);
+            border: 1px solid rgba(255, 255, 255, 0.12); /* 强化边缘 */
             border-radius: 20px;
-            padding: 12px;
-            box-shadow: 0 12px 48px rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            box-shadow: 
+                0 20px 50px rgba(0, 0, 0, 0.6),
+                inset 0 1px 1px rgba(255, 255, 255, 0.05);
             z-index: 2000;
             display: flex;
             flex-direction: column;
-            gap: 4px;
+            gap: 2px;
             opacity: 0;
-            transform: translateX(-10px);
+            transform: translateX(-12px) scale(0.98);
             pointer-events: none;
-            transition: all 0.3s var(--fluid-ease);
+            transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
 
         .add-node-menu.show {
             opacity: 1;
-            transform: translateX(0);
+            transform: translateX(0) scale(1);
             pointer-events: auto;
         }
 
@@ -613,127 +631,95 @@
         }
 
         .menu-title {
-            font-size: 11px;
-            color: var(--muted);
-            padding: 8px 12px 4px 12px;
+            font-size: 10px;
+            color: rgba(255, 255, 255, 0.45); /* 提升标题亮度 */
+            padding: 6px 10px 4px 10px;
             font-weight: 700;
             text-transform: uppercase;
-            letter-spacing: 0.8px;
-            opacity: 0.5;
+            letter-spacing: 1px;
         }
 
         .menu-item {
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 10px;
             padding: 8px 10px;
             border-radius: 12px;
             cursor: pointer;
             transition: all 0.25s var(--fluid-ease);
             position: relative;
-            color: var(--muted);
+            color: rgba(255, 255, 255, 0.85); /* 提升文字亮度，增强可读性 */
         }
 
         .menu-item:hover {
-            background: var(--nav-hover-bg);
-            color: var(--text);
-            transform: translateX(4px);
+            background: rgba(255, 255, 255, 0.06);
+            color: #fff;
+            transform: translateX(3px);
         }
 
         .item-icon {
-            width: 36px;
-            height: 36px;
+            width: 28px; /* 减小图标容器尺寸 */
+            height: 28px;
             background: rgba(255, 255, 255, 0.03);
             border: 1px solid rgba(255, 255, 255, 0.05);
-            border-radius: 10px;
+            border-radius: 8px;
             display: flex;
             align-items: center;
             justify-content: center;
-            color: inherit;
             transition: all 0.25s var(--fluid-ease);
         }
 
         .menu-item:hover .item-icon {
-            background: rgba(99, 102, 241, 0.1);
+            background: rgba(99, 102, 241, 0.15);
             border-color: var(--accent);
             color: var(--accent);
-            box-shadow: 0 0 15px var(--accent-glow);
+            box-shadow: 0 0 12px var(--accent-glow);
         }
 
         .item-icon svg {
-            width: 18px;
-            height: 18px;
+            width: 14px; /* 减小图标尺寸 */
+            height: 14px;
         }
 
         .menu-item span {
-            font-size: 14px;
-            font-weight: 600;
-        }
-
-        .badge {
-            font-size: 10px;
-            padding: 2px 6px;
-            border-radius: 6px;
-            margin-left: auto;
-            font-weight: 800;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .badge.beta {
-            background: rgba(255, 255, 255, 0.05);
-            color: var(--muted);
-            border: 1px solid rgba(255, 255, 255, 0.05);
-        }
-
-        .badge.new {
-            background: var(--accent);
-            color: #fff;
-            box-shadow: 0 0 10px var(--accent-glow);
+            font-size: 13px; /* 微调字体大小 */
+            font-weight: 500;
         }
 
         .menu-divider {
             height: 1px;
-            background: var(--divider);
-            margin: 8px 12px;
-            opacity: 0.5;
+            background: rgba(255, 255, 255, 0.05);
+            margin: 6px 10px;
         }
 
         .hidden { display: none !important; }
 
-        /* Tooltip 样式重构 */
-        [data-tooltip] {
-            position: relative;
-        }
-
-        [data-tooltip]::after {
+        /* 3D 悬浮提示框样式优化 - 仅在有内容时显示 */
+        .side-pill[data-tooltip]::after, .logo-ring[data-tooltip]::after {
             content: attr(data-tooltip);
             position: absolute;
-            left: calc(100% + 12px);
-            right: auto;
-            top: 50%;
-            transform: translateY(-50%) translateX(-8px);
-            background: #1f2937;
-            color: #ffffff;
-            padding: 6px 12px;
-            border-radius: 8px;
-            font-size: 12px;
+            left: 100%;
+            margin-left: 18px;
+            padding: 8px 14px;
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #fff;
+            font-size: 13px;
             font-weight: 600;
-            white-space: nowrap !important;
-            width: max-content !important;
-            max-width: none !important;
-            display: block !important;
+            border-radius: 10px;
+            white-space: nowrap;
             opacity: 0;
+            transform: translateX(-10px);
             pointer-events: none;
-            transition: all 0.3s var(--fluid-ease);
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            z-index: 9999;
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+            z-index: 2001;
         }
 
-        [data-tooltip]:hover::after {
+        .side-pill[data-tooltip]:hover::after, .logo-ring[data-tooltip]:hover::after {
             opacity: 1;
-            transform: translateY(-50%) translateX(0);
+            transform: translateX(0);
         }
 
         .project-version-badge {
@@ -864,22 +850,15 @@
             </div>
 
             <div class="side-actions">
-                <button class="side-pill" onclick="switchUI(this, 'api-settings')" data-tooltip="API 设置">
-                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M15 7h3a5 5 0 0 1 0 10h-3"></path>
-                        <path d="M9 17H6A5 5 0 0 1 6 7h3"></path>
-                        <line x1="8" y1="12" x2="16" y2="12"></line>
+                <button class="side-pill" onclick="switchUI(this, 'api-settings')" id="nav-api-settings" type="button" data-tooltip="API 设置">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
                     </svg>
                     <span class="side-pill-text" data-i18n="common.apiSettings">API 设置</span>
                 </button>
-                <button class="side-pill" onclick="switchUI(this, 'comfyui-settings')" data-tooltip="工作流设置">
-                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <rect x="3" y="3" width="7" height="7" rx="1"></rect>
-                        <rect x="14" y="3" width="7" height="7" rx="1"></rect>
-                        <rect x="3" y="14" width="7" height="7" rx="1"></rect>
-                        <path d="M14 14h7v7h-7z"></path>
-                        <line x1="10" y1="6.5" x2="14" y2="6.5"></line>
-                        <line x1="6.5" y1="10" x2="6.5" y2="14"></line>
+                <button class="side-pill" onclick="switchUI(this, 'comfyui-settings')" id="nav-comfyui-settings" type="button" data-tooltip="工作流设置">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 2v8"/><path d="m4.93 10.93 1.41 1.41"/><path d="M2 18h2"/><path d="M20 18h2"/><path d="m19.07 10.93-1.41 1.41"/><path d="M22 22H2"/><path d="m16 6-4 4-4-4"/><path d="M16 18a4 4 0 0 0-8 0"/>
                     </svg>
                     <span class="side-pill-text" data-i18n="common.comfyuiSettings">工作流设置</span>
                 </button>
