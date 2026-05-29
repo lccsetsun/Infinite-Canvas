@@ -1,0 +1,23 @@
+# Environments
+python/Lib/
+python/Scripts/
+python/include/
+python/tcl/
+python/*.exe
+python/*.dll
+python/*.pdb
+
+# Local Data
+data/
+workspace/
+temp/
+*.log
+
+# Sensitive Info
+API/.env
+.env
+*.key
+
+# OS files
+.DS_Store
+Thumbs.db
