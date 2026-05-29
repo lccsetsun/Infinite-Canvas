@@ -1034,9 +1034,44 @@ async function setTrashMode(active){
 function renderCanvasList(){
     renderCanvasListInto(gateCanvasList);
 }
+function updateFeaturedCard() {
+    const featuredCard = document.getElementById('featuredCard');
+    const featuredTitle = document.getElementById('featuredTitle');
+    const featuredSubtitle = document.getElementById('featuredSubtitle');
+    const featuredImg = document.getElementById('featuredImg');
+    const featuredAuthorName = document.getElementById('featuredAuthorName');
+    const featuredDesc = document.getElementById('featuredDesc');
+
+    if (!featuredCard) return;
+
+    if (trashMode) {
+        featuredCard.parentElement.style.display = 'none';
+        return;
+    }
+
+    const latest = canvases.length > 0 ? canvases[0] : null;
+
+    if (latest) {
+        featuredTitle.textContent = latest.title.toUpperCase();
+        featuredSubtitle.textContent = (latest.kind || 'CLASSIC').toUpperCase() + ' CANVAS';
+        featuredAuthorName.textContent = latest.author || 'WingsMT';
+        
+        const prompt = encodeURIComponent(`epic cinematic digital art for "${latest.title}", futuristic, cyber dark professional, high contrast, 8k`);
+        featuredImg.src = `https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=${prompt}&image_size=landscape_16_9`;
+        
+        featuredDesc.textContent = tr('canvas.lastEdited') + ': ' + (latest.updated_at ? new Date(latest.updated_at).toLocaleString() : tr('canvas.justNow'));
+        
+        featuredCard.onclick = () => openCanvas(latest.id);
+        featuredCard.parentElement.style.display = 'block';
+    } else {
+        featuredCard.parentElement.style.display = 'none';
+    }
+}
+
 function renderCanvasListInto(list){
     if(!list) return;
     refreshGateViewControls();
+    updateFeaturedCard();
     const items = trashMode ? deletedCanvases : canvases;
     list.innerHTML = '';
     if(!items.length){
