@@ -3,11 +3,11 @@
     const LEGACY_KEY = 'canvas_theme';
 
     function currentTheme(){
-        return localStorage.getItem(KEY) || localStorage.getItem(LEGACY_KEY) || 'light';
+        return localStorage.getItem(KEY) || localStorage.getItem(LEGACY_KEY) || 'dark';
     }
 
     function applyTheme(theme){
-        const next = theme === 'dark' ? 'dark' : 'light';
+        const next = theme === 'light' ? 'light' : 'dark';
         const dark = next === 'dark';
         document.documentElement.classList.toggle('studio-theme-dark', dark);
         document.documentElement.classList.toggle('theme-dark', dark);
@@ -23,7 +23,7 @@
         get: currentTheme,
         apply: applyTheme,
         set(theme){
-            const next = theme === 'dark' ? 'dark' : 'light';
+            const next = theme === 'light' ? 'light' : 'dark';
             localStorage.setItem(KEY, next);
             localStorage.setItem(LEGACY_KEY, next);
             applyTheme(next);

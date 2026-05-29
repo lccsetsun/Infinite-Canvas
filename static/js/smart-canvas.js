@@ -9171,7 +9171,7 @@ document.getElementById('imageEditStage').addEventListener('wheel', event => {
     stage.scrollTop = contentY * scale - my;
 }, {passive:false});
 window.addEventListener('resize', () => { if(cropState) syncImageEditOverflow(); });
-window.addEventListener('studio-theme-change', event => applyTheme(event.detail?.theme || 'light'));
+window.addEventListener('studio-theme-change', event => applyTheme(event.detail?.theme || 'dark'));
 try {
     const apiChannel = new BroadcastChannel('studio-api');
     apiChannel.onmessage = async event => {
@@ -9184,7 +9184,7 @@ window.addEventListener('focus', () => {
     if(Date.now() - lastConfigRefreshAt > 1200) refreshSmartConfigFromSettings();
 });
 window.addEventListener('message', event => {
-    if(event.data?.type === 'studio-theme') applyTheme(event.data.theme || 'light');
+    if(event.data?.type === 'studio-theme') applyTheme(event.data.theme || 'dark');
     if(event.data?.type === 'providers-changed' || event.data?.type === 'workflows-changed') refreshSmartConfigFromSettings();
     if(event.data?.type === 'studio-lang' && window.StudioI18n) {
         window.StudioI18n.set(event.data.lang || 'zh');
@@ -9200,7 +9200,7 @@ window.addEventListener('studio-lang-change', () => {
     render();
 });
 window.onload = async () => {
-    applyTheme(localStorage.getItem('studio_theme') || localStorage.getItem('canvas_theme') || 'light');
+    applyTheme(localStorage.getItem('studio_theme') || localStorage.getItem('canvas_theme') || 'dark');
     loadPromptPresets();
     if(window.StudioI18n) window.StudioI18n.apply();
     if(window.lucide) lucide.createIcons();

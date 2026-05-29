@@ -23,6 +23,9 @@ function applyLanguage(lang){
 window.addEventListener('message', event => {
     if(event.data?.type === 'studio-lang') applyLanguage(event.data.lang);
     if(event.data?.type === 'canvas_updated') handleCanvasUpdatedMessage(event.data);
+    if(event.data?.type === 'canvas-create') {
+        if(typeof setCreateMode === 'function') setCreateMode(true);
+    }
     if(event.data?.type === 'canvas-focus'){
         // 从其他标签页切换回画布时，重新拉取工作流列表并刷新节点
         loadConfig().then(() => {
@@ -1579,7 +1582,7 @@ document.addEventListener('mousedown', e => {
     emojiPickerCanvasId = null;
     renderCanvasList();
 });
-window.addEventListener('studio-theme-change', event => applyTheme(event.detail?.theme || 'light'));
+window.addEventListener('studio-theme-change', event => applyTheme(event.detail?.theme || 'dark'));
 document.getElementById('cropBox').addEventListener('mousedown', event => beginCropDrag(event, 'move'));
 document.getElementById('cropHandle').addEventListener('mousedown', event => beginCropDrag(event, 'resize'));
 document.getElementById('outpaintFrame')?.addEventListener('mousedown', event => {
@@ -10763,7 +10766,7 @@ function escapeHtml(str){ return String(str == null ? '' : str).replace(/[&<>"']
 function escapeAttr(str){ return escapeHtml(str); }
 
 window.onload = async () => {
-    applyTheme(localStorage.getItem('studio_theme') || localStorage.getItem(CANVAS_THEME_KEY) || 'light');
+    applyTheme(localStorage.getItem('studio_theme') || localStorage.getItem(CANVAS_THEME_KEY) || 'dark');
     applyQuickToolbarState();
     if(window.StudioI18n) StudioI18n.apply();
     document.title = tr('canvas.title');
