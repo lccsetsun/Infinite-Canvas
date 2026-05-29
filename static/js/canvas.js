@@ -1059,7 +1059,7 @@ function renderCanvasListInto(list){
         const imageUrl = `https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=${imagePrompt}&image_size=landscape_16_9`;
         
         row.innerHTML = `
-            <img class="canvas-preview-image" src="${imageUrl}" loading="lazy" alt="">
+            <img class="canvas-preview-image" src="${imageUrl}" loading="lazy" alt="" onerror="this.style.display='none'">
             <div class="canvas-item-overlay"></div>
             <div class="canvas-open" role="button" tabindex="${trashMode ? '-1' : '0'}">
                 <span class="canvas-preview-mark" role="button" tabindex="0" title="${trashMode ? tr('canvas.deletedCanvas') : tr('canvas.changeIcon')}">

@@ -1024,7 +1024,11 @@ body.studio-theme-dark .comfy-random-btn.active,
     aspect-ratio: 16/10; 
     text-align:left; 
     border:1px solid var(--line); 
-    background:var(--card); 
+    background: #0f172a; 
+    background-image: 
+        radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.15) 0px, transparent 50%),
+        radial-gradient(at 100% 0%, rgba(168, 85, 247, 0.1) 0px, transparent 50%),
+        radial-gradient(at 50% 100%, rgba(99, 102, 241, 0.1) 0px, transparent 50%);
     border-radius:24px; 
     padding:0; 
     transition:all .4s cubic-bezier(0.23, 1, 0.32, 1); 
@@ -1039,8 +1043,14 @@ body.studio-theme-dark .comfy-random-btn.active,
     height: 100%;
     object-fit: cover;
     opacity: 0.4;
-    transition: all 0.5s var(--ease);
+    transition: all 0.6s var(--ease);
     filter: brightness(0.6) saturate(1.2);
+    background: transparent;
+}
+
+.canvas-preview-image[src=""], 
+.canvas-preview-image:not([src]) {
+    display: none;
 }
 
 .canvas-item:hover .canvas-preview-image {
