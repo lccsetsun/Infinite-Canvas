@@ -1,0 +1,6 @@
+{
+  "name": "AI Canvas",
+  "description": "A high-performance LiteGraph.js visual node-graph editor with ComfyUI design, custom node types, drag-and-drop wiring, and server-side Gemini AI integrations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
