@@ -4,13 +4,12 @@ import { motion, AnimatePresence } from "motion/react";
 
 interface FloatingToolbarProps {
   menuOpen: boolean;
-  activeTool: "api" | "workflow" | "templates" | null;
+  activeTool: "api" | "workflow" | null;
   onOpenQuickMenu: () => void;
   onCloseQuickMenu: () => void;
   onScheduleQuickMenuClose: () => void;
   onOpenApi: () => void;
   onOpenWorkflow: () => void;
-  onOpenTemplates: () => void;
 }
 
 export default function FloatingToolbar({
@@ -21,7 +20,6 @@ export default function FloatingToolbar({
   onScheduleQuickMenuClose,
   onOpenApi,
   onOpenWorkflow,
-  onOpenTemplates,
 }: FloatingToolbarProps) {
   return (
     <motion.div 
@@ -119,29 +117,6 @@ export default function FloatingToolbar({
             }`}
           >
             <SlidersHorizontal className="w-5 h-5" />
-          </motion.button>
-        </Tooltip>
-
-        <Tooltip content="节点模板" position="right">
-          <motion.button
-            whileHover={{ scale: 1.1, x: 2 }}
-            whileTap={{ scale: 0.9 }}
-            data-no-canvas-drag="true"
-            onPointerDown={(e) => {
-              e.stopPropagation();
-              e.preventDefault();
-            }}
-            onClick={(e) => {
-              e.stopPropagation();
-              onOpenTemplates();
-            }}
-            className={`w-12 h-12 rounded-2xl border flex items-center justify-center transition-all duration-300 cursor-pointer ${
-              activeTool === "templates"
-                ? "border-amber-400 bg-amber-500/20 text-amber-100 shadow-[0_0_20px_rgba(245,158,11,0.3)]"
-                : "border-white/5 bg-white/5 text-gray-400 hover:text-white hover:bg-white/10 hover:border-white/10"
-            }`}
-          >
-            <Boxes className="w-5 h-5" />
           </motion.button>
         </Tooltip>
       </div>

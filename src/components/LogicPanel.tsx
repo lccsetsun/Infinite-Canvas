@@ -26,7 +26,7 @@ export default function LogicPanel({
       <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.05] bg-white/[0.02]">
         <div className="flex items-center gap-2.5">
           <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
-          <h2 className="text-[13px] font-bold text-white uppercase tracking-widest opacity-80">Console</h2>
+          <h2 className="text-[13px] font-bold text-white uppercase tracking-widest opacity-80">控制台</h2>
           <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-white/5 text-gray-400 font-mono">
             {logs.length}
           </span>
@@ -36,7 +36,7 @@ export default function LogicPanel({
             <button 
               onClick={onClear}
               className="p-2 rounded-lg hover:bg-white/5 text-gray-500 hover:text-gray-300 transition-all cursor-pointer"
-              title="Clear Logs"
+              title="清空日志"
             >
               <Trash2 className="w-4 h-4" />
             </button>
@@ -55,7 +55,7 @@ export default function LogicPanel({
         <Search className="w-3.5 h-3.5 text-gray-600" />
         <input 
           type="text" 
-          placeholder="Filter logs..." 
+          placeholder="搜索日志..." 
           className="bg-transparent border-none text-[11px] text-gray-400 outline-none w-full placeholder:text-gray-700"
           readOnly
         />
@@ -68,7 +68,7 @@ export default function LogicPanel({
 
       {/* Footer info */}
       <div className="px-5 py-2.5 border-t border-white/[0.03] bg-black/20 flex items-center justify-between text-[9px] text-gray-600 font-bold uppercase tracking-tighter">
-        <span>Status: Ready</span>
+        <span>状态: 就绪</span>
         <span>v1.0.4-pro</span>
       </div>
     </motion.aside>

@@ -1,7 +1,28 @@
 import { GraphNode } from "../../types";
 
 export const NODE_WIDTH = 240;
+export const TEXT_NODE_WIDTH = 320;
+export const IMAGE_NODE_WIDTH = 320;
+export const VIDEO_NODE_WIDTH = 320;
 export const NODE_HEIGHT = 180;
+
+export function getNodeWidth(node: GraphNode) {
+  if (node.type === "text_node") return TEXT_NODE_WIDTH;
+  if (node.type === "image_node") return IMAGE_NODE_WIDTH;
+  if (node.type === "video_node") return VIDEO_NODE_WIDTH;
+  return NODE_WIDTH;
+}
+
+export function getNodeHeight(node: GraphNode) {
+  if (node.type === "image_node") return 520;
+  if (node.type === "text_node") return 400;
+  if (node.type === "video_node") return 600;
+  if (node.type === "upload_image") return 300;
+  if (node.type === "upload_video") {
+    return node.properties.frameAnalysis && node.properties.frameAnalysis !== "none" ? 420 : 240;
+  }
+  return NODE_HEIGHT;
+}
 export const NODE_HEADER_HEIGHT = 40;
 export const GRID_SIZE = 24;
 
@@ -21,13 +42,16 @@ export function getNodeById(nodes: GraphNode[], id: string) {
 }
 
 export function getInputAnchor(node: GraphNode, inputIndex: number) {
-  const step = Math.max(28, (NODE_HEIGHT - NODE_HEADER_HEIGHT) / Math.max(1, node.inputs.length + 1));
+  const height = getNodeHeight(node);
+  const step = Math.max(28, (height - NODE_HEADER_HEIGHT) / Math.max(1, node.inputs.length + 1));
   return { x: node.x, y: node.y + NODE_HEADER_HEIGHT + step * (inputIndex + 1) };
 }
 
 export function getOutputAnchor(node: GraphNode, outputIndex: number) {
-  const step = Math.max(28, (NODE_HEIGHT - NODE_HEADER_HEIGHT) / Math.max(1, node.outputs.length + 1));
-  return { x: node.x + NODE_WIDTH, y: node.y + NODE_HEADER_HEIGHT + step * (outputIndex + 1) };
+  const width = getNodeWidth(node);
+  const height = getNodeHeight(node);
+  const step = Math.max(28, (height - NODE_HEADER_HEIGHT) / Math.max(1, node.outputs.length + 1));
+  return { x: node.x + width, y: node.y + NODE_HEADER_HEIGHT + step * (outputIndex + 1) };
 }
 
 export function linkPath(from: { x: number; y: number }, to: { x: number; y: number }) {

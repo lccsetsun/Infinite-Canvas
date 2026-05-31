@@ -1,22 +1,21 @@
 import React from "react";
 import { Tooltip } from "./components/common/Tooltip";
-import { Eye, Grid3X3, LayoutGrid, LocateFixed, Magnet, Play, Trash2, X, Plus, Terminal } from "lucide-react";
+import { Eye, Grid3X3, LayoutGrid, LocateFixed, Magnet, Play, Trash2, X, Plus, Terminal, Download, Copy, Check, ChevronLeft, ChevronRight } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import FloatingToolbar from "./components/FloatingToolbar";
 import LeaferCanvas from "./components/canvas/LeaferCanvas";
 import NodeCard from "./components/canvas/NodeCard";
-import { getInputAnchor, getOutputAnchor, NODE_HEIGHT, NODE_WIDTH, snapPointToGrid } from "./components/canvas/geometry";
+import { getInputAnchor, getOutputAnchor, getNodeHeight, getNodeWidth, NODE_HEIGHT, NODE_WIDTH, snapPointToGrid } from "./components/canvas/geometry";
 import { useCanvasInteraction } from "./hooks/useCanvasInteraction";
-import { useNodeTemplateCanvas } from "./hooks/useNodeTemplateCanvas";
 import { useWorkflowState } from "./hooks/useWorkflowState";
 import { useAppUiState } from "./hooks/useAppUiState";
+import { ConfigProvider, theme } from "antd";
 import { NodeClass } from "./types";
 import { getLinkDraftIssue } from "./utils/linking";
 
 const LogicPanel = React.lazy(() => import("./components/LogicPanel"));
 const SearchMenu = React.lazy(() => import("./components/SearchMenu"));
 const ApiSettingsPage = React.lazy(() => import("./components/pages/ApiSettingsPage"));
-const NodeTemplatesPage = React.lazy(() => import("./components/pages/NodeTemplatesPage"));
 const WorkflowSettingsPage = React.lazy(() => import("./components/pages/WorkflowSettingsPage"));
 
 export default function App() {
@@ -84,7 +83,13 @@ export default function App() {
   const [apiKey, setApiKey] = React.useState("");
   const [apiModel, setApiModel] = React.useState("deepseek-v4-flash");
   const [menuPos, setMenuPos] = React.useState<{ x: number; y: number } | null>(null);
-  const [previewContent, setPreviewContent] = React.useState<{ title: string; content: string } | null>(null);
+  const [previewContent, setPreviewContent] = React.useState<{ 
+    content: string; 
+    title: string; 
+    nodeId?: string;
+    items?: string[];
+    currentIndex?: number;
+  } | null>(null);
   const [canvasSize, setCanvasSize] = React.useState({ width: 0, height: 0 });
   const [isLinkingOnCanvas, setIsLinkingOnCanvas] = React.useState(false);
   const [draftCursor, setDraftCursor] = React.useState<{ x: number; y: number } | null>(null);
@@ -105,19 +110,6 @@ export default function App() {
     onPointerUp,
     onContextMenu,
   } = useCanvasInteraction({ nodes, snapToGridEnabled, updateNodePosition });
-
-  const {
-    templateNodes,
-    templatePan,
-    templateZoom,
-    onTemplateNodeDragStart,
-    onTemplateCanvasPointerDown,
-    onTemplatePointerMove,
-    onTemplatePointerUp,
-    onTemplateWheel,
-    updateTemplateNodeProperty,
-    updateTemplateNodeData,
-  } = useNodeTemplateCanvas();
 
   const addNodeAtPosition = (type: NodeClass, x: number, y: number, initialProps?: Record<string, any>) => {
     const world = toWorld(x, y);
@@ -262,8 +254,8 @@ export default function App() {
     if (nodes.length === 0) return null;
     const minX = Math.min(...nodes.map((n) => n.x)) - 200;
     const minY = Math.min(...nodes.map((n) => n.y)) - 200;
-    const maxX = Math.max(...nodes.map((n) => n.x + NODE_WIDTH)) + 200;
-    const maxY = Math.max(...nodes.map((n) => n.y + NODE_HEIGHT)) + 200;
+    const maxX = Math.max(...nodes.map((n) => n.x + getNodeWidth(n))) + 200;
+    const maxY = Math.max(...nodes.map((n) => n.y + getNodeHeight(n))) + 200;
     const worldW = Math.max(1, maxX - minX);
     const worldH = Math.max(1, maxY - minY);
     const scale = Math.min((innerW - padding * 2) / worldW, (innerH - padding * 2) / worldH);
@@ -272,13 +264,17 @@ export default function App() {
     const offsetX = (innerW - contentW) / 2;
     const offsetY = (innerH - contentH) / 2;
 
-    const nodeRects = nodes.map((n) => ({
-      id: n.id,
-      left: offsetX + (n.x - minX) * scale,
-      top: offsetY + (n.y - minY) * scale,
-      width: Math.max(10, NODE_WIDTH * scale),
-      height: Math.max(8, NODE_HEIGHT * scale),
-    }));
+    const nodeRects = nodes.map((n) => {
+      const w = getNodeWidth(n);
+      const h = getNodeHeight(n);
+      return {
+        id: n.id,
+        left: offsetX + (n.x - minX) * scale,
+        top: offsetY + (n.y - minY) * scale,
+        width: Math.max(10, w * scale),
+        height: Math.max(8, h * scale),
+      };
+    });
 
     // Viewport box
     let viewportRect = null;
@@ -329,10 +325,6 @@ export default function App() {
         resetCanvasLinkDraft();
         return;
       }
-      if (e.key === "Escape" && currentView === "node_templates") {
-        setCurrentView("canvas");
-        setActiveQuickTool(null);
-      }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -360,7 +352,16 @@ export default function App() {
   }, []);
 
   return (
-    <div className="relative w-full h-screen bg-[#0f1218] text-[#e2e8f0] overflow-hidden select-none font-sans">
+    <ConfigProvider
+      theme={{
+        algorithm: theme.darkAlgorithm,
+        token: {
+          colorPrimary: "#6366f1",
+          borderRadius: 12,
+        },
+      }}
+    >
+      <div className="relative w-full h-screen bg-[#0f1218] text-[#e2e8f0] overflow-hidden select-none font-sans">
       <motion.header 
         initial={{ y: -64, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
@@ -592,12 +593,6 @@ export default function App() {
             clearMenuCloseTimer();
             setMenuPos(null);
           }}
-          onOpenTemplates={() => {
-            setActiveQuickTool("templates");
-            setCurrentView("node_templates");
-            clearMenuCloseTimer();
-            setMenuPos(null);
-          }}
         />
 
         {currentView === "api" && (
@@ -662,32 +657,6 @@ export default function App() {
           </React.Suspense>
         )}
 
-        {currentView === "node_templates" && (
-          <React.Suspense fallback={panelFallback}>
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="absolute inset-0 z-[100]"
-            >
-              <NodeTemplatesPage
-                templateNodes={templateNodes}
-                templatePan={templatePan}
-                templateZoom={templateZoom}
-                onTemplateCanvasPointerDown={onTemplateCanvasPointerDown}
-                onTemplatePointerMove={onTemplatePointerMove}
-                onTemplatePointerUp={onTemplatePointerUp}
-                onTemplateWheel={onTemplateWheel}
-                onTemplateNodeDragStart={onTemplateNodeDragStart}
-                onUpdateProperty={updateTemplateNodeProperty}
-                onUpdateData={updateTemplateNodeData}
-                apiConfig={{ baseUrl: apiBaseUrl, apiKey }}
-                onPreview={(content) => setPreviewContent({ title: "模板预览", content })}
-              />
-            </motion.div>
-          </React.Suspense>
-        )}
-
         <div
           className="absolute inset-0 z-20 origin-top-left"
           style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}
@@ -713,7 +682,9 @@ export default function App() {
                   onUpdateProperty={updateNodeProperty}
                   onUpdateData={updateNodeData}
                   apiConfig={{ baseUrl: apiBaseUrl, apiKey }}
-                  onPreview={(content) => setPreviewContent({ title: "文本节点", content })}
+                  onPreview={(content, title, nodeId, items, currentIndex) => 
+                    setPreviewContent({ title: title || "预览内容", content, nodeId, items, currentIndex })
+                  }
                 />
               </div>
             ))}
@@ -846,7 +817,7 @@ export default function App() {
                 />
               )}
 
-              <span className="absolute right-3 bottom-2 text-[10px] tracking-wider text-gray-500/90 font-semibold uppercase">Map</span>
+              <span className="absolute right-3 bottom-2 text-[10px] tracking-wider text-gray-500/90 font-semibold">地图</span>
             </div>
           </div>
         )}
@@ -991,25 +962,147 @@ export default function App() {
                   <X className="w-5 h-5" />
                 </button>
               </div>
-              <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
-                <div className="text-[15px] text-gray-300 leading-relaxed whitespace-pre-wrap font-sans">
-                  {/* Basic Markdown rendering for bold */}
-                  {previewContent.content.split(/(\*\*.*?\*\*)/g).map((part, i) => 
-                    part.startsWith("**") && part.endsWith("**") 
-                      ? <strong key={i} className="text-white font-bold">{part.slice(2, -2)}</strong>
-                      : part
-                  )}
-                </div>
+              <div className="flex-1 overflow-y-auto p-8 custom-scrollbar relative">
+                {previewContent.content.startsWith("http") ? (
+                  <div className="flex items-center justify-center min-h-[300px] relative group/viewer">
+                    {/* Navigation Buttons */}
+                    {previewContent.items && previewContent.items.length > 1 && (
+                      <>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const newIdx = (previewContent.currentIndex! - 1 + previewContent.items!.length) % previewContent.items!.length;
+                            setPreviewContent({
+                              ...previewContent,
+                              content: previewContent.items![newIdx],
+                              currentIndex: newIdx,
+                              title: previewContent.title.includes("#") 
+                                ? previewContent.title.replace(/#\d+/, `#${newIdx + 1}`)
+                                : previewContent.title
+                            });
+                          }}
+                          className="absolute left-0 z-20 p-3 rounded-full bg-black/40 text-white/70 hover:text-white hover:bg-black/60 backdrop-blur-md transition-all opacity-0 group-hover/viewer:opacity-100 -translate-x-4 group-hover/viewer:translate-x-0"
+                        >
+                          <ChevronLeft className="w-6 h-6" />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const newIdx = (previewContent.currentIndex! + 1) % previewContent.items!.length;
+                            setPreviewContent({
+                              ...previewContent,
+                              content: previewContent.items![newIdx],
+                              currentIndex: newIdx,
+                              title: previewContent.title.includes("#") 
+                                ? previewContent.title.replace(/#\d+/, `#${newIdx + 1}`)
+                                : previewContent.title
+                            });
+                          }}
+                          className="absolute right-0 z-20 p-3 rounded-full bg-black/40 text-white/70 hover:text-white hover:bg-black/60 backdrop-blur-md transition-all opacity-0 group-hover/viewer:opacity-100 translate-x-4 group-hover/viewer:translate-x-0"
+                        >
+                          <ChevronRight className="w-6 h-6" />
+                        </button>
+                      </>
+                    )}
+
+                    <AnimatePresence mode="wait">
+                      <motion.div
+                        key={previewContent.content}
+                        initial={{ opacity: 0, scale: 0.95, x: 20 }}
+                        animate={{ opacity: 1, scale: 1, x: 0 }}
+                        exit={{ opacity: 0, scale: 0.95, x: -20 }}
+                        transition={{ duration: 0.3, ease: "easeOut" }}
+                        className="w-full flex justify-center"
+                      >
+                        {previewContent.content.match(/\.(mp4|webm|ogg)$/i) || previewContent.content.includes("mixkit") ? (
+                          <video 
+                            src={previewContent.content} 
+                            controls 
+                            autoPlay
+                            className="max-w-full max-h-[60vh] rounded-xl shadow-2xl border border-white/10" 
+                          />
+                        ) : (
+                          <img 
+                            src={previewContent.content} 
+                            alt="Preview" 
+                            className="max-w-full max-h-[60vh] rounded-xl shadow-2xl border border-white/10 object-contain" 
+                          />
+                        )}
+                      </motion.div>
+                    </AnimatePresence>
+                  </div>
+                ) : previewContent.title === "提示词编辑" ? (
+                  <textarea
+                    value={previewContent.content}
+                    onChange={(e) => setPreviewContent({ ...previewContent, content: e.target.value })}
+                    placeholder="请输入提示词内容..."
+                    className="w-full h-[400px] bg-[#0d1117] border border-indigo-500/30 rounded-xl p-6 text-[15px] text-gray-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 transition-all resize-none leading-relaxed placeholder:text-gray-700 custom-scrollbar"
+                    autoFocus
+                  />
+                ) : (
+                  <div className="text-[15px] text-gray-300 leading-relaxed whitespace-pre-wrap font-sans">
+                    {/* Basic Markdown rendering for bold */}
+                    {previewContent.content.split(/(\*\*.*?\*\*)/g).map((part, i) => 
+                      part.startsWith("**") && part.endsWith("**") 
+                        ? <strong key={i} className="text-white font-bold">{part.slice(2, -2)}</strong>
+                        : part
+                    )}
+                  </div>
+                )}
               </div>
-              <div className="h-14 px-6 border-t border-[#252c3a] flex items-center justify-end shrink-0 bg-[#161b29]/50">
+              <div className="h-14 px-6 border-t border-[#252c3a] flex items-center justify-end gap-3 shrink-0 bg-[#161b29]/50">
+                {previewContent.title === "提示词编辑" && previewContent.nodeId && (
+                  <button
+                    onClick={() => {
+                      updateNodeProperty(previewContent.nodeId!, "text", previewContent.content);
+                      showNotice("提示词已保存");
+                      setPreviewContent(null);
+                    }}
+                    className="px-6 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold transition-all shadow-lg shadow-emerald-500/20 active:scale-95"
+                  >
+                    保存修改
+                  </button>
+                )}
+                
+                {previewContent.content.startsWith("http") && (
+                  <button
+                    onClick={async () => {
+                      try {
+                        const response = await fetch(previewContent.content);
+                        const blob = await response.blob();
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `ai-studio-${Date.now()}.png`;
+                        document.body.appendChild(a);
+                        a.click();
+                        window.URL.revokeObjectURL(url);
+                        document.body.removeChild(a);
+                        showNotice("下载已开始");
+                      } catch (err) {
+                        window.open(previewContent.content, '_blank');
+                        showNotice("正在新窗口打开下载");
+                      }
+                    }}
+                    className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-gray-300 text-sm font-bold transition-all flex items-center gap-2"
+                  >
+                    <Download className="w-4 h-4" />
+                    下载文件
+                  </button>
+                )}
+
                 <button
                   onClick={() => {
                     navigator.clipboard.writeText(previewContent.content);
                     showNotice("内容已复制到剪贴板");
                   }}
-                  className="px-4 py-2 rounded-lg bg-indigo-500 hover:bg-indigo-400 text-white text-sm font-bold transition-all shadow-lg shadow-indigo-500/20 active:scale-95"
+                  className={`px-4 py-2 rounded-lg text-sm font-bold transition-all active:scale-95 ${
+                    previewContent.title === "提示词编辑" 
+                      ? "bg-white/5 hover:bg-white/10 text-gray-300" 
+                      : "bg-indigo-500 hover:bg-indigo-400 text-white shadow-lg shadow-indigo-500/20"
+                  }`}
                 >
-                  复制全文
+                  {previewContent.content.startsWith("http") ? "复制链接" : "复制全文"}
                 </button>
               </div>
             </motion.div>
@@ -1017,5 +1110,6 @@ export default function App() {
         )}
       </AnimatePresence>
     </div>
+    </ConfigProvider>
   );
 }

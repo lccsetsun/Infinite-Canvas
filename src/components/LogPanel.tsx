@@ -12,7 +12,7 @@ export default function LogPanel({ logs }: LogPanelProps) {
         {logs.length === 0 ? (
           <div className="py-16 flex flex-col items-center justify-center opacity-10 grayscale select-none">
              <Terminal className="w-14 h-14 mb-4" />
-             <span className="text-[10px] font-bold uppercase tracking-[0.2em]">No Active Logs</span>
+             <span className="text-[10px] font-bold uppercase tracking-[0.2em]">暂无运行日志</span>
           </div>
         ) : (
           logs.map((log) => (
@@ -39,7 +39,10 @@ export default function LogPanel({ logs }: LogPanelProps) {
                   log.type === "success" ? "bg-emerald-500/20 text-emerald-400" :
                   "bg-indigo-500/20 text-indigo-400"
                 }`}>
-                  {log.type || 'INFO'}
+                  {log.type === "error" ? "错误" :
+                   log.type === "warning" ? "警告" :
+                   log.type === "success" ? "成功" :
+                   "信息"}
                 </div>
               </div>
               <div className="text-[11px] leading-relaxed font-mono break-all">{log.message}</div>

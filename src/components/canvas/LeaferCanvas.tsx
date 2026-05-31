@@ -1,7 +1,7 @@
 import React from "react";
 import { Ellipse, Group, Leafer, Path, Rect, Text } from "leafer-ui";
 import { GraphLink, GraphNode } from "../../types";
-import { getInputAnchor, getNodeById, getOutputAnchor, GRID_SIZE, linkPath, NODE_HEIGHT, NODE_WIDTH } from "./geometry";
+import { getInputAnchor, getNodeById, getOutputAnchor, GRID_SIZE, linkPath, NODE_HEIGHT, NODE_WIDTH, getNodeWidth, getNodeHeight } from "./geometry";
 import { isDataTypeCompatible } from "../../utils/linking";
 
 interface LeaferCanvasProps {
@@ -151,13 +151,15 @@ function buildNodeShells(group: Group, nodes: GraphNode[], selectedNodeId?: stri
 
   nodes.forEach((node) => {
     const isSelected = selectedNodeId === node.id;
+    const width = getNodeWidth(node);
+    const height = getNodeHeight(node);
 
     group.add(
       new Rect({
         x: node.x,
         y: node.y,
-        width: NODE_WIDTH,
-        height: NODE_HEIGHT,
+        width: width,
+        height: height,
         cornerRadius: 14,
         fill: "#131722",
         opacity: 0.94,
@@ -171,7 +173,7 @@ function buildNodeShells(group: Group, nodes: GraphNode[], selectedNodeId?: stri
       new Rect({
         x: node.x,
         y: node.y,
-        width: NODE_WIDTH,
+        width: width,
         height: 40,
         cornerRadius: [14, 14, 0, 0],
         fill: "#161b29",
@@ -182,7 +184,7 @@ function buildNodeShells(group: Group, nodes: GraphNode[], selectedNodeId?: stri
 
     group.add(
       new Path({
-        path: `M ${node.x} ${node.y + 40} L ${node.x + NODE_WIDTH} ${node.y + 40}`,
+        path: `M ${node.x} ${node.y + 40} L ${node.x + width} ${node.y + 40}`,
         stroke: "rgba(37,44,58,0.96)",
         strokeWidth: 1,
         fill: "none",
@@ -243,12 +245,14 @@ function buildNodeDecorators(
     const fromOutput = fromNode?.outputs[draftFromOutputIndex];
 
     if (isSelected) {
+      const width = getNodeWidth(node);
+      const height = getNodeHeight(node);
       group.add(
         new Rect({
           x: node.x - 5,
           y: node.y - 5,
-          width: NODE_WIDTH + 10,
-          height: NODE_HEIGHT + 10,
+          width: width + 10,
+          height: height + 10,
           cornerRadius: 18,
           stroke: "rgba(99,102,241,0.92)",
           strokeWidth: 2,

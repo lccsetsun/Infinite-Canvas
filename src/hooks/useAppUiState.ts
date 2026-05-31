@@ -1,7 +1,7 @@
 import React from "react";
 
-export type ViewType = "canvas" | "api" | "workflow" | "node_templates";
-export type QuickToolType = "api" | "workflow" | "templates" | null;
+export type ViewType = "canvas" | "api" | "workflow";
+export type QuickToolType = "api" | "workflow" | null;
 
 export function useAppUiState() {
   const [showLogicPanel, setShowLogicPanel] = React.useState(false);

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from "react";
-import { FileText, Sparkles, Video, Upload, ChevronRight } from "lucide-react";
+import { FileText, Sparkles, Video, Upload, ChevronRight, Image as ImageIcon, Film } from "lucide-react";
 import { NodeClass } from "../types";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -146,14 +146,14 @@ export default function SearchMenu({ x, y, isContextMenu, onAddNode, onClose, on
             <div className="flex flex-col gap-0.5">
               <MenuItem 
                 onClick={() => handleSelect("upload_image")} 
-                icon={Upload} 
+                icon={ImageIcon} 
                 label="上传图片" 
                 description="从本地导入图片素材" 
                 colorClass="text-cyan-400 group-hover:text-cyan-300" 
               />
               <MenuItem 
                 onClick={() => handleSelect("upload_video")} 
-                icon={Upload} 
+                icon={Film} 
                 label="上传视频" 
                 description="从本地导入视频素材" 
                 colorClass="text-teal-400 group-hover:text-teal-300" 

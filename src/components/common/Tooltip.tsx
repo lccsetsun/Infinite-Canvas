@@ -54,7 +54,7 @@ export const Tooltip: React.FC<TooltipProps> = ({ content, children, position = 
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
             transition={{ duration: 0.15, ease: "easeOut" }}
-            className={`absolute ${getPositionClasses()} px-2.5 py-1.5 bg-[#1a2030]/95 backdrop-blur-md border border-indigo-500/40 rounded-lg shadow-[0_8px_24px_rgba(0,0,0,0.5)] pointer-events-none z-[100] whitespace-nowrap`}
+            className={`absolute ${getPositionClasses()} px-2.5 py-1.5 bg-[#1a2030]/95 backdrop-blur-md border border-indigo-500/40 rounded-lg shadow-[0_8px_24px_rgba(0,0,0,0.5)] pointer-events-none z-[9999] whitespace-nowrap`}
           >
             <div className="text-[11px] font-bold text-indigo-100 tracking-wide">
               {content}

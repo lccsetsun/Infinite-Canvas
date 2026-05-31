@@ -1,5 +1,5 @@
 import React from "react";
-import { NODE_HEIGHT, NODE_WIDTH, snapPointToGrid } from "../components/canvas/geometry";
+import { getNodeHeight, getNodeWidth, NODE_HEIGHT, NODE_WIDTH, snapPointToGrid } from "../components/canvas/geometry";
 import { GraphNode } from "../types";
 
 type DragState = {
@@ -62,30 +62,26 @@ export function useCanvasInteraction({ nodes, snapToGridEnabled = true, updateNo
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect || nodes.length === 0) return;
 
-    // Calculate actual bounds including a more realistic node height for text nodes
+    // Calculate actual bounds including dynamic widths
     const minX = Math.min(...nodes.map((n) => n.x));
     const minY = Math.min(...nodes.map((n) => n.y));
     
-    // Estimate actual height: Text nodes are usually taller (~320px), others ~200px
     const maxX = Math.max(...nodes.map((n) => {
-      return n.x + NODE_WIDTH;
+      return n.x + getNodeWidth(n);
     }));
     const maxY = Math.max(...nodes.map((n) => {
-      const estimatedHeight = n.type === "text_node" ? 320 : NODE_HEIGHT;
+      const estimatedHeight = n.type === "text_node" ? 420 : getNodeHeight(n);
       return n.y + estimatedHeight;
     }));
 
     const width = Math.max(1, maxX - minX);
     const height = Math.max(1, maxY - minY);
     
-    // Add more padding (200px total) to ensure nodes aren't touching edges
     const padding = 160;
     const targetZoom = Math.max(0.35, Math.min(1.1, Math.min((rect.width - padding) / width, (rect.height - padding) / height)));
     
     setZoom(targetZoom);
     
-    // Center logic: (viewportSize / 2) - (contentCenter * zoom)
-    // We add a slight offset (40px) to x to account for the left floating toolbar
     setPan({
       x: (rect.width / 2) - (minX + width / 2) * targetZoom + 30,
       y: (rect.height / 2) - (minY + height / 2) * targetZoom,
@@ -99,8 +95,8 @@ export function useCanvasInteraction({ nodes, snapToGridEnabled = true, updateNo
       if (!node || !rect) return;
 
       setPan({
-        x: rect.width / 2 - (node.x + NODE_WIDTH / 2) * zoom,
-        y: rect.height / 2 - (node.y + NODE_HEIGHT / 2) * zoom,
+        x: rect.width / 2 - (node.x + getNodeWidth(node) / 2) * zoom,
+        y: rect.height / 2 - (node.y + getNodeHeight(node) / 2) * zoom,
       });
     },
     [nodes, zoom]

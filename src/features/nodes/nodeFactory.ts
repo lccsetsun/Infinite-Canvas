@@ -124,7 +124,7 @@ const NODE_BLUEPRINTS: Partial<Record<NodeClass, NodeBlueprint>> = {
     title: "图片",
     inputs: [],
     outputs: [{ name: "图片", type: "IMAGE" }],
-    properties: { imageUrl: DEFAULT_IMAGE_URL },
+    properties: { imageUrl: "" },
   },
   video_node: {
     title: "视频",
