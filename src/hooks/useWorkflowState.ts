@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { createNodeFromType } from "../features/nodes/nodeFactory";
 import { ExecutionLog, GraphLink, GraphNode, NodeClass } from "../types";
 import { getLinkDraftIssue } from "../utils/linking";
@@ -20,19 +20,13 @@ export function useWorkflowState() {
   const [nodes, setNodes] = useState<GraphNode[]>([]);
   const [links, setLinks] = useState<GraphLink[]>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [logs, setLogs] = useState<ExecutionLog[]>([
-    makeLog("info", "初始化完成：工作流编辑器已就绪。"),
-  ]);
-
+  const [logs, setLogs] = useState<ExecutionLog[]>([makeLog("info", "初始化完成：工作流编辑器已就绪。")]);
   const [linkFromNodeId, setLinkFromNodeId] = useState("");
   const [linkToNodeId, setLinkToNodeId] = useState("");
   const [linkFromOutputIndex, setLinkFromOutputIndex] = useState(0);
   const [linkToInputIndex, setLinkToInputIndex] = useState(0);
 
-  const selectedNode = useMemo(
-    () => nodes.find((n) => n.id === selectedNodeId) ?? null,
-    [nodes, selectedNodeId]
-  );
+  const selectedNode = useMemo(() => nodes.find((n) => n.id === selectedNodeId) ?? null, [nodes, selectedNodeId]);
 
   const linkDraftIssue = useMemo(
     () =>
@@ -51,14 +45,12 @@ export function useWorkflowState() {
     setLogs((prev) => [...prev, makeLog(type, message)].slice(-80));
   };
 
-  const addNode = (type: NodeClass, x?: number, y?: number, initialProps?: Record<string, any>) => {
+  const addNode = (type: NodeClass, x?: number, y?: number, initialProps?: Record<string, unknown>) => {
     const id = makeId("node");
     const nextX = x ?? 80 + (nodes.length % 4) * 280;
     const nextY = y ?? 120 + Math.floor(nodes.length / 4) * 180;
     const node = createNodeFromType(type, id, nextX, nextY);
-    if (initialProps) {
-      node.properties = { ...node.properties, ...initialProps };
-    }
+    if (initialProps) node.properties = { ...node.properties, ...initialProps };
     setNodes((prev) => [...prev, node]);
     setSelectedNodeId(node.id);
     appendLog("success", `已添加节点：${node.title}`);
@@ -92,9 +84,7 @@ export function useWorkflowState() {
   };
 
   const updateNodePosition = (nodeId: string, x: number, y: number) => {
-    setNodes((prev) =>
-      prev.map((n) => (n.id === nodeId ? { ...n, x, y } : n))
-    );
+    setNodes((prev) => prev.map((n) => (n.id === nodeId ? { ...n, x, y } : n)));
   };
 
   const clearCanvas = () => {
@@ -104,27 +94,49 @@ export function useWorkflowState() {
     appendLog("warning", "画布已清空。");
   };
 
+  const addLinkFromDraft = (draft: { fromNodeId: string; toNodeId: string; fromOutputIndex: number; toInputIndex: number }) => {
+    const issue = getLinkDraftIssue({ ...draft, nodes, links });
+    if (issue) {
+      appendLog("warning", issue);
+      return false;
+    }
+
+    const fromNode = nodes.find((n) => n.id === draft.fromNodeId)!;
+    const toNode = nodes.find((n) => n.id === draft.toNodeId)!;
+    const link: GraphLink = {
+      id: makeId("link"),
+      fromNodeId: draft.fromNodeId,
+      fromOutputIndex: draft.fromOutputIndex,
+      toNodeId: draft.toNodeId,
+      toInputIndex: draft.toInputIndex,
+    };
+
+    setLinks((prev) => [...prev, link]);
+    appendLog(
+      "success",
+      `已建立连线：${fromNode.title}[${fromNode.outputs[draft.fromOutputIndex].name}] -> ${toNode.title}[${toNode.inputs[draft.toInputIndex].name}]`
+    );
+    return true;
+  };
+
   const addLink = () => {
     if (linkDraftIssue) {
       appendLog("warning", linkDraftIssue);
       return;
     }
-
-    const fromNode = nodes.find((n) => n.id === linkFromNodeId)!;
-    const toNode = nodes.find((n) => n.id === linkToNodeId)!;
-
-    const link: GraphLink = {
-      id: makeId("link"),
+    addLinkFromDraft({
       fromNodeId: linkFromNodeId,
-      fromOutputIndex: linkFromOutputIndex,
       toNodeId: linkToNodeId,
+      fromOutputIndex: linkFromOutputIndex,
       toInputIndex: linkToInputIndex,
-    };
-    setLinks((prev) => [...prev, link]);
-    appendLog(
-      "success",
-      `已建立连线：${fromNode.title}[${fromNode.outputs[linkFromOutputIndex].name}] -> ${toNode.title}[${toNode.inputs[linkToInputIndex].name}]`
-    );
+    });
+  };
+
+  const clearLinkDraft = () => {
+    setLinkFromNodeId("");
+    setLinkToNodeId("");
+    setLinkFromOutputIndex(0);
+    setLinkToInputIndex(0);
   };
 
   const removeLink = (linkId: string) => {
@@ -133,19 +145,11 @@ export function useWorkflowState() {
   };
 
   const updateNodeProperty = (nodeId: string, key: string, value: unknown) => {
-    setNodes((prev) =>
-      prev.map((n) =>
-        n.id === nodeId ? { ...n, properties: { ...n.properties, [key]: value } } : n
-      )
-    );
+    setNodes((prev) => prev.map((n) => (n.id === nodeId ? { ...n, properties: { ...n.properties, [key]: value } } : n)));
   };
 
   const updateNodeData = (nodeId: string, data: Partial<GraphNode["data"]>) => {
-    setNodes((prev) =>
-      prev.map((n) =>
-        n.id === nodeId ? { ...n, data: { ...(n.data || {}), ...data } } : n
-      )
-    );
+    setNodes((prev) => prev.map((n) => (n.id === nodeId ? { ...n, data: { ...(n.data || {}), ...data } } : n)));
   };
 
   const updateSelectedProperty = (key: string, value: unknown) => {
@@ -155,14 +159,12 @@ export function useWorkflowState() {
 
   const runWorkflow = () => {
     if (!nodes.length) {
-      appendLog("warning", "当前没有节点可执行。");
+      appendLog("warning", "当前没有可执行节点。");
       return;
     }
     appendLog("info", `开始执行，共 ${nodes.length} 个节点。`);
-    nodes.forEach((node, idx) =>
-      appendLog("success", `[${idx + 1}/${nodes.length}] ${node.title}`)
-    );
-    appendLog("success", "流水线执行完成。");
+    nodes.forEach((node, idx) => appendLog("success", `[${idx + 1}/${nodes.length}] ${node.title}`));
+    appendLog("success", "流程执行完成。");
   };
 
   return {
@@ -181,6 +183,7 @@ export function useWorkflowState() {
     setLinkToNodeId,
     setLinkFromOutputIndex,
     setLinkToInputIndex,
+    clearLinkDraft,
     addNode,
     removeNode,
     duplicateNode,
@@ -188,6 +191,7 @@ export function useWorkflowState() {
     updateNodeProperty,
     updateNodeData,
     clearCanvas,
+    addLinkFromDraft,
     addLink,
     removeLink,
     updateSelectedProperty,

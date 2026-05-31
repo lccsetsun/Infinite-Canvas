@@ -1,4 +1,5 @@
-import CanvasGrid from "../CanvasGrid";
+import React from "react";
+import LeaferCanvas from "../canvas/LeaferCanvas";
 import NodeCard from "../canvas/NodeCard";
 import { GraphNode } from "../../types";
 
@@ -54,26 +55,34 @@ export default function NodeTemplatesPage({
           onPointerLeave={onTemplatePointerUp}
           onWheel={onTemplateWheel}
         >
-          <CanvasGrid pan={templatePan} zoom={templateZoom} />
+          <LeaferCanvas
+            nodes={templateNodes}
+            pan={templatePan}
+            zoom={templateZoom}
+            showGrid={true}
+            background="#0c1220"
+            selectedNodeId={null}
+          />
           <div
             className="absolute inset-0 origin-top-left"
             style={{ transform: `translate(${templatePan.x}px, ${templatePan.y}px) scale(${templateZoom})` }}
             onPointerDown={onTemplateCanvasPointerDown}
           >
             {templateNodes.map((tpl) => (
-              <NodeCard
-                key={tpl.id}
-                node={tpl}
-                selected={false}
-                onSelect={() => {}}
-                onDelete={() => {}}
-                onDuplicate={() => {}}
-                onDragStart={onTemplateNodeDragStart}
-                onUpdateProperty={onUpdateProperty}
-                onUpdateData={onUpdateData}
-                apiConfig={apiConfig}
-                onPreview={onPreview}
-              />
+              <div key={tpl.id} className="absolute left-0 top-0" style={{ transform: `translate3d(${tpl.x}px, ${tpl.y}px, 0)` }}>
+                <NodeCard
+                  node={tpl}
+                  selected={false}
+                  onSelect={() => {}}
+                  onDelete={() => {}}
+                  onDuplicate={() => {}}
+                  onDragStart={onTemplateNodeDragStart}
+                  onUpdateProperty={onUpdateProperty}
+                  onUpdateData={onUpdateData}
+                  apiConfig={apiConfig}
+                  onPreview={onPreview}
+                />
+              </div>
             ))}
           </div>
           <div className="absolute right-4 bottom-3 px-2.5 py-1 rounded-md border border-[#2f3f66] bg-[#131b2f]/90 text-xs text-[#9ab0e1]">

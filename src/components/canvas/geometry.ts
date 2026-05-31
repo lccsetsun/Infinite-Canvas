@@ -3,6 +3,18 @@ import { GraphNode } from "../../types";
 export const NODE_WIDTH = 240;
 export const NODE_HEIGHT = 180;
 export const NODE_HEADER_HEIGHT = 40;
+export const GRID_SIZE = 24;
+
+export function snapToGrid(value: number, gridSize = GRID_SIZE) {
+  return Math.round(value / gridSize) * gridSize;
+}
+
+export function snapPointToGrid(point: { x: number; y: number }, gridSize = GRID_SIZE) {
+  return {
+    x: snapToGrid(point.x, gridSize),
+    y: snapToGrid(point.y, gridSize),
+  };
+}
 
 export function getNodeById(nodes: GraphNode[], id: string) {
   return nodes.find((n) => n.id === id) ?? null;

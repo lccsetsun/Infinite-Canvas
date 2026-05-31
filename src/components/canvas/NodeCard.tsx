@@ -1,7 +1,9 @@
 import React from "react";
-import { Copy, X, Send, Loader2, Check, AlertCircle, Maximize2, ChevronDown, ChevronUp } from "lucide-react";
+import { Copy, X, Send, Loader2, Check, Maximize2 } from "lucide-react";
+import { Tooltip } from "../common/Tooltip";
 import { GraphNode } from "../../types";
-import { getInputAnchor, getOutputAnchor, NODE_WIDTH } from "./geometry";
+import { NODE_WIDTH } from "./geometry";
+import { motion, AnimatePresence } from "motion/react";
 
 interface NodeCardProps {
   node: GraphNode;
@@ -17,6 +19,7 @@ interface NodeCardProps {
     apiKey: string;
   };
   onPreview?: (content: string) => void;
+  style?: React.CSSProperties;
 }
 
 // Simple Markdown-ish renderer to handle bold and newlines
@@ -41,9 +44,10 @@ function NodeCardImpl({
   onDuplicate, 
   onDragStart,
   onUpdateProperty,
-  onUpdateData,
+  onUpdateData: _onUpdateData,
   apiConfig,
-  onPreview
+  onPreview,
+  style,
 }: NodeCardProps) {
   const isRunning = node.properties.status === "loading";
   const [copied, setCopied] = React.useState(false);
@@ -114,7 +118,12 @@ function NodeCardImpl({
   };
 
   return (
-    <div
+    <motion.div
+      initial={{ scale: 0.8, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      exit={{ scale: 0.8, opacity: 0 }}
+      whileHover={{ y: -2 }}
+      transition={{ type: "spring", damping: 20, stiffness: 300 }}
       onPointerDown={(e) => {
         const target = e.target as HTMLElement;
         if (!target.closest("[data-node-action='true']")) {
@@ -127,41 +136,45 @@ function NodeCardImpl({
         e.stopPropagation();
         onSelect();
       }}
-      className={`absolute text-left rounded-xl border bg-[#131722]/88 backdrop-blur-sm shadow-xl transition-[border-color,box-shadow,background-color] cursor-grab active:cursor-grabbing will-change-transform ${
-        selected ? "border-indigo-500 shadow-indigo-500/20" : "border-[#2a3040] hover:border-indigo-400/60"
+      className={`absolute text-left rounded-xl border bg-[#131722]/95 shadow-[0_18px_44px_rgba(2,8,23,0.38)] backdrop-blur-sm transition-[border-color,box-shadow,background-color] cursor-grab active:cursor-grabbing will-change-transform ${
+        selected
+          ? "border-indigo-400/80 shadow-[0_0_0_1px_rgba(129,140,248,0.35),0_22px_54px_rgba(2,8,23,0.44)]"
+          : "border-[#2a3040]/95"
       }`}
-      style={{ width: NODE_WIDTH, transform: `translate3d(${node.x}px, ${node.y}px, 0)` }}
+      style={{ width: NODE_WIDTH, ...style }}
     >
       <div className="h-10 px-4 flex items-center justify-between border-b border-[#252c3a]">
         <span className={`text-[17px] font-semibold ${selected ? "text-white" : "text-gray-100"}`}>{node.title}</span>
         <span className="inline-flex items-center gap-2">
           <span className="text-[10px] text-gray-400">{node.type}</span>
-          <button
-            data-node-action="true"
-            type="button"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-              onDuplicate();
-            }}
-            className="text-gray-500 hover:text-white cursor-pointer"
-            title="复制节点"
-          >
-            <Copy className="w-4 h-4" />
-          </button>
-          <button
-            data-node-action="true"
-            type="button"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete();
-            }}
-            className="text-gray-500 hover:text-rose-300 cursor-pointer"
-            title="删除节点"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <Tooltip content="复制节点">
+            <button
+              data-node-action="true"
+              type="button"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                onDuplicate();
+              }}
+              className="text-gray-500 hover:text-white cursor-pointer"
+            >
+              <Copy className="w-4 h-4" />
+            </button>
+          </Tooltip>
+          <Tooltip content="删除节点">
+            <button
+              data-node-action="true"
+              type="button"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete();
+              }}
+              className="text-gray-500 hover:text-rose-300 cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </Tooltip>
         </span>
       </div>
 
@@ -226,22 +239,24 @@ function NodeCardImpl({
                     <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider">输出结果</span>
                   </div>
                   <div className="flex items-center gap-1 opacity-0 group-hover/res:opacity-100 transition-opacity">
-                    <button
-                      data-node-action="true"
-                      onClick={handleCopy}
-                      className="p-1 rounded hover:bg-white/5 text-gray-500 hover:text-white transition-colors"
-                      title="复制内容"
-                    >
-                      {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                    </button>
-                    <button
-                      data-node-action="true"
-                      onClick={() => onPreview?.(node.properties.response)}
-                      className="p-1 rounded hover:bg-white/5 text-gray-500 hover:text-white transition-colors"
-                      title="全屏预览"
-                    >
-                      <Maximize2 className="w-3.5 h-3.5" />
-                    </button>
+                    <Tooltip content="复制内容">
+                      <button
+                        data-node-action="true"
+                        onClick={handleCopy}
+                        className="p-1 rounded hover:bg-white/5 text-gray-500 hover:text-white transition-colors cursor-pointer"
+                      >
+                        {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                      </button>
+                    </Tooltip>
+                    <Tooltip content="全屏预览">
+                      <button
+                        data-node-action="true"
+                        onClick={() => onPreview?.(node.properties.response)}
+                        className="p-1 rounded hover:bg-white/5 text-gray-500 hover:text-white transition-colors cursor-pointer"
+                      >
+                        <Maximize2 className="w-3.5 h-3.5" />
+                      </button>
+                    </Tooltip>
                   </div>
                 </div>
                 
@@ -326,31 +341,7 @@ function NodeCardImpl({
           <span className="text-[14px] text-gray-200 font-semibold">{node.outputs[0].name}</span>
         </div>
       )}
-
-      {node.inputs.map((input, idx) => {
-        const p = getInputAnchor(node, idx);
-        return (
-          <div
-            key={`in_${idx}`}
-            className="absolute -left-2.5 w-4 h-4 rounded-full border-2 border-[#11151d] bg-lime-400"
-            style={{ top: p.y - node.y - 8 }}
-            title={`${input.name} (${input.type})`}
-          />
-        );
-      })}
-
-      {node.outputs.map((output, idx) => {
-        const p = getOutputAnchor(node, idx);
-        return (
-          <div
-            key={`out_${idx}`}
-            className="absolute -right-2.5 w-4 h-4 rounded-full border-2 border-[#11151d] bg-violet-400"
-            style={{ top: p.y - node.y - 8 }}
-            title={`${output.name} (${output.type})`}
-          />
-        );
-      })}
-    </div>
+    </motion.div>
   );
 }
 

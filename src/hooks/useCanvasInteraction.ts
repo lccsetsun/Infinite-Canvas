@@ -1,5 +1,5 @@
 import React from "react";
-import { NODE_HEIGHT, NODE_WIDTH } from "../components/canvas/geometry";
+import { NODE_HEIGHT, NODE_WIDTH, snapPointToGrid } from "../components/canvas/geometry";
 import { GraphNode } from "../types";
 
 type DragState = {
@@ -11,7 +11,6 @@ type DragState = {
   nodeStartY?: number;
   panStartX?: number;
   panStartY?: number;
-  nodeElement?: HTMLElement;
 };
 
 type PendingDrag =
@@ -20,10 +19,13 @@ type PendingDrag =
 
 interface UseCanvasInteractionOptions {
   nodes: GraphNode[];
+  snapToGridEnabled?: boolean;
   updateNodePosition: (nodeId: string, x: number, y: number) => void;
 }
 
-export function useCanvasInteraction({ nodes, updateNodePosition }: UseCanvasInteractionOptions) {
+const CANVAS_SAFE_PADDING = 24;
+
+export function useCanvasInteraction({ nodes, snapToGridEnabled = true, updateNodePosition }: UseCanvasInteractionOptions) {
   const canvasRef = React.useRef<HTMLDivElement>(null);
   const dragRef = React.useRef<DragState>({ mode: null, startX: 0, startY: 0 });
   const dragFrameRef = React.useRef<number | null>(null);
@@ -43,20 +45,50 @@ export function useCanvasInteraction({ nodes, updateNodePosition }: UseCanvasInt
     [pan.x, pan.y, zoom]
   );
 
+  const clampNodePosition = React.useCallback(
+    (point: { x: number; y: number }) => {
+      const rect = canvasRef.current?.getBoundingClientRect();
+      const minWorldX = rect ? (CANVAS_SAFE_PADDING - pan.x) / zoom : CANVAS_SAFE_PADDING;
+      const minWorldY = rect ? (CANVAS_SAFE_PADDING - pan.y) / zoom : CANVAS_SAFE_PADDING;
+      return {
+        x: Math.max(point.x, minWorldX),
+        y: Math.max(point.y, minWorldY),
+      };
+    },
+    [pan.x, pan.y, zoom]
+  );
+
   const fitView = React.useCallback(() => {
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect || nodes.length === 0) return;
+
+    // Calculate actual bounds including a more realistic node height for text nodes
     const minX = Math.min(...nodes.map((n) => n.x));
     const minY = Math.min(...nodes.map((n) => n.y));
-    const maxX = Math.max(...nodes.map((n) => n.x + NODE_WIDTH));
-    const maxY = Math.max(...nodes.map((n) => n.y + NODE_HEIGHT));
+    
+    // Estimate actual height: Text nodes are usually taller (~320px), others ~200px
+    const maxX = Math.max(...nodes.map((n) => {
+      return n.x + NODE_WIDTH;
+    }));
+    const maxY = Math.max(...nodes.map((n) => {
+      const estimatedHeight = n.type === "text_node" ? 320 : NODE_HEIGHT;
+      return n.y + estimatedHeight;
+    }));
+
     const width = Math.max(1, maxX - minX);
     const height = Math.max(1, maxY - minY);
-    const targetZoom = Math.max(0.4, Math.min(1.2, Math.min((rect.width - 120) / width, (rect.height - 120) / height)));
+    
+    // Add more padding (200px total) to ensure nodes aren't touching edges
+    const padding = 160;
+    const targetZoom = Math.max(0.35, Math.min(1.1, Math.min((rect.width - padding) / width, (rect.height - padding) / height)));
+    
     setZoom(targetZoom);
+    
+    // Center logic: (viewportSize / 2) - (contentCenter * zoom)
+    // We add a slight offset (40px) to x to account for the left floating toolbar
     setPan({
-      x: rect.width / 2 - (minX + width / 2) * targetZoom,
-      y: rect.height / 2 - (minY + height / 2) * targetZoom,
+      x: (rect.width / 2) - (minX + width / 2) * targetZoom + 30,
+      y: (rect.height / 2) - (minY + height / 2) * targetZoom,
     });
   }, [nodes]);
 
@@ -90,10 +122,16 @@ export function useCanvasInteraction({ nodes, updateNodePosition }: UseCanvasInt
   const autoLayout = React.useCallback(() => {
     const columns = 4;
     nodes.forEach((node, i) => {
-      updateNodePosition(node.id, 140 + (i % columns) * 320, 160 + Math.floor(i / columns) * 240);
+      const snapped = snapPointToGrid(
+        clampNodePosition({
+          x: 144 + (i % columns) * 312,
+          y: 168 + Math.floor(i / columns) * 240,
+        })
+      );
+      updateNodePosition(node.id, snapped.x, snapped.y);
     });
     setTimeout(fitView, 0);
-  }, [fitView, nodes, updateNodePosition]);
+  }, [clampNodePosition, fitView, nodes, updateNodePosition]);
 
   const onNodeDragStart = React.useCallback((e: React.PointerEvent, node: GraphNode) => {
     e.preventDefault();
@@ -105,7 +143,6 @@ export function useCanvasInteraction({ nodes, updateNodePosition }: UseCanvasInt
       startY: e.clientY,
       nodeStartX: node.x,
       nodeStartY: node.y,
-      nodeElement: e.currentTarget as HTMLElement,
     };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   }, []);
@@ -156,24 +193,23 @@ export function useCanvasInteraction({ nodes, updateNodePosition }: UseCanvasInt
       } else if (d.mode === "node" && d.nodeId) {
         const dx = (e.clientX - d.startX) / zoom;
         const dy = (e.clientY - d.startY) / zoom;
-        const nextX = (d.nodeStartX ?? 0) + dx;
-        const nextY = (d.nodeStartY ?? 0) + dy;
-        if (d.nodeElement) {
-          d.nodeElement.style.transform = `translate3d(${nextX}px, ${nextY}px, 0)`;
-        }
+        const unclamped = { x: (d.nodeStartX ?? 0) + dx, y: (d.nodeStartY ?? 0) + dy };
+        const next = clampNodePosition(
+          !snapToGridEnabled || e.altKey ? unclamped : snapPointToGrid(unclamped)
+        );
         pendingDragRef.current = {
           mode: "node",
           nodeId: d.nodeId,
-          x: nextX,
-          y: nextY,
+          x: next.x,
+          y: next.y,
         };
         scheduleDragUpdate();
       }
     },
-    [scheduleDragUpdate, zoom]
+    [clampNodePosition, scheduleDragUpdate, snapToGridEnabled, zoom]
   );
 
-  const onPointerUp = React.useCallback(() => {
+  const onPointerUp = React.useCallback((_event?: React.PointerEvent) => {
     if (dragFrameRef.current !== null) {
       window.cancelAnimationFrame(dragFrameRef.current);
       dragFrameRef.current = null;
@@ -202,7 +238,6 @@ export function useCanvasInteraction({ nodes, updateNodePosition }: UseCanvasInt
       const worldX = (mouseX - pan.x) / zoom;
       const worldY = (mouseY - pan.y) / zoom;
 
-      const zoomSpeed = 0.0015;
       const delta = -e.deltaY;
       const factor = Math.pow(1.1, delta / 100);
       const nextZoom = Math.max(0.15, Math.min(3, zoom * factor));

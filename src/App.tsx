@@ -1,23 +1,31 @@
 import React from "react";
-import { ArrowRight, Eye, Grid3X3, LayoutGrid, LocateFixed, Play, Trash2, X, Plus } from "lucide-react";
+import { Tooltip } from "./components/common/Tooltip";
+import { Eye, Grid3X3, LayoutGrid, LocateFixed, Magnet, Play, Trash2, X, Plus, Terminal } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import CanvasGrid from "./components/CanvasGrid";
 import FloatingToolbar from "./components/FloatingToolbar";
-import LogicPanel from "./components/LogicPanel";
-import SearchMenu from "./components/SearchMenu";
-import LinksLayer from "./components/canvas/LinksLayer";
+import LeaferCanvas from "./components/canvas/LeaferCanvas";
 import NodeCard from "./components/canvas/NodeCard";
-import { NODE_HEIGHT, NODE_WIDTH } from "./components/canvas/geometry";
-import ApiSettingsPage from "./components/pages/ApiSettingsPage";
-import NodeTemplatesPage from "./components/pages/NodeTemplatesPage";
-import WorkflowSettingsPage from "./components/pages/WorkflowSettingsPage";
+import { getInputAnchor, getOutputAnchor, NODE_HEIGHT, NODE_WIDTH, snapPointToGrid } from "./components/canvas/geometry";
 import { useCanvasInteraction } from "./hooks/useCanvasInteraction";
 import { useNodeTemplateCanvas } from "./hooks/useNodeTemplateCanvas";
 import { useWorkflowState } from "./hooks/useWorkflowState";
 import { useAppUiState } from "./hooks/useAppUiState";
 import { NodeClass } from "./types";
+import { getLinkDraftIssue } from "./utils/linking";
+
+const LogicPanel = React.lazy(() => import("./components/LogicPanel"));
+const SearchMenu = React.lazy(() => import("./components/SearchMenu"));
+const ApiSettingsPage = React.lazy(() => import("./components/pages/ApiSettingsPage"));
+const NodeTemplatesPage = React.lazy(() => import("./components/pages/NodeTemplatesPage"));
+const WorkflowSettingsPage = React.lazy(() => import("./components/pages/WorkflowSettingsPage"));
 
 export default function App() {
+  const panelFallback = (
+    <div className="absolute inset-0 z-40 flex items-center justify-center bg-[#0f1218]/55 backdrop-blur-sm">
+      <div className="rounded-full border border-[#2b3142] bg-[#171b26] px-4 py-2 text-sm text-gray-300">加载中...</div>
+    </div>
+  );
+
   const {
     nodes,
     links,
@@ -44,6 +52,8 @@ export default function App() {
     setLinkToNodeId,
     setLinkFromOutputIndex,
     setLinkToInputIndex,
+    clearLinkDraft,
+    addLinkFromDraft,
     addLink,
   } = useWorkflowState();
 
@@ -56,6 +66,8 @@ export default function App() {
     setIsMenuFromToolbar,
     showGrid,
     setShowGrid,
+    snapToGridEnabled,
+    setSnapToGridEnabled,
     showMiniMap,
     setShowMiniMap,
     currentView,
@@ -73,6 +85,9 @@ export default function App() {
   const [apiModel, setApiModel] = React.useState("deepseek-v4-flash");
   const [menuPos, setMenuPos] = React.useState<{ x: number; y: number } | null>(null);
   const [previewContent, setPreviewContent] = React.useState<{ title: string; content: string } | null>(null);
+  const [canvasSize, setCanvasSize] = React.useState({ width: 0, height: 0 });
+  const [isLinkingOnCanvas, setIsLinkingOnCanvas] = React.useState(false);
+  const [draftCursor, setDraftCursor] = React.useState<{ x: number; y: number } | null>(null);
   const menuCloseTimerRef = React.useRef<number | null>(null);
 
   const {
@@ -89,7 +104,7 @@ export default function App() {
     onPointerMove,
     onPointerUp,
     onContextMenu,
-  } = useCanvasInteraction({ nodes, updateNodePosition });
+  } = useCanvasInteraction({ nodes, snapToGridEnabled, updateNodePosition });
 
   const {
     templateNodes,
@@ -106,7 +121,12 @@ export default function App() {
 
   const addNodeAtPosition = (type: NodeClass, x: number, y: number, initialProps?: Record<string, any>) => {
     const world = toWorld(x, y);
-    addNode(type, Math.max(60, world.x - 120), Math.max(80, world.y - 40), initialProps);
+    // Center the node (approx 280x300) around the click point
+    const snapped = snapPointToGrid({
+      x: world.x - 140,
+      y: world.y - 120,
+    });
+    addNode(type, snapped.x, snapped.y, initialProps);
   };
 
   const runNow = () => {
@@ -120,6 +140,105 @@ export default function App() {
       menuCloseTimerRef.current = null;
     }
   }, []);
+
+  const resetCanvasLinkDraft = React.useCallback(() => {
+    clearLinkDraft();
+    setDraftCursor(null);
+    setIsLinkingOnCanvas(false);
+  }, [clearLinkDraft]);
+
+  const beginCanvasLink = React.useCallback(
+    (nodeId: string, outputIndex: number, clientX: number, clientY: number) => {
+      setSelectedNodeId(nodeId);
+      setLinkFromNodeId(nodeId);
+      setLinkFromOutputIndex(outputIndex);
+      setLinkToNodeId("");
+      setLinkToInputIndex(0);
+      setDraftCursor(toWorld(clientX, clientY));
+      setIsLinkingOnCanvas(true);
+    },
+    [setSelectedNodeId, setLinkFromNodeId, setLinkFromOutputIndex, setLinkToNodeId, setLinkToInputIndex, toWorld]
+  );
+
+  const hoverCanvasLinkTarget = React.useCallback(
+    (nodeId: string, inputIndex: number) => {
+      if (!isLinkingOnCanvas) return;
+      const issue = getLinkDraftIssue({
+        fromNodeId: linkFromNodeId,
+        toNodeId: nodeId,
+        fromOutputIndex: linkFromOutputIndex,
+        toInputIndex: inputIndex,
+        nodes,
+        links,
+      });
+      if (issue) return;
+      setLinkToNodeId(nodeId);
+      setLinkToInputIndex(inputIndex);
+    },
+    [isLinkingOnCanvas, linkFromNodeId, linkFromOutputIndex, links, nodes, setLinkToNodeId, setLinkToInputIndex]
+  );
+
+  const leaveCanvasLinkTarget = React.useCallback(
+    (nodeId: string, inputIndex: number) => {
+      if (!isLinkingOnCanvas) return;
+      if (linkToNodeId === nodeId && linkToInputIndex === inputIndex) {
+        setLinkToNodeId("");
+        setLinkToInputIndex(0);
+      }
+    },
+    [isLinkingOnCanvas, linkToInputIndex, linkToNodeId, setLinkToNodeId, setLinkToInputIndex]
+  );
+
+  const finishCanvasLink = React.useCallback(
+    (toNodeId?: string, toInputIndex?: number) => {
+      if (!isLinkingOnCanvas || !linkFromNodeId) {
+        resetCanvasLinkDraft();
+        return;
+      }
+
+      const finalToNodeId = toNodeId ?? linkToNodeId;
+      const finalToInputIndex = toInputIndex ?? linkToInputIndex;
+      if (!finalToNodeId) {
+        resetCanvasLinkDraft();
+        return;
+      }
+
+      const created = addLinkFromDraft({
+        fromNodeId: linkFromNodeId,
+        toNodeId: finalToNodeId,
+        fromOutputIndex: linkFromOutputIndex,
+        toInputIndex: finalToInputIndex,
+      });
+
+      if (created) showNotice("已通过拖拽建立连线");
+      resetCanvasLinkDraft();
+    },
+    [
+      addLinkFromDraft,
+      isLinkingOnCanvas,
+      linkFromNodeId,
+      linkFromOutputIndex,
+      linkToInputIndex,
+      linkToNodeId,
+      resetCanvasLinkDraft,
+      showNotice,
+    ]
+  );
+
+  const getCanvasLinkTargetIssue = React.useCallback(
+    (nodeId: string, inputIndex: number) => {
+      if (!isLinkingOnCanvas || !linkFromNodeId) return null;
+      return getLinkDraftIssue({
+        fromNodeId: linkFromNodeId,
+        toNodeId: nodeId,
+        fromOutputIndex: linkFromOutputIndex,
+        toInputIndex: inputIndex,
+        nodes,
+        links,
+      });
+    },
+    [isLinkingOnCanvas, linkFromNodeId, linkFromOutputIndex, nodes, links]
+  );
 
   const openQuickMenu = React.useCallback(() => {
     clearMenuCloseTimer();
@@ -162,13 +281,12 @@ export default function App() {
     }));
 
     // Viewport box
-    const canvasRect = canvasRef.current?.getBoundingClientRect();
     let viewportRect = null;
-    if (canvasRect) {
+    if (canvasSize.width && canvasSize.height) {
       const vLeft = -pan.x / zoom;
       const vTop = -pan.y / zoom;
-      const vWidth = canvasRect.width / zoom;
-      const vHeight = canvasRect.height / zoom;
+      const vWidth = canvasSize.width / zoom;
+      const vHeight = canvasSize.height / zoom;
 
       viewportRect = {
         left: offsetX + (vLeft - minX) * scale,
@@ -179,7 +297,26 @@ export default function App() {
     }
 
     return { nodeRects, viewportRect, minX, minY, scale, offsetX, offsetY };
-  }, [nodes, pan.x, pan.y, zoom]);
+  }, [canvasSize.height, canvasSize.width, nodes, pan.x, pan.y, zoom]);
+
+  React.useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const syncCanvasSize = () => {
+      setCanvasSize({
+        width: canvas.clientWidth,
+        height: canvas.clientHeight,
+      });
+    };
+
+    syncCanvasSize();
+
+    const resizeObserver = new ResizeObserver(syncCanvasSize);
+    resizeObserver.observe(canvas);
+
+    return () => resizeObserver.disconnect();
+  }, [canvasRef]);
 
   React.useEffect(() => {
     fitView();
@@ -188,11 +325,18 @@ export default function App() {
 
   React.useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setShowTemplateCenter(false);
+      if (e.key === "Escape" && isLinkingOnCanvas) {
+        resetCanvasLinkDraft();
+        return;
+      }
+      if (e.key === "Escape" && currentView === "node_templates") {
+        setCurrentView("canvas");
+        setActiveQuickTool(null);
+      }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [currentView, isLinkingOnCanvas, resetCanvasLinkDraft, setActiveQuickTool, setCurrentView]);
 
   React.useEffect(() => {
     return () => {
@@ -217,41 +361,161 @@ export default function App() {
 
   return (
     <div className="relative w-full h-screen bg-[#0f1218] text-[#e2e8f0] overflow-hidden select-none font-sans">
-      <header className="h-16 border-b border-[#232939] bg-[#171b26]/95 backdrop-blur px-4 flex items-center justify-between">
-        <div className="px-4 py-2 rounded-xl border border-indigo-500/60 bg-[#101625] text-sm font-bold tracking-wide">
-          AI <span className="text-emerald-400">CANVAS</span>
+      <motion.header 
+        initial={{ y: -64, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+        className="h-16 border-b border-[#232939] bg-[#171b26]/95 backdrop-blur px-4 flex items-center justify-between z-[80]"
+      >
+        <motion.div 
+          initial={{ x: -30, opacity: 0, filter: "blur(10px)" }}
+          animate={{ x: 0, opacity: 1, filter: "blur(0px)" }}
+          transition={{ duration: 1, ease: [0.23, 1, 0.32, 1] }}
+          className="group relative flex items-center gap-3.5 px-5 py-2.5 rounded-2xl bg-[#0d1117]/40 backdrop-blur-2xl border border-white/5 hover:border-white/10 transition-all duration-700 overflow-hidden cursor-default"
+        >
+          {/* Dynamic Background Glow */}
+          <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/10 via-transparent to-emerald-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-1000" />
+          
+          {/* Animated Glass Icon */}
+          <div className="relative">
+            <div className="absolute inset-0 bg-indigo-500 blur-xl opacity-0 group-hover:opacity-30 transition-opacity duration-700" />
+            <div className="relative w-9 h-9 rounded-xl bg-gradient-to-br from-white/10 to-white/5 border border-white/10 flex items-center justify-center shadow-2xl group-hover:border-indigo-500/50 transition-all duration-500 group-hover:scale-110">
+              <motion.div
+                animate={{ 
+                  rotate: [0, 90, 180, 270, 360],
+                  scale: [1, 1.1, 1]
+                }}
+                transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
+                className="absolute inset-0 bg-[conic-gradient(from_0deg,#6366f1,#10b981,#6366f1)] opacity-20 blur-sm"
+              />
+              <Plus className="w-5 h-5 text-white stroke-[2.5] relative z-10 drop-shadow-lg" />
+            </div>
+          </div>
+
+          <div className="relative flex flex-col -space-y-1.5">
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-xl font-black tracking-tighter text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.2)]">
+                AI
+              </span>
+              <span className="text-xl font-black tracking-tighter bg-gradient-to-r from-emerald-400 via-cyan-400 to-indigo-400 bg-clip-text text-transparent">
+                CANVAS
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-all duration-700 translate-y-1 group-hover:translate-y-0">
+              <div className="h-px w-3 bg-indigo-500/50" />
+              <span className="text-[8px] font-bold text-indigo-400 tracking-[0.3em] uppercase">
+                Studio Pro
+              </span>
+            </div>
+          </div>
+
+          {/* Interactive Light Beam */}
+          <motion.div 
+            animate={{ x: ["-100%", "250%"] }}
+            transition={{ duration: 3.5, repeat: Infinity, ease: "easeInOut", repeatDelay: 1.5 }}
+            className="absolute top-0 bottom-0 w-16 bg-gradient-to-r from-transparent via-white/[0.08] to-transparent -skew-x-[30deg]"
+          />
+        </motion.div>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-2xl bg-white/[0.03] border border-white/[0.05]">
+            <Tooltip content={showLogicPanel ? "关闭运行日志" : "查看运行日志"} position="bottom">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowLogicPanel((v) => !v);
+                }}
+                className={`relative z-10 w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-300 cursor-pointer ${
+                  showLogicPanel 
+                    ? "bg-indigo-500/20 text-indigo-300 shadow-[0_0_15px_rgba(99,102,241,0.2)]" 
+                    : "text-gray-400 hover:text-white hover:bg-white/10"
+                }`}
+              >
+                <Terminal className={`w-4 h-4 ${showLogicPanel ? "animate-pulse" : ""}`} />
+              </button>
+            </Tooltip>
+
+            <div className="w-px h-4 bg-white/10 mx-0.5" />
+
+            <Tooltip content="清除画布" position="bottom">
+              <button
+                onClick={clearCanvas}
+                className="relative z-10 w-9 h-9 rounded-xl flex items-center justify-center text-gray-400 hover:text-rose-400 hover:bg-rose-500/10 transition-all cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </Tooltip>
+          </div>
+
+          <motion.button 
+            whileHover={{ scale: 1.02, x: 2 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={runNow} 
+            className="group relative px-6 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-white font-bold flex items-center gap-2.5 shadow-[0_10px_25px_-5px_rgba(99,102,241,0.4)] cursor-pointer overflow-hidden"
+          >
+            <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
+            <Play className="w-4 h-4 relative z-10 fill-current" />
+            <span className="relative z-10 tracking-wide">运行</span>
+          </motion.button>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={clearCanvas} className="px-4 py-2 rounded-lg border border-[#2b3142] bg-[#1c2230] text-sm inline-flex items-center gap-1.5">
-            <Trash2 className="w-4 h-4 text-rose-400" /> 清除
-          </button>
-          <button onClick={fitView} className="px-4 py-2 rounded-lg border border-[#2b3142] bg-[#1c2230] text-sm inline-flex items-center gap-1.5">
-            <LocateFixed className="w-4 h-4 text-cyan-300" /> 自适应居中
-          </button>
-          <button onClick={autoLayout} className="px-4 py-2 rounded-lg border border-[#2b3142] bg-[#1c2230] text-sm inline-flex items-center gap-1.5">
-            <LayoutGrid className="w-4 h-4 text-amber-300" /> 自动布局
-          </button>
-          <button onClick={runNow} className="px-5 py-2 rounded-lg bg-gradient-to-r from-indigo-600 to-cyan-500 text-white font-semibold inline-flex items-center gap-1.5">
-            <Play className="w-4 h-4" /> 运行
-          </button>
-        </div>
-      </header>
+      </motion.header>
 
       <main
         ref={canvasRef}
         className="relative h-[calc(100vh-4rem)] cursor-grab active:cursor-grabbing select-none"
-        onPointerDown={onCanvasPointerDown}
+        onPointerDown={(e) => {
+          if (isLinkingOnCanvas) {
+            e.preventDefault();
+            resetCanvasLinkDraft();
+            return;
+          }
+          onCanvasPointerDown(e);
+        }}
         onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerLeave={onPointerUp}
+        onPointerMoveCapture={(e) => {
+          if (isLinkingOnCanvas) {
+            setDraftCursor(toWorld(e.clientX, e.clientY));
+          }
+        }}
+        onPointerUp={(e) => {
+          onPointerUp(e);
+          if (isLinkingOnCanvas) finishCanvasLink();
+        }}
+        onPointerLeave={(e) => {
+          onPointerUp(e);
+          if (isLinkingOnCanvas) resetCanvasLinkDraft();
+        }}
         onContextMenu={(e) => {
+          if (isLinkingOnCanvas) {
+            e.preventDefault();
+            resetCanvasLinkDraft();
+            return;
+          }
           onContextMenu(e);
           setMenuPos({ x: e.clientX, y: e.clientY - 64 });
           setIsMenuFromToolbar(false);
           clearMenuCloseTimer();
         }}
       >
-        {showGrid && <CanvasGrid pan={pan} zoom={zoom} />}
+        <LeaferCanvas
+          nodes={nodes}
+          links={links}
+          pan={pan}
+          zoom={zoom}
+          showGrid={showGrid}
+          selectedNodeId={selectedNodeId}
+          draftFromNodeId={linkFromNodeId}
+          draftToNodeId={linkToNodeId}
+          draftFromOutputIndex={linkFromOutputIndex}
+          draftToInputIndex={linkToInputIndex}
+          draftIssue={linkDraftIssue}
+          draftCursor={draftCursor}
+        />
+
+        {isLinkingOnCanvas && (
+          <div className="absolute left-1/2 top-5 z-40 -translate-x-1/2 rounded-full border border-cyan-400/30 bg-[#0f1728]/92 px-4 py-2 text-xs text-cyan-100 shadow-[0_10px_30px_rgba(6,18,42,0.45)] backdrop-blur-md">
+            拖到兼容输入端口完成连接，按 `Esc` 或点击空白处取消
+          </div>
+        )}
 
         {/* Empty State Welcome */}
         {nodes.length === 0 && !isWelcomeDismissed && currentView === "canvas" && (
@@ -280,25 +544,29 @@ export default function App() {
           </div>
         )}
 
-        {menuPos && (
-          <SearchMenu
-            x={menuPos.x}
-            y={menuPos.y}
-            isContextMenu={!isMenuFromToolbar}
-            onClose={() => {
-              clearMenuCloseTimer();
-              setMenuPos(null);
-              setIsMenuFromToolbar(false);
-            }}
-            onAddNode={(type, x, y) => {
-              addNodeAtPosition(type, x, y);
-              setCurrentView("canvas");
-              setActiveQuickTool(null);
-            }}
-            onHoverStart={clearMenuCloseTimer}
-            onHoverEnd={scheduleMenuClose}
-          />
-        )}
+        <AnimatePresence>
+          {menuPos && (
+            <React.Suspense fallback={null}>
+              <SearchMenu
+                x={menuPos.x}
+                y={menuPos.y}
+                isContextMenu={!isMenuFromToolbar}
+                onClose={() => {
+                  clearMenuCloseTimer();
+                  setMenuPos(null);
+                  setIsMenuFromToolbar(false);
+                }}
+                onAddNode={(type, x, y, initialProps) => {
+                  addNodeAtPosition(type, x, y, initialProps);
+                  setCurrentView("canvas");
+                  setActiveQuickTool(null);
+                }}
+                onHoverStart={clearMenuCloseTimer}
+                onHoverEnd={scheduleMenuClose}
+              />
+            </React.Suspense>
+          )}
+        </AnimatePresence>
 
         <FloatingToolbar
           menuOpen={isMenuFromToolbar}
@@ -333,124 +601,191 @@ export default function App() {
         />
 
         {currentView === "api" && (
-          <ApiSettingsPage
-            apiBaseUrl={apiBaseUrl}
-            apiKey={apiKey}
-            apiModel={apiModel}
-            setApiBaseUrl={setApiBaseUrl}
-            setApiKey={setApiKey}
-            setApiModel={setApiModel}
-            onBack={() => {
-              setCurrentView("canvas");
-              setActiveQuickTool(null);
-            }}
-            onSave={() => {
-              localStorage.setItem(
-                "aicanvas_api_settings",
-                JSON.stringify({
-                  baseUrl: apiBaseUrl.trim(),
-                  apiKey: apiKey.trim(),
-                  model: apiModel.trim(),
-                })
-              );
-              showNotice("API 设置已保存");
-            }}
-          />
+          <React.Suspense fallback={panelFallback}>
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="absolute inset-0 z-[100]"
+            >
+              <ApiSettingsPage
+                apiBaseUrl={apiBaseUrl}
+                apiKey={apiKey}
+                apiModel={apiModel}
+                setApiBaseUrl={setApiBaseUrl}
+                setApiKey={setApiKey}
+                setApiModel={setApiModel}
+                onBack={() => {
+                  setCurrentView("canvas");
+                  setActiveQuickTool(null);
+                }}
+                onSave={() => {
+                  localStorage.setItem(
+                    "aicanvas_api_settings",
+                    JSON.stringify({
+                      baseUrl: apiBaseUrl.trim(),
+                      apiKey: apiKey.trim(),
+                      model: apiModel.trim(),
+                    })
+                  );
+                  showNotice("API 设置已保存");
+                }}
+              />
+            </motion.div>
+          </React.Suspense>
         )}
 
         {currentView === "workflow" && (
-          <WorkflowSettingsPage
-            workflowName={workflowName}
-            autoSaveWorkflow={autoSaveWorkflow}
-            setWorkflowName={setWorkflowName}
-            setAutoSaveWorkflow={setAutoSaveWorkflow}
-            onBack={() => {
-              setCurrentView("canvas");
-              setActiveQuickTool(null);
-            }}
-            onSave={() => {
-              showNotice("工作流设置已保存");
-              setCurrentView("canvas");
-              setActiveQuickTool(null);
-            }}
-          />
+          <React.Suspense fallback={panelFallback}>
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="absolute inset-0 z-[100]"
+            >
+              <WorkflowSettingsPage
+                workflowName={workflowName}
+                autoSaveWorkflow={autoSaveWorkflow}
+                setWorkflowName={setWorkflowName}
+                setAutoSaveWorkflow={setAutoSaveWorkflow}
+                onBack={() => {
+                  setCurrentView("canvas");
+                  setActiveQuickTool(null);
+                }}
+                onSave={() => {
+                  showNotice("工作流设置已保存");
+                  setCurrentView("canvas");
+                  setActiveQuickTool(null);
+                }}
+              />
+            </motion.div>
+          </React.Suspense>
         )}
 
         {currentView === "node_templates" && (
-          <NodeTemplatesPage
-            templateNodes={templateNodes}
-            templatePan={templatePan}
-            templateZoom={templateZoom}
-            onTemplateCanvasPointerDown={onTemplateCanvasPointerDown}
-            onTemplatePointerMove={onTemplatePointerMove}
-            onTemplatePointerUp={onTemplatePointerUp}
-            onTemplateWheel={onTemplateWheel}
-            onTemplateNodeDragStart={onTemplateNodeDragStart}
-            onUpdateProperty={updateTemplateNodeProperty}
-            onUpdateData={updateTemplateNodeData}
-            apiConfig={{ baseUrl: apiBaseUrl, apiKey }}
-            onPreview={(content) => setPreviewContent({ title: "模板预览", content })}
-          />
+          <React.Suspense fallback={panelFallback}>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="absolute inset-0 z-[100]"
+            >
+              <NodeTemplatesPage
+                templateNodes={templateNodes}
+                templatePan={templatePan}
+                templateZoom={templateZoom}
+                onTemplateCanvasPointerDown={onTemplateCanvasPointerDown}
+                onTemplatePointerMove={onTemplatePointerMove}
+                onTemplatePointerUp={onTemplatePointerUp}
+                onTemplateWheel={onTemplateWheel}
+                onTemplateNodeDragStart={onTemplateNodeDragStart}
+                onUpdateProperty={updateTemplateNodeProperty}
+                onUpdateData={updateTemplateNodeData}
+                apiConfig={{ baseUrl: apiBaseUrl, apiKey }}
+                onPreview={(content) => setPreviewContent({ title: "模板预览", content })}
+              />
+            </motion.div>
+          </React.Suspense>
         )}
-
-        <button
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => {
-            e.stopPropagation();
-            setShowLogicPanel((v) => !v);
-          }}
-          className="absolute right-4 top-6 z-30 px-3 py-2 rounded-lg border border-[#2b3142] bg-[#1c2230] text-xs"
-          title={showLogicPanel ? "隐藏逻辑面板" : "显示逻辑面板"}
-        >
-          {showLogicPanel ? "隐藏逻辑面板" : "显示逻辑面板"}
-        </button>
 
         <div
           className="absolute inset-0 z-20 origin-top-left"
           style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}
           onPointerDown={onCanvasPointerDown}
         >
-          <LinksLayer nodes={nodes} links={links} />
-          {nodes.map((node) => (
-            <div key={node.id}>
-              <NodeCard
-                node={node}
-                selected={selectedNodeId === node.id}
-                onSelect={() => setSelectedNodeId(node.id)}
-                onDelete={() => removeNode(node.id)}
-                onDuplicate={() => duplicateNode(node.id)}
-                onDragStart={onNodeDragStart}
-                onUpdateProperty={updateNodeProperty}
-            onUpdateData={updateNodeData}
-            apiConfig={{ baseUrl: apiBaseUrl, apiKey }}
-            onPreview={(content) => setPreviewContent({ title: "文本节点", content })}
-          />
-            </div>
-          ))}
+          <AnimatePresence>
+            {nodes.map((node) => (
+              <div key={node.id} className="absolute left-0 top-0" style={{ transform: `translate3d(${node.x}px, ${node.y}px, 0)` }}>
+                <NodeCard
+                  node={node}
+                  selected={selectedNodeId === node.id}
+                  onSelect={() => setSelectedNodeId(node.id)}
+                  onDelete={() => removeNode(node.id)}
+                  onDuplicate={() => duplicateNode(node.id)}
+                  onDragStart={(e, currentNode) => {
+                    if (isLinkingOnCanvas) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      return;
+                    }
+                    onNodeDragStart(e, currentNode);
+                  }}
+                  onUpdateProperty={updateNodeProperty}
+                  onUpdateData={updateNodeData}
+                  apiConfig={{ baseUrl: apiBaseUrl, apiKey }}
+                  onPreview={(content) => setPreviewContent({ title: "文本节点", content })}
+                />
+              </div>
+            ))}
+          </AnimatePresence>
+          {nodes.map((node) =>
+            node.outputs.map((output, idx) => {
+              const anchor = getOutputAnchor(node, idx);
+              return (
+                <button
+                  key={`hit_out_${node.id}_${output.name}_${idx}`}
+                  type="button"
+                  className={`absolute z-30 block h-7 w-7 rounded-full transition-all ${
+                    isLinkingOnCanvas && linkFromNodeId === node.id && linkFromOutputIndex === idx
+                      ? "bg-cyan-300/20 ring-2 ring-cyan-300/70"
+                      : "bg-transparent"
+                  }`}
+                  style={{ left: anchor.x - 14, top: anchor.y - 14 }}
+                  onPointerDown={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    beginCanvasLink(node.id, idx, e.clientX, e.clientY);
+                  }}
+                />
+              );
+            })
+          )}
+          {nodes.map((node) =>
+            node.inputs.map((input, idx) => {
+              const anchor = getInputAnchor(node, idx);
+              const targetIssue = getCanvasLinkTargetIssue(node.id, idx);
+              const isHotTarget = linkToNodeId === node.id && linkToInputIndex === idx;
+              return (
+                <button
+                  key={`hit_in_${node.id}_${input.name}_${idx}`}
+                  type="button"
+                  title={targetIssue ?? `连接到 ${input.name} (${input.type})`}
+                  className={`absolute z-30 block h-7 w-7 rounded-full transition-all ${
+                    !isLinkingOnCanvas
+                      ? "bg-transparent"
+                      : targetIssue
+                        ? "bg-amber-300/10 ring-1 ring-amber-300/40 cursor-not-allowed"
+                        : isHotTarget
+                          ? "bg-emerald-300/20 ring-2 ring-emerald-300/70 cursor-copy"
+                          : "bg-emerald-300/10 ring-1 ring-emerald-300/35 cursor-copy"
+                  }`}
+                  style={{ left: anchor.x - 14, top: anchor.y - 14 }}
+                  onPointerEnter={(e) => {
+                    e.stopPropagation();
+                    hoverCanvasLinkTarget(node.id, idx);
+                  }}
+                  onPointerLeave={(e) => {
+                    e.stopPropagation();
+                    leaveCanvasLinkTarget(node.id, idx);
+                  }}
+                  onPointerUp={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    finishCanvasLink(node.id, idx);
+                  }}
+                />
+              );
+            })
+          )}
         </div>
 
         {showLogicPanel && (
-          <LogicPanel
-            nodes={nodes}
-            links={links}
-            selectedNode={selectedNode}
-            selectedNodeId={selectedNodeId}
-            logs={logs}
-            linkFromNodeId={linkFromNodeId}
-            linkToNodeId={linkToNodeId}
-            linkFromOutputIndex={linkFromOutputIndex}
-            linkToInputIndex={linkToInputIndex}
-            draftIssue={linkDraftIssue}
-            setLinkFromNodeId={setLinkFromNodeId}
-            setLinkToNodeId={setLinkToNodeId}
-            setLinkFromOutputIndex={setLinkFromOutputIndex}
-            setLinkToInputIndex={setLinkToInputIndex}
-            onAddLink={addLink}
-            onUpdateProperty={updateSelectedProperty}
-            onSelectNode={setSelectedNodeId}
-            onRemoveNode={removeNode}
-            onRemoveLink={removeLink}
-          />
+          <React.Suspense fallback={panelFallback}>
+            <LogicPanel
+              logs={logs}
+              onClose={() => setShowLogicPanel(false)}
+            />
+          </React.Suspense>
         )}
 
         {showMiniMap && miniMapConfig && (
@@ -516,34 +851,93 @@ export default function App() {
           </div>
         )}
 
-        <div className="absolute left-4 bottom-1 z-30 flex gap-2">
-          <button
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowGrid((v) => !v);
-              showNotice(showGrid ? "已隐藏网格" : "已显示网格");
-            }}
-            className={`w-10 h-10 rounded-[10px] border grid place-items-center transition-colors ${
-              showGrid ? "border-indigo-500 bg-[#212b57] text-indigo-100 shadow-[0_0_10px_rgba(91,107,255,0.35)]" : "border-indigo-500/50 bg-[#1a2030] text-gray-300"
-            }`}
-          >
-            <Grid3X3 className="w-4 h-4" />
-          </button>
-          <button
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowMiniMap((v) => !v);
-              showNotice(showMiniMap ? "已隐藏地图" : "已显示地图");
-            }}
-            className={`w-10 h-10 rounded-[10px] border grid place-items-center transition-colors ${
-              showMiniMap ? "border-indigo-500 bg-[#212b57] text-indigo-100 shadow-[0_0_10px_rgba(91,107,255,0.35)]" : "border-indigo-500/50 bg-[#1a2030] text-gray-300"
-            }`}
-          >
-            <Eye className="w-4 h-4" />
-          </button>
-        </div>
+        <motion.div 
+          initial={{ y: 50, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ delay: 0.3, duration: 0.5 }}
+          className="absolute left-4 bottom-1 z-30 flex gap-2"
+        >
+          <Tooltip content={showGrid ? "隐藏网格" : "显示网格"}>
+            <button
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowGrid((v) => !v);
+                showNotice(showGrid ? "已隐藏网格" : "已显示网格");
+              }}
+              className={`w-10 h-10 rounded-[10px] border grid place-items-center transition-colors cursor-pointer ${
+                showGrid ? "border-indigo-500 bg-[#212b57] text-indigo-100 shadow-[0_0_10px_rgba(91,107,255,0.35)]" : "border-indigo-500/50 bg-[#1a2030] text-gray-300"
+              }`}
+            >
+              <Grid3X3 className="w-4 h-4" />
+            </button>
+          </Tooltip>
+
+          <Tooltip content={snapToGridEnabled ? "关闭网格吸附" : "开启网格吸附"}>
+            <button
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                setSnapToGridEnabled((v) => !v);
+                showNotice(snapToGridEnabled ? "已关闭网格吸附" : "已开启网格吸附");
+              }}
+              className={`w-10 h-10 rounded-[10px] border grid place-items-center transition-colors cursor-pointer ${
+                snapToGridEnabled
+                  ? "border-emerald-500 bg-[#17382f] text-emerald-100 shadow-[0_0_10px_rgba(16,185,129,0.32)]"
+                  : "border-indigo-500/50 bg-[#1a2030] text-gray-300"
+              }`}
+              aria-label={snapToGridEnabled ? "关闭网格吸附" : "开启网格吸附"}
+            >
+              <Magnet className="w-4 h-4" />
+            </button>
+          </Tooltip>
+
+          <Tooltip content="自适应居中">
+            <button
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                fitView();
+                showNotice("已自适应居中");
+              }}
+              className="w-10 h-10 rounded-[10px] border border-indigo-500/50 bg-[#1a2030] text-gray-300 grid place-items-center transition-colors hover:border-cyan-400/70 hover:text-cyan-100 cursor-pointer"
+              aria-label="自适应居中"
+            >
+              <LocateFixed className="w-4 h-4" />
+            </button>
+          </Tooltip>
+
+          <Tooltip content="自动布局">
+            <button
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                autoLayout();
+                showNotice("已自动布局");
+              }}
+              className="w-10 h-10 rounded-[10px] border border-indigo-500/50 bg-[#1a2030] text-gray-300 grid place-items-center transition-colors hover:border-amber-400/70 hover:text-amber-100 cursor-pointer"
+              aria-label="自动布局"
+            >
+              <LayoutGrid className="w-4 h-4" />
+            </button>
+          </Tooltip>
+
+          <Tooltip content={showMiniMap ? "隐藏地图" : "显示地图"}>
+            <button
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowMiniMap((v) => !v);
+                showNotice(showMiniMap ? "已隐藏地图" : "已显示地图");
+              }}
+              className={`w-10 h-10 rounded-[10px] border grid place-items-center transition-colors cursor-pointer ${
+                showMiniMap ? "border-indigo-500 bg-[#212b57] text-indigo-100 shadow-[0_0_10px_rgba(91,107,255,0.35)]" : "border-indigo-500/50 bg-[#1a2030] text-gray-300"
+              }`}
+            >
+              <Eye className="w-4 h-4" />
+            </button>
+          </Tooltip>
+        </motion.div>
 
         <div className="absolute right-6 bottom-4 z-30 px-3 py-1.5 rounded-full border border-[#2b3142] bg-[#1c2230]/80 backdrop-blur-md text-[10px] text-gray-400 inline-flex items-center gap-3 shadow-lg select-none">
           <div className="flex items-center gap-1.5">

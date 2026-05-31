@@ -7,7 +7,8 @@ export function useAppUiState() {
   const [showLogicPanel, setShowLogicPanel] = React.useState(false);
   const [isWelcomeDismissed, setIsWelcomeDismissed] = React.useState(false);
   const [isMenuFromToolbar, setIsMenuFromToolbar] = React.useState(false);
-  const [showGrid, setShowGrid] = React.useState(true);
+  const [showGrid, setShowGrid] = React.useState(false);
+  const [snapToGridEnabled, setSnapToGridEnabled] = React.useState(false);
   const [showMiniMap, setShowMiniMap] = React.useState(true);
   const [currentView, setCurrentView] = React.useState<ViewType>("canvas");
   const [activeQuickTool, setActiveQuickTool] = React.useState<QuickToolType>(null);
@@ -44,6 +45,8 @@ export function useAppUiState() {
     setIsMenuFromToolbar,
     showGrid,
     setShowGrid,
+    snapToGridEnabled,
+    setSnapToGridEnabled,
     showMiniMap,
     setShowMiniMap,
     currentView,

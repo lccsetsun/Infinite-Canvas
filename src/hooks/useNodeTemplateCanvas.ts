@@ -1,7 +1,6 @@
 import React from "react";
 import { createNodeFromType } from "../features/nodes/nodeFactory";
-import { AVAILABLE_NODE_TYPES } from "../features/nodes/nodeRegistry";
-import { GraphNode } from "../types";
+import { GraphNode, NodeClass } from "../types";
 
 type DragState = {
   mode: "node" | "canvas" | null;

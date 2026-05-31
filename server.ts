@@ -112,9 +112,25 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "::", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
+  function listen(port: number) {
+    const server = app.listen(port, "::");
+
+    server.on("listening", () => {
+      console.log(`Server running on http://localhost:${port}`);
+    });
+
+    server.on("error", (err: any) => {
+      if (err.code === "EADDRINUSE") {
+        console.log(`Port ${port} is in use, trying ${port + 1}...`);
+        server.close();
+        listen(port + 1);
+      } else {
+        console.error("Server error:", err);
+      }
+    });
+  }
+
+  listen(PORT);
 }
 
 startServer().catch((err) => {
