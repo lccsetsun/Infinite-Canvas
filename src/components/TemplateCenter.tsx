@@ -1,6 +1,5 @@
 import React from "react";
-import { Sparkles, Image as ImageIcon, PlaySquare, ArrowUpRight, Check, CheckCircle2 } from "lucide-react";
-import { WorkflowPreset } from "../types";
+import { ArrowUpRight, Check, Image as ImageIcon, PlaySquare, Sparkles, X } from "lucide-react";
 
 interface TemplateCenterProps {
   activePresetId: string;
@@ -10,85 +9,94 @@ interface TemplateCenterProps {
 
 interface TemplateMetadata {
   id: string;
-  category: "文生图" | "文生文" | "文生视频" | "特效处理";
+  category: "文生图" | "文生文" | "文生视频";
   badge: string;
   nodesCount: number;
-  linksCount: number;
   flowDirection: string;
   accentColor: string;
   hoverColor: string;
   description: string;
-  targetIcon: React.ComponentType<any>;
+  targetIcon: React.ComponentType<{ className?: string }>;
 }
 
 const TEMPLATE_INFO: TemplateMetadata[] = [
   {
     id: "txt2img",
     category: "文生图",
-    badge: "潜空间扩散渲染",
+    badge: "Stable 扩散链",
     nodesCount: 5,
-    linksCount: 3,
-    flowDirection: "正反文本提示词 ➜ KSampler ➜ VAE解码",
-    accentColor: "border-[#c084fc] text-[#c084fc] bg-[#c084fc]/5",
-    hoverColor: "hover:border-[#c084fc]/50 hover:shadow-[#c084fc]/10",
-    description: "经典扩散管线。由高清 CLIP 正反向文本双核提示词驱动，辅以去噪步数滑动条，经由核心扩散数学采样器输出高清赛博朋克猫咪太空插画。",
-    targetIcon: ImageIcon
+    flowDirection: "正向提示词 -> KSampler -> VAE 解码",
+    accentColor: "border-[#8b5cf6] text-[#8b5cf6] bg-[#8b5cf6]/10",
+    hoverColor: "hover:border-[#8b5cf6]/50 hover:shadow-[#8b5cf6]/10",
+    description: "经典文生图流程，组合提示词与采样参数，快速得到高质量图像输出。",
+    targetIcon: ImageIcon,
   },
   {
     id: "txt2txt",
     category: "文生文",
     badge: "Gemini 深度推理",
     nodesCount: 4,
-    linksCount: 2,
-    flowDirection: "简易点子 ➜ 创意模板 ➜ Gemini推理助手 ➜ 高保真预览",
-    accentColor: "border-[#a3e635] text-[#a3e635] bg-[#a3e635]/5",
-    hoverColor: "hover:border-[#a3e635]/50 hover:shadow-[#a3e635]/10",
-    description: "高智能语言分析。挂载大语言模型 Gemini AI，支持将输入的简白灵感进行中式绝句诗歌扩写创作，即时推理出极高素质大作。",
-    targetIcon: Sparkles
+    flowDirection: "输入主题 -> 创意模板 -> Gemini 推理",
+    accentColor: "border-[#84cc16] text-[#84cc16] bg-[#84cc16]/10",
+    hoverColor: "hover:border-[#84cc16]/50 hover:shadow-[#84cc16]/10",
+    description: "将简短想法扩展为结构化高质量文本，支持风格化创作与润色。",
+    targetIcon: Sparkles,
   },
   {
     id: "txt2vid",
     category: "文生视频",
-    badge: "时序光流帧合成",
+    badge: "时序光流合成",
     nodesCount: 5,
-    linksCount: 3,
-    flowDirection: "时序分镜提示词 ➜ FPS/秒数控制 ➜ 视频合成扩散器 ➜ html5播放器",
-    accentColor: "border-[#f43f5e] text-[#f43f5e] bg-[#f43f5e]/5",
+    flowDirection: "时序提示词 -> FPS/时长 -> 视频合成",
+    accentColor: "border-[#f43f5e] text-[#f43f5e] bg-[#f43f5e]/10",
     hoverColor: "hover:border-[#f43f5e]/50 hover:shadow-[#f43f5e]/10",
-    description: "视频 AIGC 多模态复合。通过分镜词控制以及帧增益、播放秒数约束算法，串联解码生成可循环播放、支持倍速的高清动态行星宇宙奇观。",
-    targetIcon: PlaySquare
-  }
+    description: "通过提示词和时间参数生成可播放的视频结果，支持预览与参数迭代。",
+    targetIcon: PlaySquare,
+  },
 ];
 
-export default function TemplateCenter({ activePresetId, onSelectPreset, onClose }: TemplateCenterProps) {
+export default function TemplateCenter({
+  activePresetId,
+  onSelectPreset,
+  onClose,
+}: TemplateCenterProps) {
   return (
-    <div className="absolute top-4 left-[370px] z-40 max-w-[650px] bg-[#161619]/95 backdrop-blur-md border border-[#2b2b35] rounded-lg p-4 shadow-2xl hidden xl:flex flex-col gap-3 text-[12px]">
-      <div className="flex items-center justify-between border-b border-[#25252b] pb-2">
+    <div
+      className="absolute top-5 left-1/2 -translate-x-1/2 z-50 w-[760px] max-w-[92vw] bg-[#161a24]/95 backdrop-blur-md border border-[#2a3040] rounded-xl p-4 shadow-2xl flex flex-col gap-3 text-xs"
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="flex items-center justify-between border-b border-[#252c3a] pb-2">
         <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-          <span className="font-extrabold text-white tracking-wider flex items-center gap-1.5 font-sans">
-            🎨 旗舰多模态标准工作流导航仓
-          </span>
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          <span className="font-extrabold text-white tracking-wide">旗舰多模态标准工作流导航仓</span>
         </div>
-        <div className="flex items-center gap-3">
-          <span className="text-[10px] bg-[#222] text-gray-400 px-2 py-0.5 rounded border border-[#333] font-mono hidden sm:inline">
-            一键注入完整拓扑组
+
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] bg-[#222735] text-gray-300 px-2 py-1 rounded border border-[#313a4f]">
+            一键注入完整拓扑
           </span>
           <button
-            onClick={onClose}
-            className="text-gray-500 hover:text-white font-extrabold cursor-pointer transition-colors text-sm px-1"
-            title="关闭面板"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose();
+            }}
+            className="text-gray-400 hover:text-white transition-colors p-1 cursor-pointer"
+            title="关闭模板面板"
           >
-            ✕
+            <X className="w-4 h-4" />
           </button>
         </div>
       </div>
 
-      <p className="text-[#8e8e9f] text-[11px] leading-relaxed">
-        我们为三个核心功能预置了完整的工业级 ComfyUI 拓扑连线模板，点击卡片一键即在画布中展现连线流，直接点击顶部 <strong className="text-white">运行工作流</strong> 即可开启实时演算和推理。
+      <p className="text-[#8e96aa] text-[12px] leading-relaxed">
+        内置三套核心工作流模板。点击卡片后会将节点和连线加载到画布，随后点击顶部
+        <strong className="text-white"> 运行 </strong>
+        即可执行。
       </p>
 
-      <div className="grid grid-cols-3 gap-3.5 mt-1">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-1">
         {TEMPLATE_INFO.map((tpl) => {
           const Icon = tpl.targetIcon;
           const isActive = activePresetId === tpl.id;
@@ -97,56 +105,46 @@ export default function TemplateCenter({ activePresetId, onSelectPreset, onClose
             <button
               key={tpl.id}
               onClick={() => onSelectPreset(tpl.id)}
-              className={`flex flex-col text-left rounded-lg p-3 bg-[#111113]/80 border transition-all duration-300 relative select-none outline-none cursor-pointer ${
-                isActive 
-                  ? "border-[#3e3edd] shadow-[0_0_15px_rgba(62,62,221,0.25)] bg-[#1c1c24]/50" 
-                  : `border-[#292934] ${tpl.hoverColor}`
+              className={`group flex flex-col text-left rounded-xl p-3 bg-[#101521]/90 border transition-all duration-300 relative outline-none ${
+                isActive
+                  ? "border-[#4f46e5] shadow-[0_0_18px_rgba(79,70,229,0.35)]"
+                  : `border-[#2a3040] ${tpl.hoverColor}`
               }`}
             >
-              {/* Highlight Ring/Indicator on Loaded template card */}
               {isActive && (
-                <div className="absolute -top-1.5 -right-1.5 bg-[#3e3edd] text-white p-0.5 rounded-full ring-2 ring-[#161619]">
+                <div className="absolute -top-1.5 -right-1.5 bg-[#4f46e5] text-white p-0.5 rounded-full ring-2 ring-[#161a24]">
                   <Check className="w-3.5 h-3.5 stroke-[3px]" />
                 </div>
               )}
 
-              {/* Card Title Header with custom badging and layout */}
-              <div className="flex items-center justify-between w-full pb-1.5 border-b border-[#25252d]">
+              <div className="flex items-center justify-between w-full pb-2 border-b border-[#252c3a]">
                 <div className="flex items-center gap-1.5">
                   <div className={`p-1.5 rounded-md ${tpl.accentColor}`}>
                     <Icon className="w-4 h-4" />
                   </div>
-                  <span className="font-extrabold text-gray-100 text-[12px]">{tpl.category}</span>
+                  <span className="font-bold text-gray-100 text-sm">{tpl.category}</span>
                 </div>
-                <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#1b1b22] border border-[#2d2d3c] text-gray-400 font-mono scale-90">
-                  {tpl.nodesCount}算子
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#1b2232] border border-[#313a4f] text-gray-300">
+                  {tpl.nodesCount} 节点
                 </span>
               </div>
 
-              {/* Subtitle badge or description details */}
-              <div className="mt-2 flex items-center gap-1">
-                <span className="text-[9px] px-1 py-0.2 rounded font-black bg-[#1d1d24] text-indigo-400 border border-[#2c2c38] uppercase tracking-wider scale-95">
-                  {tpl.badge}
-                </span>
-              </div>
+              <span className="mt-2 text-[10px] px-1.5 py-0.5 rounded font-semibold bg-[#20283a] text-indigo-300 w-fit">
+                {tpl.badge}
+              </span>
 
-              <p className="text-[9.5px] text-gray-400 leading-relaxed mt-2 line-clamp-3 min-h-[42px]">
-                {tpl.description}
-              </p>
+              <p className="text-[11px] text-gray-300 leading-relaxed mt-2 min-h-[48px]">{tpl.description}</p>
 
-              {/* Connected flowchart preview route line with font mono */}
-              <div className="mt-2.5 pt-2 border-t border-[#25252d] w-full text-[8px] text-gray-500 truncate font-mono">
+              <div className="mt-2 pt-2 border-t border-[#252c3a] text-[10px] text-gray-400 truncate">
                 {tpl.flowDirection}
               </div>
 
-              {/* Prompt to highlight actions */}
-              <div className="mt-3 flex items-center justify-between w-full">
-                <span className={`text-[9px] font-black uppercase text-gray-400 ${isActive ? "text-[#8a8afd]" : "text-gray-500"}`}>
-                  {isActive ? "当前加载中" : "点击展现模版"}
+              <div className="mt-2 flex items-center justify-between w-full text-[11px]">
+                <span className={isActive ? "text-indigo-300" : "text-gray-400 group-hover:text-white"}>
+                  {isActive ? "当前已加载" : "点击加载模板"}
                 </span>
-                <ArrowUpRight className={`w-3.5 h-3.5 ${isActive ? "text-[#8a8afd] rotate-45" : "text-gray-600 transition-transform group-hover:translate-x-0.5"}`} />
+                <ArrowUpRight className={isActive ? "w-3.5 h-3.5 text-indigo-300" : "w-3.5 h-3.5 text-gray-500"} />
               </div>
-
             </button>
           );
         })}
@@ -154,3 +152,4 @@ export default function TemplateCenter({ activePresetId, onSelectPreset, onClose
     </div>
   );
 }
+

@@ -5,7 +5,7 @@ export interface NodeTerminal {
   type: DataType;
 }
 
-export type NodeClass = 
+export type NodeClass =
   | "load_image"
   | "clip_text"
   | "prompt_enhancer"

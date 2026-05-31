@@ -7,7 +7,7 @@ interface CanvasGridProps {
 
 export default function CanvasGrid({ pan, zoom }: CanvasGridProps) {
   const gridSize = 24 * zoom;
-  
+
   // High-performance background grid calculation matches ComfyUI style exactly
   const backgroundStyle: React.CSSProperties = {
     backgroundImage: "radial-gradient(circle, rgba(255, 255, 255, 0.08) 1.5px, transparent 1.5px)",
