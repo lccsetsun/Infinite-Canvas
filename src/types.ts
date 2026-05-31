@@ -21,7 +21,12 @@ export type NodeClass =
   | "video_viewer"
   | "ai_text_node"
   | "ai_image_node"
-  | "ai_video_node";
+  | "ai_video_node"
+  | "text_node"
+  | "image_node"
+  | "video_node"
+  | "upload_image"
+  | "upload_video";
 
 export interface GraphNode {
   id: string;

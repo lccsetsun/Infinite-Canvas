@@ -17,4 +17,7 @@ export const AVAILABLE_NODE_TYPES: NodeClass[] = [
   "ai_text_node",
   "ai_image_node",
   "ai_video_node",
+  "text_node",
+  "image_node",
+  "video_node",
 ];

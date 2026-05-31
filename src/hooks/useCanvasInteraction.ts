@@ -60,6 +60,33 @@ export function useCanvasInteraction({ nodes, updateNodePosition }: UseCanvasInt
     });
   }, [nodes]);
 
+  const scrollToNode = React.useCallback(
+    (nodeId: string) => {
+      const node = nodes.find((n) => n.id === nodeId);
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!node || !rect) return;
+
+      setPan({
+        x: rect.width / 2 - (node.x + NODE_WIDTH / 2) * zoom,
+        y: rect.height / 2 - (node.y + NODE_HEIGHT / 2) * zoom,
+      });
+    },
+    [nodes, zoom]
+  );
+
+  const jumpToWorldPos = React.useCallback(
+    (worldX: number, worldY: number) => {
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      setPan({
+        x: rect.width / 2 - worldX * zoom,
+        y: rect.height / 2 - worldY * zoom,
+      });
+    },
+    [zoom]
+  );
+
   const autoLayout = React.useCallback(() => {
     const columns = 4;
     nodes.forEach((node, i) => {
@@ -161,18 +188,47 @@ export function useCanvasInteraction({ nodes, updateNodePosition }: UseCanvasInt
     dragRef.current = { mode: null, startX: 0, startY: 0 };
   }, [updateNodePosition]);
 
-  const onWheel = React.useCallback((e: React.WheelEvent) => {
-    e.preventDefault();
-    setZoom((z) => Math.max(0.35, Math.min(1.8, z * (e.deltaY > 0 ? 0.92 : 1.08))));
-  }, []);
+  const onWheel = React.useCallback(
+    (e: WheelEvent) => {
+      e.preventDefault();
+
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      // Before zoom world position
+      const worldX = (mouseX - pan.x) / zoom;
+      const worldY = (mouseY - pan.y) / zoom;
+
+      const zoomSpeed = 0.0015;
+      const delta = -e.deltaY;
+      const factor = Math.pow(1.1, delta / 100);
+      const nextZoom = Math.max(0.15, Math.min(3, zoom * factor));
+
+      // New pan to keep world position under mouse
+      const nextPanX = mouseX - worldX * nextZoom;
+      const nextPanY = mouseY - worldY * nextZoom;
+
+      setZoom(nextZoom);
+      setPan({ x: nextPanX, y: nextPanY });
+    },
+    [pan, zoom]
+  );
 
   React.useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    canvas.addEventListener("wheel", onWheel, { passive: false });
     return () => {
+      canvas.removeEventListener("wheel", onWheel);
       if (dragFrameRef.current !== null) {
         window.cancelAnimationFrame(dragFrameRef.current);
       }
     };
-  }, []);
+  }, [onWheel]);
 
   return {
     canvasRef,
@@ -180,11 +236,16 @@ export function useCanvasInteraction({ nodes, updateNodePosition }: UseCanvasInt
     zoom,
     toWorld,
     fitView,
+    scrollToNode,
+    jumpToWorldPos,
     autoLayout,
     onNodeDragStart,
     onCanvasPointerDown,
     onPointerMove,
     onPointerUp,
-    onWheel,
+    onContextMenu: (e: React.MouseEvent) => {
+      e.preventDefault();
+      // Logic will be handled in App.tsx
+    },
   };
 }

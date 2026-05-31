@@ -109,6 +109,41 @@ const NODE_BLUEPRINTS: Partial<Record<NodeClass, NodeBlueprint>> = {
     ],
     properties: {},
   },
+  text_node: {
+    title: "文本",
+    inputs: [],
+    outputs: [{ name: "文本", type: "STRING" }],
+    properties: { 
+      text: "", 
+      model: "deepseek-v4-flash", 
+      status: "idle", // idle, loading, success, error
+      response: "" 
+    },
+  },
+  image_node: {
+    title: "图片",
+    inputs: [],
+    outputs: [{ name: "图片", type: "IMAGE" }],
+    properties: { imageUrl: DEFAULT_IMAGE_URL },
+  },
+  video_node: {
+    title: "视频",
+    inputs: [],
+    outputs: [{ name: "视频", type: "VIDEO" }],
+    properties: { videoUrl: "" },
+  },
+  upload_image: {
+    title: "上传图片",
+    inputs: [],
+    outputs: [{ name: "图片", type: "IMAGE" }],
+    properties: { imageUrl: "" },
+  },
+  upload_video: {
+    title: "上传视频",
+    inputs: [],
+    outputs: [{ name: "视频", type: "VIDEO" }],
+    properties: { videoUrl: "" },
+  },
 };
 
 export function createNodeFromType(type: NodeClass, id: string, x: number, y: number): GraphNode {

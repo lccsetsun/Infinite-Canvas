@@ -28,9 +28,10 @@ export function useNodeTemplateCanvas() {
   const pendingTemplateDragRef = React.useRef<PendingDrag | null>(null);
 
   React.useEffect(() => {
-    const cols = 4;
-    const laidOut = AVAILABLE_NODE_TYPES.map((type, idx) =>
-      createNodeFromType(type, `tpl_${type}`, 80 + (idx % cols) * 320, 80 + Math.floor(idx / cols) * 240)
+    const cols = 3;
+    const FEATURED_TYPES: NodeClass[] = ["text_node", "image_node", "video_node"];
+    const laidOut = FEATURED_TYPES.map((type, idx) =>
+      createNodeFromType(type, `tpl_${type}`, 80 + (idx % cols) * 350, 120)
     );
     setTemplateNodes(laidOut);
   }, []);
@@ -115,6 +116,22 @@ export function useNodeTemplateCanvas() {
     [scheduleTemplateDragUpdate, templateZoom]
   );
 
+  const updateTemplateNodeProperty = (nodeId: string, key: string, value: unknown) => {
+    setTemplateNodes((prev) =>
+      prev.map((n) =>
+        n.id === nodeId ? { ...n, properties: { ...n.properties, [key]: value } } : n
+      )
+    );
+  };
+
+  const updateTemplateNodeData = (nodeId: string, data: Partial<GraphNode["data"]>) => {
+    setTemplateNodes((prev) =>
+      prev.map((n) =>
+        n.id === nodeId ? { ...n, data: { ...(n.data || {}), ...data } } : n
+      )
+    );
+  };
+
   const onTemplatePointerUp = React.useCallback(() => {
     if (templateDragFrameRef.current !== null) {
       window.cancelAnimationFrame(templateDragFrameRef.current);
@@ -154,5 +171,7 @@ export function useNodeTemplateCanvas() {
     onTemplatePointerMove,
     onTemplatePointerUp,
     onTemplateWheel,
+    updateTemplateNodeProperty,
+    updateTemplateNodeData,
   };
 }

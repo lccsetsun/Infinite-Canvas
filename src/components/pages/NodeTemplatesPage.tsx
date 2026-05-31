@@ -11,6 +11,13 @@ interface NodeTemplatesPageProps {
   onTemplatePointerUp: () => void;
   onTemplateWheel: (event: React.WheelEvent) => void;
   onTemplateNodeDragStart: (event: React.PointerEvent, node: GraphNode) => void;
+  onUpdateProperty?: (nodeId: string, key: string, value: any) => void;
+  onUpdateData?: (nodeId: string, data: any) => void;
+  apiConfig?: {
+    baseUrl: string;
+    apiKey: string;
+  };
+  onPreview?: (content: string) => void;
 }
 
 export default function NodeTemplatesPage({
@@ -22,6 +29,10 @@ export default function NodeTemplatesPage({
   onTemplatePointerUp,
   onTemplateWheel,
   onTemplateNodeDragStart,
+  onUpdateProperty,
+  onUpdateData,
+  apiConfig,
+  onPreview,
 }: NodeTemplatesPageProps) {
   return (
     <section className="absolute inset-0 z-50 bg-[#0b1020] pl-22 pr-3 py-3" onPointerDown={(e) => e.stopPropagation()}>
@@ -58,6 +69,10 @@ export default function NodeTemplatesPage({
                 onDelete={() => {}}
                 onDuplicate={() => {}}
                 onDragStart={onTemplateNodeDragStart}
+                onUpdateProperty={onUpdateProperty}
+                onUpdateData={onUpdateData}
+                apiConfig={apiConfig}
+                onPreview={onPreview}
               />
             ))}
           </div>
