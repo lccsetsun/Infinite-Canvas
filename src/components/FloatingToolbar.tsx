@@ -1,4 +1,4 @@
-import { Boxes, KeyRound, Plus, SlidersHorizontal, X } from "lucide-react";
+import { KeyRound, Plus, SlidersHorizontal, X } from "lucide-react";
 import { Tooltip } from "./common/Tooltip";
 import { motion, AnimatePresence } from "motion/react";
 

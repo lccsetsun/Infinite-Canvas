@@ -1,9 +1,9 @@
 import React from "react";
-import { Copy, X, Loader2, Check, Maximize2, Sparkles, MessageSquare, Cpu, Image as ImageIcon, Video as VideoIcon, Play, Plus, Trash2, Wand2, RectangleHorizontal, RectangleVertical, Square, ChevronDown, Film, Grid3X3, Scissors, Layers } from "lucide-react";
+import { Copy, X, Loader2, Check, Maximize2, Sparkles, MessageSquare, Cpu, Image as ImageIcon, Video as VideoIcon, Play, Plus, Wand2, RectangleHorizontal, RectangleVertical, Square, ChevronDown, Film, Grid3X3, Scissors, Layers } from "lucide-react";
 import { Select } from "antd";
 import { Tooltip } from "../common/Tooltip";
 import { GraphNode } from "../../types";
-import { getNodeWidth, NODE_WIDTH } from "./geometry";
+import { getNodeWidth } from "./geometry";
 import { motion, AnimatePresence } from "motion/react";
 
 interface NodeCardProps {
@@ -64,7 +64,7 @@ function NodeCardImpl({
   onDragStart,
   onUpdateProperty,
   onUpdateData: _onUpdateData,
-  apiConfig,
+  apiConfig: _apiConfig,
   onPreview,
   style,
 }: NodeCardProps) {

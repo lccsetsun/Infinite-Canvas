@@ -1,5 +1,5 @@
 import React from "react";
-import { getNodeHeight, getNodeWidth, NODE_HEIGHT, NODE_WIDTH, snapPointToGrid } from "../components/canvas/geometry";
+import { getNodeHeight, getNodeWidth, snapPointToGrid } from "../components/canvas/geometry";
 import { GraphNode } from "../types";
 
 type DragState = {

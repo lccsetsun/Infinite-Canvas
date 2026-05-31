@@ -1,7 +1,7 @@
 import React from "react";
 import { Ellipse, Group, Leafer, Path, Rect, Text } from "leafer-ui";
 import { GraphLink, GraphNode } from "../../types";
-import { getInputAnchor, getNodeById, getOutputAnchor, GRID_SIZE, linkPath, NODE_HEIGHT, NODE_WIDTH, getNodeWidth, getNodeHeight } from "./geometry";
+import { getInputAnchor, getNodeById, getOutputAnchor, GRID_SIZE, linkPath, getNodeWidth, getNodeHeight } from "./geometry";
 import { isDataTypeCompatible } from "../../utils/linking";
 
 interface LeaferCanvasProps {

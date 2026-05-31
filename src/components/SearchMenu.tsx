@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from "react";
-import { FileText, Sparkles, Video, Upload, ChevronRight, Image as ImageIcon, Film } from "lucide-react";
+import { FileText, Sparkles, Video, ChevronRight, Image as ImageIcon, Film } from "lucide-react";
 import { NodeClass } from "../types";
-import { motion, AnimatePresence } from "motion/react";
+import { motion } from "motion/react";
 
 interface SearchMenuProps {
   x: number;
