@@ -111,24 +111,35 @@ const NODE_BLUEPRINTS: Partial<Record<NodeClass, NodeBlueprint>> = {
   },
   text_node: {
     title: "文本",
-    inputs: [],
+    inputs: [
+      { name: "system_prompt", type: "STRING" },
+      { name: "user_prompt", type: "STRING" },
+    ],
     outputs: [{ name: "文本", type: "STRING" }],
-    properties: { 
-      text: "", 
-      model: "deepseek-v4-flash", 
-      status: "idle", // idle, loading, success, error
-      response: "" 
+    properties: {
+      text: "",
+      model: "deepseek-v4-flash",
+      status: "idle",
+      response: ""
     },
   },
   image_node: {
     title: "图片",
-    inputs: [],
+    inputs: [
+      { name: "prompt", type: "STRING" },
+      { name: "negative_prompt", type: "STRING" },
+      { name: "aspect_ratio", type: "STRING" },
+    ],
     outputs: [{ name: "图片", type: "IMAGE" }],
     properties: { imageUrl: "" },
   },
   video_node: {
     title: "视频",
-    inputs: [],
+    inputs: [
+      { name: "prompt", type: "STRING" },
+      { name: "duration", type: "NUMBER" },
+      { name: "aspect_ratio", type: "STRING" },
+    ],
     outputs: [{ name: "视频", type: "VIDEO" }],
     properties: { videoUrl: "" },
   },

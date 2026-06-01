@@ -149,6 +149,67 @@ export function useCanvasLinking({
     [isLinkingOnCanvas, linkFromNodeId, linkFromOutputIndex, nodes, links]
   );
 
+  const finishCanvasLinkRef = React.useRef(finishCanvasLink);
+  React.useEffect(() => {
+    finishCanvasLinkRef.current = finishCanvasLink;
+  }, [finishCanvasLink]);
+
+  React.useEffect(() => {
+    if (!isLinkingOnCanvas) return;
+    
+    const onMove = (e: PointerEvent) => {
+      setDraftCursor(toWorld(e.clientX, e.clientY));
+      
+      // Hit testing for ports using elementFromPoint since implicit capture might block onPointerEnter
+      const target = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement;
+      const portEl = target?.closest("[data-port-role='input']") as HTMLElement;
+      
+      if (portEl) {
+        const nodeId = portEl.getAttribute("data-node-id") || "";
+        const portIndex = parseInt(portEl.getAttribute("data-port-index") || "0");
+        
+        if (nodeId !== linkToNodeId || portIndex !== linkToInputIndex) {
+          const issue = getLinkDraftIssue({
+            fromNodeId: linkFromNodeId,
+            toNodeId: nodeId,
+            fromOutputIndex: linkFromOutputIndex,
+            toInputIndex: portIndex,
+            nodes,
+            links,
+          });
+          if (!issue) {
+            setLinkToNodeId(nodeId);
+            setLinkToInputIndex(portIndex);
+          }
+        }
+      } else if (linkToNodeId) {
+        setLinkToNodeId("");
+        setLinkToInputIndex(0);
+      }
+    };
+    
+    const onUp = (e: PointerEvent) => {
+      // Final hit test on release
+      const target = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement;
+      const portEl = target?.closest("[data-port-role='input']") as HTMLElement;
+      
+      if (portEl) {
+        const nodeId = portEl.getAttribute("data-node-id") || "";
+        const portIndex = parseInt(portEl.getAttribute("data-port-index") || "0");
+        finishCanvasLinkRef.current(nodeId, portIndex);
+      } else {
+        finishCanvasLinkRef.current();
+      }
+    };
+    
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+  }, [isLinkingOnCanvas, toWorld, setDraftCursor, linkFromNodeId, linkFromOutputIndex, linkToNodeId, linkToInputIndex, nodes, links, setLinkToNodeId, setLinkToInputIndex]);
+
   return {
     beginCanvasLink,
     draftCursor,

@@ -42,8 +42,10 @@ export interface GraphNode {
     videoUrl?: string;
     text?: string;
     number?: number;
+    response?: string;
+    imageUrl?: string;
     loading?: boolean;
-    progress?: number; // 0 to 100 for step operations
+    progress?: number;
     error?: string;
   };
 }

@@ -1,15 +1,34 @@
-import { Play, Plus, Terminal, Trash2 } from "lucide-react";
+import { Play, Plus, Terminal, Trash2, Undo2, Redo2, FolderOpen, ChevronDown } from "lucide-react";
 import { motion } from "motion/react";
 import { Tooltip } from "../common/Tooltip";
 
 interface AppHeaderProps {
   showLogicPanel: boolean;
+  canUndo?: boolean;
+  canRedo?: boolean;
+  workflowName?: string;
+  workflowCount?: number;
+  onUndo?: () => void;
+  onRedo?: () => void;
+  onOpenWorkflowManager?: () => void;
   onClearCanvas: () => void;
   onRun: () => void;
   onToggleLogicPanel: () => void;
 }
 
-export default function AppHeader({ showLogicPanel, onClearCanvas, onRun, onToggleLogicPanel }: AppHeaderProps) {
+export default function AppHeader({
+  showLogicPanel,
+  canUndo,
+  canRedo,
+  workflowName,
+  workflowCount,
+  onUndo,
+  onRedo,
+  onOpenWorkflowManager,
+  onClearCanvas,
+  onRun,
+  onToggleLogicPanel,
+}: AppHeaderProps) {
   return (
     <motion.header
       initial={{ y: -64, opacity: 0 }}
@@ -56,8 +75,54 @@ export default function AppHeader({ showLogicPanel, onClearCanvas, onRun, onTogg
         />
       </motion.div>
 
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-2.5">
+        <Tooltip content="切换/管理工作流" position="bottom">
+          <button
+            onClick={(e) => { e.stopPropagation(); onOpenWorkflowManager?.(); }}
+            className="group flex items-center gap-2.5 pl-2.5 pr-3 py-1.5 rounded-xl bg-[#0d1117]/60 hover:bg-[#0d1117] border border-white/[0.06] hover:border-indigo-500/40 transition-all duration-200 cursor-pointer"
+            aria-label="工作流列表"
+          >
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500/20 to-cyan-500/20 border border-indigo-500/30 flex items-center justify-center group-hover:scale-105 transition-transform">
+              <FolderOpen className="w-3.5 h-3.5 text-indigo-300" />
+            </div>
+            <div className="flex flex-col items-start -space-y-0.5 min-w-0">
+              <span className="text-[13px] font-bold text-gray-100 truncate max-w-[180px]">
+                {workflowName ?? "未命名工作流"}
+              </span>
+              <span className="text-[9px] font-mono text-gray-500 uppercase tracking-wider">
+                {workflowCount ?? 0} 个工作流
+              </span>
+            </div>
+            <ChevronDown className="w-3.5 h-3.5 text-gray-500 group-hover:text-indigo-300 transition-colors" />
+          </button>
+        </Tooltip>
+
+        <div className="w-px h-6 bg-white/10" />
+
         <div className="flex items-center gap-1.5 px-3 py-1 rounded-2xl bg-white/[0.03] border border-white/[0.05]">
+          <Tooltip content="撤销 (Ctrl+Z)" position="bottom">
+            <button
+              onClick={(e) => { e.stopPropagation(); onUndo?.(); }}
+              disabled={!canUndo}
+              className="relative z-10 w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed text-gray-400 hover:text-white hover:bg-white/10"
+              aria-label="撤销"
+            >
+              <Undo2 className="w-4 h-4" />
+            </button>
+          </Tooltip>
+          <Tooltip content="重做 (Ctrl+Shift+Z)" position="bottom">
+            <button
+              onClick={(e) => { e.stopPropagation(); onRedo?.(); }}
+              disabled={!canRedo}
+              className="relative z-10 w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed text-gray-400 hover:text-white hover:bg-white/10"
+              aria-label="重做"
+            >
+              <Redo2 className="w-4 h-4" />
+            </button>
+          </Tooltip>
+
+          <div className="w-px h-4 bg-white/10 mx-0.5" />
+
           <Tooltip content={showLogicPanel ? "关闭运行日志" : "查看运行日志"} position="bottom">
             <button
               onClick={(e) => {

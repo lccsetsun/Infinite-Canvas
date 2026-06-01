@@ -20,6 +20,8 @@ interface NodeCardProps {
     apiKey: string;
   };
   onPreview?: (content: string, title?: string, nodeId?: string, items?: string[], currentIndex?: number) => void;
+  resolvedInputs?: Record<string, unknown>;
+  onRun?: (nodeId: string) => void;
   style?: React.CSSProperties;
 }
 
@@ -55,74 +57,68 @@ const QUANTITIES = ["1张", "2张", "4张"];
 const VIDEO_RESOLUTIONS = ["480P", "720P", "1080P"];
 const VIDEO_QUANTITIES = ["1个", "2个", "4个"];
 
-function NodeCardImpl({ 
-  node, 
-  selected, 
-  onSelect, 
-  onDelete, 
-  onDuplicate, 
+function NodeCardImpl({
+  node,
+  selected,
+  onSelect,
+  onDelete,
+  onDuplicate,
   onDragStart,
   onUpdateProperty,
   onUpdateData: _onUpdateData,
   apiConfig: _apiConfig,
   onPreview,
+  resolvedInputs,
+  onRun,
   style,
 }: NodeCardProps) {
-  const isRunning = node.properties.status === "loading";
+  const isRunning = node.properties.status === "loading" || node.data?.loading === true;
   const [copied, setCopied] = React.useState(false);
   const [promptCopied, setPromptCopied] = React.useState(false);
   const [showConfig, setShowConfig] = React.useState(false);
+
+  const upstreamPrompt = (() => {
+    if (!resolvedInputs) return null;
+    const candidates = ["prompt", "user_prompt", "text", "原始提示词", "用户提示词", "视频提示词", "正向提示词"];
+    for (const k of candidates) {
+      const v = resolvedInputs[k];
+      if (typeof v === "string" && v.trim()) return { value: v, key: k };
+    }
+    return null;
+  })();
+
+  const responseText = (node.data?.response as string) || (node.properties.response as string) || "";
+  const imageUrl = (node.data?.imageUrl as string) || (node.properties.imageUrl as string) || "";
+  const videoUrl = (node.data?.videoUrl as string) || (node.properties.videoUrl as string) || "";
+  const promptText = upstreamPrompt?.value || (node.properties.text as string) || "";
 
   const activeRatio = RATIOS.find(r => r.value === (node.properties.aspect_ratio || (node.type === "video_node" ? "16:9" : "1:1"))) || (node.type === "video_node" ? RATIOS[3] : RATIOS[1]);
   const ActiveRatioIcon = activeRatio.icon;
 
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!node.properties.response) return;
-    navigator.clipboard.writeText(node.properties.response);
+    const text = node.data?.response || node.properties.response;
+    if (!text) return;
+    navigator.clipboard.writeText(String(text));
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
   const handleCopyPrompt = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!node.properties.text) return;
-    navigator.clipboard.writeText(node.properties.text);
+    const text = upstreamPrompt?.value || node.properties.text;
+    if (!text) return;
+    navigator.clipboard.writeText(String(text));
     setPromptCopied(true);
     setTimeout(() => setPromptCopied(false), 2000);
   };
 
-  const handleRun = async () => {
-    if (!onUpdateProperty || isRunning) return;
-    
-    onUpdateProperty(node.id, "status", "loading");
-    
-    if (node.type === "text_node") {
-      onUpdateProperty(node.id, "response", "");
+  const handleRun = () => {
+    if (isRunning) return;
+    if (onUpdateProperty && !upstreamPrompt && node.properties.text) {
+      onUpdateProperty(node.id, "status", "loading");
     }
-
-    // Fallback to simulation
-    setTimeout(() => {
-      if (node.type === "text_node") {
-        const responses: Record<string, string> = {
-          "deepseek-v4-flash": "小猫（Kitten）是猫科动物的幼崽，通常指从出生到一岁左右的猫。它们天生好奇、活泼，是极受欢迎的宠物。",
-          "deepseek-chat": "猫（学名：Felis catus）是小型食肉哺乳动物，也是人类最亲伴侣动物之一。它们拥有敏锐的感官和灵活的身体。",
-          "gpt-4o": "当然知道。猫是一种非常迷人的动物，拥有独立的性格和强大的捕猎本能。在人类文明中，它们既是守护仓储的功臣，也是温暖心灵的伙伴。",
-          "claude-3.5-sonnet": "猫是非常有趣的生物。它们通过呼噜声、尾巴动作和眼神与人类交流。不同品种的猫在体型、被毛和性格上都有显著差异。"
-        };
-        const res = responses[node.properties.model] || "已完成内容生成。";
-        onUpdateProperty(node.id, "response", res);
-      } else if (node.type === "image_node") {
-        const prompt = encodeURIComponent(node.properties.text || "a beautiful digital art");
-        const imageUrl = `https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=${prompt}&image_size=square_hd`;
-        onUpdateProperty(node.id, "imageUrl", imageUrl);
-      } else if (node.type === "video_node") {
-        // Simulation for video - just a placeholder video or status
-        onUpdateProperty(node.id, "videoUrl", "https://assets.mixkit.co/videos/preview/mixkit-abstract-flowing-teal-and-blue-gradient-background-40030-large.mp4");
-      }
-      
-      onUpdateProperty(node.id, "status", "success");
-    }, 2000);
+    onRun?.(node.id);
   };
 
   return (
@@ -213,9 +209,9 @@ function NodeCardImpl({
                   className="absolute inset-0 bg-indigo-500/5"
                 />
               </motion.div>
-            ) : ((node.type === "text_node" && node.properties.response) || 
-                (node.type === "image_node" && node.properties.imageUrl) || 
-                (node.type === "video_node" && node.properties.videoUrl)) ? (
+            ) : ((node.type === "text_node" && responseText) ||
+                (node.type === "image_node" && imageUrl) ||
+                (node.type === "video_node" && videoUrl)) ? (
               <motion.div 
                 key="result"
                 initial={{ opacity: 0, scale: 0.95 }}
@@ -244,7 +240,7 @@ function NodeCardImpl({
                     <Tooltip content={node.type === "text_node" ? "全屏预览" : "全屏查看"} position="top">
                       <button
                         data-node-action="true"
-                        onClick={() => onPreview?.(node.type === "text_node" ? node.properties.response : node.type === "image_node" ? node.properties.imageUrl : node.properties.videoUrl, node.type === "text_node" ? "生成结果" : "多媒体预览")}
+                        onClick={() => onPreview?.(node.type === "text_node" ? responseText : node.type === "image_node" ? imageUrl : videoUrl, node.type === "text_node" ? "生成结果" : "多媒体预览")}
                         className="p-1.5 rounded-lg hover:bg-white/10 text-gray-500 hover:text-white transition-colors cursor-pointer"
                       >
                         <Maximize2 className="w-3.5 h-3.5" />
@@ -256,15 +252,15 @@ function NodeCardImpl({
                 <div className="relative p-3.5 rounded-xl bg-gradient-to-b from-indigo-500/[0.05] to-transparent border border-indigo-500/10 overflow-hidden shadow-inner">
                   {node.type === "text_node" ? (
                     <div className="text-[12px] text-gray-300 leading-relaxed font-sans max-h-[140px] overflow-y-auto custom-scrollbar pr-1">
-                      {renderMarkdown(node.properties.response)}
+                      {renderMarkdown(responseText)}
                     </div>
                   ) : node.type === "image_node" ? (
                     <div className="relative rounded-lg overflow-hidden border border-white/5 bg-black/40 aspect-video shadow-2xl">
-                      <img src={node.properties.imageUrl} alt="Generated" className="w-full h-full object-cover" />
+                      <img src={imageUrl} alt="Generated" className="w-full h-full object-cover" />
                     </div>
                   ) : (
                     <div className="relative rounded-lg overflow-hidden border border-white/5 bg-black/40 aspect-video shadow-2xl">
-                      <video src={node.properties.videoUrl} controls className="w-full h-full object-cover" />
+                      <video src={videoUrl} controls className="w-full h-full object-cover" />
                     </div>
                   )}
 
@@ -304,7 +300,7 @@ function NodeCardImpl({
                   <Tooltip content="全屏编辑" position="top">
                     <button
                       data-node-action="true"
-                      onClick={() => onPreview?.(node.properties.text, "提示词编辑", node.id)}
+                      onClick={() => onPreview?.(promptText, "提示词编辑", node.id)}
                       className="p-1 rounded-lg hover:bg-white/10 text-gray-500 hover:text-white transition-colors cursor-pointer"
                     >
                       <Maximize2 className="w-3 h-3" />
@@ -315,14 +311,29 @@ function NodeCardImpl({
               <div className="relative">
                 <textarea
                   data-node-action="true"
-                  value={node.properties.text}
+                  value={upstreamPrompt ? "" : promptText}
                   onChange={(e) => onUpdateProperty?.(node.id, "text", e.target.value)}
-                  placeholder={node.type === "text_node" ? "请输入您的任务描述..." : node.type === "image_node" ? "描述您想要生成的画面..." : "描述您想要创作的视频内容..."}
-                  className="w-full h-24 bg-[#0d1117] border border-white/5 rounded-xl p-3 text-[12px] text-gray-200 outline-none focus:border-indigo-500/40 focus:ring-1 focus:ring-indigo-500/20 transition-all resize-none leading-relaxed placeholder:text-gray-700 custom-scrollbar"
+                  placeholder={
+                    upstreamPrompt
+                      ? `已由上游节点 (${upstreamPrompt.key}) 提供提示词,无需输入`
+                      : node.type === "text_node"
+                        ? "请输入您的任务描述..."
+                        : node.type === "image_node"
+                          ? "描述您想要生成的画面..."
+                          : "描述您想要创作的视频内容..."
+                  }
+                  disabled={!!upstreamPrompt}
+                  className="w-full h-24 bg-[#0d1117] border border-white/5 rounded-xl p-3 text-[12px] text-gray-200 outline-none focus:border-indigo-500/40 focus:ring-1 focus:ring-indigo-500/20 transition-all resize-none leading-relaxed placeholder:text-gray-700 custom-scrollbar disabled:opacity-60 disabled:cursor-not-allowed"
                 />
-                <div className="absolute bottom-2 right-3 text-[9px] font-mono text-gray-700 select-none">
-                  {node.properties.text?.length || 0} 字符
-                </div>
+                {upstreamPrompt ? (
+                  <div className="absolute bottom-2 right-3 px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 text-[9px] font-mono select-none">
+                    ⇣ {upstreamPrompt.key}
+                  </div>
+                ) : (
+                  <div className="absolute bottom-2 right-3 text-[9px] font-mono text-gray-700 select-none">
+                    {promptText.length} 字符
+                  </div>
+                )}
               </div>
             </div>
             
@@ -593,7 +604,7 @@ function NodeCardImpl({
                   value={node.properties.model}
                   onChange={(value) => onUpdateProperty?.(node.id, "model", value)}
                   className="w-full custom-select"
-                  dropdownStyle={{ backgroundColor: "#1c2230", border: "1px solid rgba(255, 255, 255, 0.1)" }}
+                  styles={{ popup: { root: { backgroundColor: "#1c2230", border: "1px solid rgba(255, 255, 255, 0.1)" } } }}
                   variant="filled"
                   getPopupContainer={(trigger) => trigger.parentElement}
                   options={
@@ -626,10 +637,11 @@ function NodeCardImpl({
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={handleRun}
-                disabled={isRunning || !node.properties.text?.trim()}
+                disabled={isRunning || (!upstreamPrompt && !node.properties.text?.trim())}
+                title={upstreamPrompt ? `由上游 ${upstreamPrompt.key} 提供输入` : "需要先输入提示词"}
                 className={`h-[38px] px-4 rounded-xl flex items-center justify-center gap-2 text-[11px] font-black uppercase tracking-wider transition-all shrink-0 ${
-                  isRunning 
-                    ? "bg-indigo-500/10 text-indigo-400 cursor-not-allowed border border-indigo-500/20" 
+                  isRunning
+                    ? "bg-indigo-500/10 text-indigo-400 cursor-not-allowed border border-indigo-500/20"
                     : "bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white shadow-[0_4px_12px_-2px_rgba(99,102,241,0.4)] cursor-pointer"
                 }`}
               >
@@ -729,7 +741,7 @@ function NodeCardImpl({
                   value={node.properties.gridSplit || "none"}
                   onChange={(value) => onUpdateProperty?.(node.id, "gridSplit", value)}
                   className="w-full custom-select"
-                  dropdownStyle={{ backgroundColor: "#1c2230", border: "1px solid rgba(255, 255, 255, 0.1)" }}
+                  styles={{ popup: { root: { backgroundColor: "#1c2230", border: "1px solid rgba(255, 255, 255, 0.1)" } } }}
                   variant="filled"
                   getPopupContainer={(trigger) => trigger.parentElement}
                   options={[
@@ -865,7 +877,7 @@ function NodeCardImpl({
                 value={node.properties.frameAnalysis || "none"}
                 onChange={(value) => onUpdateProperty?.(node.id, "frameAnalysis", value)}
                 className="w-full custom-select-rose"
-                dropdownStyle={{ backgroundColor: "#1c2230", border: "1px solid rgba(244, 63, 94, 0.1)" }}
+                styles={{ popup: { root: { backgroundColor: "#1c2230", border: "1px solid rgba(244, 63, 94, 0.1)" } } }}
                 variant="filled"
                 getPopupContainer={(trigger) => trigger.parentElement}
                 options={[

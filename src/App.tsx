@@ -1,4 +1,4 @@
-﻿import React from "react";
+import React from "react";
 import { AnimatePresence } from "motion/react";
 import AppHeader from "./components/app/AppHeader";
 import CanvasControls from "./components/app/CanvasControls";
@@ -10,6 +10,7 @@ import LeaferCanvas from "./components/canvas/LeaferCanvas";
 import MiniMap from "./components/app/MiniMap";
 import PreviewModal, { PreviewContent } from "./components/app/PreviewModal";
 import SettingsPanels from "./components/app/SettingsPanels";
+import WorkflowManager from "./components/WorkflowManager";
 import { snapPointToGrid } from "./components/canvas/geometry";
 import { useCanvasInteraction } from "./hooks/useCanvasInteraction";
 import { useCanvasLinking } from "./hooks/useCanvasLinking";
@@ -29,6 +30,11 @@ export default function App() {
     </div>
   );
 
+  const [apiBaseUrl, setApiBaseUrl] = React.useState("https://api.deepseek.com/v1");
+  const [apiKey, setApiKey] = React.useState("");
+  const [apiModel, setApiModel] = React.useState("deepseek-v4-flash");
+  const [workflowManagerOpen, setWorkflowManagerOpen] = React.useState(false);
+
   const {
     nodes,
     links,
@@ -36,6 +42,7 @@ export default function App() {
     setSelectedNodeId,
     clearCanvas,
     runWorkflow,
+    runNode,
     addNode,
     removeNode,
     duplicateNode,
@@ -48,13 +55,40 @@ export default function App() {
     linkFromOutputIndex,
     linkToInputIndex,
     linkDraftIssue,
+    resolvedInputsMap,
+    canUndo,
+    canRedo,
+    undo,
+    redo,
+    workflowList,
+    trashList,
+    currentWorkflowSummary,
+    allCategories,
+    allTags,
+    createWorkflow,
+    createWorkflowFromTemplate,
+    resetCurrentToDemo,
+    switchWorkflow,
+    renameWorkflow,
+    setWorkflowCategory,
+    addTagToWorkflow,
+    removeTagFromWorkflow,
+    moveWorkflow,
+    deleteWorkflow,
+    duplicateWorkflow,
+    restoreWorkflow,
+    purgeWorkflow,
+    emptyTrash,
+    purgeExpiredTrash,
+    exportWorkspaceJson,
+    importWorkspaceJson,
     setLinkFromNodeId,
     setLinkToNodeId,
     setLinkFromOutputIndex,
     setLinkToInputIndex,
     clearLinkDraft,
     addLinkFromDraft,
-  } = useWorkflowState();
+  } = useWorkflowState({ apiConfig: { baseUrl: apiBaseUrl, apiKey } });
 
   const {
     showLogicPanel,
@@ -79,9 +113,6 @@ export default function App() {
 
   const [workflowName, setWorkflowName] = React.useState("默认工作流");
   const [autoSaveWorkflow, setAutoSaveWorkflow] = React.useState(true);
-  const [apiBaseUrl, setApiBaseUrl] = React.useState("https://api.deepseek.com/v1");
-  const [apiKey, setApiKey] = React.useState("");
-  const [apiModel, setApiModel] = React.useState("deepseek-v4-flash");
   const [menuPos, setMenuPos] = React.useState<{ x: number; y: number } | null>(null);
   const [previewContent, setPreviewContent] = React.useState<PreviewContent | null>(null);
   const [canvasSize, setCanvasSize] = React.useState({ width: 0, height: 0 });
@@ -196,14 +227,37 @@ export default function App() {
 
   React.useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const isEditingField =
+        !!target &&
+        (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
+
       if (e.key === "Escape" && isLinkingOnCanvas) {
         resetCanvasLinkDraft();
+        return;
+      }
+
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && (e.key === "z" || e.key === "Z")) {
+        e.preventDefault();
+        if (e.shiftKey) redo();
+        else undo();
+        return;
+      }
+      if (mod && (e.key === "y" || e.key === "Y")) {
+        e.preventDefault();
+        redo();
+        return;
+      }
+      if (!isEditingField && (e.key === "Delete" || e.key === "Backspace") && selectedNodeId) {
+        e.preventDefault();
+        removeNode(selectedNodeId);
         return;
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [currentView, isLinkingOnCanvas, resetCanvasLinkDraft, setActiveQuickTool, setCurrentView]);
+  }, [currentView, isLinkingOnCanvas, resetCanvasLinkDraft, setActiveQuickTool, setCurrentView, undo, redo, selectedNodeId, removeNode]);
 
   React.useEffect(() => {
     return () => {
@@ -239,6 +293,13 @@ export default function App() {
       <div className="relative w-full h-screen bg-[#0f1218] text-[#e2e8f0] overflow-hidden select-none font-sans">
         <AppHeader
           showLogicPanel={showLogicPanel}
+          canUndo={canUndo}
+          canRedo={canRedo}
+          workflowName={currentWorkflowSummary?.name}
+          workflowCount={workflowList.length}
+          onUndo={undo}
+          onRedo={redo}
+          onOpenWorkflowManager={() => setWorkflowManagerOpen(true)}
           onClearCanvas={clearCanvas}
           onRun={runNow}
           onToggleLogicPanel={() => setShowLogicPanel((v) => !v)}
@@ -416,6 +477,8 @@ export default function App() {
           onSelectNode={setSelectedNodeId}
           onUpdateNodeData={updateNodeData}
           onUpdateNodeProperty={updateNodeProperty}
+          resolvedInputsMap={resolvedInputsMap}
+          onRunNode={runNode}
         />
         {showLogicPanel && (
           <React.Suspense fallback={panelFallback}>
@@ -473,6 +536,35 @@ export default function App() {
           showNotice={showNotice}
         />
       )}
+
+      <WorkflowManager
+        open={workflowManagerOpen}
+        list={workflowList}
+        trash={trashList}
+        allCategories={allCategories}
+        allTags={allTags}
+        currentId={currentWorkflowSummary?.id ?? null}
+        workflowName={currentWorkflowSummary?.name ?? "默认工作流"}
+        onClose={() => setWorkflowManagerOpen(false)}
+        onSwitch={switchWorkflow}
+        onCreate={createWorkflow}
+        onCreateFromTemplate={createWorkflowFromTemplate}
+        onResetToDemo={resetCurrentToDemo}
+        onRename={renameWorkflow}
+        onSetCategory={setWorkflowCategory}
+        onAddTag={addTagToWorkflow}
+        onRemoveTag={removeTagFromWorkflow}
+        onMove={moveWorkflow}
+        onDelete={deleteWorkflow}
+        onDuplicate={duplicateWorkflow}
+        onRestore={restoreWorkflow}
+        onPurge={purgeWorkflow}
+        onEmptyTrash={emptyTrash}
+        onPurgeExpired={purgeExpiredTrash}
+        onExportJson={exportWorkspaceJson}
+        onImportJson={importWorkspaceJson}
+        showNotice={showNotice}
+      />
     </div>
     </ConfigProvider>
   );

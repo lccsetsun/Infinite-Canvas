@@ -115,34 +115,34 @@ function buildGrid(group: Group, pan: { x: number; y: number }, zoom: number, wi
 function buildLinks(group: Group, nodes: GraphNode[], links: GraphLink[]) {
   group.clear();
 
-  links.forEach((link) => {
+  links.forEach((link, index) => {
     const fromNode = getNodeById(nodes, link.fromNodeId);
     const toNode = getNodeById(nodes, link.toNodeId);
-    if (!fromNode || !toNode) return;
+    if (!fromNode || !toNode) {
+      console.warn("[buildLinks] missing node for link", { link, fromNode: !!fromNode, toNode: !!toNode });
+      return;
+    }
 
     const from = getOutputAnchor(fromNode, link.fromOutputIndex);
     const to = getInputAnchor(toNode, link.toInputIndex);
     const path = linkPath(from, to);
 
-    group.add(
-      new Path({
-        path,
-        stroke: "rgba(122,245,56,0.9)",
-        strokeWidth: 3,
-        fill: "none",
-        hitFill: "none",
-      } as never)
-    );
+    const p1 = new Path({
+      path,
+      stroke: "#7af538",
+      strokeWidth: 3,
+      opacity: 0.9,
+    });
+    
+    const p2 = new Path({
+      path,
+      stroke: "#2fb8ff",
+      strokeWidth: 1.5,
+      opacity: 0.8,
+    });
 
-    group.add(
-      new Path({
-        path,
-        stroke: "rgba(47,184,255,0.8)",
-        strokeWidth: 1.2,
-        fill: "none",
-        hitFill: "none",
-      } as never)
-    );
+    group.add(p1 as never);
+    group.add(p2 as never);
   });
 }
 
@@ -272,14 +272,15 @@ function buildNodeDecorators(
         isDataTypeCompatible(fromOutput.type, input.type);
       group.add(
         new Ellipse({
-          x: anchor.x - 8,
-          y: anchor.y - 8,
-          width: 16,
-          height: 16,
-          fill: isDraftTarget ? "#fbbf24" : isCompatibleWhileLinking ? "#34d399" : "#a3e635",
-          stroke: "#11151d",
+          x: anchor.x - 10,
+          y: anchor.y - 10,
+          width: 20,
+          height: 20,
+          fill: isDraftTarget ? "#fbbf24" : isCompatibleWhileLinking ? "#34d399" : "#10b981",
+          stroke: "#ecfeff",
           strokeWidth: isDraftTarget ? 3 : isCompatibleWhileLinking ? 2.5 : 2,
-          opacity: fromOutput && !isDraftTarget && !isCompatibleWhileLinking ? 0.72 : 1,
+          shadow: !isDraftTarget ? "0 0 12px rgba(16, 185, 129, 0.55)" : "0 0 14px rgba(251, 191, 36, 0.7)",
+          opacity: fromOutput && !isDraftTarget && !isCompatibleWhileLinking ? 0.78 : 1,
           hitFill: "none",
         } as never)
       );
@@ -290,13 +291,16 @@ function buildNodeDecorators(
       const isDraftSource = node.id === draftFromNodeId && idx === draftFromOutputIndex;
       group.add(
         new Ellipse({
-          x: anchor.x - 8,
-          y: anchor.y - 8,
-          width: 16,
-          height: 16,
+          x: anchor.x - 10,
+          y: anchor.y - 10,
+          width: 20,
+          height: 20,
           fill: isDraftSource ? "#22d3ee" : "#a78bfa",
-          stroke: "#11151d",
+          stroke: "#f5f3ff",
           strokeWidth: isDraftSource ? 3 : 2,
+          shadow: isDraftSource
+            ? "0 0 16px rgba(34, 211, 238, 0.8)"
+            : "0 0 12px rgba(167, 139, 250, 0.6)",
           hitFill: "none",
         } as never)
       );
@@ -442,8 +446,8 @@ export default function LeaferCanvas({
     const decorators = new Group();
     const draft = new Group();
 
-    world.add(linksLayer);
     world.add(shells);
+    world.add(linksLayer);
     world.add(draft);
     world.add(decorators);
     app.add(grid);
