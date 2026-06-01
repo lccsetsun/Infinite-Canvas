@@ -1,25 +1,21 @@
 import React from "react";
 import { motion } from "motion/react";
+import { ApiSettings } from "../../features/api/apiSettings";
 
 const ApiSettingsPage = React.lazy(() => import("../pages/ApiSettingsPage"));
 const WorkflowSettingsPage = React.lazy(() => import("../pages/WorkflowSettingsPage"));
 
 interface SettingsPanelsProps {
-  apiBaseUrl: string;
-  apiKey: string;
-  apiModel: string;
+  apiSettings: ApiSettings;
   autoSaveWorkflow: boolean;
   currentView: "canvas" | "api" | "workflow";
   fallback: React.ReactNode;
   workflowName: string;
-  onBack: () => void;
-  onSaveApi: () => void;
+  onSaveApiSettings: (settings: ApiSettings) => void;
   onSaveWorkflow: () => void;
-  setApiBaseUrl: (value: string) => void;
-  setApiKey: (value: string) => void;
-  setApiModel: (value: string) => void;
   setAutoSaveWorkflow: (value: boolean) => void;
   setWorkflowName: (value: string) => void;
+  showNotice: (message: string, kind?: "info" | "success" | "warning" | "error") => void;
 }
 
 function PageShell({ children }: { children: React.ReactNode }) {
@@ -28,7 +24,7 @@ function PageShell({ children }: { children: React.ReactNode }) {
       initial={{ opacity: 0, x: 20 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: -20 }}
-      className="absolute inset-0 z-[100]"
+      className="absolute inset-y-0 right-0 left-24 z-[100]"
     >
       {children}
     </motion.div>
@@ -36,21 +32,16 @@ function PageShell({ children }: { children: React.ReactNode }) {
 }
 
 export default function SettingsPanels({
-  apiBaseUrl,
-  apiKey,
-  apiModel,
+  apiSettings,
   autoSaveWorkflow,
   currentView,
   fallback,
   workflowName,
-  onBack,
-  onSaveApi,
+  onSaveApiSettings,
   onSaveWorkflow,
-  setApiBaseUrl,
-  setApiKey,
-  setApiModel,
   setAutoSaveWorkflow,
   setWorkflowName,
+  showNotice,
 }: SettingsPanelsProps) {
   return (
     <>
@@ -58,14 +49,9 @@ export default function SettingsPanels({
         <React.Suspense fallback={fallback}>
           <PageShell>
             <ApiSettingsPage
-              apiBaseUrl={apiBaseUrl}
-              apiKey={apiKey}
-              apiModel={apiModel}
-              setApiBaseUrl={setApiBaseUrl}
-              setApiKey={setApiKey}
-              setApiModel={setApiModel}
-              onBack={onBack}
-              onSave={onSaveApi}
+              initial={apiSettings}
+              onSave={onSaveApiSettings}
+              showNotice={showNotice}
             />
           </PageShell>
         </React.Suspense>
@@ -79,7 +65,6 @@ export default function SettingsPanels({
               autoSaveWorkflow={autoSaveWorkflow}
               setWorkflowName={setWorkflowName}
               setAutoSaveWorkflow={setAutoSaveWorkflow}
-              onBack={onBack}
               onSave={onSaveWorkflow}
             />
           </PageShell>

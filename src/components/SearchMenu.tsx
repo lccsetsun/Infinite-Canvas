@@ -93,7 +93,7 @@ export default function SearchMenu({ x, y, isContextMenu, onAddNode, onClose, on
       ref={containerRef}
       initial={{ opacity: 0, scale: 0.9, y: 10 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
-      className="absolute z-[80] pointer-events-auto select-none"
+      className="absolute z-[110] pointer-events-auto select-none"
       style={style}
       onMouseEnter={onHoverStart}
       onMouseLeave={isContextMenu ? undefined : onHoverEnd}

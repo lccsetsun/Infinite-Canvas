@@ -1,11 +1,8 @@
-import { ArrowLeft } from "lucide-react";
-
 interface WorkflowSettingsPageProps {
   workflowName: string;
   autoSaveWorkflow: boolean;
   setWorkflowName: (value: string) => void;
   setAutoSaveWorkflow: (value: boolean) => void;
-  onBack: () => void;
   onSave: () => void;
 }
 
@@ -14,17 +11,18 @@ export default function WorkflowSettingsPage({
   autoSaveWorkflow,
   setWorkflowName,
   setAutoSaveWorkflow,
-  onBack,
   onSave,
 }: WorkflowSettingsPageProps) {
   return (
-    <section className="absolute inset-0 z-50 bg-[#0f1218]/97 backdrop-blur-sm pl-28 pr-8 py-8" onPointerDown={(e) => e.stopPropagation()}>
+    <section
+      className="absolute inset-0 z-50 bg-[#0f1218]/97 backdrop-blur-sm pl-28 pr-8 py-8 overflow-y-auto [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-[#2b3142] [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-[#3b4152]"
+      style={{ scrollbarWidth: "thin", scrollbarColor: "#2b3142 transparent" }}
+      data-canvas-passthrough="true"
+      onPointerDown={(e) => e.stopPropagation()}
+    >
       <div className="max-w-[760px] mx-auto mt-8 rounded-2xl border border-[#2b3142] bg-[#121723]/95 p-6 shadow-2xl">
         <div className="flex items-center justify-between mb-5">
           <div className="text-xl font-semibold text-white">工作流设置</div>
-          <button onClick={onBack} className="px-3 py-1.5 rounded-lg border border-[#2f3a54] bg-[#1a2235] text-sm inline-flex items-center gap-1.5">
-            <ArrowLeft className="w-4 h-4" /> 返回画布
-          </button>
         </div>
         <div className="space-y-4">
           <label className="block">

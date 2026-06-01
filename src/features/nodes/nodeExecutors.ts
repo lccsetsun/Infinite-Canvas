@@ -3,7 +3,17 @@ import { NodeClass } from "../../types";
 export interface ExecutorContext {
   inputs: Record<string, unknown>;
   properties: Record<string, unknown>;
-  apiConfig: { baseUrl: string; apiKey: string };
+  apiConfig: {
+    baseUrl: string;
+    apiKey: string;
+    model?: string;
+    temperature?: number;
+    maxTokens?: number;
+    topP?: number;
+    timeout?: number;
+    systemPrompt?: string;
+    useSystemProxy?: boolean;
+  };
   signal?: AbortSignal;
   onProgress?: (percent: number) => void;
 }
@@ -33,6 +43,49 @@ async function callGeminiProxy(
     throw new Error(`AI 调用失败 (${r.status}): ${errText || r.statusText}`);
   }
   return r.json();
+}
+
+async function callOpenAICompatible(
+  cfg: { baseUrl: string; apiKey: string; model?: string; temperature?: number; maxTokens?: number; topP?: number; timeout?: number; systemPrompt?: string },
+  contents: string
+): Promise<{ text: string }> {
+  const base = cfg.baseUrl.replace(/\/+$/, "");
+  const url = `${base}/chat/completions`;
+  const messages: { role: "system" | "user"; content: string }[] = [];
+  if (cfg.systemPrompt && cfg.systemPrompt.trim()) {
+    messages.push({ role: "system", content: cfg.systemPrompt });
+  }
+  messages.push({ role: "user", content: contents });
+  const controller = new AbortController();
+  const timer = cfg.timeout ? window.setTimeout(() => controller.abort(), cfg.timeout * 1000) : null;
+  try {
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {}),
+      },
+      body: JSON.stringify({
+        model: cfg.model,
+        messages,
+        temperature: cfg.temperature,
+        max_tokens: cfg.maxTokens,
+        top_p: cfg.topP,
+        stream: false,
+      }),
+      signal: controller.signal,
+    });
+    if (!resp.ok) {
+      const errText = await resp.text().catch(() => "");
+      throw new Error(`AI 调用失败 (${resp.status}): ${errText || resp.statusText}`);
+    }
+    const data = await resp.json();
+    const choice = data?.choices?.[0];
+    const text = choice?.message?.content ?? choice?.text ?? "";
+    return { text: typeof text === "string" ? text : "" };
+  } finally {
+    if (timer !== null) window.clearTimeout(timer);
+  }
 }
 
 function pickString(inputs: Record<string, unknown>, properties: Record<string, unknown>, ...keys: string[]): string {
@@ -70,12 +123,34 @@ function buildTextToImageUrl(prompt: string, aspect: string): string {
 export const executors: Partial<Record<NodeClass, NodeExecutor>> = {
   text_node: async ({ inputs, properties, apiConfig }) => {
     const userPrompt = pickString(inputs, properties, "user_prompt", "prompt");
-    const systemPrompt = pickString(inputs, properties, "system_prompt");
-    const model = (properties.model as string) || "gemini-2.0-flash";
-    const { text } = await callGeminiProxy(
-      { model, contents: userPrompt, config: { systemInstruction: systemPrompt } },
-      apiConfig.apiKey
-    );
+    const nodeSystemPrompt = pickString(inputs, properties, "system_prompt");
+    const model = (properties.model as string) || apiConfig.model || "gemini-2.0-flash";
+    const isGemini = (apiConfig.baseUrl || "").includes("generativelanguage.googleapis.com");
+
+    let text = "";
+    if (isGemini) {
+      const result = await callGeminiProxy(
+        { model, contents: userPrompt, config: { systemInstruction: nodeSystemPrompt } },
+        apiConfig.apiKey
+      );
+      text = result.text;
+    } else {
+      text = (
+        await callOpenAICompatible(
+          {
+            baseUrl: apiConfig.baseUrl,
+            apiKey: apiConfig.apiKey,
+            model,
+            temperature: apiConfig.temperature,
+            maxTokens: apiConfig.maxTokens,
+            topP: apiConfig.topP,
+            timeout: apiConfig.timeout,
+            systemPrompt: nodeSystemPrompt || apiConfig.systemPrompt,
+          },
+          userPrompt
+        )
+      ).text;
+    }
     return { outputs: { 0: text }, patch: { response: text, status: "success" } };
   },
 

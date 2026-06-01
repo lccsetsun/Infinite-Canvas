@@ -21,6 +21,7 @@ import { useAppUiState } from "./hooks/useAppUiState";
 import { ConfigProvider, theme } from "antd";
 import { NodeClass } from "./types";
 import { LogOut } from "lucide-react";
+import { ApiSettings, getActiveProfile, loadApiSettings, saveApiSettings } from "./features/api/apiSettings";
 
 const LogicPanel = React.lazy(() => import("./components/LogicPanel"));
 const SearchMenu = React.lazy(() => import("./components/SearchMenu"));
@@ -28,13 +29,15 @@ const SearchMenu = React.lazy(() => import("./components/SearchMenu"));
 export default function App() {
   const panelFallback = (
     <div className="absolute inset-0 z-40 flex items-center justify-center bg-[#0f1218]/55 backdrop-blur-sm">
-      <div className="rounded-full border border-[#2b3142] bg-[#171b26] px-4 py-2 text-sm text-gray-300">鍔犺浇涓?..</div>
+      <div className="rounded-full border border-[#2b3142] bg-[#171b26] px-4 py-2 text-sm text-gray-300">加载中...</div>
     </div>
   );
 
-  const [apiBaseUrl, setApiBaseUrl] = React.useState("https://api.deepseek.com/v1");
-  const [apiKey, setApiKey] = React.useState("");
-  const [apiModel, setApiModel] = React.useState("deepseek-v4-flash");
+  const [apiSettings, setApiSettings] = React.useState<ApiSettings>(() => loadApiSettings());
+  const activeApiProfile = React.useMemo(() => getActiveProfile(apiSettings), [apiSettings]);
+  const apiBaseUrl = activeApiProfile.baseUrl;
+  const apiKey = activeApiProfile.apiKey;
+  const apiModel = activeApiProfile.model;
   const [workflowManagerOpen, setWorkflowManagerOpen] = React.useState(false);
   const [isLoggedIn, setIsLoggedIn] = React.useState(() => {
     return localStorage.getItem("isLoggedIn") === "true";
@@ -103,7 +106,19 @@ export default function App() {
     setLinkToInputIndex,
     clearLinkDraft,
     addLinkFromDraft,
-  } = useWorkflowState({ apiConfig: { baseUrl: apiBaseUrl, apiKey } });
+  } = useWorkflowState({
+    apiConfig: {
+      baseUrl: apiBaseUrl,
+      apiKey,
+      model: apiModel,
+      temperature: activeApiProfile.temperature,
+      maxTokens: activeApiProfile.maxTokens,
+      topP: activeApiProfile.topP,
+      timeout: activeApiProfile.timeout,
+      systemPrompt: activeApiProfile.systemPrompt,
+      useSystemProxy: activeApiProfile.useSystemProxy,
+    },
+  });
 
   const {
     showLogicPanel,
@@ -284,16 +299,11 @@ export default function App() {
 
   React.useEffect(() => {
     try {
-      const raw = localStorage.getItem("aicanvas_api_settings");
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as { baseUrl?: string; apiKey?: string; model?: string };
-      if (parsed.baseUrl) setApiBaseUrl(parsed.baseUrl);
-      if (parsed.apiKey) setApiKey(parsed.apiKey);
-      if (parsed.model) setApiModel(parsed.model);
+      saveApiSettings(apiSettings);
     } catch {
-      // ignore broken local storage payload
+      // quota exceeded — ignore
     }
-  }, []);
+  }, [apiSettings]);
 
   if (!isLoggedIn) {
     return <LoginPage onLogin={handleLogin} />;
@@ -423,40 +433,37 @@ export default function App() {
           }}
           onScheduleQuickMenuClose={scheduleMenuClose}
           onOpenApi={() => {
-            setActiveQuickTool("api");
-            setCurrentView("api");
+            if (currentView === "api") {
+              setCurrentView("canvas");
+              setActiveQuickTool(null);
+            } else {
+              setActiveQuickTool("api");
+              setCurrentView("api");
+            }
             clearMenuCloseTimer();
             setMenuPos(null);
           }}
           onOpenWorkflow={() => {
-            setActiveQuickTool("workflow");
-            setCurrentView("workflow");
+            if (currentView === "workflow") {
+              setCurrentView("canvas");
+              setActiveQuickTool(null);
+            } else {
+              setActiveQuickTool("workflow");
+              setCurrentView("workflow");
+            }
             clearMenuCloseTimer();
             setMenuPos(null);
           }}
         />
 
         <SettingsPanels
-          apiBaseUrl={apiBaseUrl}
-          apiKey={apiKey}
-          apiModel={apiModel}
+          apiSettings={apiSettings}
           autoSaveWorkflow={autoSaveWorkflow}
           currentView={currentView}
           fallback={panelFallback}
           workflowName={workflowName}
-          onBack={() => {
-            setCurrentView("canvas");
-            setActiveQuickTool(null);
-          }}
-          onSaveApi={() => {
-            localStorage.setItem(
-              "aicanvas_api_settings",
-              JSON.stringify({
-                baseUrl: apiBaseUrl.trim(),
-                apiKey: apiKey.trim(),
-                model: apiModel.trim(),
-              })
-            );
+          onSaveApiSettings={(s) => {
+            setApiSettings(s);
             showNotice("API 设置已保存");
           }}
           onSaveWorkflow={() => {
@@ -464,11 +471,9 @@ export default function App() {
             setCurrentView("canvas");
             setActiveQuickTool(null);
           }}
-          setApiBaseUrl={setApiBaseUrl}
-          setApiKey={setApiKey}
-          setApiModel={setApiModel}
           setAutoSaveWorkflow={setAutoSaveWorkflow}
           setWorkflowName={setWorkflowName}
+          showNotice={showNotice}
         />
 
         <CanvasNodeLayer
@@ -509,7 +514,7 @@ export default function App() {
           </React.Suspense>
         )}
 
-        {showMiniMap && miniMapConfig && (
+        {currentView === "canvas" && showMiniMap && miniMapConfig && (
           <MiniMap
             activeNodeId={selectedNodeId}
             config={miniMapConfig}
@@ -518,32 +523,36 @@ export default function App() {
             onSelectNode={setSelectedNodeId}
           />
         )}
-        <CanvasControls
-          showGrid={showGrid}
-          showMiniMap={showMiniMap}
-          snapToGridEnabled={snapToGridEnabled}
-          onAutoLayout={() => {
-            autoLayout();
-            showNotice("已自动布局");
-          }}
-          onFitView={() => {
-            fitView();
-            showNotice("已自适应居中");
-          }}
-          onToggleGrid={() => {
-            setShowGrid((v) => !v);
-            showNotice(showGrid ? "已隐藏网格" : "已显示网格");
-          }}
-          onToggleMiniMap={() => {
-            setShowMiniMap((v) => !v);
-            showNotice(showMiniMap ? "已隐藏小地图" : "已显示小地图");
-          }}
-          onToggleSnapToGrid={() => {
-            setSnapToGridEnabled((v) => !v);
-            showNotice(snapToGridEnabled ? "已关闭网格吸附" : "已开启网格吸附");
-          }}
-        />
-        <CanvasStatusBar nodeCount={nodes.length} linkCount={links.length} zoom={zoom} />
+        {currentView === "canvas" && (
+          <CanvasControls
+            showGrid={showGrid}
+            showMiniMap={showMiniMap}
+            snapToGridEnabled={snapToGridEnabled}
+            onAutoLayout={() => {
+              autoLayout();
+              showNotice("已自动布局");
+            }}
+            onFitView={() => {
+              fitView();
+              showNotice("已自适应居中");
+            }}
+            onToggleGrid={() => {
+              setShowGrid((v) => !v);
+              showNotice(showGrid ? "已隐藏网格" : "已显示网格");
+            }}
+            onToggleMiniMap={() => {
+              setShowMiniMap((v) => !v);
+              showNotice(showMiniMap ? "已隐藏小地图" : "已显示小地图");
+            }}
+            onToggleSnapToGrid={() => {
+              setSnapToGridEnabled((v) => !v);
+              showNotice(snapToGridEnabled ? "已关闭网格吸附" : "已开启网格吸附");
+            }}
+          />
+        )}
+        {currentView === "canvas" && (
+          <CanvasStatusBar nodeCount={nodes.length} linkCount={links.length} zoom={zoom} />
+        )}
         {runNotice && <div className="absolute right-6 top-20 z-50 px-3 py-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-emerald-200 text-xs">{runNotice}</div>}
       </main>
 

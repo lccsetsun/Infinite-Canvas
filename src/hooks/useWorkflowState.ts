@@ -151,7 +151,17 @@ function mapToOutputs(map: NodeOutputMap): SerializedNodeOutput[] {
 }
 
 export interface UseWorkflowStateOptions {
-  apiConfig: { baseUrl: string; apiKey: string };
+  apiConfig: {
+    baseUrl: string;
+    apiKey: string;
+    model?: string;
+    temperature?: number;
+    maxTokens?: number;
+    topP?: number;
+    timeout?: number;
+    systemPrompt?: string;
+    useSystemProxy?: boolean;
+  };
 }
 
 export function useWorkflowState(options: UseWorkflowStateOptions) {

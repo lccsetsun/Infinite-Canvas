@@ -222,6 +222,14 @@ export function useCanvasInteraction({ nodes, snapToGridEnabled = true, updateNo
 
   const onWheel = React.useCallback(
     (e: WheelEvent) => {
+      // Allow wheel scrolling inside overlays (e.g. settings panels) that opted
+      // into pass-through mode. Otherwise the global wheel handler would
+      // preventDefault and starve the inner overflow-y-auto container.
+      const target = e.target as HTMLElement | null;
+      if (target && target.closest("[data-canvas-passthrough='true']")) {
+        return;
+      }
+
       e.preventDefault();
 
       const rect = canvasRef.current?.getBoundingClientRect();
