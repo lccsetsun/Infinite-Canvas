@@ -11,6 +11,7 @@ import MiniMap from "./components/app/MiniMap";
 import PreviewModal, { PreviewContent } from "./components/app/PreviewModal";
 import SettingsPanels from "./components/app/SettingsPanels";
 import WorkflowManager from "./components/WorkflowManager";
+import LoginPage from "./pages/LoginPage";
 import { snapPointToGrid } from "./components/canvas/geometry";
 import { useCanvasInteraction } from "./hooks/useCanvasInteraction";
 import { useCanvasLinking } from "./hooks/useCanvasLinking";
@@ -19,6 +20,7 @@ import { useWorkflowState } from "./hooks/useWorkflowState";
 import { useAppUiState } from "./hooks/useAppUiState";
 import { ConfigProvider, theme } from "antd";
 import { NodeClass } from "./types";
+import { LogOut } from "lucide-react";
 
 const LogicPanel = React.lazy(() => import("./components/LogicPanel"));
 const SearchMenu = React.lazy(() => import("./components/SearchMenu"));
@@ -34,6 +36,19 @@ export default function App() {
   const [apiKey, setApiKey] = React.useState("");
   const [apiModel, setApiModel] = React.useState("deepseek-v4-flash");
   const [workflowManagerOpen, setWorkflowManagerOpen] = React.useState(false);
+  const [isLoggedIn, setIsLoggedIn] = React.useState(() => {
+    return localStorage.getItem("isLoggedIn") === "true";
+  });
+
+  const handleLogin = () => {
+    localStorage.setItem("isLoggedIn", "true");
+    setIsLoggedIn(true);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem("isLoggedIn");
+    setIsLoggedIn(false);
+  };
 
   const {
     nodes,
@@ -280,6 +295,10 @@ export default function App() {
     }
   }, []);
 
+  if (!isLoggedIn) {
+    return <LoginPage onLogin={handleLogin} />;
+  }
+
   return (
     <ConfigProvider
       theme={{
@@ -303,6 +322,7 @@ export default function App() {
           onClearCanvas={clearCanvas}
           onRun={runNow}
           onToggleLogicPanel={() => setShowLogicPanel((v) => !v)}
+          onLogout={handleLogout}
         />
 
       <main

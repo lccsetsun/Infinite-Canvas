@@ -1,4 +1,4 @@
-import { Play, Plus, Terminal, Trash2, Undo2, Redo2, FolderOpen, ChevronDown } from "lucide-react";
+import { Play, Plus, Terminal, Trash2, Undo2, Redo2, FolderOpen, ChevronDown, LogOut } from "lucide-react";
 import { motion } from "motion/react";
 import { Tooltip } from "../common/Tooltip";
 
@@ -14,6 +14,7 @@ interface AppHeaderProps {
   onClearCanvas: () => void;
   onRun: () => void;
   onToggleLogicPanel: () => void;
+  onLogout?: () => void;
 }
 
 export default function AppHeader({
@@ -28,6 +29,7 @@ export default function AppHeader({
   onClearCanvas,
   onRun,
   onToggleLogicPanel,
+  onLogout,
 }: AppHeaderProps) {
   return (
     <motion.header
@@ -145,6 +147,17 @@ export default function AppHeader({
               className="relative z-10 w-9 h-9 rounded-xl flex items-center justify-center text-gray-400 hover:text-rose-400 hover:bg-rose-500/10 transition-all cursor-pointer"
             >
               <Trash2 className="w-4 h-4" />
+            </button>
+          </Tooltip>
+
+          <div className="w-px h-4 bg-white/10 mx-0.5" />
+
+          <Tooltip content="退出登录" position="bottom">
+            <button
+              onClick={onLogout}
+              className="relative z-10 w-9 h-9 rounded-xl flex items-center justify-center text-gray-400 hover:text-red-400 hover:bg-red-500/10 transition-all cursor-pointer"
+            >
+              <LogOut className="w-4 h-4" />
             </button>
           </Tooltip>
         </div>
