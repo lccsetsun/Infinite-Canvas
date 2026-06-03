@@ -1,5 +1,5 @@
 import React from "react";
-import { Copy, X, Loader2, Check, Maximize2, Sparkles, MessageSquare, Cpu, Image as ImageIcon, Video as VideoIcon, Play, Plus, Wand2, RectangleHorizontal, RectangleVertical, Square, ChevronDown, Film, Grid3X3, Scissors, Layers } from "lucide-react";
+import { Copy, X, Loader2, Check, Maximize2, Sparkles, MessageSquare, Cpu, Image as ImageIcon, Video as VideoIcon, Play, Wand2, RectangleHorizontal, RectangleVertical, Square, ChevronDown } from "lucide-react";
 import { Select } from "antd";
 import { Tooltip } from "../common/Tooltip";
 import { GraphNode } from "../../types";
@@ -155,8 +155,6 @@ function NodeCardImpl({
             {node.type === "text_node" && <MessageSquare className="w-3.5 h-3.5" />}
             {node.type === "image_node" && <ImageIcon className="w-3.5 h-3.5" />}
             {node.type === "video_node" && <VideoIcon className="w-3.5 h-3.5" />}
-            {node.type === "upload_image" && <ImageIcon className="w-3.5 h-3.5" />}
-            {node.type === "upload_video" && <Film className="w-3.5 h-3.5" />}
           </div>
           <span className={`text-[13px] font-bold tracking-tight ${selected ? "text-white" : "text-gray-200"}`}>
             {node.title}
@@ -609,10 +607,8 @@ function NodeCardImpl({
                   getPopupContainer={(trigger) => trigger.parentElement}
                   options={
                     node.type === "text_node" ? [
-                      { value: "deepseek-v4-flash", label: <div className="flex items-center gap-2"><Sparkles className="w-3 h-3 text-indigo-400" /> DeepSeek V4 Flash</div> },
-                      { value: "deepseek-chat", label: <div className="flex items-center gap-2"><MessageSquare className="w-3 h-3 text-cyan-400" /> DeepSeek V3 Chat</div> },
-                      { value: "gpt-4o", label: <div className="flex items-center gap-2"><Cpu className="w-3 h-3 text-amber-400" /> OpenAI GPT-4o</div> },
-                      { value: "claude-3.5-sonnet", label: <div className="flex items-center gap-2"><Sparkles className="w-3 h-3 text-violet-400" /> Claude 3.5 Sonnet</div> },
+                      { value: "deepseek-chat", label: <div className="flex items-center gap-2"><MessageSquare className="w-3 h-3 text-cyan-400" /> DeepSeek Chat</div> },
+                      { value: "deepseek-reasoner", label: <div className="flex items-center gap-2"><Sparkles className="w-3 h-3 text-indigo-400" /> DeepSeek Reasoner</div> },
                     ] : node.type === "image_node" ? [
                       { value: "flux-1", label: <div className="flex items-center gap-2"><Wand2 className="w-3 h-3 text-indigo-400" /> Flux.1 Pro</div> },
                       { value: "sdxl", label: <div className="flex items-center gap-2"><ImageIcon className="w-3 h-3 text-cyan-400" /> SDXL Turbo</div> },
@@ -657,248 +653,8 @@ function NodeCardImpl({
             </div>
           </div>
         )}
-        {node.type === "upload_image" && (
-          <div className="space-y-4">
-            <div className={`relative rounded-xl overflow-hidden border transition-all duration-500 bg-[#0d1017] aspect-video group/img ${
-              node.properties.gridSplit && node.properties.gridSplit !== "none" 
-              ? "border-indigo-500/40 shadow-[0_0_20px_rgba(99,102,241,0.15)]" 
-              : "border-indigo-500/20"
-            }`}>
-              {node.properties.imageUrl ? (
-                node.properties.gridSplit && node.properties.gridSplit !== "none" ? (
-                  <motion.div 
-                    className="w-full h-full grid relative"
-                    style={{ 
-                      gridTemplateColumns: `repeat(${node.properties.gridSplit.split('x')[0]}, 1fr)`,
-                      gridTemplateRows: `repeat(${node.properties.gridSplit.split('x')[1]}, 1fr)`,
-                      gap: '1px'
-                    }}
-                  >
-                    {/* Dynamic Grid Background Glow */}
-                    <div className="absolute inset-0 bg-indigo-500/5 animate-pulse" />
-                    
-                    {Array.from({ length: parseInt(node.properties.gridSplit.split('x')[0]) * parseInt(node.properties.gridSplit.split('x')[1]) }).map((_, i) => {
-                      const cols = parseInt(node.properties.gridSplit.split('x')[0]);
-                      const rows = parseInt(node.properties.gridSplit.split('x')[1]);
-                      const x = i % cols;
-                      const y = Math.floor(i / cols);
-                      return (                                                         
-                        <motion.div 
-                          key={`${node.properties.gridSplit}-${i}`}
-                          data-node-action="true"
-                          data-no-canvas-drag="true"
-                          onPointerDown={(e) => e.stopPropagation()}
-                          initial={false}
-                          animate={{ opacity: 1, scale: 1 }}
-                          className="w-full h-full relative group/cell cursor-crosshair overflow-hidden"
-                          style={{ 
-                            backgroundImage: `url(${node.properties.imageUrl})`,
-                            backgroundSize: `${cols * 100}% ${rows * 100}%`,
-                            backgroundPosition: `${cols > 1 ? (x / (cols - 1)) * 100 : 50}% ${rows > 1 ? (y / (rows - 1)) * 100 : 50}%`,
-                            border: '0.5px solid rgba(99, 102, 241, 0.15)'
-                          }}
-                          whileHover={{ 
-                            scale: 1.05, 
-                            zIndex: 20,
-                            borderColor: 'rgba(99, 102, 241, 0.5)',
-                            boxShadow: '0 0 15px rgba(99, 102, 241, 0.3)'
-                          }}
-                        >
-                          {/* Cell Index Badge on Hover */}
-                          <div className="absolute top-1 left-1 bg-black/60 backdrop-blur-md px-1 rounded-[2px] opacity-0 group-hover/cell:opacity-100 transition-opacity border border-white/10">
-                            <span className="text-[8px] font-black text-indigo-400 tabular-nums">#{i + 1}</span>
-                          </div>
-                          
-                          {/* Scanner Line Effect on Hover */}
-                          <motion.div 
-                            className="absolute inset-0 bg-gradient-to-b from-transparent via-indigo-500/10 to-transparent h-[200%] w-full -top-full opacity-0 group-hover/cell:opacity-100"
-                            animate={{ top: ["-100%", "100%"] }}
-                            transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
-                          />
-                        </motion.div>
-                      );
-                    })}
-                  </motion.div>
-                ) : (
-                  <img src={node.properties.imageUrl} alt="uploaded" className="w-full h-full object-contain" />
-                )
-              ) : (
-                <div className="w-full h-full flex flex-col items-center justify-center text-gray-600 gap-2">
-                  <Plus className="w-5 h-5 opacity-20" />
-                  <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">点击上传</span>
-                </div>
-              )}
-            </div>
-            
-            <div className="flex flex-col gap-3">
-              <div 
-                className="w-full" 
-                data-node-action="true"
-                onMouseDown={(e) => e.stopPropagation()}
-                onPointerDown={(e) => e.stopPropagation()}
-              >
-                <Select
-                  value={node.properties.gridSplit || "none"}
-                  onChange={(value) => onUpdateProperty?.(node.id, "gridSplit", value)}
-                  className="w-full custom-select"
-                  styles={{ popup: { root: { backgroundColor: "#1c2230", border: "1px solid rgba(255, 255, 255, 0.1)" } } }}
-                  variant="filled"
-                  getPopupContainer={(trigger) => trigger.parentElement}
-                  options={[
-                    { value: "none", label: <div className="flex items-center justify-between w-full text-gray-400"><span>不切分</span><ImageIcon className="w-3 h-3 opacity-30" /></div> },
-                    { value: "2x2", label: <div className="flex items-center justify-between w-full"><span>4宫格 (2×2)</span><Grid3X3 className="w-3 h-3 text-indigo-400/80" /></div> },
-                    { value: "3x3", label: <div className="flex items-center justify-between w-full"><span>9宫格 (3×3)</span><Grid3X3 className="w-3 h-3 text-cyan-400/80" /></div> },
-                    { value: "4x4", label: <div className="flex items-center justify-between w-full"><span>16宫格 (4×4)</span><Grid3X3 className="w-3 h-3 text-amber-400/80" /></div> },
-                    { value: "5x5", label: <div className="flex items-center justify-between w-full"><span>25宫格 (5×5)</span><Grid3X3 className="w-3 h-3 text-rose-400/80" /></div> },
-                  ]}
-                  style={{ 
-                    backgroundColor: "#0d1117",
-                    borderRadius: "12px",
-                  }}
-                />
-              </div>
-            </div>
-          </div>
-        )}
-        {node.type === "upload_video" && (
-          <div className="space-y-4">
-            <div className={`relative rounded-xl overflow-hidden border transition-all duration-500 bg-[#0d1017] aspect-video group/vid ${
-              node.properties.frameAnalysis && node.properties.frameAnalysis !== "none" 
-              ? "border-rose-500/40 shadow-[0_0_20px_rgba(244,63,94,0.15)]" 
-              : "border-rose-500/20"
-            }`}>
-              {node.properties.videoUrl ? (
-                <div className="w-full h-full relative">
-                  <video 
-                    src={node.properties.videoUrl} 
-                    className="w-full h-full object-contain"
-                  />
-                  {/* Overlay Play Button for Style */}
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 group-hover/vid:opacity-100 transition-opacity">
-                    <div className="w-10 h-10 rounded-full bg-rose-500/20 border border-rose-500/40 flex items-center justify-center backdrop-blur-sm">
-                      <Play className="w-5 h-5 text-rose-400 ml-0.5" />
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="w-full h-full flex flex-col items-center justify-center text-gray-600 gap-2">
-                  <Plus className="w-5 h-5 opacity-20" />
-                  <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">点击上传</span>
-                </div>
-              )}
-            </div>
-
-            {/* Frame Analysis Results */}
-            <AnimatePresence>
-              {node.properties.frameAnalysis && node.properties.frameAnalysis !== "none" && node.properties.videoUrl && (
-                <motion.div 
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: "auto", opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  className="overflow-hidden"
-                >
-                  <div className="grid grid-cols-5 gap-1 pb-2">
-                    {(() => {
-                      const interval = parseFloat(node.properties.frameAnalysis);
-                      const duration = 10; // 模拟视频时长
-                      const frameCount = isNaN(interval) ? 5 : Math.floor(duration / interval);
-                      
-                      return Array.from({ length: Math.min(frameCount, 20) }).map((_, i) => (
-                        <motion.div 
-                          key={i}
-                          data-node-action="true"
-                          data-no-canvas-drag="true"
-                          onPointerDown={(e) => {
-                            e.stopPropagation();
-                          }}
-                          initial={{ scale: 0.8, opacity: 0 }}
-                          animate={{ scale: 1, opacity: 1 }}
-                          transition={{ delay: i * 0.05 }}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            e.preventDefault();
-                            const interval = parseFloat(node.properties.frameAnalysis);
-                            const duration = 10;
-                            const frameCount = isNaN(interval) ? 5 : Math.floor(duration / interval);
-                            const items = Array.from({ length: Math.min(frameCount, 20) }).map((_, idx) => 
-                              `https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=${encodeURIComponent(`high quality cinematic video frame analysis of a video, frame ${idx}, highly detailed`)}&image_size=square`
-                            );
-                            onPreview?.(items[i], `视频帧序列 #${i + 1}`, node.id, items, i);
-                          }}
-                          className="w-full aspect-square rounded-lg border border-rose-500/20 bg-[#161b22] relative group/frame cursor-pointer overflow-hidden shadow-lg z-10"
-                        >
-                          {/* 背景装饰网格 */}
-                          <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#f43f5e_1px,transparent_1px)] [background-size:4px_4px]" />
-                          
-                          {/* 模拟帧内容 - 使用高质量生成图作为模拟 */}
-                          <motion.div 
-                            className="absolute inset-0 bg-cover bg-center opacity-80 group-hover/frame:opacity-100 transition-opacity"
-                            style={{ 
-                              backgroundImage: `url(https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=${encodeURIComponent(`high quality cinematic video frame analysis of a video, frame ${i}, highly detailed`)}&image_size=square)`,
-                            }}
-                          />
-
-                          {/* 扫描线动效 */}
-                          <motion.div 
-                            className="absolute inset-0 bg-gradient-to-b from-transparent via-rose-500/20 to-transparent h-[200%] w-full -top-full pointer-events-none"
-                            animate={{ top: ["-100%", "100%"] }}
-                            transition={{ duration: 2, repeat: Infinity, ease: "linear", delay: i * 0.2 }}
-                          />
-
-                          {/* 悬停时的 Film 图标 */}
-                          <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover/frame:opacity-100 transition-opacity">
-                            <Film className="w-4 h-4 text-rose-400/80" />
-                          </div>
-
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-60" />
-
-                          <div className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/80 backdrop-blur-md rounded-md border border-white/10 z-10">
-                            <span className="text-[7px] font-black text-rose-400 tabular-nums">{(i * interval).toFixed(1)}s</span>
-                          </div>
-                        </motion.div>
-                      ));
-                    })()}
-                  </div>
-                  <div className="flex justify-between items-center mb-2 px-1">
-                    <span className="text-[8px] text-gray-500 font-bold tracking-widest uppercase">图像序列 ({Math.min(Math.floor(10 / parseFloat(node.properties.frameAnalysis)) || 0, 20)} 帧)</span>
-                    <span className="text-[8px] text-gray-600 font-medium tracking-wider">1024 × 1024 • PNG</span>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-            
-            <div 
-              className="w-full" 
-              data-node-action="true"
-              onMouseDown={(e) => e.stopPropagation()}
-              onPointerDown={(e) => e.stopPropagation()}
-            >
-              <Select
-                value={node.properties.frameAnalysis || "none"}
-                onChange={(value) => onUpdateProperty?.(node.id, "frameAnalysis", value)}
-                className="w-full custom-select-rose"
-                styles={{ popup: { root: { backgroundColor: "#1c2230", border: "1px solid rgba(244, 63, 94, 0.1)" } } }}
-                variant="filled"
-                getPopupContainer={(trigger) => trigger.parentElement}
-                options={[
-                  { value: "none", label: <div className="flex items-center justify-between w-full text-gray-400"><span>不拆分</span><Scissors className="w-3 h-3 opacity-30" /></div> },
-                  { value: "0.5", label: <div className="flex items-center justify-between w-full"><span>每 0.5 秒拆分</span><Layers className="w-3 h-3 text-rose-400/80" /></div> },
-                  { value: "1", label: <div className="flex items-center justify-between w-full"><span>每 1.0 秒拆分</span><Layers className="w-3 h-3 text-rose-400/80" /></div> },
-                  { value: "2", label: <div className="flex items-center justify-between w-full"><span>每 2.0 秒拆分</span><Layers className="w-3 h-3 text-rose-400/80" /></div> },
-                  { value: "5", label: <div className="flex items-center justify-between w-full"><span>每 5.0 秒拆分</span><Layers className="w-3 h-3 text-rose-400/80" /></div> },
-                ]}
-                style={{ 
-                  backgroundColor: "#0d1117",
-                  borderRadius: "12px",
-                }}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Footer Ports & Metadata - Only show for non-text/generative/upload nodes */}
-        {node.type !== "text_node" && node.type !== "image_node" && node.type !== "video_node" && 
-         node.type !== "upload_image" && node.type !== "upload_video" && (
+        {/* Footer Ports & Metadata - Only show for non-text/generative nodes */}
+        {node.type !== "text_node" && node.type !== "image_node" && node.type !== "video_node" && (
           <div className="mt-4 pt-4 border-t border-white/[0.05] space-y-3">
             {node.inputs.map((input) => (
               <div key={`${node.id}_input_${input.name}`} className="flex items-center gap-3 group/port">

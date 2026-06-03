@@ -279,4 +279,9 @@ body {
     48% { transform: scaleX(1); opacity: 1; }
     72% { transform: scaleX(0.82); opacity: 0.78; }
   }
+
+  @keyframes draft-link-flow {
+    from { stroke-dashoffset: 0; }
+    to { stroke-dashoffset: -80; }
+  }
 }

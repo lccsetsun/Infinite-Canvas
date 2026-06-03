@@ -118,7 +118,7 @@ const NODE_BLUEPRINTS: Partial<Record<NodeClass, NodeBlueprint>> = {
     outputs: [{ name: "文本", type: "STRING" }],
     properties: {
       text: "",
-      model: "deepseek-v4-flash",
+      model: "deepseek-chat",
       status: "idle",
       response: ""
     },
@@ -153,47 +153,13 @@ const NODE_BLUEPRINTS: Partial<Record<NodeClass, NodeBlueprint>> = {
     properties: {
       videoUrl: "",
       text: "",
-      model: "seedance-2-0-vip",
+      model: "MiniMax-Hailuo-2.3",
       aspect_ratio: "16:9",
-      resolution: "720P",
-      duration: "5s",
+      resolution: "768P",
+      duration: "6s",
       audio: true,
       quantity: "1个",
       videoTool: "text-to-video",
-    },
-  },
-  upload_image: {
-    title: "上传图片",
-    inputs: [],
-    outputs: [{ name: "图片", type: "IMAGE" }],
-    properties: { imageUrl: "" },
-  },
-  upload_video: {
-    title: "上传视频",
-    inputs: [],
-    outputs: [{ name: "视频", type: "VIDEO" }],
-    properties: { videoUrl: "" },
-  },
-  script_node: {
-    title: "分镜脚本",
-    inputs: [
-      { name: "剧本", type: "STRING" },
-    ],
-    outputs: [
-      { name: "分镜表", type: "SCRIPT" },
-      { name: "首张分镜图", type: "IMAGE" },
-    ],
-    properties: {
-      rows: [] as Array<{
-        id: string;
-        title: string;
-        prompt: string;
-        duration: number;
-      }>,
-      aspectRatio: "16:9",
-      imageModel: "flux-1",
-      videoModel: "sora",
-      defaultDuration: 5,
     },
   },
   audio_node: {

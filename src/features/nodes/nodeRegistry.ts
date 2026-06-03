@@ -20,8 +20,5 @@ export const AVAILABLE_NODE_TYPES: NodeClass[] = [
   "text_node",
   "image_node",
   "video_node",
-  "script_node",
   "audio_node",
-  "upload_image",
-  "upload_video",
 ];

@@ -20,11 +20,11 @@ describe("api provider presets", () => {
     expect(Object.keys(PROVIDER_PRESETS)).toEqual(["deepseek", "minimax"]);
   });
 
-  it("configures MiniMax image defaults", async () => {
+  it("configures MiniMax image and video defaults", async () => {
     expect(PROVIDER_PRESETS.minimax).toMatchObject({
       baseUrl: "https://api.minimaxi.com/v1",
       defaultModel: "image-01",
-      models: ["image-01"],
+      models: ["image-01", "MiniMax-Hailuo-2.3"],
     });
 
     await expect(
@@ -46,7 +46,7 @@ describe("api provider presets", () => {
       })
     ).resolves.toMatchObject({
       ok: true,
-      models: ["image-01"],
+      models: ["image-01", "MiniMax-Hailuo-2.3"],
     });
   });
 
@@ -120,5 +120,30 @@ describe("api provider presets", () => {
     expect(loadApiSettings().profiles.find((profile) => profile.provider === "minimax")?.baseUrl).toBe(
       "https://api.minimaxi.com/v1"
     );
+  });
+
+  it("migrates the old invalid DeepSeek flash model to deepseek-chat", () => {
+    const deepseek = {
+      ...makeDefaultProfile(),
+      id: "deepseek_profile",
+      model: "deepseek-v4-flash",
+    };
+
+    const store = new Map<string, string>();
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => store.set(key, value),
+    });
+
+    localStorage.setItem(
+      API_SETTINGS_STORAGE_KEY,
+      JSON.stringify({
+        profiles: [deepseek],
+        activeProfileId: deepseek.id,
+        autoTestOnSave: false,
+      })
+    );
+
+    expect(loadApiSettings().profiles.find((profile) => profile.provider === "deepseek")?.model).toBe("deepseek-chat");
   });
 });

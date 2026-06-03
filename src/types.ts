@@ -1,23 +1,8 @@
-export type DataType = "STRING" | "NUMBER" | "IMAGE" | "VIDEO" | "AUDIO" | "SCRIPT" | "MODEL" | "ANY";
+export type DataType = "STRING" | "NUMBER" | "IMAGE" | "VIDEO" | "AUDIO" | "MODEL" | "ANY";
 
 export interface NodeTerminal {
   name: string;
   type: DataType;
-}
-
-export interface StoryboardRow {
-  id: string;
-  title: string;
-  prompt: string;
-  duration: number;
-  imageUrl?: string;
-  videoUrl?: string;
-  imageStatus: "idle" | "loading" | "success" | "error";
-  videoStatus: "idle" | "loading" | "success" | "error";
-  imageError?: string;
-  videoError?: string;
-  model?: string;
-  aspectRatio?: string;
 }
 
 export type NodeClass =
@@ -40,9 +25,6 @@ export type NodeClass =
   | "text_node"
   | "image_node"
   | "video_node"
-  | "upload_image"
-  | "upload_video"
-  | "script_node"
   | "audio_node"
   | "group";
 
@@ -74,11 +56,20 @@ export interface GraphNode {
     number?: number;
     response?: string;
     imageUrl?: string;
+    imageDisplayWidth?: number;
+    imageDisplayHeight?: number;
+    imageNaturalWidth?: number;
+    imageNaturalHeight?: number;
+    videoDisplayWidth?: number;
+    videoDisplayHeight?: number;
+    videoNaturalWidth?: number;
+    videoNaturalHeight?: number;
+    videoFrameUrl?: string;
     audioUrl?: string;
     loading?: boolean;
     progress?: number;
+    status?: string;
     error?: string;
-    storyboard?: StoryboardRow[];
   };
 }
 
@@ -88,6 +79,16 @@ export interface GraphLink {
   fromOutputIndex: number;
   toNodeId: string;
   toInputIndex: number;
+}
+
+export interface VideoFrameAnalysisSegment {
+  title: string;
+  start: number;
+  end: number;
+  imageUrl: string;
+  width: number;
+  height: number;
+  frameCount: number;
 }
 
 export interface WorkflowPreset {

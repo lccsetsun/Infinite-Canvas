@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { createNodeFromType } from "../features/nodes/nodeFactory";
 import { getExecutor } from "../features/nodes/nodeExecutors";
 import { WORKFLOW_TEMPLATES } from "../features/templates/workflowTemplates";
-import { ExecutionLog, GraphLink, GraphNode, NodeClass } from "../types";
+import { ExecutionLog, GraphLink, GraphNode, NodeClass, VideoFrameAnalysisSegment } from "../types";
 import { findFirstCompatibleInputIndex, getLinkDraftIssue, isDataTypeCompatible } from "../utils/linking";
 import { NodeOutputMap, buildResolvedInputsMap, resolveNodeInputs, topologicalLevels } from "../runtime/dataflow";
 
@@ -18,6 +18,7 @@ const TRASH_PURGE_INTERVAL_MS = 60 * 60 * 1000;
 const VIDEO_IMAGE_INPUT = { name: "image", type: "IMAGE" as const };
 const MINIMAX_IMAGE_RATIOS = new Set(["1:1", "16:9", "4:3", "3:2", "2:3", "3:4", "9:16", "21:9"]);
 const IMAGE_NODE_MODEL_FALLBACKS = new Set(["", "lib-navo-pro", "flux-1", "sdxl", "midjourney"]);
+const TEXT_NODE_MODEL_FALLBACKS = new Set(["", "deepseek-v4-flash"]);
 
 interface HistorySnapshot {
   nodes: GraphNode[];
@@ -156,6 +157,19 @@ function mapToOutputs(map: NodeOutputMap): SerializedNodeOutput[] {
 
 function normalizeNodePorts(node: GraphNode): GraphNode {
   let nextNode = node;
+  if (nextNode.type === "text_node") {
+    const model = String(nextNode.properties.model || "");
+    if (TEXT_NODE_MODEL_FALLBACKS.has(model)) {
+      nextNode = {
+        ...nextNode,
+        properties: {
+          ...nextNode.properties,
+          model: "deepseek-chat",
+        },
+      };
+    }
+  }
+
   if (nextNode.type === "image_node") {
     const aspectRatio = String(nextNode.properties.aspect_ratio || "16:9");
     const model = String(nextNode.properties.model || "");
@@ -196,10 +210,14 @@ export interface UseWorkflowStateOptions {
     timeout?: number;
     systemPrompt?: string;
     useSystemProxy?: boolean;
+    deepseekBaseUrl?: string;
+    deepseekApiKey?: string;
+    deepseekModel?: string;
     minimaxApiKey?: string;
     minimaxBaseUrl?: string;
     providerApiKeys?: Partial<Record<string, string>>;
     providerBaseUrls?: Partial<Record<string, string>>;
+    providerModels?: Partial<Record<string, string>>;
   };
 }
 
@@ -330,7 +348,34 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     if (type === "video_node") {
       node.title = `视频节点 ${nodes.filter((n) => n.type === "video_node").length + 1}`;
     }
-    if (initialProps) node.properties = { ...node.properties, ...initialProps };
+    if (initialProps) {
+      const { __uploadedAssetUrl, __uploadedAssetKind, __uploadedAssetName, ...restProps } = initialProps;
+      node.properties = { ...node.properties, ...restProps };
+      if (__uploadedAssetKind === "image" && typeof __uploadedAssetUrl === "string") {
+        node.data = {
+          ...(node.data || {}),
+          imageUrl: __uploadedAssetUrl,
+          status: "success",
+          loading: false,
+        };
+        node.properties.imageUrl = __uploadedAssetUrl;
+        if (typeof __uploadedAssetName === "string" && __uploadedAssetName.trim()) {
+          node.title = `图片节点 ${nodes.filter((n) => n.type === "image_node").length + 1}`;
+        }
+      }
+      if (__uploadedAssetKind === "video" && typeof __uploadedAssetUrl === "string") {
+        node.data = {
+          ...(node.data || {}),
+          videoUrl: __uploadedAssetUrl,
+          status: "success",
+          loading: false,
+        };
+        node.properties.videoUrl = __uploadedAssetUrl;
+        if (typeof __uploadedAssetName === "string" && __uploadedAssetName.trim()) {
+          node.title = `视频节点 ${nodes.filter((n) => n.type === "video_node").length + 1}`;
+        }
+      }
+    }
     const nextNodes = [...nodes, node];
     setNodes(nextNodes);
     setSelectedNodeId(node.id);
@@ -489,6 +534,86 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     setNodes((prev) => prev.map((n) => (n.id === nodeId ? { ...n, data: { ...(n.data || {}), ...data } } : n)));
   }, []);
 
+  const addVideoFrameAnalysis = useCallback(
+    (videoNodeId: string, segments: VideoFrameAnalysisSegment[], analysisMarkdown: string) => {
+      const sourceNode = nodes.find((n) => n.id === videoNodeId);
+      if (!sourceNode || segments.length === 0) {
+        appendLog("warning", "逐帧分析失败:未找到视频节点或没有可用分段");
+        return;
+      }
+
+      const baseX = sourceNode.x + 720;
+      const baseY = sourceNode.y;
+      const nextNodes = [...nodes];
+      const nextLinks = [...links];
+      const nextOutputs: NodeOutputMap = new Map(nodeOutputs);
+      const createdNodes: GraphNode[] = [];
+
+      segments.forEach((segment, index) => {
+        const id = makeId("node");
+        const node = createNodeFromType("image_node", id, baseX, baseY + index * 230);
+        node.title = segment.title;
+        node.properties = {
+          ...node.properties,
+          imageUrl: segment.imageUrl,
+          text: "",
+        };
+        node.data = {
+          imageUrl: segment.imageUrl,
+          imageNaturalWidth: segment.width,
+          imageNaturalHeight: segment.height,
+          imageDisplayWidth: Math.min(280, segment.width),
+          imageDisplayHeight: Math.round(Math.min(280, segment.width) * (segment.height / Math.max(segment.width, 1))),
+        };
+        nextNodes.push(node);
+        createdNodes.push(node);
+        nextOutputs.set(id, new Map([[0, segment.imageUrl]]));
+        nextLinks.push({
+          id: makeId("link"),
+          fromNodeId: sourceNode.id,
+          fromOutputIndex: 0,
+          toNodeId: id,
+          toInputIndex: 0,
+        });
+      });
+
+      if (analysisMarkdown.trim()) {
+        const id = makeId("node");
+        const node = createNodeFromType("text_node", id, baseX, baseY + segments.length * 230 + 48);
+        node.title = `视频分析 ${segments.length}段`;
+        node.properties = {
+          ...node.properties,
+          response: analysisMarkdown,
+          text: "视频逐帧分析结果",
+        };
+        node.data = { response: analysisMarkdown, loading: false, status: "success" };
+        nextNodes.push(node);
+        createdNodes.push(node);
+        nextOutputs.set(id, new Map([[0, analysisMarkdown]]));
+        nextLinks.push({
+          id: makeId("link"),
+          fromNodeId: sourceNode.id,
+          fromOutputIndex: 0,
+          toNodeId: id,
+          toInputIndex: 1,
+        });
+      }
+
+      setNodes(nextNodes);
+      setLinks(nextLinks);
+      setNodeOutputs(nextOutputs);
+      setSelectedNodeId(createdNodes[0]?.id ?? sourceNode.id);
+      syncCurrentWorkflowMeta((wf) => ({
+        ...wf,
+        summary: { ...wf.summary, updatedAt: Date.now() },
+        data: { ...wf.data, nodes: nextNodes, links: nextLinks, nodeOutputs: mapToOutputs(nextOutputs) },
+      }));
+      pushHistory({ nodes: nextNodes, links: nextLinks });
+      appendLog("success", `逐帧分析完成:生成 ${segments.length} 个关键帧节点${analysisMarkdown.trim() ? "和 1 个分析文本节点" : ""}`);
+    },
+    [appendLog, links, nodeOutputs, nodes, pushHistory, syncCurrentWorkflowMeta]
+  );
+
   const updateSelectedProperty = (key: string, value: unknown) => {
     if (!selectedNodeId) return;
     updateNodeProperty(selectedNodeId, key, value);
@@ -583,7 +708,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       }
 
       const inputs = resolveNodeInputs(node, links, nodeOutputs);
-      updateNodeData(nodeId, { loading: true, error: undefined });
+      updateNodeData(nodeId, { loading: true, error: undefined, response: undefined, status: "loading" });
       appendLog("info", `开始执行 [${node.title}]`);
 
       try {
@@ -595,7 +720,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         appendLog("success", `[${node.title}] 完成`);
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
-        updateNodeData(nodeId, { loading: false, error: message });
+        updateNodeData(nodeId, { loading: false, error: message, status: "error" });
         appendLog("error", `[${node.title}] 失败:${message}`);
       }
     },
@@ -1277,6 +1402,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     updateNodePosition,
     updateNodeProperty,
     updateNodeData,
+    addVideoFrameAnalysis,
     clearCanvas,
     clearExecution,
     addLinkFromDraft,

@@ -13,10 +13,14 @@ export interface ExecutorContext {
     timeout?: number;
     systemPrompt?: string;
     useSystemProxy?: boolean;
+    deepseekBaseUrl?: string;
+    deepseekApiKey?: string;
+    deepseekModel?: string;
     minimaxApiKey?: string;
     minimaxBaseUrl?: string;
     providerApiKeys?: Partial<Record<string, string>>;
     providerBaseUrls?: Partial<Record<string, string>>;
+    providerModels?: Partial<Record<string, string>>;
   };
   signal?: AbortSignal;
   onProgress?: (percent: number) => void;
@@ -29,11 +33,17 @@ export interface ExecutorResult {
 
 export type NodeExecutor = (ctx: ExecutorContext) => Promise<ExecutorResult>;
 
-export const TEXT_NODE_MODEL = "deepseek-v4-flash";
+export const TEXT_NODE_MODEL = "deepseek-chat";
 export const MINIMAX_IMAGE_MODEL = "image-01";
+export const MINIMAX_VIDEO_MODEL = "MiniMax-Hailuo-2.3";
 
 const MINIMAX_ASPECT_RATIOS = new Set(["1:1", "16:9", "4:3", "3:2", "2:3", "3:4", "9:16", "21:9"]);
 const MINIMAX_IMAGE_MODELS = new Set([MINIMAX_IMAGE_MODEL]);
+const MINIMAX_VIDEO_MODELS = new Set([MINIMAX_VIDEO_MODEL, "minimax-video"]);
+const DEEPSEEK_MODEL_ALIASES: Record<string, string> = {
+  "": TEXT_NODE_MODEL,
+  "deepseek-v4-flash": TEXT_NODE_MODEL,
+};
 
 export function normalizeApiKey(apiKey: string): string {
   return apiKey.trim();
@@ -127,6 +137,11 @@ function pickNumber(inputs: Record<string, unknown>, properties: Record<string, 
   return undefined;
 }
 
+function normalizeTextModel(model: unknown): string {
+  const value = typeof model === "string" ? model.trim() : "";
+  return DEEPSEEK_MODEL_ALIASES[value] || value || TEXT_NODE_MODEL;
+}
+
 function buildTextToImageUrl(prompt: string, aspect: string): string {
   const map: Record<string, string> = {
     "1:1": "square_hd",
@@ -148,6 +163,22 @@ function parseImageCount(value: unknown): number {
   const raw = typeof value === "string" ? Number.parseInt(value, 10) : Number(value);
   if (!Number.isFinite(raw)) return 1;
   return Math.min(9, Math.max(1, Math.trunc(raw)));
+}
+
+function parseDurationSeconds(value: unknown): number {
+  const raw = typeof value === "string" ? Number.parseInt(value, 10) : Number(value);
+  if (!Number.isFinite(raw)) return 6;
+  return raw <= 6 ? 6 : 10;
+}
+
+function normalizeMiniMaxVideoModel(model: unknown): string {
+  const value = typeof model === "string" ? model.trim() : "";
+  return value === "minimax-video" || !value ? MINIMAX_VIDEO_MODEL : value;
+}
+
+function normalizeMiniMaxVideoResolution(value: unknown): string {
+  const resolution = typeof value === "string" ? value.trim().toUpperCase() : "";
+  return resolution === "1080P" ? "1080P" : "768P";
 }
 
 async function callMiniMaxTextToImage(
@@ -207,26 +238,89 @@ async function callMiniMaxTextToImage(
   };
 }
 
+async function callMiniMaxTextToVideo(
+  properties: Record<string, unknown>,
+  prompt: string,
+  model: string,
+  minimaxApiKey?: string,
+  minimaxBaseUrl?: string,
+  imageUrl?: string
+): Promise<{
+  videoUrl: string;
+  taskId?: string;
+  fileId?: string;
+  metadata?: Record<string, unknown>;
+}> {
+  if (!prompt.trim()) {
+    throw new Error("请输入视频生成提示词");
+  }
+  if (prompt.length > 2000) {
+    throw new Error("MiniMax 视频提示词最长 2000 字符，请精简后重试");
+  }
+
+  const duration = parseDurationSeconds(properties.duration);
+  const resolution = normalizeMiniMaxVideoResolution(properties.resolution);
+  const aspectRatio = String(properties.aspect_ratio || "16:9");
+  const response = await fetch("/api/minimax/video-generation", {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      ...(minimaxApiKey?.trim() ? { "X-MiniMax-Api-Key": minimaxApiKey.trim() } : {}),
+    },
+    body: JSON.stringify({
+      model,
+      prompt,
+      first_frame_image: imageUrl || undefined,
+      duration,
+      resolution,
+      aspect_ratio: MINIMAX_ASPECT_RATIOS.has(aspectRatio) ? aspectRatio : "16:9",
+      prompt_optimizer: properties.prompt_optimizer === true,
+      base_url: minimaxBaseUrl,
+    }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data?.error || `MiniMax 视频生成失败 (${response.status})`);
+  }
+
+  const videoUrl = typeof data?.videoUrl === "string" ? data.videoUrl : "";
+  if (!videoUrl) {
+    throw new Error("MiniMax 未返回视频链接");
+  }
+
+  return {
+    videoUrl,
+    taskId: typeof data?.taskId === "string" ? data.taskId : undefined,
+    fileId: typeof data?.fileId === "string" ? data.fileId : undefined,
+    metadata: typeof data?.metadata === "object" && data.metadata ? data.metadata : undefined,
+  };
+}
+
 export const executors: Partial<Record<NodeClass, NodeExecutor>> = {
   text_node: async ({ inputs, properties, apiConfig }) => {
     const userPrompt = pickString(inputs, properties, "user_prompt", "prompt");
     const nodeSystemPrompt = pickString(inputs, properties, "system_prompt");
-    const model = String(properties.model || apiConfig.model || TEXT_NODE_MODEL);
-    const isGemini = (apiConfig.baseUrl || "").includes("generativelanguage.googleapis.com");
+    const deepseekBaseUrl = apiConfig.providerBaseUrls?.deepseek || apiConfig.deepseekBaseUrl || apiConfig.baseUrl;
+    const deepseekApiKey = apiConfig.providerApiKeys?.deepseek || apiConfig.deepseekApiKey || apiConfig.apiKey;
+    const deepseekModel = apiConfig.providerModels?.deepseek || apiConfig.deepseekModel || apiConfig.model;
+    const model = normalizeTextModel(properties.model || deepseekModel);
+    const isGemini = (deepseekBaseUrl || "").includes("generativelanguage.googleapis.com");
 
     let text = "";
     if (isGemini) {
       const result = await callGeminiProxy(
         { model, contents: userPrompt, config: { systemInstruction: nodeSystemPrompt } },
-        apiConfig.apiKey
+        deepseekApiKey
       );
       text = result.text;
     } else {
       text = (
         await callOpenAICompatible(
           {
-            baseUrl: apiConfig.baseUrl,
-            apiKey: apiConfig.apiKey,
+            baseUrl: deepseekBaseUrl,
+            apiKey: deepseekApiKey,
             model,
             temperature: apiConfig.temperature,
             maxTokens: apiConfig.maxTokens,
@@ -266,12 +360,28 @@ export const executors: Partial<Record<NodeClass, NodeExecutor>> = {
     return { outputs: { 0: imageUrl }, patch: { imageUrl, status: "success" } };
   },
 
-  video_node: async ({ inputs, properties }) => {
+  video_node: async ({ inputs, properties, apiConfig }) => {
     const prompt = pickString(inputs, properties, "prompt");
     const imageUrl = (inputs.image as string) || (inputs["首帧"] as string) || "";
-    const _duration = pickNumber(inputs, properties, "duration");
-    const videoUrl = `https://assets.mixkit.co/videos/preview/mixkit-abstract-flowing-teal-and-blue-gradient-background-40030-large.mp4?seed=${encodeURIComponent(`${prompt}|${imageUrl}`)}`;
-    return { outputs: { 0: videoUrl }, patch: { videoUrl, referenceImage: imageUrl || undefined } };
+    const model = normalizeMiniMaxVideoModel(properties.model);
+    if (MINIMAX_VIDEO_MODELS.has(model)) {
+      const minimaxApiKey = apiConfig.providerApiKeys?.minimax || apiConfig.minimaxApiKey;
+      const minimaxBaseUrl = apiConfig.providerBaseUrls?.minimax || apiConfig.minimaxBaseUrl;
+      const result = await callMiniMaxTextToVideo(properties, prompt, model, minimaxApiKey, minimaxBaseUrl, imageUrl);
+      return {
+        outputs: { 0: result.videoUrl },
+        patch: {
+          videoUrl: result.videoUrl,
+          referenceImage: imageUrl || undefined,
+          minimaxVideoTaskId: result.taskId,
+          minimaxVideoFileId: result.fileId,
+          minimaxVideoMetadata: result.metadata,
+          status: "success",
+        },
+      };
+    }
+
+    throw new Error(`不支持的视频模型: ${model}`);
   },
 
   string_input: async ({ properties }) => {
@@ -284,14 +394,6 @@ export const executors: Partial<Record<NodeClass, NodeExecutor>> = {
 
   load_image: async ({ properties }) => {
     return { outputs: { 0: (properties.imageUrl as string) ?? "" } };
-  },
-
-  upload_image: async ({ properties }) => {
-    return { outputs: { 0: (properties.imageUrl as string) ?? "" } };
-  },
-
-  upload_video: async ({ properties }) => {
-    return { outputs: { 0: (properties.videoUrl as string) ?? "" } };
   },
 
   string_concat: async ({ inputs, properties }) => {
@@ -363,20 +465,6 @@ export const executors: Partial<Record<NodeClass, NodeExecutor>> = {
     return { outputs: { 0: prompt } };
   },
 
-  script_node: async ({ inputs, properties }) => {
-    const upstreamScript = pickString(inputs, properties, "剧本", "script");
-    const storedRows = (properties.rows as Array<{ id: string; title: string; prompt: string; duration: number }>) ?? [];
-    const stories = storedRows.length > 0 ? storedRows : (upstreamScript ? parseScriptIntoRows(upstreamScript) : []);
-    const firstImage = (properties.firstImageUrl as string) || "";
-    return {
-      outputs: {
-        0: JSON.stringify({ rows: stories }),
-        1: firstImage,
-      },
-      patch: { storyboard: stories.map((r) => ({ ...r, imageStatus: "idle", videoStatus: "idle" })) },
-    };
-  },
-
   audio_node: async ({ inputs, properties }) => {
     const prompt = pickString(inputs, properties, "prompt", "提示词");
     const duration = pickNumber(inputs, properties, "duration") ?? Number(properties.duration ?? 8);
@@ -387,29 +475,6 @@ export const executors: Partial<Record<NodeClass, NodeExecutor>> = {
     };
   },
 };
-
-function parseScriptIntoRows(script: string): Array<{ id: string; title: string; prompt: string; duration: number }> {
-  const lines = script
-    .split(/\n+/)
-    .map((l) => l.trim())
-    .filter((l) => l.length > 0);
-  const rows: Array<{ id: string; title: string; prompt: string; duration: number }> = [];
-  let idx = 1;
-  for (const line of lines) {
-    const m = line.match(/^(?:镜头|分镜|scene)?\s*(\d+)\s*[.、:：-]?\s*(.+?)(?:[（(](\d+)\s*s?[）)])?$/i);
-    if (m) {
-      const num = m[1] ? parseInt(m[1], 10) : idx;
-      const title = (m[2] || "").trim();
-      const dur = m[3] ? parseInt(m[3], 10) : 5;
-      rows.push({ id: `row_${Date.now()}_${rows.length}`, title: `分镜 ${num}`, prompt: title, duration: dur });
-    } else {
-      rows.push({ id: `row_${Date.now()}_${rows.length}`, title: `分镜 ${idx}`, prompt: line, duration: 5 });
-    }
-    idx += 1;
-    if (rows.length >= 12) break;
-  }
-  return rows;
-}
 
 export function getExecutor(type: NodeClass): NodeExecutor | undefined {
   return executors[type];

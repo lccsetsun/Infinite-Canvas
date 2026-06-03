@@ -4,11 +4,9 @@ import NodeCard from "../canvas/NodeCard";
 import TextNodeCard from "../canvas/TextNodeCard";
 import ImageNodeCard from "../canvas/ImageNodeCard";
 import VideoNodeCard from "../canvas/VideoNodeCard";
-import StoryboardNodeCard from "../canvas/StoryboardNodeCard";
 import AudioNodeCard from "../canvas/AudioNodeCard";
 import { getInputAnchor, getOutputAnchor } from "../canvas/geometry";
-import { GraphNode } from "../../types";
-import { generateAllStoryboardRows, generateStoryboardRow, StoryboardGenContext } from "../../features/nodes/storyboardGenerator";
+import { GraphNode, VideoFrameAnalysisSegment } from "../../types";
 
 interface CanvasNodeLayerProps {
   apiConfig: {
@@ -34,6 +32,7 @@ interface CanvasNodeLayerProps {
   onLeaveCanvasLinkTarget: (nodeId: string, inputIndex: number) => void;
   onNodeDragStart: (event: React.PointerEvent, node: GraphNode) => void;
   onPreview: (content: string, title?: string, nodeId?: string, items?: string[], currentIndex?: number) => void;
+  onAnalyzeVideo?: (node: GraphNode, segments: VideoFrameAnalysisSegment[]) => Promise<void> | void;
   onSelectNode: (nodeId: string, e?: React.MouseEvent) => void;
   onUpdateNodeData: (nodeId: string, data: any) => void;
   onUpdateNodeProperty: (nodeId: string, key: string, value: unknown) => void;
@@ -62,6 +61,7 @@ export default function CanvasNodeLayer({
   onLeaveCanvasLinkTarget,
   onNodeDragStart,
   onPreview,
+  onAnalyzeVideo,
   onSelectNode,
   onUpdateNodeData,
   onUpdateNodeProperty,
@@ -77,11 +77,6 @@ export default function CanvasNodeLayer({
     >
       <AnimatePresence>
         {nodes.map((node) => {
-          const storyboardCtx: StoryboardGenContext = {
-            getNode: (id) => nodes.find((n) => n.id === id),
-            onUpdateNodeData,
-            onUpdateNodeProperty,
-          };
           return (
           <div
             key={node.id}
@@ -105,6 +100,7 @@ export default function CanvasNodeLayer({
                   onNodeDragStart(e, currentNode);
                 }}
                 onUpdateProperty={onUpdateNodeProperty}
+                onUpdateData={onUpdateNodeData}
                 onPreview={onPreview}
                 resolvedInputs={resolvedInputsMap?.get(node.id)}
                 onRun={onRunNode}
@@ -136,7 +132,9 @@ export default function CanvasNodeLayer({
                   onNodeDragStart(e, currentNode);
                 }}
                 onUpdateProperty={onUpdateNodeProperty}
+                onUpdateData={onUpdateNodeData}
                 onPreview={onPreview}
+                onAnalyzeVideo={onAnalyzeVideo}
                 resolvedInputs={resolvedInputsMap?.get(node.id)}
                 onRun={onRunNode}
                 // 连线相关
@@ -167,43 +165,10 @@ export default function CanvasNodeLayer({
                   onNodeDragStart(e, currentNode);
                 }}
                 onUpdateProperty={onUpdateNodeProperty}
+                onUpdateData={onUpdateNodeData}
                 onPreview={onPreview}
                 resolvedInputs={resolvedInputsMap?.get(node.id)}
                 onRun={onRunNode}
-                // 连线相关
-                isLinkingOnCanvas={isLinkingOnCanvas}
-                linkFromNodeId={linkFromNodeId}
-                linkFromOutputIndex={linkFromOutputIndex}
-                linkToNodeId={linkToNodeId}
-                linkToInputIndex={linkToInputIndex}
-                onBeginCanvasLink={onBeginCanvasLink}
-                onFinishCanvasLink={onFinishCanvasLink}
-                onHoverCanvasLinkTarget={onHoverCanvasLinkTarget}
-                onLeaveCanvasLinkTarget={onLeaveCanvasLinkTarget}
-                getCanvasLinkTargetIssue={getCanvasLinkTargetIssue}
-              />
-            ) : node.type === "script_node" ? (
-              <StoryboardNodeCard
-                node={node}
-                selected={selectedNodeId === node.id}
-                onSelect={(e) => onSelectNode(node.id, e)}
-                onDelete={() => onDeleteNode(node.id)}
-                onDuplicate={() => onDuplicateNode(node.id)}
-                onDragStart={(e, currentNode) => {
-                  if (isLinkingOnCanvas) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    return;
-                  }
-                  onNodeDragStart(e, currentNode);
-                }}
-                onUpdateProperty={onUpdateNodeProperty}
-                onPreview={onPreview}
-                onGenerateRowImage={(nodeId, rowId) => generateStoryboardRow(nodeId, rowId, "image", storyboardCtx)}
-                onGenerateRowVideo={(nodeId, rowId) => generateStoryboardRow(nodeId, rowId, "video", storyboardCtx)}
-                onGenerateAllImages={(nodeId) => generateAllStoryboardRows(nodeId, "image", storyboardCtx)}
-                onGenerateAllVideos={(nodeId) => generateAllStoryboardRows(nodeId, "video", storyboardCtx)}
-                onRerunNode={onRunNode}
                 // 连线相关
                 isLinkingOnCanvas={isLinkingOnCanvas}
                 linkFromNodeId={linkFromNodeId}
@@ -276,7 +241,7 @@ export default function CanvasNodeLayer({
 
       {nodes.map((node) => {
         // LibTV 风格节点不再重复渲染外部端口按钮
-        if (["text_node", "image_node", "video_node", "audio_node", "script_node"].includes(node.type)) return null;
+        if (["text_node", "image_node", "video_node", "audio_node"].includes(node.type)) return null;
         
         return node.outputs.map((output, idx) => {
           const anchor = getOutputAnchor(node, idx);
@@ -312,7 +277,7 @@ export default function CanvasNodeLayer({
 
       {nodes.map((node) => {
         // LibTV 风格节点不再重复渲染外部端口按钮
-        if (["text_node", "image_node", "video_node", "audio_node", "script_node"].includes(node.type)) return null;
+        if (["text_node", "image_node", "video_node", "audio_node"].includes(node.type)) return null;
         
         return node.inputs.map((input, idx) => {
           const anchor = getInputAnchor(node, idx);

@@ -17,19 +17,19 @@ export const PROVIDER_PRESETS: Record<ApiProvider, ProviderPreset> = {
     label: "DeepSeek",
     description: "深度求索,高性价比中文模型",
     baseUrl: "https://api.deepseek.com",
-    models: ["deepseek-v4-flash", "deepseek-chat", "deepseek-reasoner"],
+    models: ["deepseek-chat", "deepseek-reasoner"],
     defaultModel: "deepseek-chat",
     keyHint: "sk-...",
     docsUrl: "https://platform.deepseek.com/api_keys",
   },
   minimax: {
     label: "MiniMax",
-    description: "MiniMax 图像生成与多模态能力",
+    description: "MiniMax 图像与视频生成能力",
     baseUrl: "https://api.minimaxi.com/v1",
-    models: ["image-01"],
+    models: ["image-01", "MiniMax-Hailuo-2.3"],
     defaultModel: "image-01",
     keyHint: "MiniMax API Key",
-    docsUrl: "https://platform.minimax.io/docs/api-reference/image-generation-t2i",
+    docsUrl: "https://platform.minimax.io/docs/api-reference/video-generation-t2v",
   },
 };
 
@@ -164,12 +164,13 @@ function migrateProfileFields(s: ApiSettings): ApiSettings {
     .map((p) => {
       const preset = PROVIDER_PRESETS[p.provider];
       const shouldUsePresetBaseUrl = p.provider === "minimax" && (!p.baseUrl || p.baseUrl.includes("api.minimax.io"));
+      const shouldMigrateDeepSeekModel = p.provider === "deepseek" && (!p.model || p.model === "deepseek-v4-flash");
       return {
         ...makeDefaultProfile(),
         ...p,
         provider: p.provider,
         baseUrl: shouldUsePresetBaseUrl ? preset.baseUrl : p.baseUrl,
-        model: p.model || preset.defaultModel,
+        model: shouldMigrateDeepSeekModel ? preset.defaultModel : p.model || preset.defaultModel,
         id: p.id || makeId("api"),
       };
     });
@@ -245,9 +246,9 @@ export async function testConnection(profile: ApiProfile, signal?: AbortSignal):
       }
       return {
         ok: true,
-        message: "MiniMax 配置已保存，图片节点运行时会通过本地代理验证密钥",
+        message: "MiniMax 配置已保存，图片/视频节点运行时会通过本地代理验证密钥",
         latencyMs: Math.round(performance.now() - start),
-        models: [profile.model || "image-01"],
+        models: PROVIDER_PRESETS.minimax.models,
       };
     } else {
       const base = profile.baseUrl.replace(/\/+$/, "");

@@ -5,6 +5,7 @@ import CanvasControls from "./components/app/CanvasControls";
 import CanvasHistoryDock from "./components/app/CanvasHistoryDock";
 import CanvasNodeLayer from "./components/app/CanvasNodeLayer";
 import CanvasStatusBar from "./components/app/CanvasStatusBar";
+import DraftLinkOverlay from "./components/app/DraftLinkOverlay";
 import GroupsLayer from "./components/app/GroupsLayer";
 import FloatingToolbar from "./components/FloatingToolbar";
 import EmptyCanvasState from "./components/app/EmptyCanvasState";
@@ -22,7 +23,7 @@ import { useWorkflowState } from "./hooks/useWorkflowState";
 import { useAppUiState } from "./hooks/useAppUiState";
 import { shouldFinishCanvasLinkOnCanvasPointerUp } from "./utils/canvasPointerPolicy";
 import { ConfigProvider, theme } from "antd";
-import { NodeClass } from "./types";
+import { GraphNode, NodeClass, VideoFrameAnalysisSegment } from "./types";
 import { ApiSettings, getActiveProfile, getProviderProfile, loadApiSettings, saveApiSettings } from "./features/api/apiSettings";
 
 const LogicPanel = React.lazy(() => import("./components/LogicPanel"));
@@ -37,6 +38,7 @@ export default function App() {
 
   const [apiSettings, setApiSettings] = React.useState<ApiSettings>(() => loadApiSettings());
   const activeApiProfile = React.useMemo(() => getActiveProfile(apiSettings), [apiSettings]);
+  const deepseekApiProfile = React.useMemo(() => getProviderProfile(apiSettings, "deepseek"), [apiSettings]);
   const minimaxApiProfile = React.useMemo(() => getProviderProfile(apiSettings, "minimax"), [apiSettings]);
   const apiBaseUrl = activeApiProfile.baseUrl;
   const apiKey = activeApiProfile.apiKey;
@@ -71,6 +73,7 @@ export default function App() {
     updateNodePosition,
     updateNodeProperty,
     updateNodeData,
+    addVideoFrameAnalysis,
     logs,
     linkFromNodeId,
     linkToNodeId,
@@ -126,13 +129,22 @@ export default function App() {
       timeout: activeApiProfile.timeout,
       systemPrompt: activeApiProfile.systemPrompt,
       useSystemProxy: activeApiProfile.useSystemProxy,
+      deepseekBaseUrl: deepseekApiProfile?.baseUrl || "",
+      deepseekApiKey: deepseekApiProfile?.apiKey || "",
+      deepseekModel: deepseekApiProfile?.model || "",
       minimaxApiKey: minimaxApiProfile?.apiKey || "",
       minimaxBaseUrl: minimaxApiProfile?.baseUrl || "",
       providerApiKeys: {
+        deepseek: deepseekApiProfile?.apiKey || "",
         minimax: minimaxApiProfile?.apiKey || "",
       },
       providerBaseUrls: {
+        deepseek: deepseekApiProfile?.baseUrl || "",
         minimax: minimaxApiProfile?.baseUrl || "",
+      },
+      providerModels: {
+        deepseek: deepseekApiProfile?.model || "",
+        minimax: minimaxApiProfile?.model || "",
       },
     },
   });
@@ -271,6 +283,46 @@ export default function App() {
       setSelectedNodeIds(new Set());
     }
   };
+
+  const handleAnalyzeVideo = React.useCallback(
+    async (node: GraphNode, segments: VideoFrameAnalysisSegment[]) => {
+      const videoUrl = (node.data?.videoUrl as string) || (node.properties.videoUrl as string) || "";
+      if (!videoUrl || segments.length === 0) {
+        showNotice("没有可分析的视频或关键帧");
+        return;
+      }
+
+      showNotice("正在调用大模型分析视频运动");
+      let analysisMarkdown = "";
+      try {
+        const response = await fetch("/api/video/frame-analysis", {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+            ...(deepseekApiProfile?.apiKey ? { "X-DeepSeek-Api-Key": deepseekApiProfile.apiKey } : {}),
+            ...(deepseekApiProfile?.baseUrl ? { "X-DeepSeek-Base-Url": deepseekApiProfile.baseUrl } : {}),
+            ...(deepseekApiProfile?.model ? { "X-DeepSeek-Model": deepseekApiProfile.model } : {}),
+          },
+          body: JSON.stringify({
+            video_url: videoUrl,
+            segments: segments.map(({ title, start, end, frameCount, width, height }) => ({ title, start, end, frameCount, width, height })),
+          }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data?.error || "视频分析失败");
+        analysisMarkdown = typeof data?.text === "string" ? data.text : "";
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "视频分析失败";
+        analysisMarkdown = `## 视频逐帧分析\n\n后端分析失败: ${message}\n\n已生成关键帧拼图节点,可先查看每个 15 秒分段的画面变化。`;
+        showNotice(message);
+      }
+
+      addVideoFrameAnalysis(node.id, segments, analysisMarkdown);
+      showNotice("逐帧分析完成");
+    },
+    [addVideoFrameAnalysis, deepseekApiProfile, showNotice]
+  );
 
   const handleUngroup = React.useCallback((groupId: string) => {
     ungroup(groupId);
@@ -417,7 +469,7 @@ export default function App() {
           
           // 点击背景时取消所有选择 (如果没有点击到节点或动作按钮)
           const target = e.target as HTMLElement;
-          if (!target.closest("[data-node-action='true'], .node-card, .storyboard-node-card, button, input, select, textarea")) {
+          if (!target.closest("[data-node-action='true'], .node-card, button, input, select, textarea")) {
             setSelectedNodeId(null);
             setSelectedNodeIds(new Set());
             setSelectedGroupId(null);
@@ -464,6 +516,7 @@ export default function App() {
           draftToInputIndex={linkToInputIndex}
           draftIssue={linkDraftIssue}
           draftCursor={draftCursor}
+          renderDraftPreview={false}
         />
 
         <GroupsLayer
@@ -587,12 +640,26 @@ export default function App() {
           onPreview={(content, title, nodeId, items, currentIndex) =>
             setPreviewContent({ title: title || "预览内容", content, nodeId, items, currentIndex })
           }
+          onAnalyzeVideo={handleAnalyzeVideo}
           onSelectNode={(nodeId, e) => handleSelectNode(nodeId, e)}
           onUpdateNodeData={updateNodeData}
           onUpdateNodeProperty={updateNodeProperty}
           resolvedInputsMap={resolvedInputsMap}
           onRunNode={runNode}
         />
+        {isLinkingOnCanvas && (
+          <DraftLinkOverlay
+            nodes={nodes}
+            pan={pan}
+            zoom={zoom}
+            draftFromNodeId={linkFromNodeId}
+            draftToNodeId={linkToNodeId}
+            draftFromOutputIndex={linkFromOutputIndex}
+            draftToInputIndex={linkToInputIndex}
+            draftIssue={linkDraftIssue}
+            draftCursor={draftCursor}
+          />
+        )}
         {showLogicPanel && (
           <React.Suspense fallback={panelFallback}>
             <LogicPanel

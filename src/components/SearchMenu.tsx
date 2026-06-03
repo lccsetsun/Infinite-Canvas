@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from "react";
-import { FileText, Sparkles, Video, ChevronRight, Image as ImageIcon, Film, Clapperboard, Music2 } from "lucide-react";
+import { FileText, Sparkles, Video, ChevronRight, Image as ImageIcon, Film, Music2 } from "lucide-react";
 import { NodeClass } from "../types";
 import { motion } from "motion/react";
 
@@ -12,6 +12,8 @@ interface SearchMenuProps {
   onHoverStart?: () => void;
   onHoverEnd?: () => void;
 }
+
+type SearchMenuAction = NodeClass | "upload_image" | "upload_video";
 
 const MenuItem = ({ 
   onClick, 
@@ -59,7 +61,7 @@ export default function SearchMenu({ x, y, isContextMenu, onAddNode, onClose, on
     return () => document.removeEventListener("pointerdown", handlePointerDownOutside);
   }, [onClose]);
 
-  const handleSelect = (type: NodeClass) => {
+  const handleSelect = (type: SearchMenuAction) => {
     if (type === "upload_image") {
       imageInputRef.current?.click();
       return;
@@ -72,14 +74,21 @@ export default function SearchMenu({ x, y, isContextMenu, onAddNode, onClose, on
     onClose();
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: NodeClass) => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: "upload_image" | "upload_video") => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     const url = URL.createObjectURL(file);
-    const propKey = type === "upload_image" ? "imageUrl" : "videoUrl";
-    
-    onAddNode(type, x, y, { [propKey]: url });
+    const isImage = type === "upload_image";
+    const nodeType: NodeClass = isImage ? "image_node" : "video_node";
+    const propKey = isImage ? "imageUrl" : "videoUrl";
+
+    onAddNode(nodeType, x, y, {
+      [propKey]: url,
+      __uploadedAssetUrl: url,
+      __uploadedAssetKind: isImage ? "image" : "video",
+      __uploadedAssetName: file.name,
+    });
     e.target.value = "";
     onClose();
   };
@@ -141,13 +150,6 @@ export default function SearchMenu({ x, y, isContextMenu, onAddNode, onClose, on
                 label="音频生成" 
                 description="生成语音、音乐、音效" 
                 colorClass="text-amber-400 group-hover:text-amber-300" 
-              />
-              <MenuItem 
-                onClick={() => handleSelect("script_node")} 
-                icon={Clapperboard} 
-                label="分镜脚本" 
-                description="剧本→批量生图→批量生视频" 
-                colorClass="text-violet-400 group-hover:text-violet-300" 
               />
             </div>
           </section>

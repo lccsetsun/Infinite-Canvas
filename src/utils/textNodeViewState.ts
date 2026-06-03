@@ -54,7 +54,7 @@ export function getTextNodeViewState({
   if (promptText.trim()) {
     return {
       accentClass: "text-indigo-100 border-indigo-300/28 bg-indigo-300/10",
-      description: "输入已就绪，点击运行发送到 DeepSeek V4 Flash",
+      description: "输入已就绪，点击运行发送到 DeepSeek Chat",
       kind: "ready",
       label: "已输入",
       shortLabel: "READY",

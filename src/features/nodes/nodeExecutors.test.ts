@@ -62,6 +62,69 @@ describe("image_node MiniMax executor", () => {
   });
 });
 
+describe("video_node MiniMax executor", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("requests MiniMax video generation with node video settings", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        videoUrl: "https://example.com/minimax-video.mp4",
+        taskId: "task_1",
+        fileId: "file_1",
+        metadata: { duration: 6, resolution: "768P" },
+      }),
+    } as Response);
+
+    const executor = getExecutor("video_node");
+    const result = await executor?.({
+      inputs: { prompt: "小狗在草地上奔跑", image: "https://example.com/first-frame.png" },
+      properties: {
+        model: "MiniMax-Hailuo-2.3",
+        duration: "6s",
+        resolution: "768P",
+        aspect_ratio: "16:9",
+        prompt_optimizer: true,
+      },
+      apiConfig: {
+        baseUrl: "",
+        apiKey: "",
+        minimaxApiKey: "mini-test-key",
+        minimaxBaseUrl: "https://api.minimaxi.com/v1",
+      },
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/minimax/video-generation",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          "X-MiniMax-Api-Key": "mini-test-key",
+        }),
+        body: JSON.stringify({
+          model: "MiniMax-Hailuo-2.3",
+          prompt: "小狗在草地上奔跑",
+          first_frame_image: "https://example.com/first-frame.png",
+          duration: 6,
+          resolution: "768P",
+          aspect_ratio: "16:9",
+          prompt_optimizer: true,
+          base_url: "https://api.minimaxi.com/v1",
+        }),
+      })
+    );
+    expect(result?.outputs[0]).toBe("https://example.com/minimax-video.mp4");
+    expect(result?.patch).toMatchObject({
+      videoUrl: "https://example.com/minimax-video.mp4",
+      minimaxVideoTaskId: "task_1",
+      minimaxVideoFileId: "file_1",
+      status: "success",
+    });
+  });
+});
+
 describe("text_node executor", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -80,11 +143,73 @@ describe("text_node executor", () => {
       apiConfig: {
         baseUrl: "https://api.deepseek.com",
         apiKey: "sk-test",
-        model: "deepseek-v4-flash",
+        model: "deepseek-chat",
       },
     });
 
     const [, init] = fetchMock.mock.calls[0];
+    expect(JSON.parse(String((init as RequestInit).body))).toMatchObject({
+      model: "deepseek-chat",
+    });
+  });
+
+  it("maps the legacy deepseek-v4-flash model to deepseek-chat before request", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: "ok" } }] }),
+    } as Response);
+
+    const executor = getExecutor("text_node");
+    await executor?.({
+      inputs: { user_prompt: "hello" },
+      properties: { model: "deepseek-v4-flash" },
+      apiConfig: {
+        baseUrl: "https://api.deepseek.com",
+        apiKey: "sk-test",
+        model: "deepseek-chat",
+      },
+    });
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect(JSON.parse(String((init as RequestInit).body))).toMatchObject({
+      model: "deepseek-chat",
+    });
+  });
+
+  it("uses DeepSeek provider config even when the active api config points to MiniMax", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: "ok" } }] }),
+    } as Response);
+
+    const executor = getExecutor("text_node");
+    await executor?.({
+      inputs: { user_prompt: "hello" },
+      properties: { model: "deepseek-chat" },
+      apiConfig: {
+        baseUrl: "https://api.minimaxi.com/v1",
+        apiKey: "mini-key",
+        model: "image-01",
+        providerApiKeys: {
+          deepseek: "sk-deepseek",
+          minimax: "mini-key",
+        },
+        providerBaseUrls: {
+          deepseek: "https://api.deepseek.com",
+          minimax: "https://api.minimaxi.com/v1",
+        },
+        providerModels: {
+          deepseek: "deepseek-chat",
+          minimax: "image-01",
+        },
+      },
+    });
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("https://api.deepseek.com/chat/completions");
+    expect((init as RequestInit).headers).toMatchObject({
+      Authorization: "Bearer sk-deepseek",
+    });
     expect(JSON.parse(String((init as RequestInit).body))).toMatchObject({
       model: "deepseek-chat",
     });

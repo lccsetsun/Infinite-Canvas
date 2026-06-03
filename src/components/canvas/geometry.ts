@@ -2,32 +2,40 @@ import { GraphNode } from "../../types";
 
 export const NODE_WIDTH = 240;
 export const TEXT_NODE_WIDTH = 392;
-export const IMAGE_NODE_WIDTH = 560;
-export const VIDEO_NODE_WIDTH = 560;
-export const SCRIPT_NODE_WIDTH = 520;
+export const MEDIA_NODE_WIDTH = 520;
+export const GENERATIVE_NODE_HEIGHT = 290;
+export const IMAGE_NODE_WIDTH = MEDIA_NODE_WIDTH;
+export const VIDEO_NODE_WIDTH = MEDIA_NODE_WIDTH;
 export const AUDIO_NODE_WIDTH = 560;
 export const NODE_HEIGHT = 180;
 
 export function getNodeWidth(node: GraphNode) {
   if (node.type === "text_node") return TEXT_NODE_WIDTH;
-  if (node.type === "image_node") return IMAGE_NODE_WIDTH;
-  if (node.type === "video_node") return VIDEO_NODE_WIDTH;
-  if (node.type === "script_node") return SCRIPT_NODE_WIDTH;
+  if (node.type === "image_node") {
+    const displayWidth = node.data?.imageDisplayWidth;
+    if (node.data?.imageUrl && typeof displayWidth === "number" && Number.isFinite(displayWidth) && displayWidth > 0) return displayWidth;
+    return IMAGE_NODE_WIDTH;
+  }
+  if (node.type === "video_node") {
+    const displayWidth = node.data?.videoDisplayWidth;
+    if (node.data?.videoUrl && typeof displayWidth === "number" && Number.isFinite(displayWidth) && displayWidth > 0) return displayWidth;
+    return VIDEO_NODE_WIDTH;
+  }
   if (node.type === "audio_node") return AUDIO_NODE_WIDTH;
   return NODE_WIDTH;
 }
 
 export function getNodeHeight(node: GraphNode) {
-  if (node.type === "image_node") return 390;
-  if (node.type === "text_node") return 290;
-  if (node.type === "video_node") return 390;
-  if (node.type === "upload_image") return 300;
-  if (node.type === "upload_video") {
-    return node.properties.frameAnalysis && node.properties.frameAnalysis !== "none" ? 420 : 240;
+  if (node.type === "image_node") {
+    const displayHeight = node.data?.imageDisplayHeight;
+    if (node.data?.imageUrl && typeof displayHeight === "number" && Number.isFinite(displayHeight) && displayHeight > 0) return displayHeight + 30;
+    return GENERATIVE_NODE_HEIGHT;
   }
-  if (node.type === "script_node") {
-    const rows = (node.properties.rows as unknown[])?.length ?? 0;
-    return 360 + Math.min(rows, 8) * 64;
+  if (node.type === "text_node") return GENERATIVE_NODE_HEIGHT;
+  if (node.type === "video_node") {
+    const displayHeight = node.data?.videoDisplayHeight;
+    if (node.data?.videoUrl && typeof displayHeight === "number" && Number.isFinite(displayHeight) && displayHeight > 0) return displayHeight + 30;
+    return GENERATIVE_NODE_HEIGHT;
   }
   if (node.type === "audio_node") return 280;
   if (node.type === "group") return 0;
@@ -55,7 +63,7 @@ export function getInputAnchor(node: GraphNode, inputIndex: number) {
   const height = getNodeHeight(node);
   
   // 对于 LibTV 风格的生成类节点，输入锚点固定在左侧中心
-  if (["text_node", "image_node", "video_node", "audio_node", "script_node"].includes(node.type)) {
+  if (["text_node", "image_node", "video_node", "audio_node"].includes(node.type)) {
     return { x: node.x, y: node.y + height / 2 };
   }
   
@@ -68,7 +76,7 @@ export function getOutputAnchor(node: GraphNode, outputIndex: number) {
   const height = getNodeHeight(node);
   
   // 对于 LibTV 风格的生成类节点，输出锚点固定在右侧中心
-  if (["text_node", "image_node", "video_node", "audio_node", "script_node"].includes(node.type)) {
+  if (["text_node", "image_node", "video_node", "audio_node"].includes(node.type)) {
     return { x: node.x + width, y: node.y + height / 2 };
   }
   

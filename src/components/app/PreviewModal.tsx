@@ -19,6 +19,14 @@ interface PreviewModalProps {
 
 const PROMPT_EDITOR_TITLE = "提示词编辑";
 
+function isVideoPreview(preview: PreviewContent): boolean {
+  return (
+    preview.title.includes("视频") ||
+    /\.(mp4|webm|ogg|mov)(?=($|[?#]))/i.test(preview.content) ||
+    preview.content.includes("mixkit")
+  );
+}
+
 function renderMarkdown(text: string) {
   return text.split(/(\*\*.*?\*\*)/g).map((part, i) =>
     part.startsWith("**") && part.endsWith("**") ? (
@@ -59,24 +67,99 @@ export default function PreviewModal({ preview, onClose, onPreviewChange, onUpda
     });
   };
 
-  const downloadAsset = async () => {
+  const downloadAsset = () => {
     try {
-      const response = await fetch(preview.content);
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
+      const extensionMatch = preview.content.match(/\.(png|jpe?g|webp|gif|mp4|webm|ogg|mov)(?=($|[?#]))/i);
+      const extension = extensionMatch?.[1]?.replace(/^jpeg$/i, "jpg") || (isVideoPreview(preview) ? "mp4" : "png");
+      const filename = `ai-studio-${Date.now()}.${extension}`;
       const a = document.createElement("a");
-      a.href = url;
-      a.download = `ai-studio-${Date.now()}.png`;
+      a.href = `/api/download-asset?url=${encodeURIComponent(preview.content)}&filename=${encodeURIComponent(filename)}`;
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
-      window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
       showNotice("下载已开始");
     } catch {
-      window.open(preview.content, "_blank");
-      showNotice("正在新窗口打开下载");
+      showNotice("下载失败，请稍后重试");
     }
   };
+
+  if (isRemoteAsset && !isPromptEditor) {
+    const isVideo = isVideoPreview(preview);
+    return (
+      <AnimatePresence>
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/94 p-8"
+          onClick={onClose}
+        >
+          <div className="absolute right-6 top-6 z-20 flex items-center gap-2">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                downloadAsset();
+              }}
+              className="flex h-11 w-11 items-center justify-center rounded-full bg-white/8 text-white/72 backdrop-blur-md transition-colors hover:bg-white/14 hover:text-white"
+              title="下载"
+            >
+              <Download className="h-5 w-5" />
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onClose();
+              }}
+              className="flex h-11 w-11 items-center justify-center rounded-full bg-white/8 text-white/72 backdrop-blur-md transition-colors hover:bg-white/14 hover:text-white"
+              title="关闭"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          {preview.items && preview.items.length > 1 && (
+            <>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  showPrevious();
+                }}
+                className="absolute left-6 top-1/2 z-20 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full bg-white/8 text-white/70 backdrop-blur-md transition-colors hover:bg-white/14 hover:text-white"
+              >
+                <ChevronLeft className="h-7 w-7" />
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  showNext();
+                }}
+                className="absolute right-6 top-1/2 z-20 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full bg-white/8 text-white/70 backdrop-blur-md transition-colors hover:bg-white/14 hover:text-white"
+              >
+                <ChevronRight className="h-7 w-7" />
+              </button>
+            </>
+          )}
+
+          <motion.div
+            key={preview.content}
+            initial={{ opacity: 0, scale: 0.98 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.98 }}
+            transition={{ duration: 0.18, ease: "easeOut" }}
+            className="flex h-full w-full items-center justify-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {isVideo ? (
+              <video src={preview.content} controls autoPlay className="max-h-full max-w-full rounded-[10px] object-contain" />
+            ) : (
+              <img src={preview.content} alt="Preview" className="max-h-full max-w-full rounded-[10px] object-contain" />
+            )}
+          </motion.div>
+        </motion.div>
+      </AnimatePresence>
+    );
+  }
 
   return (
     <AnimatePresence>
@@ -140,7 +223,7 @@ export default function PreviewModal({ preview, onClose, onPreviewChange, onUpda
                     transition={{ duration: 0.3, ease: "easeOut" }}
                     className="w-full flex justify-center"
                   >
-                    {preview.content.match(/\.(mp4|webm|ogg)$/i) || preview.content.includes("mixkit") ? (
+                    {isVideoPreview(preview) ? (
                       <video src={preview.content} controls autoPlay className="max-w-full max-h-[60vh] rounded-xl shadow-2xl border border-white/10" />
                     ) : (
                       <img src={preview.content} alt="Preview" className="max-w-full max-h-[60vh] rounded-xl shadow-2xl border border-white/10 object-contain" />
