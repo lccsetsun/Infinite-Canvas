@@ -6,6 +6,7 @@ import { findResolvedStringInput } from "../../utils/resolvedInputs";
 import { shouldShowInlinePortHandles } from "../../utils/portHandleVisibility";
 import { getNodeWidth, VIDEO_NODE_WIDTH } from "./geometry";
 import { Tooltip } from "../common/Tooltip";
+import { downloadMediaAsset, extensionFromAssetUrl, isLocalBrowserAsset } from "../../utils/mediaAssets";
 
 interface VideoNodeCardProps {
   node: GraphNode;
@@ -191,15 +192,9 @@ function VideoNodeCardImpl({
 
   const downloadVideo = () => {
     if (!videoUrl) return;
-    const extensionMatch = videoUrl.match(/\.(mp4|webm|ogg|mov)(?=($|[?#]))/i);
-    const extension = extensionMatch?.[1]?.toLowerCase() || "mp4";
+    const extension = extensionFromAssetUrl(videoUrl, "mp4");
     const filename = `${nodeBadgeTitle.replace(/\s+/g, "-") || "video-node"}-${Date.now()}.${extension}`;
-    const link = document.createElement("a");
-    link.href = `/api/download-asset?url=${encodeURIComponent(videoUrl)}&filename=${encodeURIComponent(filename)}`;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    void downloadMediaAsset(videoUrl, filename);
   };
 
   const seekVideo = (video: HTMLVideoElement, time: number) =>
@@ -231,15 +226,17 @@ function VideoNodeCardImpl({
     setIsAnalyzingFrames(true);
     let objectUrl = "";
     try {
-      const assetResponse = await fetch(`/api/download-asset?url=${encodeURIComponent(videoUrl)}&filename=frame-analysis.mp4`);
-      if (!assetResponse.ok) throw new Error("无法读取视频文件");
-      const blob = await assetResponse.blob();
-      objectUrl = URL.createObjectURL(blob);
+      if (!isLocalBrowserAsset(videoUrl)) {
+        const assetResponse = await fetch(`/api/download-asset?url=${encodeURIComponent(videoUrl)}&filename=frame-analysis.mp4`);
+        if (!assetResponse.ok) throw new Error("无法读取视频文件");
+        const blob = await assetResponse.blob();
+        objectUrl = URL.createObjectURL(blob);
+      }
       const video = document.createElement("video");
       video.muted = true;
       video.playsInline = true;
       video.preload = "auto";
-      video.src = objectUrl;
+      video.src = objectUrl || videoUrl;
       if (!Number.isFinite(video.duration) || video.duration <= 0) {
         await new Promise<void>((resolve) => {
           const onLoaded = () => {

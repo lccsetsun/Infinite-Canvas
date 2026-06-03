@@ -7,6 +7,7 @@ import CanvasNodeLayer from "./components/app/CanvasNodeLayer";
 import CanvasStatusBar from "./components/app/CanvasStatusBar";
 import DraftLinkOverlay from "./components/app/DraftLinkOverlay";
 import GroupsLayer from "./components/app/GroupsLayer";
+import LinkInteractionOverlay from "./components/app/LinkInteractionOverlay";
 import FloatingToolbar from "./components/FloatingToolbar";
 import EmptyCanvasState from "./components/app/EmptyCanvasState";
 import LeaferCanvas from "./components/canvas/LeaferCanvas";
@@ -69,6 +70,7 @@ export default function App() {
     runNode,
     addNode,
     removeNode,
+    removeLink,
     duplicateNode,
     updateNodePosition,
     updateNodeProperty,
@@ -176,6 +178,7 @@ export default function App() {
   const [previewContent, setPreviewContent] = React.useState<PreviewContent | null>(null);
   const [canvasSize, setCanvasSize] = React.useState({ width: 0, height: 0 });
   const [selectedGroupId, setSelectedGroupId] = React.useState<string | null>(null);
+  const [selectedLinkId, setSelectedLinkId] = React.useState<string | null>(null);
   const [selectedNodeIds, setSelectedNodeIds] = React.useState<Set<string>>(new Set());
   const menuCloseTimerRef = React.useRef<number | null>(null);
 
@@ -257,6 +260,7 @@ export default function App() {
 
   const handleSelectNode = React.useCallback((nodeId: string, e?: { shiftKey?: boolean }) => {
     setSelectedGroupId(null);
+    setSelectedLinkId(null);
     if (e?.shiftKey) {
       setSelectedNodeIds((prev) => {
         const next = new Set(prev);
@@ -269,6 +273,13 @@ export default function App() {
     }
     setSelectedNodeIds(new Set([nodeId]));
     setSelectedNodeId(nodeId);
+  }, [setSelectedNodeId]);
+
+  const handleSelectLink = React.useCallback((linkId: string | null) => {
+    setSelectedNodeId(null);
+    setSelectedNodeIds(new Set());
+    setSelectedGroupId(null);
+    setSelectedLinkId(linkId);
   }, [setSelectedNodeId]);
 
   const handleCreateGroup = () => {
@@ -292,36 +303,10 @@ export default function App() {
         return;
       }
 
-      showNotice("正在调用大模型分析视频运动");
-      let analysisMarkdown = "";
-      try {
-        const response = await fetch("/api/video/frame-analysis", {
-          method: "POST",
-          credentials: "include",
-          headers: {
-            "Content-Type": "application/json",
-            ...(deepseekApiProfile?.apiKey ? { "X-DeepSeek-Api-Key": deepseekApiProfile.apiKey } : {}),
-            ...(deepseekApiProfile?.baseUrl ? { "X-DeepSeek-Base-Url": deepseekApiProfile.baseUrl } : {}),
-            ...(deepseekApiProfile?.model ? { "X-DeepSeek-Model": deepseekApiProfile.model } : {}),
-          },
-          body: JSON.stringify({
-            video_url: videoUrl,
-            segments: segments.map(({ title, start, end, frameCount, width, height }) => ({ title, start, end, frameCount, width, height })),
-          }),
-        });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data?.error || "视频分析失败");
-        analysisMarkdown = typeof data?.text === "string" ? data.text : "";
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "视频分析失败";
-        analysisMarkdown = `## 视频逐帧分析\n\n后端分析失败: ${message}\n\n已生成关键帧拼图节点,可先查看每个 15 秒分段的画面变化。`;
-        showNotice(message);
-      }
-
-      addVideoFrameAnalysis(node.id, segments, analysisMarkdown);
-      showNotice("逐帧分析完成");
+      addVideoFrameAnalysis(node.id, segments);
+      showNotice("关键帧拼图已生成");
     },
-    [addVideoFrameAnalysis, deepseekApiProfile, showNotice]
+    [addVideoFrameAnalysis, showNotice]
   );
 
   const handleUngroup = React.useCallback((groupId: string) => {
@@ -406,6 +391,12 @@ export default function App() {
         redo();
         return;
       }
+      if (!isEditingField && (e.key === "Delete" || e.key === "Backspace") && selectedLinkId) {
+        e.preventDefault();
+        removeLink(selectedLinkId);
+        setSelectedLinkId(null);
+        return;
+      }
       if (!isEditingField && (e.key === "Delete" || e.key === "Backspace") && selectedNodeId) {
         e.preventDefault();
         removeNode(selectedNodeId);
@@ -414,7 +405,7 @@ export default function App() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [currentView, isLinkingOnCanvas, resetCanvasLinkDraft, setActiveQuickTool, setCurrentView, undo, redo, selectedNodeId, removeNode]);
+  }, [currentView, isLinkingOnCanvas, resetCanvasLinkDraft, setActiveQuickTool, setCurrentView, undo, redo, selectedLinkId, removeLink, selectedNodeId, removeNode]);
 
   React.useEffect(() => {
     return () => {
@@ -473,6 +464,7 @@ export default function App() {
             setSelectedNodeId(null);
             setSelectedNodeIds(new Set());
             setSelectedGroupId(null);
+            setSelectedLinkId(null);
           }
           
           onCanvasPointerDown(e);
@@ -518,6 +510,18 @@ export default function App() {
           draftCursor={draftCursor}
           renderDraftPreview={false}
         />
+
+        {!isLinkingOnCanvas && (
+          <LinkInteractionOverlay
+            links={links}
+            nodes={nodes}
+            pan={pan}
+            zoom={zoom}
+            selectedLinkId={selectedLinkId}
+            onSelectLink={handleSelectLink}
+            onDeleteLink={removeLink}
+          />
+        )}
 
         <GroupsLayer
           groups={groups}

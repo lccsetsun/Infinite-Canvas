@@ -192,35 +192,4 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
       { fromNodeIndex: 1, fromOutputIndex: 0, toNodeIndex: 2, toInputIndex: 1 },
     ],
   },
-  {
-    id: "tpl-demo-storyboard",
-    name: "产品 TVC 分镜",
-    emoji: "🎬",
-    description: "用脚本节点拆解 6 段分镜,一键批量生图,再批量生视频。",
-    category: "分镜",
-    isDemo: true,
-    nodes: [
-      { type: "string_input", x: 80, y: 140, defaultProperties: { value: "智能咖啡机 30 秒 TVC" } },
-      {
-        type: "script_node",
-        x: 460,
-        y: 80,
-        defaultProperties: {
-          aspectRatio: "16:9",
-          imageModel: "flux-1",
-          videoModel: "sora",
-          defaultDuration: 5,
-          rows: [
-            { id: "row_tpl_1", title: "分镜 1", prompt: "清晨阳光洒进极简厨房,白色台面上静置一台极简设计的智能咖啡机,自然光质感,产品摄影风格,4K", duration: 5 },
-            { id: "row_tpl_2", title: "分镜 2", prompt: "咖啡机特写镜头,触控屏亮起,蒸汽缓缓升起,微距摄影,慢动作,暖色调,质感细腻", duration: 5 },
-            { id: "row_tpl_3", title: "分镜 3", prompt: "新鲜咖啡豆倒入研磨仓的瞬间,慢动作特写,光泽饱满,深棕色咖啡豆,商业广告风格", duration: 5 },
-            { id: "row_tpl_4", title: "分镜 4", prompt: "咖啡液缓缓流出注入白色陶瓷杯,流动的丝滑质感,黄金时分光,广告级画面", duration: 5 },
-            { id: "row_tpl_5", title: "分镜 5", prompt: "一只手端起咖啡杯特写,背景虚化的舒适客厅,清晨氛围,生活感,胶片色调", duration: 5 },
-            { id: "row_tpl_6", title: "分镜 6", prompt: "咖啡机全景与产品 Logo 同时浮现,渐变光晕,品牌级摄影,极简白色背景", duration: 5 },
-          ],
-        },
-      },
-    ],
-    links: [],
-  },
 ];

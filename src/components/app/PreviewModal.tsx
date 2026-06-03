@@ -1,5 +1,6 @@
 import { ChevronLeft, ChevronRight, Download, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
+import { downloadMediaAsset, extensionFromAssetUrl, isPreviewableAsset } from "../../utils/mediaAssets";
 
 export interface PreviewContent {
   content: string;
@@ -40,7 +41,7 @@ function renderMarkdown(text: string) {
 }
 
 export default function PreviewModal({ preview, onClose, onPreviewChange, onUpdateNodeText, showNotice }: PreviewModalProps) {
-  const isRemoteAsset = preview.content.startsWith("http");
+  const isMediaAsset = isPreviewableAsset(preview.content);
   const isPromptEditor = preview.title === PROMPT_EDITOR_TITLE;
 
   const showPrevious = () => {
@@ -69,22 +70,16 @@ export default function PreviewModal({ preview, onClose, onPreviewChange, onUpda
 
   const downloadAsset = () => {
     try {
-      const extensionMatch = preview.content.match(/\.(png|jpe?g|webp|gif|mp4|webm|ogg|mov)(?=($|[?#]))/i);
-      const extension = extensionMatch?.[1]?.replace(/^jpeg$/i, "jpg") || (isVideoPreview(preview) ? "mp4" : "png");
+      const extension = extensionFromAssetUrl(preview.content, isVideoPreview(preview) ? "mp4" : "png");
       const filename = `ai-studio-${Date.now()}.${extension}`;
-      const a = document.createElement("a");
-      a.href = `/api/download-asset?url=${encodeURIComponent(preview.content)}&filename=${encodeURIComponent(filename)}`;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      void downloadMediaAsset(preview.content, filename);
       showNotice("下载已开始");
     } catch {
       showNotice("下载失败，请稍后重试");
     }
   };
 
-  if (isRemoteAsset && !isPromptEditor) {
+  if (isMediaAsset && !isPromptEditor) {
     const isVideo = isVideoPreview(preview);
     return (
       <AnimatePresence>
@@ -189,7 +184,7 @@ export default function PreviewModal({ preview, onClose, onPreviewChange, onUpda
           </div>
 
           <div className="flex-1 overflow-y-auto p-8 custom-scrollbar relative">
-            {isRemoteAsset ? (
+            {isMediaAsset ? (
               <div className="flex items-center justify-center min-h-[300px] relative group/viewer">
                 {preview.items && preview.items.length > 1 && (
                   <>
@@ -258,7 +253,7 @@ export default function PreviewModal({ preview, onClose, onPreviewChange, onUpda
               </button>
             )}
 
-            {isRemoteAsset && (
+            {isMediaAsset && (
               <button onClick={downloadAsset} className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-gray-300 text-sm font-bold transition-all flex items-center gap-2">
                 <Download className="w-4 h-4" />
                 下载文件
@@ -274,7 +269,7 @@ export default function PreviewModal({ preview, onClose, onPreviewChange, onUpda
                 isPromptEditor ? "bg-white/5 hover:bg-white/10 text-gray-300" : "bg-indigo-500 hover:bg-indigo-400 text-white shadow-lg shadow-indigo-500/20"
               }`}
             >
-              {isRemoteAsset ? "复制链接" : "复制全文"}
+              {isMediaAsset ? "复制链接" : "复制全文"}
             </button>
           </div>
         </motion.div>

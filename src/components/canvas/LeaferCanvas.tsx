@@ -21,6 +21,7 @@ interface LeaferCanvasProps {
   draftToInputIndex?: number;
   draftIssue?: string | null;
   draftCursor?: { x: number; y: number } | null;
+  renderDraftPreview?: boolean;
 }
 
 type LeaferScene = {
@@ -232,7 +233,7 @@ function buildNodeShells(group: Group, nodes: GraphNode[], selectedNodeId?: stri
 }
 
 function hasInlinePortHandles(node: GraphNode) {
-  return ["text_node", "image_node", "video_node", "audio_node", "script_node"].includes(node.type);
+  return ["text_node", "image_node", "video_node", "audio_node"].includes(node.type);
 }
 
 function buildNodeDecorators(
@@ -396,6 +397,7 @@ export default function LeaferCanvas({
   draftToInputIndex = 0,
   draftIssue,
   draftCursor = null,
+  renderDraftPreview = true,
 }: LeaferCanvasProps) {
   const hostRef = React.useRef<HTMLDivElement>(null);
   const sceneRef = React.useRef<LeaferScene | null>(null);
@@ -515,7 +517,11 @@ export default function LeaferCanvas({
 
     buildLinks(scene.links, nodes, links);
     buildNodeShells(scene.shells, nodes, selectedNodeId);
-    buildDraftPreview(scene.draft, nodes, draftFromNodeId, draftToNodeId, draftFromOutputIndex, draftToInputIndex, draftIssue, draftCursor);
+    if (renderDraftPreview) {
+      buildDraftPreview(scene.draft, nodes, draftFromNodeId, draftToNodeId, draftFromOutputIndex, draftToInputIndex, draftIssue, draftCursor);
+    } else {
+      scene.draft.clear();
+    }
     if (showNodeDecorators) {
       buildNodeDecorators(
         scene.decorators,
@@ -543,6 +549,7 @@ export default function LeaferCanvas({
     nodes,
     selectedNodeId,
     showNodeDecorators,
+    renderDraftPreview,
   ]);
 
   return (

@@ -535,7 +535,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
   }, []);
 
   const addVideoFrameAnalysis = useCallback(
-    (videoNodeId: string, segments: VideoFrameAnalysisSegment[], analysisMarkdown: string) => {
+    (videoNodeId: string, segments: VideoFrameAnalysisSegment[]) => {
       const sourceNode = nodes.find((n) => n.id === videoNodeId);
       if (!sourceNode || segments.length === 0) {
         appendLog("warning", "逐帧分析失败:未找到视频节点或没有可用分段");
@@ -577,28 +577,6 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         });
       });
 
-      if (analysisMarkdown.trim()) {
-        const id = makeId("node");
-        const node = createNodeFromType("text_node", id, baseX, baseY + segments.length * 230 + 48);
-        node.title = `视频分析 ${segments.length}段`;
-        node.properties = {
-          ...node.properties,
-          response: analysisMarkdown,
-          text: "视频逐帧分析结果",
-        };
-        node.data = { response: analysisMarkdown, loading: false, status: "success" };
-        nextNodes.push(node);
-        createdNodes.push(node);
-        nextOutputs.set(id, new Map([[0, analysisMarkdown]]));
-        nextLinks.push({
-          id: makeId("link"),
-          fromNodeId: sourceNode.id,
-          fromOutputIndex: 0,
-          toNodeId: id,
-          toInputIndex: 1,
-        });
-      }
-
       setNodes(nextNodes);
       setLinks(nextLinks);
       setNodeOutputs(nextOutputs);
@@ -609,7 +587,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         data: { ...wf.data, nodes: nextNodes, links: nextLinks, nodeOutputs: mapToOutputs(nextOutputs) },
       }));
       pushHistory({ nodes: nextNodes, links: nextLinks });
-      appendLog("success", `逐帧分析完成:生成 ${segments.length} 个关键帧节点${analysisMarkdown.trim() ? "和 1 个分析文本节点" : ""}`);
+      appendLog("success", `逐帧分析完成:生成 ${segments.length} 个关键帧节点`);
     },
     [appendLog, links, nodeOutputs, nodes, pushHistory, syncCurrentWorkflowMeta]
   );

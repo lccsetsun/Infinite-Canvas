@@ -134,7 +134,6 @@ export default function CanvasNodeLayer({
                 onUpdateProperty={onUpdateNodeProperty}
                 onUpdateData={onUpdateNodeData}
                 onPreview={onPreview}
-                onAnalyzeVideo={onAnalyzeVideo}
                 resolvedInputs={resolvedInputsMap?.get(node.id)}
                 onRun={onRunNode}
                 // 连线相关
@@ -167,6 +166,7 @@ export default function CanvasNodeLayer({
                 onUpdateProperty={onUpdateNodeProperty}
                 onUpdateData={onUpdateNodeData}
                 onPreview={onPreview}
+                onAnalyzeVideo={onAnalyzeVideo}
                 resolvedInputs={resolvedInputsMap?.get(node.id)}
                 onRun={onRunNode}
                 // 连线相关
