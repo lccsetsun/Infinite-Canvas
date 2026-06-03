@@ -138,7 +138,7 @@ const NODE_BLUEPRINTS: Partial<Record<NodeClass, NodeBlueprint>> = {
       aspect_ratio: "16:9",
       quantity: "1张",
       n: 1,
-      prompt_optimizer: true,
+      prompt_optimizer: false,
     },
   },
   video_node: {

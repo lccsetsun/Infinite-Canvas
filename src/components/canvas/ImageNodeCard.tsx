@@ -116,7 +116,6 @@ function ImageNodeCardImpl({
   const imageUrl = (node.data?.imageUrl as string) || (node.properties.imageUrl as string) || "";
   const aspectRatio = (node.properties.aspect_ratio as string) || "16:9";
   const quantity = (node.properties.quantity as string) || "1张";
-  const promptOptimizer = node.properties.prompt_optimizer !== false;
   const nodeBadgeTitle = node.title === "图片节点" || node.title === "图片" ? "图片节点 1" : node.title;
   const nodeBadgeMatch = nodeBadgeTitle.match(/^(.*?)(\s+\d+)$/);
   const currentRatio = RATIO_OPTIONS.find((option) => option.value === aspectRatio) || RATIO_OPTIONS[1];
@@ -535,22 +534,6 @@ function ImageNodeCardImpl({
             )}
           </div>
 
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onUpdateProperty?.(node.id, "prompt_optimizer", !promptOptimizer);
-            }}
-            className={`inline-flex h-10 items-center gap-1.5 rounded-[14px] border px-3 text-[13px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-all ${
-              promptOptimizer
-                ? "border-emerald-200/18 bg-emerald-300/[0.07] text-emerald-100/78 hover:bg-emerald-300/[0.1]"
-                : "border-cyan-100/8 bg-slate-950/18 text-cyan-50/42 hover:border-cyan-100/18 hover:bg-cyan-100/[0.045] hover:text-cyan-50/72"
-            }`}
-          >
-            <span className={`h-1.5 w-1.5 rounded-full ${promptOptimizer ? "bg-emerald-300 shadow-[0_0_10px_rgba(110,231,183,0.8)]" : "bg-cyan-50/18"}`} />
-            <span>优化</span>
-          </button>
-
           <div ref={quantityMenuRef} className="relative">
             <button
               data-node-action="true"
@@ -560,14 +543,14 @@ function ImageNodeCardImpl({
                 updateQuantityMenuPosition();
                 setIsQuantityMenuOpen((open) => !open);
               }}
-              className={`inline-flex h-10 min-w-[70px] items-center justify-center gap-1.5 rounded-[14px] border px-3 text-[13px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-all ${
+              className={`inline-flex h-10 min-w-[76px] items-center justify-center gap-1.5 rounded-[14px] border px-3 text-[13px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-all ${
                 isQuantityMenuOpen
                   ? "border-cyan-100/36 bg-cyan-100/[0.09] text-cyan-50 shadow-[0_12px_28px_-22px_rgba(34,211,238,0.78),inset_0_1px_0_rgba(255,255,255,0.08)]"
-                  : "border-cyan-100/8 bg-slate-950/18 text-cyan-50/72 hover:border-cyan-100/18 hover:bg-cyan-100/[0.045] hover:text-cyan-50"
+                  : "border-cyan-100/8 bg-slate-950/14 text-cyan-50/62 hover:border-cyan-100/18 hover:bg-cyan-100/[0.045] hover:text-cyan-50"
               }`}
             >
               <span>{quantity.replace("张", "")}</span>
-              <span className="text-[11px] text-cyan-50/42">张</span>
+              <span className="text-[12px] text-cyan-50/45">张</span>
               <ChevronUp className={`h-3.5 w-3.5 text-slate-300/55 transition-transform ${isQuantityMenuOpen ? "" : "rotate-180"}`} />
             </button>
 

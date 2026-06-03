@@ -27,9 +27,9 @@ describe("image_node MiniMax executor", () => {
       inputs: { prompt: "雨夜街道", aspect_ratio: "9:16" },
       properties: {
         model: "image-01",
-        quantity: "3张",
-        n: 3,
-        prompt_optimizer: true,
+        quantity: "1张",
+        n: 1,
+        prompt_optimizer: false,
       },
       apiConfig: {
         baseUrl: "",
@@ -51,8 +51,8 @@ describe("image_node MiniMax executor", () => {
           prompt: "雨夜街道",
           aspect_ratio: "9:16",
           response_format: "url",
-          n: 3,
-          prompt_optimizer: true,
+          n: 1,
+          prompt_optimizer: false,
           base_url: "https://api.minimaxi.com/v1",
         }),
       })

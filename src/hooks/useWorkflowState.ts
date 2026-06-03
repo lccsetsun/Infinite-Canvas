@@ -159,17 +159,15 @@ function normalizeNodePorts(node: GraphNode): GraphNode {
   if (nextNode.type === "image_node") {
     const aspectRatio = String(nextNode.properties.aspect_ratio || "16:9");
     const model = String(nextNode.properties.model || "");
-    const quantity = String(nextNode.properties.quantity || "1张");
-    const count = Math.min(9, Math.max(1, Number.parseInt(quantity, 10) || 1));
     nextNode = {
       ...nextNode,
       properties: {
         ...nextNode.properties,
         model: IMAGE_NODE_MODEL_FALLBACKS.has(model) ? "image-01" : model,
         aspect_ratio: MINIMAX_IMAGE_RATIOS.has(aspectRatio) ? aspectRatio : "16:9",
-        quantity: `${count}张`,
-        n: count,
-        prompt_optimizer: nextNode.properties.prompt_optimizer !== false,
+        quantity: "1张",
+        n: 1,
+        prompt_optimizer: false,
       },
     };
   }
