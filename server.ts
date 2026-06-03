@@ -96,6 +96,125 @@ app.post("/api/gemini/enhance", async (req, res) => {
   }
 });
 
+function extractMiniMaxImages(data: any): string[] {
+  const candidates = [
+    data?.data?.image_urls,
+    data?.data?.images,
+    data?.image_urls,
+    data?.images,
+  ];
+
+  for (const candidate of candidates) {
+    if (!Array.isArray(candidate)) continue;
+    const urls = candidate
+      .map((item: any) => {
+        if (typeof item === "string") return item;
+        return item?.url || item?.image_url || item?.imageUrl || item?.base64;
+      })
+      .filter((url: unknown): url is string => typeof url === "string" && url.length > 0);
+    if (urls.length > 0) return urls;
+  }
+
+  return [];
+}
+
+function resolveMiniMaxImageEndpoint(baseUrl: unknown): string {
+  const fallback = "https://api.minimaxi.com/v1";
+  const raw = typeof baseUrl === "string" && baseUrl.trim() ? baseUrl.trim() : fallback;
+  const url = new URL(raw);
+  if (!["api.minimaxi.com", "api.minimax.io"].includes(url.hostname)) {
+    throw new Error("MiniMax Base URL 仅支持 api.minimaxi.com 或 api.minimax.io");
+  }
+  url.pathname = `${url.pathname.replace(/\/+$/, "")}/image_generation`;
+  url.search = "";
+  url.hash = "";
+  return url.toString();
+}
+
+app.post("/api/minimax/image-generation", async (req, res) => {
+  try {
+    const apiKey = String(req.header("X-MiniMax-Api-Key") || process.env.MINIMAX_API_KEY || "").trim();
+    if (!apiKey) {
+      res.status(401).json({ error: "MiniMax API Key 未配置，请先在 API 设置里新增 MiniMax 配置并保存密钥" });
+      return;
+    }
+
+    const {
+      model = "image-01",
+      prompt,
+      aspect_ratio = "16:9",
+      response_format = "url",
+      n = 1,
+      prompt_optimizer = false,
+      seed,
+      base_url,
+    } = req.body || {};
+
+    if (typeof prompt !== "string" || !prompt.trim()) {
+      res.status(400).json({ error: "Prompt is required" });
+      return;
+    }
+
+    const payload: Record<string, unknown> = {
+      model,
+      prompt,
+      aspect_ratio,
+      response_format,
+      n,
+      prompt_optimizer,
+    };
+    if (typeof seed === "number" && Number.isFinite(seed)) {
+      payload.seed = seed;
+    }
+
+    const response = await fetch(resolveMiniMaxImageEndpoint(base_url), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const text = await response.text();
+    let data: any = {};
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch {
+      data = { raw: text };
+    }
+
+    if (!response.ok) {
+      const message = data?.base_resp?.status_msg || data?.message || data?.error || text || response.statusText;
+      res.status(response.status).json({ error: `MiniMax 生图失败: ${message}` });
+      return;
+    }
+
+    const statusCode = data?.base_resp?.status_code;
+    if (typeof statusCode === "number" && statusCode !== 0) {
+      res.status(502).json({ error: `MiniMax 生图失败: ${data?.base_resp?.status_msg || statusCode}` });
+      return;
+    }
+
+    const imageUrls = extractMiniMaxImages(data);
+    res.json({
+      id: data?.id || data?.request_id || data?.data?.id,
+      imageUrls,
+      metadata: {
+        model,
+        aspect_ratio,
+        response_format,
+        n,
+        prompt_optimizer,
+      },
+      raw: process.env.NODE_ENV === "production" ? undefined : data,
+    });
+  } catch (error: any) {
+    console.error("MiniMax Image Generation Error:", error);
+    res.status(500).json({ error: error.message || "Failed to generate image using MiniMax" });
+  }
+});
+
 async function startServer() {
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {

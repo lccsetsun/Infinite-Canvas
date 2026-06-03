@@ -17,9 +17,7 @@ import type { TabsProps } from "antd";
 import {
   AlertCircle,
   BookOpen,
-  Bot,
   Boxes,
-  Brain,
   Check,
   CheckCircle2,
   Clock,
@@ -30,13 +28,13 @@ import {
   FlaskConical,
   Globe,
   HelpCircle,
+  Image as ImageIcon,
   Key,
   Lightbulb,
   Plus,
   Power,
   RefreshCw,
   RotateCcw,
-  Server,
   Settings2,
   Shield,
   Sliders,
@@ -58,6 +56,7 @@ import {
   cloneProfile,
   makeDefaultProfile,
   makeDefaultSettings,
+  selectProviderProfile,
   testConnection,
   validateProfile,
 } from "../../features/api/apiSettings";
@@ -71,23 +70,13 @@ interface ApiSettingsPageProps {
 type IconComponent = React.ComponentType<React.SVGProps<SVGSVGElement> & { size?: number | string; strokeWidth?: number | string }>;
 
 const PROVIDER_ICON: Record<ApiProvider, IconComponent> = {
-  openai: Sparkles,
   deepseek: Cpu,
-  gemini: Brain,
-  anthropic: Bot,
-  moonshot: Lightbulb,
-  zhipu: Zap,
-  custom: Server,
+  minimax: ImageIcon,
 };
 
 const PROVIDER_ACCENT: Record<ApiProvider, string> = {
-  openai: "from-emerald-500/20 to-teal-500/10 border-emerald-400/40 text-emerald-200",
   deepseek: "from-indigo-500/20 to-violet-500/10 border-indigo-400/40 text-indigo-200",
-  gemini: "from-sky-500/20 to-blue-500/10 border-sky-400/40 text-sky-200",
-  anthropic: "from-orange-500/20 to-amber-500/10 border-orange-400/40 text-orange-200",
-  moonshot: "from-rose-500/20 to-pink-500/10 border-rose-400/40 text-rose-200",
-  zhipu: "from-cyan-500/20 to-sky-500/10 border-cyan-400/40 text-cyan-200",
-  custom: "from-slate-500/20 to-zinc-500/10 border-slate-400/40 text-slate-200",
+  minimax: "from-teal-500/20 to-cyan-500/10 border-teal-400/40 text-teal-200",
 };
 
 const TEMPERATURE_PRESETS: { label: string; value: number; description: string }[] = [
@@ -108,15 +97,10 @@ function _maskKey(key: string): string {
 
 function detectKeyStrength(key: string, provider: ApiProvider): { level: "empty" | "weak" | "medium" | "strong"; label: string; color: string } {
   if (!key) return { level: "empty", label: "未设置", color: "text-gray-500" };
-  if (provider === "gemini") {
-    return key.startsWith("AIza") && key.length >= 30
+  if (provider === "deepseek") {
+    return key.startsWith("sk-")
       ? { level: "strong", label: "格式正确", color: "text-emerald-300" }
-      : { level: "medium", label: "建议以 AIza 开头", color: "text-amber-300" };
-  }
-  if (provider === "anthropic") {
-    return key.startsWith("sk-ant-")
-      ? { level: "strong", label: "格式正确", color: "text-emerald-300" }
-      : { level: "medium", label: "建议以 sk-ant- 开头", color: "text-amber-300" };
+      : { level: "medium", label: "建议以 sk- 开头", color: "text-amber-300" };
   }
   if (key.length < 20) return { level: "weak", label: "长度过短", color: "text-rose-300" };
   if (key.length < 40) return { level: "medium", label: "可用", color: "text-amber-300" };
@@ -155,19 +139,9 @@ export default function ApiSettingsPage({ initial, onSave, showNotice }: ApiSett
   };
 
   const switchProvider = (provider: ApiProvider) => {
-    if (!active) return;
-    const next = PROVIDER_PRESETS[provider];
-    const patch: Partial<ApiProfile> = { provider };
-    if (provider !== "custom" && (!active.baseUrl || Object.values(PROVIDER_PRESETS).some((pp) => pp.baseUrl === active.baseUrl))) {
-      patch.baseUrl = next.baseUrl;
-    }
-    if (
-      provider !== "custom" &&
-      (!active.model || ["deepseek-chat", "gemini-2.0-flash", "gpt-4o-mini", "claude-3-5-sonnet-latest", "moonshot-v1-8k", "glm-4-flash"].includes(active.model))
-    ) {
-      patch.model = next.defaultModel;
-    }
-    updateActive(patch);
+    setSettings((prev) => selectProviderProfile(prev, provider));
+    setDirty(true);
+    setTestResult(null);
   };
 
   const handleNew = () => {
@@ -749,7 +723,7 @@ function ProfileManager({
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {profiles.map((p) => {
           const isActive = p.id === activeId;
-          const Icon = PROVIDER_ICON[p.provider] || Server;
+          const Icon = PROVIDER_ICON[p.provider];
           return (
             <div
               key={p.id}
@@ -864,10 +838,10 @@ function ConnectionTab({
           <div className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
           <h4 className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">服务提供商</h4>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-3">
+        <div className="grid grid-cols-2 gap-3">
           {(Object.entries(PROVIDER_PRESETS) as [ApiProvider, ProviderPreset][]).map(
             ([key, p]) => {
-              const Icon = PROVIDER_ICON[key] || Server;
+              const Icon = PROVIDER_ICON[key];
               const isSelected = active.provider === key;
               return (
                 <button

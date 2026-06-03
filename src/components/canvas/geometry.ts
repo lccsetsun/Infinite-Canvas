@@ -20,7 +20,7 @@ export function getNodeWidth(node: GraphNode) {
 export function getNodeHeight(node: GraphNode) {
   if (node.type === "image_node") return 390;
   if (node.type === "text_node") return 290;
-  if (node.type === "video_node") return 620;
+  if (node.type === "video_node") return 390;
   if (node.type === "upload_image") return 300;
   if (node.type === "upload_video") {
     return node.properties.frameAnalysis && node.properties.frameAnalysis !== "none" ? 420 : 240;

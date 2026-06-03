@@ -66,6 +66,58 @@ describe("compatible index helpers", () => {
   it("finds first compatible input", () => {
     expect(findFirstCompatibleInputIndex(from, to, 1)).toBe(1);
   });
+
+  it("selects the prompt input for legacy video nodes when connecting text output", () => {
+    const textNode = mockNode({
+      id: "text",
+      title: "文本节点",
+      type: "text_node",
+      outputs: [{ name: "文本", type: "STRING" }],
+    });
+    const legacyVideoNode = mockNode({
+      id: "video",
+      title: "视频节点",
+      type: "video_node",
+      inputs: [
+        { name: "duration", type: "NUMBER" },
+        { name: "prompt", type: "STRING" },
+        { name: "aspect_ratio", type: "STRING" },
+      ],
+    });
+
+    expect(findFirstCompatibleInputIndex(textNode, legacyVideoNode, 0)).toBe(1);
+  });
+
+  it("selects the image input for video nodes when connecting image output", () => {
+    const imageNode = mockNode({
+      id: "image",
+      title: "图片节点",
+      type: "image_node",
+      outputs: [{ name: "图片", type: "IMAGE" }],
+    });
+    const videoNode = mockNode({
+      id: "video",
+      title: "视频节点",
+      type: "video_node",
+      inputs: [
+        { name: "prompt", type: "STRING" },
+        { name: "image", type: "IMAGE" },
+        { name: "duration", type: "NUMBER" },
+      ],
+    });
+
+    expect(findFirstCompatibleInputIndex(imageNode, videoNode, 0)).toBe(1);
+    expect(
+      getLinkDraftIssue({
+        fromNodeId: "image",
+        toNodeId: "video",
+        fromOutputIndex: 0,
+        toInputIndex: 1,
+        nodes: [imageNode, videoNode],
+        links: [],
+      })
+    ).toBeNull();
+  });
 });
 
 describe("getLinkDraftIssue", () => {

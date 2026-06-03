@@ -85,7 +85,7 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
     isDemo: true,
     nodes: [
       { type: "string_input", x: 80, y: 140, defaultProperties: { value: "赛博朋克少女在霓虹灯下喝咖啡" } },
-      { type: "image_node", x: 380, y: 140, defaultProperties: { aspect_ratio: "1:1", negative_prompt: "low quality, blurry" } },
+      { type: "image_node", x: 380, y: 140, defaultProperties: { model: "image-01", aspect_ratio: "1:1", quantity: "1张", n: 1, prompt_optimizer: true } },
     ],
     links: [
       { fromNodeIndex: 0, fromOutputIndex: 0, toNodeIndex: 1, toInputIndex: 0 },
@@ -126,7 +126,7 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
     category: "图像",
     nodes: [
       { type: "string_input", x: 80, y: 120, defaultProperties: { value: "赛博朋克少女,霓虹灯" } },
-      { type: "image_node", x: 380, y: 120, defaultProperties: { aspect_ratio: "1:1" } },
+      { type: "image_node", x: 380, y: 120, defaultProperties: { model: "image-01", aspect_ratio: "1:1", quantity: "1张", n: 1, prompt_optimizer: true } },
     ],
     links: [
       { fromNodeIndex: 0, fromOutputIndex: 0, toNodeIndex: 1, toInputIndex: 0 },

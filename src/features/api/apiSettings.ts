@@ -1,11 +1,6 @@
 export type ApiProvider =
-  | "openai"
   | "deepseek"
-  | "gemini"
-  | "anthropic"
-  | "moonshot"
-  | "zhipu"
-  | "custom";
+  | "minimax";
 
 export interface ProviderPreset {
   label: string;
@@ -18,15 +13,6 @@ export interface ProviderPreset {
 }
 
 export const PROVIDER_PRESETS: Record<ApiProvider, ProviderPreset> = {
-  openai: {
-    label: "OpenAI",
-    description: "OpenAI 官方接口 (gpt-4o, gpt-4o-mini 等)",
-    baseUrl: "https://api.openai.com/v1",
-    models: ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"],
-    defaultModel: "gpt-4o-mini",
-    keyHint: "sk-...",
-    docsUrl: "https://platform.openai.com/api-keys",
-  },
   deepseek: {
     label: "DeepSeek",
     description: "深度求索,高性价比中文模型",
@@ -36,60 +22,20 @@ export const PROVIDER_PRESETS: Record<ApiProvider, ProviderPreset> = {
     keyHint: "sk-...",
     docsUrl: "https://platform.deepseek.com/api_keys",
   },
-  gemini: {
-    label: "Google Gemini",
-    description: "Google 多模态大模型 (通过本项目 /api/gemini/proxy 代理)",
-    baseUrl: "https://generativelanguage.googleapis.com/v1beta",
-    models: ["gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash", "gemini-1.5-flash-8b"],
-    defaultModel: "gemini-2.0-flash",
-    keyHint: "AIza...",
-    docsUrl: "https://aistudio.google.com/apikey",
-  },
-  anthropic: {
-    label: "Anthropic Claude",
-    description: "Anthropic Claude 系列模型 (OpenAI 兼容代理)",
-    baseUrl: "https://api.anthropic.com/v1",
-    models: ["claude-3-5-sonnet-latest", "claude-3-5-haiku-latest", "claude-3-opus-latest"],
-    defaultModel: "claude-3-5-sonnet-latest",
-    keyHint: "sk-ant-...",
-    docsUrl: "https://console.anthropic.com/settings/keys",
-  },
-  moonshot: {
-    label: "Moonshot (月之暗面)",
-    description: "Moonshot Kimi 系列,擅长长上下文",
-    baseUrl: "https://api.moonshot.cn/v1",
-    models: ["moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k", "moonshot-v1-auto"],
-    defaultModel: "moonshot-v1-8k",
-    keyHint: "sk-...",
-    docsUrl: "https://platform.moonshot.cn/console/api-keys",
-  },
-  zhipu: {
-    label: "智谱 AI (GLM)",
-    description: "智谱 BigModel 开放平台 (OpenAI 兼容)",
-    baseUrl: "https://open.bigmodel.cn/api/paas/v4",
-    models: ["glm-4-plus", "glm-4-air", "glm-4-airx", "glm-4-flash"],
-    defaultModel: "glm-4-flash",
-    keyHint: "your-api-key",
-    docsUrl: "https://bigmodel.cn/usercenter/projkey",
-  },
-  custom: {
-    label: "自定义 (OpenAI 兼容)",
-    description: "任何兼容 /v1/chat/completions 的第三方或自建网关",
-    baseUrl: "",
-    models: [],
-    defaultModel: "",
-    keyHint: "your-api-key",
+  minimax: {
+    label: "MiniMax",
+    description: "MiniMax 图像生成与多模态能力",
+    baseUrl: "https://api.minimaxi.com/v1",
+    models: ["image-01"],
+    defaultModel: "image-01",
+    keyHint: "MiniMax API Key",
+    docsUrl: "https://platform.minimax.io/docs/api-reference/image-generation-t2i",
   },
 };
 
 export const PROVIDER_ORDER: ApiProvider[] = [
-  "openai",
   "deepseek",
-  "gemini",
-  "anthropic",
-  "moonshot",
-  "zhipu",
-  "custom",
+  "minimax",
 ];
 
 export interface ApiProfile {
@@ -139,10 +85,27 @@ export function makeDefaultProfile(): ApiProfile {
   };
 }
 
+export function makeProviderProfile(provider: ApiProvider): ApiProfile {
+  const preset = PROVIDER_PRESETS[provider];
+  const now = Date.now();
+  return {
+    ...makeDefaultProfile(),
+    id: makeId("api"),
+    name: preset.label,
+    provider,
+    baseUrl: preset.baseUrl,
+    apiKey: "",
+    model: preset.defaultModel,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
 export function makeDefaultSettings(): ApiSettings {
   const profile = makeDefaultProfile();
+  const minimaxProfile = makeProviderProfile("minimax");
   return {
-    profiles: [profile],
+    profiles: [profile, minimaxProfile],
     activeProfileId: profile.id,
     autoTestOnSave: false,
   };
@@ -196,11 +159,22 @@ export function loadApiSettings(): ApiSettings {
 }
 
 function migrateProfileFields(s: ApiSettings): ApiSettings {
-  const profiles = s.profiles.map((p) => ({
-    ...makeDefaultProfile(),
-    ...p,
-    id: p.id || makeId("api"),
-  }));
+  const profiles = s.profiles
+    .filter((p) => p.provider === "deepseek" || p.provider === "minimax")
+    .map((p) => {
+      const preset = PROVIDER_PRESETS[p.provider];
+      const shouldUsePresetBaseUrl = p.provider === "minimax" && (!p.baseUrl || p.baseUrl.includes("api.minimax.io"));
+      return {
+        ...makeDefaultProfile(),
+        ...p,
+        provider: p.provider,
+        baseUrl: shouldUsePresetBaseUrl ? preset.baseUrl : p.baseUrl,
+        model: p.model || preset.defaultModel,
+        id: p.id || makeId("api"),
+      };
+    });
+  if (!profiles.some((p) => p.provider === "deepseek")) profiles.push(makeProviderProfile("deepseek"));
+  if (!profiles.some((p) => p.provider === "minimax")) profiles.push(makeProviderProfile("minimax"));
   const stillActive = profiles.some((p) => p.id === s.activeProfileId);
   return {
     profiles,
@@ -215,6 +189,21 @@ export function saveApiSettings(s: ApiSettings) {
 
 export function getActiveProfile(s: ApiSettings): ApiProfile {
   return s.profiles.find((p) => p.id === s.activeProfileId) ?? s.profiles[0];
+}
+
+export function getProviderProfile(s: ApiSettings, provider: ApiProvider): ApiProfile | undefined {
+  return s.profiles.find((p) => p.provider === provider && p.apiKey.trim()) ?? s.profiles.find((p) => p.provider === provider);
+}
+
+export function selectProviderProfile(s: ApiSettings, provider: ApiProvider): ApiSettings {
+  const existing = s.profiles.find((profile) => profile.provider === provider);
+  if (existing) return { ...s, activeProfileId: existing.id };
+  const profile = makeProviderProfile(provider);
+  return {
+    ...s,
+    profiles: [...s.profiles, profile],
+    activeProfileId: profile.id,
+  };
 }
 
 export function validateProfile(p: ApiProfile): { ok: boolean; issues: string[] } {
@@ -250,8 +239,16 @@ export async function testConnection(profile: ApiProfile, signal?: AbortSignal):
   try {
     let url: string;
     const headers: Record<string, string> = {};
-    if (profile.provider === "gemini") {
-      url = `/api/gemini/proxy?action=models${profile.apiKey ? `&key=${encodeURIComponent(profile.apiKey)}` : ""}`;
+    if (profile.provider === "minimax") {
+      if (!profile.apiKey.trim()) {
+        return { ok: false, message: "请先填写 MiniMax API Key" };
+      }
+      return {
+        ok: true,
+        message: "MiniMax 配置已保存，图片节点运行时会通过本地代理验证密钥",
+        latencyMs: Math.round(performance.now() - start),
+        models: [profile.model || "image-01"],
+      };
     } else {
       const base = profile.baseUrl.replace(/\/+$/, "");
       url = `${base}/models`;

@@ -7,13 +7,11 @@ import {
   Crop, 
   Film, 
   Languages, 
-  Layers, 
   Loader2, 
   Maximize2, 
   Play, 
   Plus,
   Settings2, 
-  Sparkles, 
   User, 
   Video, 
   X 
@@ -59,11 +57,6 @@ const VIDEO_MODELS = [
 
 const RATIO_OPTIONS = ["16:9", "9:16", "4:3", "3:4", "1:1"];
 const QUANTITY_OPTIONS = ["1个", "2个", "4个"];
-
-const QUICK_ACTIONS = [
-  { key: "first-last", label: "首尾帧生成视频", icon: Layers },
-  { key: "first-frame", label: "首帧生成视频", icon: Sparkles },
-];
 
 const TOOL_TABS = [
   { key: "text-to-video", label: "文生视频" },
@@ -117,6 +110,8 @@ function VideoNodeCardImpl({
   const model = (node.properties.model as string) || "seedance-2-0-vip";
   const activeTool = (node.properties.videoTool as string) || "text-to-video";
   const audioEnabled = node.properties.audio !== false;
+  const nodeBadgeTitle = node.title === "视频节点" || node.title === "视频" ? "视频节点 1" : node.title;
+  const nodeBadgeMatch = nodeBadgeTitle.match(/^(.*?)(\s+\d+)$/);
 
   const handleRun = () => {
     if (isRunning) return;
@@ -260,7 +255,16 @@ function VideoNodeCardImpl({
         </AnimatePresence>
         <div className="absolute -top-8 left-0 z-30 flex items-center gap-1.5 text-slate-300/82 drop-shadow-[0_1px_10px_rgba(15,23,42,0.9)]">
           <Film className="h-4 w-4 text-cyan-100/58" />
-          <span className="text-[15px] font-medium tracking-tight">{node.title}</span>
+          <span className="text-[15px] font-medium tracking-tight">
+            {nodeBadgeMatch ? (
+              <>
+                <span>{nodeBadgeMatch[1]}</span>
+                <span className="text-emerald-200/72">{nodeBadgeMatch[2]}</span>
+              </>
+            ) : (
+              nodeBadgeTitle
+            )}
+          </span>
         </div>
 
         <div className="absolute right-3 top-3 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
@@ -344,28 +348,6 @@ function VideoNodeCardImpl({
               >
                 <div className="flex flex-1 flex-col items-center justify-center text-slate-300/18">
                   <Play className="mb-14 h-16 w-16" />
-                </div>
-                <div className="w-full">
-                  <div className="mb-4 text-[14px] text-slate-400/70">尝试:</div>
-                  <div className="space-y-5">
-                    {QUICK_ACTIONS.map((item) => {
-                      const Icon = item.icon;
-                      return (
-                        <button
-                          key={item.key}
-                          data-node-action="true"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            // Implementation for quick actions
-                          }}
-                          className="flex items-center gap-3 text-left text-slate-100/86 transition-colors hover:text-white"
-                        >
-                          <Icon className="h-4 w-4 text-cyan-100/64" />
-                          <span className="text-[15px] tracking-tight">{item.label}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
                 </div>
               </motion.div>
             )}

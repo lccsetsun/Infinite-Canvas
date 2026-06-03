@@ -23,7 +23,7 @@ import { useAppUiState } from "./hooks/useAppUiState";
 import { shouldFinishCanvasLinkOnCanvasPointerUp } from "./utils/canvasPointerPolicy";
 import { ConfigProvider, theme } from "antd";
 import { NodeClass } from "./types";
-import { ApiSettings, getActiveProfile, loadApiSettings, saveApiSettings } from "./features/api/apiSettings";
+import { ApiSettings, getActiveProfile, getProviderProfile, loadApiSettings, saveApiSettings } from "./features/api/apiSettings";
 
 const LogicPanel = React.lazy(() => import("./components/LogicPanel"));
 const SearchMenu = React.lazy(() => import("./components/SearchMenu"));
@@ -37,6 +37,7 @@ export default function App() {
 
   const [apiSettings, setApiSettings] = React.useState<ApiSettings>(() => loadApiSettings());
   const activeApiProfile = React.useMemo(() => getActiveProfile(apiSettings), [apiSettings]);
+  const minimaxApiProfile = React.useMemo(() => getProviderProfile(apiSettings, "minimax"), [apiSettings]);
   const apiBaseUrl = activeApiProfile.baseUrl;
   const apiKey = activeApiProfile.apiKey;
   const apiModel = activeApiProfile.model;
@@ -125,6 +126,14 @@ export default function App() {
       timeout: activeApiProfile.timeout,
       systemPrompt: activeApiProfile.systemPrompt,
       useSystemProxy: activeApiProfile.useSystemProxy,
+      minimaxApiKey: minimaxApiProfile?.apiKey || "",
+      minimaxBaseUrl: minimaxApiProfile?.baseUrl || "",
+      providerApiKeys: {
+        minimax: minimaxApiProfile?.apiKey || "",
+      },
+      providerBaseUrls: {
+        minimax: minimaxApiProfile?.baseUrl || "",
+      },
     },
   });
 

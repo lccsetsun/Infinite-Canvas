@@ -3,7 +3,7 @@ import { createNodeFromType } from "../features/nodes/nodeFactory";
 import { getExecutor } from "../features/nodes/nodeExecutors";
 import { WORKFLOW_TEMPLATES } from "../features/templates/workflowTemplates";
 import { ExecutionLog, GraphLink, GraphNode, NodeClass } from "../types";
-import { getLinkDraftIssue } from "../utils/linking";
+import { findFirstCompatibleInputIndex, getLinkDraftIssue, isDataTypeCompatible } from "../utils/linking";
 import { NodeOutputMap, buildResolvedInputsMap, resolveNodeInputs, topologicalLevels } from "../runtime/dataflow";
 
 const STORAGE_KEY = "aicanvas_workspace_v2";
@@ -15,6 +15,9 @@ const WORKSPACE_LEGACY_VERSIONS = [1] as const;
 const TRASH_RETENTION_DAYS = 30;
 const TRASH_RETENTION_MS = TRASH_RETENTION_DAYS * 86_400_000;
 const TRASH_PURGE_INTERVAL_MS = 60 * 60 * 1000;
+const VIDEO_IMAGE_INPUT = { name: "image", type: "IMAGE" as const };
+const MINIMAX_IMAGE_RATIOS = new Set(["1:1", "16:9", "4:3", "3:2", "2:3", "3:4", "9:16", "21:9"]);
+const IMAGE_NODE_MODEL_FALLBACKS = new Set(["", "lib-navo-pro", "flux-1", "sdxl", "midjourney"]);
 
 interface HistorySnapshot {
   nodes: GraphNode[];
@@ -151,6 +154,39 @@ function mapToOutputs(map: NodeOutputMap): SerializedNodeOutput[] {
   return Array.from(map.entries()).map(([k, v]) => [k, Array.from(v.entries())]);
 }
 
+function normalizeNodePorts(node: GraphNode): GraphNode {
+  let nextNode = node;
+  if (nextNode.type === "image_node") {
+    const aspectRatio = String(nextNode.properties.aspect_ratio || "16:9");
+    const model = String(nextNode.properties.model || "");
+    const quantity = String(nextNode.properties.quantity || "1张");
+    const count = Math.min(9, Math.max(1, Number.parseInt(quantity, 10) || 1));
+    nextNode = {
+      ...nextNode,
+      properties: {
+        ...nextNode.properties,
+        model: IMAGE_NODE_MODEL_FALLBACKS.has(model) ? "image-01" : model,
+        aspect_ratio: MINIMAX_IMAGE_RATIOS.has(aspectRatio) ? aspectRatio : "16:9",
+        quantity: `${count}张`,
+        n: count,
+        prompt_optimizer: nextNode.properties.prompt_optimizer !== false,
+      },
+    };
+  }
+
+  if (nextNode.type !== "video_node" || nextNode.inputs.some((input) => input.type === "IMAGE")) return nextNode;
+  const promptIndex = nextNode.inputs.findIndex((input) => input.name === "prompt");
+  const insertAt = promptIndex >= 0 ? promptIndex + 1 : 0;
+  return {
+    ...nextNode,
+    inputs: [...nextNode.inputs.slice(0, insertAt), VIDEO_IMAGE_INPUT, ...nextNode.inputs.slice(insertAt)],
+  };
+}
+
+function normalizeNodes(nodes: GraphNode[]): GraphNode[] {
+  return nodes.map(normalizeNodePorts);
+}
+
 export interface UseWorkflowStateOptions {
   apiConfig: {
     baseUrl: string;
@@ -162,6 +198,10 @@ export interface UseWorkflowStateOptions {
     timeout?: number;
     systemPrompt?: string;
     useSystemProxy?: boolean;
+    minimaxApiKey?: string;
+    minimaxBaseUrl?: string;
+    providerApiKeys?: Partial<Record<string, string>>;
+    providerBaseUrls?: Partial<Record<string, string>>;
   };
 }
 
@@ -172,6 +212,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
 
   const [workspace, setWorkspace] = useState<Workspace>(initial);
   const initialWf = initial.workflows[initial.currentId];
+  const initialNodes = normalizeNodes(initialWf?.data.nodes ?? []);
 
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [logs, setLogs] = useState<ExecutionLog[]>([makeLog("info", "初始化完成:工作流编辑器已就绪。")]);
@@ -180,7 +221,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
   const [linkFromOutputIndex, setLinkFromOutputIndex] = useState(0);
   const [linkToInputIndex, setLinkToInputIndex] = useState(0);
 
-  const [nodes, setNodes] = useState<GraphNode[]>(initialWf?.data.nodes ?? []);
+  const [nodes, setNodes] = useState<GraphNode[]>(initialNodes);
   const [links, setLinks] = useState<GraphLink[]>(initialWf?.data.links ?? []);
   const [groups, setGroups] = useState<import("../types").GroupBox[]>(initialWf?.data.groups ?? []);
   const [nodeOutputs, setNodeOutputs] = useState<NodeOutputMap>(() =>
@@ -189,7 +230,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
   const [isRunning, setIsRunning] = useState(false);
 
   const [historyState, setHistoryState] = useState<{ stack: HistorySnapshot[]; pointer: number }>(() => ({
-    stack: [{ nodes: initialWf?.data.nodes ?? [], links: initialWf?.data.links ?? [] }],
+    stack: [{ nodes: initialNodes, links: initialWf?.data.links ?? [] }],
     pointer: 0,
   }));
   const canUndo = historyState.pointer > 0;
@@ -285,6 +326,12 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     if (type === "text_node") {
       node.title = `文本节点 ${nodes.filter((n) => n.type === "text_node").length + 1}`;
     }
+    if (type === "image_node") {
+      node.title = `图片节点 ${nodes.filter((n) => n.type === "image_node").length + 1}`;
+    }
+    if (type === "video_node") {
+      node.title = `视频节点 ${nodes.filter((n) => n.type === "video_node").length + 1}`;
+    }
     if (initialProps) node.properties = { ...node.properties, ...initialProps };
     const nextNodes = [...nodes, node];
     setNodes(nextNodes);
@@ -364,20 +411,29 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
   };
 
   const addLinkFromDraft = (draft: { fromNodeId: string; toNodeId: string; fromOutputIndex: number; toInputIndex: number }) => {
-    const issue = getLinkDraftIssue({ ...draft, nodes, links });
+    const fromNodeCandidate = nodes.find((n) => n.id === draft.fromNodeId);
+    const toNodeCandidate = nodes.find((n) => n.id === draft.toNodeId);
+    const fromOutput = fromNodeCandidate?.outputs[draft.fromOutputIndex];
+    const requestedInput = toNodeCandidate?.inputs[draft.toInputIndex];
+    const normalizedInputIndex =
+      fromNodeCandidate && toNodeCandidate && fromOutput && (!requestedInput || !isDataTypeCompatible(fromOutput.type, requestedInput.type))
+        ? findFirstCompatibleInputIndex(fromNodeCandidate, toNodeCandidate, draft.fromOutputIndex)
+        : draft.toInputIndex;
+    const normalizedDraft = { ...draft, toInputIndex: normalizedInputIndex };
+    const issue = getLinkDraftIssue({ ...normalizedDraft, nodes, links });
     if (issue) {
       appendLog("warning", issue);
       return false;
     }
 
-    const fromNode = nodes.find((n) => n.id === draft.fromNodeId)!;
-    const toNode = nodes.find((n) => n.id === draft.toNodeId)!;
+    const fromNode = nodes.find((n) => n.id === normalizedDraft.fromNodeId)!;
+    const toNode = nodes.find((n) => n.id === normalizedDraft.toNodeId)!;
     const link: GraphLink = {
       id: makeId("link"),
-      fromNodeId: draft.fromNodeId,
-      fromOutputIndex: draft.fromOutputIndex,
-      toNodeId: draft.toNodeId,
-      toInputIndex: draft.toInputIndex,
+      fromNodeId: normalizedDraft.fromNodeId,
+      fromOutputIndex: normalizedDraft.fromOutputIndex,
+      toNodeId: normalizedDraft.toNodeId,
+      toInputIndex: normalizedDraft.toInputIndex,
     };
 
     const nextLinks = [...links, link];
@@ -390,7 +446,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     pushHistory({ nodes, links: nextLinks });
     appendLog(
       "success",
-      `已建立连线:${fromNode.title}[${fromNode.outputs[draft.fromOutputIndex].name}] -> ${toNode.title}[${toNode.inputs[draft.toInputIndex].name}]`
+      `已建立连线:${fromNode.title}[${fromNode.outputs[normalizedDraft.fromOutputIndex].name}] -> ${toNode.title}[${toNode.inputs[normalizedDraft.toInputIndex].name}]`
     );
     return true;
   };
@@ -604,12 +660,13 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     setHistoryState((prev) => {
       if (prev.pointer <= 0) return prev;
       const target = prev.stack[prev.pointer - 1];
-      setNodes(target.nodes);
+      const nextNodes = normalizeNodes(target.nodes);
+      setNodes(nextNodes);
       setLinks(target.links);
       syncCurrentWorkflowMeta((wf) => ({
         ...wf,
         summary: { ...wf.summary, updatedAt: Date.now() },
-        data: { ...wf.data, nodes: target.nodes, links: target.links },
+        data: { ...wf.data, nodes: nextNodes, links: target.links },
       }));
       appendLog("info", `已撤销 (${prev.pointer} → ${prev.pointer - 1})`);
       return { ...prev, pointer: prev.pointer - 1 };
@@ -620,12 +677,13 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     setHistoryState((prev) => {
       if (prev.pointer >= prev.stack.length - 1) return prev;
       const target = prev.stack[prev.pointer + 1];
-      setNodes(target.nodes);
+      const nextNodes = normalizeNodes(target.nodes);
+      setNodes(nextNodes);
       setLinks(target.links);
       syncCurrentWorkflowMeta((wf) => ({
         ...wf,
         summary: { ...wf.summary, updatedAt: Date.now() },
-        data: { ...wf.data, nodes: target.nodes, links: target.links },
+        data: { ...wf.data, nodes: nextNodes, links: target.links },
       }));
       appendLog("info", `已重做 (${prev.pointer} → ${prev.pointer + 1})`);
       return { ...prev, pointer: prev.pointer + 1 };
@@ -652,7 +710,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       const wfId = makeId("wf");
       const now = Date.now();
       const nodeIds: string[] = [];
-      const nodes: GraphNode[] = tmpl.nodes.map((n) => {
+      const nodes: GraphNode[] = normalizeNodes(tmpl.nodes.map((n) => {
         const nodeId = makeId("node");
         nodeIds.push(nodeId);
         const base = createNodeFromType(n.type, nodeId, n.x, n.y);
@@ -660,7 +718,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
           base.properties = { ...base.properties, ...n.defaultProperties };
         }
         return base;
-      });
+      }));
       const links: GraphLink[] = tmpl.links.map((l) => ({
         id: makeId("link"),
         fromNodeId: nodeIds[l.fromNodeIndex],
@@ -733,7 +791,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       }
       const now = Date.now();
       const nodeIds: string[] = [];
-      const nodes: GraphNode[] = tmpl.nodes.map((n) => {
+      const nodes: GraphNode[] = normalizeNodes(tmpl.nodes.map((n) => {
         const nodeId = makeId("node");
         nodeIds.push(nodeId);
         const base = createNodeFromType(n.type, nodeId, n.x, n.y);
@@ -741,7 +799,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
           base.properties = { ...base.properties, ...n.defaultProperties };
         }
         return base;
-      });
+      }));
       const links: GraphLink[] = tmpl.links.map((l) => ({
         id: makeId("link"),
         fromNodeId: nodeIds[l.fromNodeIndex],
@@ -810,13 +868,14 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     setWorkspace((prev) => {
       const target = prev.workflows[id];
       if (!target) return prev;
-      setNodes(target.data.nodes);
+      const nextNodes = normalizeNodes(target.data.nodes);
+      setNodes(nextNodes);
       setLinks(target.data.links);
       setNodeOutputs(outputsToMap(target.data.nodeOutputs));
       setSelectedNodeId(null);
       clearLinkDraft();
-      resetHistory({ nodes: target.data.nodes, links: target.data.links });
-      appendLog("info", `已切换到工作流 "${target.summary.name}" (${target.data.nodes.length} 节点, ${target.data.links.length} 连线)`);
+      resetHistory({ nodes: nextNodes, links: target.data.links });
+      appendLog("info", `已切换到工作流 "${target.summary.name}" (${nextNodes.length} 节点, ${target.data.links.length} 连线)`);
       return { ...prev, currentId: id };
     });
     return true;
@@ -961,12 +1020,13 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     });
     if (wasCurrent) {
       const nextWf = workspace.workflows[nextCurrentId];
-      setNodes(nextWf.data.nodes);
+      const nextNodes = normalizeNodes(nextWf.data.nodes);
+      setNodes(nextNodes);
       setLinks(nextWf.data.links);
       setNodeOutputs(outputsToMap(nextWf.data.nodeOutputs));
       setSelectedNodeId(null);
       clearLinkDraft();
-      resetHistory({ nodes: nextWf.data.nodes, links: nextWf.data.links });
+      resetHistory({ nodes: nextNodes, links: nextWf.data.links });
     }
     appendLog("warning", `已移至回收站 "${removed.summary.name}"`);
     return true;

@@ -13,6 +13,10 @@ export interface ExecutorContext {
     timeout?: number;
     systemPrompt?: string;
     useSystemProxy?: boolean;
+    minimaxApiKey?: string;
+    minimaxBaseUrl?: string;
+    providerApiKeys?: Partial<Record<string, string>>;
+    providerBaseUrls?: Partial<Record<string, string>>;
   };
   signal?: AbortSignal;
   onProgress?: (percent: number) => void;
@@ -26,6 +30,10 @@ export interface ExecutorResult {
 export type NodeExecutor = (ctx: ExecutorContext) => Promise<ExecutorResult>;
 
 export const TEXT_NODE_MODEL = "deepseek-v4-flash";
+export const MINIMAX_IMAGE_MODEL = "image-01";
+
+const MINIMAX_ASPECT_RATIOS = new Set(["1:1", "16:9", "4:3", "3:2", "2:3", "3:4", "9:16", "21:9"]);
+const MINIMAX_IMAGE_MODELS = new Set([MINIMAX_IMAGE_MODEL]);
 
 export function normalizeApiKey(apiKey: string): string {
   return apiKey.trim();
@@ -136,11 +144,74 @@ function buildTextToImageUrl(prompt: string, aspect: string): string {
   return `https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=${encodeURIComponent(prompt)}&image_size=${size}`;
 }
 
+function parseImageCount(value: unknown): number {
+  const raw = typeof value === "string" ? Number.parseInt(value, 10) : Number(value);
+  if (!Number.isFinite(raw)) return 1;
+  return Math.min(9, Math.max(1, Math.trunc(raw)));
+}
+
+async function callMiniMaxTextToImage(
+  properties: Record<string, unknown>,
+  prompt: string,
+  model: string,
+  minimaxApiKey?: string,
+  minimaxBaseUrl?: string,
+  aspectRatioInput?: string
+): Promise<{
+  imageUrls: string[];
+  requestId?: string;
+  metadata?: Record<string, unknown>;
+}> {
+  if (!prompt.trim()) {
+    throw new Error("请输入图片生成提示词");
+  }
+  if (prompt.length > 1500) {
+    throw new Error("MiniMax 图片提示词最长 1500 字符，请精简后重试");
+  }
+
+  const aspectRatio = String(aspectRatioInput || properties.aspect_ratio || "16:9");
+  const n = parseImageCount(properties.n ?? properties.quantity ?? 1);
+  const response = await fetch("/api/minimax/image-generation", {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      ...(minimaxApiKey?.trim() ? { "X-MiniMax-Api-Key": minimaxApiKey.trim() } : {}),
+    },
+    body: JSON.stringify({
+      model,
+      prompt,
+      aspect_ratio: MINIMAX_ASPECT_RATIOS.has(aspectRatio) ? aspectRatio : "16:9",
+      response_format: "url",
+      n,
+      prompt_optimizer: properties.prompt_optimizer === true,
+      base_url: minimaxBaseUrl,
+      seed: typeof properties.seed === "number" && Number.isFinite(properties.seed) ? properties.seed : undefined,
+    }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data?.error || `MiniMax 生图失败 (${response.status})`);
+  }
+
+  const imageUrls = Array.isArray(data?.imageUrls) ? data.imageUrls.filter((url: unknown) => typeof url === "string" && url) : [];
+  if (imageUrls.length === 0) {
+    throw new Error("MiniMax 未返回图片链接");
+  }
+
+  return {
+    imageUrls,
+    requestId: typeof data?.id === "string" ? data.id : undefined,
+    metadata: typeof data?.metadata === "object" && data.metadata ? data.metadata : undefined,
+  };
+}
+
 export const executors: Partial<Record<NodeClass, NodeExecutor>> = {
   text_node: async ({ inputs, properties, apiConfig }) => {
     const userPrompt = pickString(inputs, properties, "user_prompt", "prompt");
     const nodeSystemPrompt = pickString(inputs, properties, "system_prompt");
-    const model = TEXT_NODE_MODEL;
+    const model = String(properties.model || apiConfig.model || TEXT_NODE_MODEL);
     const isGemini = (apiConfig.baseUrl || "").includes("generativelanguage.googleapis.com");
 
     let text = "";
@@ -170,18 +241,37 @@ export const executors: Partial<Record<NodeClass, NodeExecutor>> = {
     return { outputs: { 0: text }, patch: { response: text, status: "success" } };
   },
 
-  image_node: async ({ inputs, properties }) => {
+  image_node: async ({ inputs, properties, apiConfig }) => {
     const prompt = pickString(inputs, properties, "prompt");
+    const model = String(properties.model || MINIMAX_IMAGE_MODEL);
+    if (MINIMAX_IMAGE_MODELS.has(model)) {
+      const aspect = pickString(inputs, properties, "aspect_ratio") || "16:9";
+      const minimaxApiKey = apiConfig.providerApiKeys?.minimax || apiConfig.minimaxApiKey;
+      const minimaxBaseUrl = apiConfig.providerBaseUrls?.minimax || apiConfig.minimaxBaseUrl;
+      const result = await callMiniMaxTextToImage(properties, prompt, model, minimaxApiKey, minimaxBaseUrl, aspect);
+      return {
+        outputs: { 0: result.imageUrls[0] },
+        patch: {
+          imageUrl: result.imageUrls[0],
+          imageUrls: result.imageUrls,
+          minimaxRequestId: result.requestId,
+          minimaxMetadata: result.metadata,
+          status: "success",
+        },
+      };
+    }
+
     const aspect = pickString(inputs, properties, "aspect_ratio") || "1:1";
     const imageUrl = buildTextToImageUrl(prompt, aspect);
-    return { outputs: { 0: imageUrl }, patch: { imageUrl } };
+    return { outputs: { 0: imageUrl }, patch: { imageUrl, status: "success" } };
   },
 
   video_node: async ({ inputs, properties }) => {
     const prompt = pickString(inputs, properties, "prompt");
+    const imageUrl = (inputs.image as string) || (inputs["首帧"] as string) || "";
     const _duration = pickNumber(inputs, properties, "duration");
-    const videoUrl = `https://assets.mixkit.co/videos/preview/mixkit-abstract-flowing-teal-and-blue-gradient-background-40030-large.mp4?seed=${encodeURIComponent(prompt)}`;
-    return { outputs: { 0: videoUrl }, patch: { videoUrl } };
+    const videoUrl = `https://assets.mixkit.co/videos/preview/mixkit-abstract-flowing-teal-and-blue-gradient-background-40030-large.mp4?seed=${encodeURIComponent(`${prompt}|${imageUrl}`)}`;
+    return { outputs: { 0: videoUrl }, patch: { videoUrl, referenceImage: imageUrl || undefined } };
   },
 
   string_input: async ({ properties }) => {

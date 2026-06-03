@@ -1,6 +1,6 @@
 import React from "react";
 import { GraphLink, GraphNode } from "../types";
-import { getLinkDraftIssue } from "../utils/linking";
+import { findFirstCompatibleInputIndex, getLinkDraftIssue, isDataTypeCompatible } from "../utils/linking";
 
 interface WorldPoint {
   x: number;
@@ -50,6 +50,22 @@ export function useCanvasLinking({
   const [isLinkingOnCanvas, setIsLinkingOnCanvas] = React.useState(false);
   const [draftCursor, setDraftCursor] = React.useState<WorldPoint | null>(null);
 
+  const getCompatibleInputIndex = React.useCallback(
+    (nodeId: string, inputIndex: number) => {
+      const fromNode = nodes.find((node) => node.id === linkFromNodeId);
+      const toNode = nodes.find((node) => node.id === nodeId);
+      if (!fromNode || !toNode || !fromNode.outputs[linkFromOutputIndex]) return inputIndex;
+
+      const targetInput = toNode.inputs[inputIndex];
+      if (targetInput && isDataTypeCompatible(fromNode.outputs[linkFromOutputIndex].type, targetInput.type)) {
+        return inputIndex;
+      }
+
+      return findFirstCompatibleInputIndex(fromNode, toNode, linkFromOutputIndex);
+    },
+    [linkFromNodeId, linkFromOutputIndex, nodes]
+  );
+
   const resetCanvasLinkDraft = React.useCallback(() => {
     clearLinkDraft();
     setDraftCursor(null);
@@ -72,19 +88,20 @@ export function useCanvasLinking({
   const hoverCanvasLinkTarget = React.useCallback(
     (nodeId: string, inputIndex: number) => {
       if (!isLinkingOnCanvas) return;
+      const compatibleInputIndex = getCompatibleInputIndex(nodeId, inputIndex);
       const issue = getLinkDraftIssue({
         fromNodeId: linkFromNodeId,
         toNodeId: nodeId,
         fromOutputIndex: linkFromOutputIndex,
-        toInputIndex: inputIndex,
+        toInputIndex: compatibleInputIndex,
         nodes,
         links,
       });
       if (issue) return;
       setLinkToNodeId(nodeId);
-      setLinkToInputIndex(inputIndex);
+      setLinkToInputIndex(compatibleInputIndex);
     },
-    [isLinkingOnCanvas, linkFromNodeId, linkFromOutputIndex, links, nodes, setLinkToNodeId, setLinkToInputIndex]
+    [getCompatibleInputIndex, isLinkingOnCanvas, linkFromNodeId, linkFromOutputIndex, links, nodes, setLinkToNodeId, setLinkToInputIndex]
   );
 
   const leaveCanvasLinkTarget = React.useCallback(
@@ -106,7 +123,7 @@ export function useCanvasLinking({
       }
 
       const finalToNodeId = toNodeId ?? linkToNodeId;
-      const finalToInputIndex = toInputIndex ?? linkToInputIndex;
+      const finalToInputIndex = getCompatibleInputIndex(finalToNodeId, toInputIndex ?? linkToInputIndex);
       if (!finalToNodeId) {
         resetCanvasLinkDraft();
         return;
@@ -131,22 +148,24 @@ export function useCanvasLinking({
       linkToNodeId,
       resetCanvasLinkDraft,
       showNotice,
+      getCompatibleInputIndex,
     ]
   );
 
   const getCanvasLinkTargetIssue = React.useCallback(
     (nodeId: string, inputIndex: number) => {
       if (!isLinkingOnCanvas || !linkFromNodeId) return null;
+      const compatibleInputIndex = getCompatibleInputIndex(nodeId, inputIndex);
       return getLinkDraftIssue({
         fromNodeId: linkFromNodeId,
         toNodeId: nodeId,
         fromOutputIndex: linkFromOutputIndex,
-        toInputIndex: inputIndex,
+        toInputIndex: compatibleInputIndex,
         nodes,
         links,
       });
     },
-    [isLinkingOnCanvas, linkFromNodeId, linkFromOutputIndex, nodes, links]
+    [getCompatibleInputIndex, isLinkingOnCanvas, linkFromNodeId, linkFromOutputIndex, nodes, links]
   );
 
   const finishCanvasLinkRef = React.useRef(finishCanvasLink);
@@ -161,7 +180,10 @@ export function useCanvasLinking({
       const portEl = target?.closest("[data-port-role='input']") as HTMLElement | null;
       if (portEl) {
         return {
-          inputIndex: parseInt(portEl.getAttribute("data-port-index") || "0", 10),
+          inputIndex: getCompatibleInputIndex(
+            portEl.getAttribute("data-node-id") || "",
+            parseInt(portEl.getAttribute("data-port-index") || "0", 10)
+          ),
           nodeId: portEl.getAttribute("data-node-id") || "",
         };
       }
@@ -171,7 +193,7 @@ export function useCanvasLinking({
       const node = nodes.find((candidate) => candidate.id === nodeId);
       if (!node || node.inputs.length === 0) return null;
 
-      return { inputIndex: 0, nodeId };
+      return { inputIndex: getCompatibleInputIndex(nodeId, 0), nodeId };
     };
     
     const onMove = (e: PointerEvent) => {
@@ -229,7 +251,7 @@ export function useCanvasLinking({
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
     };
-  }, [isLinkingOnCanvas, toWorld, setDraftCursor, linkFromNodeId, linkFromOutputIndex, linkToNodeId, linkToInputIndex, nodes, links, setLinkToNodeId, setLinkToInputIndex]);
+  }, [getCompatibleInputIndex, isLinkingOnCanvas, toWorld, setDraftCursor, linkFromNodeId, linkFromOutputIndex, linkToNodeId, linkToInputIndex, nodes, links, setLinkToNodeId, setLinkToInputIndex]);
 
   return {
     beginCanvasLink,

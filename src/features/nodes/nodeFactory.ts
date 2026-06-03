@@ -134,19 +134,18 @@ const NODE_BLUEPRINTS: Partial<Record<NodeClass, NodeBlueprint>> = {
     properties: {
       imageUrl: "",
       text: "",
-      model: "lib-navo-pro",
+      model: "image-01",
       aspect_ratio: "16:9",
-      resolution: "2K",
       quantity: "1张",
-      camera: "摄像机",
-      imageTool: "style",
-      referenceImage: "",
+      n: 1,
+      prompt_optimizer: true,
     },
   },
   video_node: {
     title: "视频",
     inputs: [
       { name: "prompt", type: "STRING" },
+      { name: "image", type: "IMAGE" },
       { name: "duration", type: "NUMBER" },
       { name: "aspect_ratio", type: "STRING" },
     ],
