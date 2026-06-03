@@ -156,30 +156,53 @@ export function useCanvasLinking({
 
   React.useEffect(() => {
     if (!isLinkingOnCanvas) return;
+
+    const getInputDropTarget = (target: HTMLElement | null) => {
+      const portEl = target?.closest("[data-port-role='input']") as HTMLElement | null;
+      if (portEl) {
+        return {
+          inputIndex: parseInt(portEl.getAttribute("data-port-index") || "0", 10),
+          nodeId: portEl.getAttribute("data-node-id") || "",
+        };
+      }
+
+      const nodeEl = target?.closest("[data-canvas-node-id]") as HTMLElement | null;
+      const nodeId = nodeEl?.getAttribute("data-canvas-node-id") || "";
+      const node = nodes.find((candidate) => candidate.id === nodeId);
+      if (!node || node.inputs.length === 0) return null;
+
+      return { inputIndex: 0, nodeId };
+    };
     
     const onMove = (e: PointerEvent) => {
-      setDraftCursor(toWorld(e.clientX, e.clientY));
+      // Use requestAnimationFrame for smoother cursor tracking
+      window.requestAnimationFrame(() => {
+        setDraftCursor(toWorld(e.clientX, e.clientY));
+      });
       
       // Hit testing for ports using elementFromPoint since implicit capture might block onPointerEnter
+      // We use a small timeout or just direct call, but ensure it's robust
       const target = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement;
-      const portEl = target?.closest("[data-port-role='input']") as HTMLElement;
+      const inputTarget = getInputDropTarget(target);
       
-      if (portEl) {
-        const nodeId = portEl.getAttribute("data-node-id") || "";
-        const portIndex = parseInt(portEl.getAttribute("data-port-index") || "0");
+      if (inputTarget) {
+        const { inputIndex, nodeId } = inputTarget;
         
-        if (nodeId !== linkToNodeId || portIndex !== linkToInputIndex) {
+        if (nodeId !== linkToNodeId || inputIndex !== linkToInputIndex) {
           const issue = getLinkDraftIssue({
             fromNodeId: linkFromNodeId,
             toNodeId: nodeId,
             fromOutputIndex: linkFromOutputIndex,
-            toInputIndex: portIndex,
+            toInputIndex: inputIndex,
             nodes,
             links,
           });
           if (!issue) {
             setLinkToNodeId(nodeId);
-            setLinkToInputIndex(portIndex);
+            setLinkToInputIndex(inputIndex);
+          } else if (linkToNodeId) {
+            setLinkToNodeId("");
+            setLinkToInputIndex(0);
           }
         }
       } else if (linkToNodeId) {
@@ -191,12 +214,10 @@ export function useCanvasLinking({
     const onUp = (e: PointerEvent) => {
       // Final hit test on release
       const target = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement;
-      const portEl = target?.closest("[data-port-role='input']") as HTMLElement;
+      const inputTarget = getInputDropTarget(target);
       
-      if (portEl) {
-        const nodeId = portEl.getAttribute("data-node-id") || "";
-        const portIndex = parseInt(portEl.getAttribute("data-port-index") || "0");
-        finishCanvasLinkRef.current(nodeId, portIndex);
+      if (inputTarget) {
+        finishCanvasLinkRef.current(inputTarget.nodeId, inputTarget.inputIndex);
       } else {
         finishCanvasLinkRef.current();
       }

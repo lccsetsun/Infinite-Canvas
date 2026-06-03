@@ -38,6 +38,7 @@ export interface WorkflowData {
   nodes: GraphNode[];
   links: GraphLink[];
   nodeOutputs: SerializedNodeOutput[];
+  groups?: import("../types").GroupBox[];
 }
 
 export interface Workflow {
@@ -181,6 +182,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
 
   const [nodes, setNodes] = useState<GraphNode[]>(initialWf?.data.nodes ?? []);
   const [links, setLinks] = useState<GraphLink[]>(initialWf?.data.links ?? []);
+  const [groups, setGroups] = useState<import("../types").GroupBox[]>(initialWf?.data.groups ?? []);
   const [nodeOutputs, setNodeOutputs] = useState<NodeOutputMap>(() =>
     outputsToMap(initialWf?.data.nodeOutputs ?? [])
   );
@@ -280,6 +282,9 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     const nextX = x ?? 80 + (nodes.length % 4) * 280;
     const nextY = y ?? 120 + Math.floor(nodes.length / 4) * 180;
     const node = createNodeFromType(type, id, nextX, nextY);
+    if (type === "text_node") {
+      node.title = `文本节点 ${nodes.filter((n) => n.type === "text_node").length + 1}`;
+    }
     if (initialProps) node.properties = { ...node.properties, ...initialProps };
     const nextNodes = [...nodes, node];
     setNodes(nextNodes);
@@ -435,6 +440,72 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     updateNodeProperty(selectedNodeId, key, value);
   };
 
+  const createGroup = useCallback((nodeIds: string[], title?: string): import("../types").GroupBox | null => {
+    if (nodeIds.length < 2) {
+      appendLog("warning", "打组至少需要 2 个节点");
+      return null;
+    }
+    const selectedNodes = nodes.filter((n) => nodeIds.includes(n.id));
+    if (selectedNodes.length < 2) {
+      appendLog("warning", "打组至少需要 2 个节点");
+      return null;
+    }
+    const minX = Math.min(...selectedNodes.map((n) => n.x)) - 24;
+    const minY = Math.min(...selectedNodes.map((n) => n.y)) - 56;
+    const maxX = Math.max(...selectedNodes.map((n) => n.x + 280)) + 24;
+    const maxY = Math.max(...selectedNodes.map((n) => n.y + 200)) + 24;
+    const id = makeId("group");
+    const colors = ["#6366f1", "#a855f7", "#ec4899", "#f59e0b", "#10b981"];
+    const color = colors[groups.length % colors.length];
+    const group: import("../types").GroupBox = {
+      id,
+      title: title?.trim() || `工作流组 ${groups.length + 1}`,
+      x: minX,
+      y: minY,
+      width: maxX - minX,
+      height: maxY - minY,
+      color,
+    };
+    const nextGroups = [...groups, group];
+    const nextNodes = nodes.map((n) => (nodeIds.includes(n.id) ? { ...n, groupId: id } : n));
+    setGroups(nextGroups);
+    setNodes(nextNodes);
+    syncCurrentWorkflowMeta((wf) => ({
+      ...wf,
+      summary: { ...wf.summary, updatedAt: Date.now() },
+      data: { ...wf.data, groups: nextGroups, nodes: nextNodes },
+    }));
+    appendLog("success", `已打组 "${group.title}" (${nodeIds.length} 节点)`);
+    return group;
+  }, [nodes, groups, appendLog, syncCurrentWorkflowMeta]);
+
+  const ungroup = useCallback((groupId: string): boolean => {
+    const group = groups.find((g) => g.id === groupId);
+    if (!group) return false;
+    const nextGroups = groups.filter((g) => g.id !== groupId);
+    const nextNodes = nodes.map((n) => (n.groupId === groupId ? { ...n, groupId: null } : n));
+    setGroups(nextGroups);
+    setNodes(nextNodes);
+    syncCurrentWorkflowMeta((wf) => ({
+      ...wf,
+      summary: { ...wf.summary, updatedAt: Date.now() },
+      data: { ...wf.data, groups: nextGroups, nodes: nextNodes },
+    }));
+    appendLog("info", `已解组 "${group.title}"`);
+    return true;
+  }, [groups, nodes, appendLog, syncCurrentWorkflowMeta]);
+
+  const updateGroup = useCallback((groupId: string, patch: Partial<import("../types").GroupBox>): boolean => {
+    const nextGroups = groups.map((g) => (g.id === groupId ? { ...g, ...patch } : g));
+    setGroups(nextGroups);
+    syncCurrentWorkflowMeta((wf) => ({
+      ...wf,
+      summary: { ...wf.summary, updatedAt: Date.now() },
+      data: { ...wf.data, groups: nextGroups },
+    }));
+    return true;
+  }, [groups, syncCurrentWorkflowMeta]);
+
   const writeNodeOutput = useCallback((nodeId: string, outputs: Record<number, unknown>) => {
     setNodeOutputs((prev) => {
       const next = new Map(prev);
@@ -476,6 +547,26 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     },
     [nodes, links, nodeOutputs, apiConfig, appendLog, updateNodeData, writeNodeOutput]
   );
+
+  const runGroup = useCallback(async (groupId: string) => {
+    const group = groups.find((g) => g.id === groupId);
+    if (!group) return;
+    const memberIds = new Set(nodes.filter((n) => n.groupId === groupId).map((n) => n.id));
+    if (memberIds.size === 0) {
+      appendLog("warning", `组 "${group.title}" 内没有节点`);
+      return;
+    }
+    appendLog("info", `开始一键重跑组 "${group.title}" (${memberIds.size} 节点)`);
+    setIsRunning(true);
+    try {
+      for (const id of memberIds) {
+        await runNode(id);
+      }
+      appendLog("success", `组 "${group.title}" 一键重跑完成`);
+    } finally {
+      setIsRunning(false);
+    }
+  }, [groups, nodes, runNode, appendLog]);
 
   const runWorkflow = useCallback(async () => {
     if (isRunning) return;
@@ -1096,6 +1187,8 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
   return {
     nodes,
     links,
+    groups,
+    setGroups,
     selectedNodeId,
     selectedNode,
     logs,
@@ -1132,6 +1225,10 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     addLink,
     removeLink,
     updateSelectedProperty,
+    createGroup,
+    ungroup,
+    updateGroup,
+    runGroup,
     runNode,
     runWorkflow,
     undo,

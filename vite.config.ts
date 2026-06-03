@@ -10,6 +10,15 @@ export default defineConfig(() => {
       alias: {
         "@": path.resolve(__dirname, "."),
       },
+      dedupe: [
+        "leafer-ui",
+        "@leafer/core",
+        "@leafer-ui/core",
+        "@leafer-ui/draw",
+        "@leafer-ui/web",
+        "@leafer-in/animate",
+        "@leafer-in/color",
+      ],
     },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.

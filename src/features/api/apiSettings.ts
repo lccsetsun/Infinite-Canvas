@@ -30,8 +30,8 @@ export const PROVIDER_PRESETS: Record<ApiProvider, ProviderPreset> = {
   deepseek: {
     label: "DeepSeek",
     description: "深度求索,高性价比中文模型",
-    baseUrl: "https://api.deepseek.com/v1",
-    models: ["deepseek-chat", "deepseek-reasoner"],
+    baseUrl: "https://api.deepseek.com",
+    models: ["deepseek-v4-flash", "deepseek-chat", "deepseek-reasoner"],
     defaultModel: "deepseek-chat",
     keyHint: "sk-...",
     docsUrl: "https://platform.deepseek.com/api_keys",

@@ -1,17 +1,12 @@
-import { Play, Plus, Terminal, Trash2, Undo2, Redo2, FolderOpen, ChevronDown, LogOut } from "lucide-react";
+import { Play, Terminal, FolderOpen, ChevronDown, LogOut } from "lucide-react";
 import { motion } from "motion/react";
 import { Tooltip } from "../common/Tooltip";
 
 interface AppHeaderProps {
   showLogicPanel: boolean;
-  canUndo?: boolean;
-  canRedo?: boolean;
   workflowName?: string;
   workflowCount?: number;
-  onUndo?: () => void;
-  onRedo?: () => void;
   onOpenWorkflowManager?: () => void;
-  onClearCanvas: () => void;
   onRun: () => void;
   onToggleLogicPanel: () => void;
   onLogout?: () => void;
@@ -19,14 +14,9 @@ interface AppHeaderProps {
 
 export default function AppHeader({
   showLogicPanel,
-  canUndo,
-  canRedo,
   workflowName,
   workflowCount,
-  onUndo,
-  onRedo,
   onOpenWorkflowManager,
-  onClearCanvas,
   onRun,
   onToggleLogicPanel,
   onLogout,
@@ -42,32 +32,15 @@ export default function AppHeader({
         initial={{ x: -30, opacity: 0, filter: "blur(10px)" }}
         animate={{ x: 0, opacity: 1, filter: "blur(0px)" }}
         transition={{ duration: 1, ease: [0.23, 1, 0.32, 1] }}
-        className="group relative flex items-center gap-3.5 px-5 py-2.5 rounded-2xl bg-[#0d1117]/40 backdrop-blur-2xl border border-white/5 hover:border-white/10 transition-all duration-700 overflow-hidden cursor-default"
+        className="group relative flex h-12 items-center px-5 rounded-2xl bg-[#0d1117]/40 backdrop-blur-2xl border border-white/5 hover:border-white/10 transition-all duration-700 overflow-hidden cursor-default"
       >
         <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/10 via-transparent to-emerald-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-1000" />
-        <div className="relative">
-          <div className="absolute inset-0 bg-indigo-500 blur-xl opacity-0 group-hover:opacity-30 transition-opacity duration-700" />
-          <div className="relative w-9 h-9 rounded-xl bg-gradient-to-br from-white/10 to-white/5 border border-white/10 flex items-center justify-center shadow-2xl group-hover:border-indigo-500/50 transition-all duration-500 group-hover:scale-110">
-            <motion.div
-              animate={{ rotate: [0, 90, 180, 270, 360], scale: [1, 1.1, 1] }}
-              transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
-              className="absolute inset-0 bg-[conic-gradient(from_0deg,#6366f1,#10b981,#6366f1)] opacity-20 blur-sm"
-            />
-            <Plus className="w-5 h-5 text-white stroke-[2.5] relative z-10 drop-shadow-lg" />
-          </div>
-        </div>
 
-        <div className="relative flex flex-col -space-y-1.5">
-          <div className="flex items-baseline gap-1.5">
-            <span className="text-xl font-black tracking-tighter text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.2)]">AI</span>
-            <span className="text-xl font-black tracking-tighter bg-gradient-to-r from-emerald-400 via-cyan-400 to-indigo-400 bg-clip-text text-transparent">
-              CANVAS
-            </span>
-          </div>
-          <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-all duration-700 translate-y-1 group-hover:translate-y-0">
-            <div className="h-px w-3 bg-indigo-500/50" />
-            <span className="text-[8px] font-bold text-indigo-400 tracking-[0.3em] uppercase">Studio Pro</span>
-          </div>
+        <div className="relative flex items-center gap-1.5 leading-none">
+          <span className="text-xl font-black tracking-tighter text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.2)]">AI</span>
+          <span className="text-xl font-black tracking-tighter bg-gradient-to-r from-emerald-400 via-cyan-400 to-indigo-400 bg-clip-text text-transparent">
+            CANVAS
+          </span>
         </div>
 
         <motion.div
@@ -99,68 +72,28 @@ export default function AppHeader({
           </button>
         </Tooltip>
 
-        <div className="w-px h-6 bg-white/10" />
+        <Tooltip content={showLogicPanel ? "关闭运行日志" : "查看运行日志"} position="bottom">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleLogicPanel();
+            }}
+            className={`w-10 h-10 rounded-xl flex items-center justify-center border border-white/[0.06] bg-[#0d1117]/55 transition-all duration-300 cursor-pointer ${
+              showLogicPanel ? "text-indigo-300 shadow-[0_0_15px_rgba(99,102,241,0.2)]" : "text-gray-400 hover:text-white hover:bg-white/[0.07]"
+            }`}
+          >
+            <Terminal className={`w-4 h-4 ${showLogicPanel ? "animate-pulse" : ""}`} />
+          </button>
+        </Tooltip>
 
-        <div className="flex items-center gap-1.5 px-3 py-1 rounded-2xl bg-white/[0.03] border border-white/[0.05]">
-          <Tooltip content="撤销 (Ctrl+Z)" position="bottom">
-            <button
-              onClick={(e) => { e.stopPropagation(); onUndo?.(); }}
-              disabled={!canUndo}
-              className="relative z-10 w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed text-gray-400 hover:text-white hover:bg-white/10"
-              aria-label="撤销"
-            >
-              <Undo2 className="w-4 h-4" />
-            </button>
-          </Tooltip>
-          <Tooltip content="重做 (Ctrl+Shift+Z)" position="bottom">
-            <button
-              onClick={(e) => { e.stopPropagation(); onRedo?.(); }}
-              disabled={!canRedo}
-              className="relative z-10 w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed text-gray-400 hover:text-white hover:bg-white/10"
-              aria-label="重做"
-            >
-              <Redo2 className="w-4 h-4" />
-            </button>
-          </Tooltip>
-
-          <div className="w-px h-4 bg-white/10 mx-0.5" />
-
-          <Tooltip content={showLogicPanel ? "关闭运行日志" : "查看运行日志"} position="bottom">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggleLogicPanel();
-              }}
-              className={`relative z-10 w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-300 cursor-pointer ${
-                showLogicPanel ? "bg-indigo-500/20 text-indigo-300 shadow-[0_0_15px_rgba(99,102,241,0.2)]" : "text-gray-400 hover:text-white hover:bg-white/10"
-              }`}
-            >
-              <Terminal className={`w-4 h-4 ${showLogicPanel ? "animate-pulse" : ""}`} />
-            </button>
-          </Tooltip>
-
-          <div className="w-px h-4 bg-white/10 mx-0.5" />
-
-          <Tooltip content="清除画布" position="bottom">
-            <button
-              onClick={onClearCanvas}
-              className="relative z-10 w-9 h-9 rounded-xl flex items-center justify-center text-gray-400 hover:text-rose-400 hover:bg-rose-500/10 transition-all cursor-pointer"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-          </Tooltip>
-
-          <div className="w-px h-4 bg-white/10 mx-0.5" />
-
-          <Tooltip content="退出登录" position="bottom">
-            <button
-              onClick={onLogout}
-              className="relative z-10 w-9 h-9 rounded-xl flex items-center justify-center text-gray-400 hover:text-red-400 hover:bg-red-500/10 transition-all cursor-pointer"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
-          </Tooltip>
-        </div>
+        <Tooltip content="退出登录" position="bottom">
+          <button
+            onClick={onLogout}
+            className="w-10 h-10 rounded-xl flex items-center justify-center border border-white/[0.06] bg-[#0d1117]/55 text-gray-400 hover:text-red-300 hover:bg-red-500/10 transition-all cursor-pointer"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
+        </Tooltip>
 
         <motion.button
           whileHover={{ scale: 1.02, x: 2 }}

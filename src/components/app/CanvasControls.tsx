@@ -1,4 +1,4 @@
-import { Eye, Grid3X3, LayoutGrid, LocateFixed, Magnet } from "lucide-react";
+import { Eye, Grid3X3, LocateFixed, Magnet, Box } from "lucide-react";
 import { motion } from "motion/react";
 import { Tooltip } from "../common/Tooltip";
 
@@ -6,22 +6,24 @@ interface CanvasControlsProps {
   showGrid: boolean;
   showMiniMap: boolean;
   snapToGridEnabled: boolean;
-  onAutoLayout: () => void;
+  selectedCount: number;
   onFitView: () => void;
   onToggleGrid: () => void;
   onToggleMiniMap: () => void;
   onToggleSnapToGrid: () => void;
+  onCreateGroup: () => void;
 }
 
 export default function CanvasControls({
   showGrid,
   showMiniMap,
   snapToGridEnabled,
-  onAutoLayout,
+  selectedCount,
   onFitView,
   onToggleGrid,
   onToggleMiniMap,
   onToggleSnapToGrid,
+  onCreateGroup,
 }: CanvasControlsProps) {
   return (
     <motion.div
@@ -77,20 +79,6 @@ export default function CanvasControls({
         </button>
       </Tooltip>
 
-      <Tooltip content="自动布局">
-        <button
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => {
-            e.stopPropagation();
-            onAutoLayout();
-          }}
-          className="w-10 h-10 rounded-[10px] border border-indigo-500/50 bg-[#1a2030] text-gray-300 grid place-items-center transition-colors hover:border-amber-400/70 hover:text-amber-100 cursor-pointer"
-          aria-label="自动布局"
-        >
-          <LayoutGrid className="w-4 h-4" />
-        </button>
-      </Tooltip>
-
       <Tooltip content={showMiniMap ? "隐藏小地图" : "显示小地图"}>
         <button
           onPointerDown={(e) => e.stopPropagation()}
@@ -105,6 +93,27 @@ export default function CanvasControls({
           <Eye className="w-4 h-4" />
         </button>
       </Tooltip>
+
+      {selectedCount >= 2 && (
+        <Tooltip content={`将 ${selectedCount} 个节点打组 (Shift+点击 多选)`}>
+          <motion.button
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onCreateGroup();
+            }}
+            className="h-10 px-3 rounded-[10px] border border-violet-500/50 bg-gradient-to-r from-violet-500/20 to-fuchsia-500/20 hover:from-violet-500/30 hover:to-fuchsia-500/30 text-violet-100 flex items-center gap-1.5 transition-colors cursor-pointer"
+          >
+            <Box className="w-4 h-4" />
+            <span className="text-[11px] font-black uppercase tracking-wider">打组</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-500/30 text-violet-100 font-mono">
+              {selectedCount}
+            </span>
+          </motion.button>
+        </Tooltip>
+      )}
     </motion.div>
   );
 }

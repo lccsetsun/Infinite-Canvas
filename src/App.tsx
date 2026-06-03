@@ -2,8 +2,10 @@ import React from "react";
 import { AnimatePresence } from "motion/react";
 import AppHeader from "./components/app/AppHeader";
 import CanvasControls from "./components/app/CanvasControls";
+import CanvasHistoryDock from "./components/app/CanvasHistoryDock";
 import CanvasNodeLayer from "./components/app/CanvasNodeLayer";
 import CanvasStatusBar from "./components/app/CanvasStatusBar";
+import GroupsLayer from "./components/app/GroupsLayer";
 import FloatingToolbar from "./components/FloatingToolbar";
 import EmptyCanvasState from "./components/app/EmptyCanvasState";
 import LeaferCanvas from "./components/canvas/LeaferCanvas";
@@ -18,9 +20,9 @@ import { useCanvasLinking } from "./hooks/useCanvasLinking";
 import { useMiniMapConfig } from "./hooks/useMiniMapConfig";
 import { useWorkflowState } from "./hooks/useWorkflowState";
 import { useAppUiState } from "./hooks/useAppUiState";
+import { shouldFinishCanvasLinkOnCanvasPointerUp } from "./utils/canvasPointerPolicy";
 import { ConfigProvider, theme } from "antd";
 import { NodeClass } from "./types";
-import { LogOut } from "lucide-react";
 import { ApiSettings, getActiveProfile, loadApiSettings, saveApiSettings } from "./features/api/apiSettings";
 
 const LogicPanel = React.lazy(() => import("./components/LogicPanel"));
@@ -57,6 +59,7 @@ export default function App() {
     nodes,
     links,
     selectedNodeId,
+    isRunning,
     setSelectedNodeId,
     clearCanvas,
     runWorkflow,
@@ -106,6 +109,11 @@ export default function App() {
     setLinkToInputIndex,
     clearLinkDraft,
     addLinkFromDraft,
+    groups,
+    createGroup,
+    ungroup,
+    updateGroup,
+    runGroup,
   } = useWorkflowState({
     apiConfig: {
       baseUrl: apiBaseUrl,
@@ -146,7 +154,17 @@ export default function App() {
   const [menuPos, setMenuPos] = React.useState<{ x: number; y: number } | null>(null);
   const [previewContent, setPreviewContent] = React.useState<PreviewContent | null>(null);
   const [canvasSize, setCanvasSize] = React.useState({ width: 0, height: 0 });
+  const [selectedGroupId, setSelectedGroupId] = React.useState<string | null>(null);
+  const [selectedNodeIds, setSelectedNodeIds] = React.useState<Set<string>>(new Set());
   const menuCloseTimerRef = React.useRef<number | null>(null);
+
+  const memberCountByGroup = React.useMemo(() => {
+    const m = new Map<string, number>();
+    for (const n of nodes) {
+      if (n.groupId) m.set(n.groupId, (m.get(n.groupId) ?? 0) + 1);
+    }
+    return m;
+  }, [nodes]);
 
   const {
     canvasRef,
@@ -156,7 +174,6 @@ export default function App() {
     fitView,
     scrollToNode,
     jumpToWorldPos,
-    autoLayout,
     onNodeDragStart,
     onCanvasPointerDown,
     onPointerMove,
@@ -201,6 +218,55 @@ export default function App() {
     });
     addNode(type, snapped.x, snapped.y, initialProps);
   };
+
+  const moveGroup = React.useCallback((groupId: string, x: number, y: number) => {
+    const group = groups.find((g) => g.id === groupId);
+    if (!group) return;
+    const dx = x - group.x;
+    const dy = y - group.y;
+    if (dx === 0 && dy === 0) return;
+    updateGroup(groupId, { x, y });
+    const memberIds: string[] = nodes.filter((n) => n.groupId === groupId).map((n) => n.id);
+    memberIds.forEach((id: string) => {
+      const n = nodes.find((nn) => nn.id === id);
+      if (!n) return;
+      updateNodePosition(id, n.x + dx, n.y + dy);
+    });
+  }, [groups, nodes, updateGroup, updateNodePosition]);
+
+  const handleSelectNode = React.useCallback((nodeId: string, e?: { shiftKey?: boolean }) => {
+    setSelectedGroupId(null);
+    if (e?.shiftKey) {
+      setSelectedNodeIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(nodeId)) next.delete(nodeId);
+        else next.add(nodeId);
+        return next;
+      });
+      setSelectedNodeId(nodeId);
+      return;
+    }
+    setSelectedNodeIds(new Set([nodeId]));
+    setSelectedNodeId(nodeId);
+  }, [setSelectedNodeId]);
+
+  const handleCreateGroup = () => {
+    const ids = Array.from(selectedNodeIds);
+    if (ids.length < 2) {
+      showNotice("请按住 Shift 多选至少 2 个节点,再点击「打组」");
+      return;
+    }
+    const group = createGroup(ids);
+    if (group) {
+      setSelectedGroupId(group.id);
+      setSelectedNodeIds(new Set());
+    }
+  };
+
+  const handleUngroup = React.useCallback((groupId: string) => {
+    ungroup(groupId);
+    if (selectedGroupId === groupId) setSelectedGroupId(null);
+  }, [ungroup, selectedGroupId]);
 
   const runNow = () => {
     runWorkflow();
@@ -322,14 +388,9 @@ export default function App() {
       <div className="relative w-full h-screen bg-[#0f1218] text-[#e2e8f0] overflow-hidden select-none font-sans">
         <AppHeader
           showLogicPanel={showLogicPanel}
-          canUndo={canUndo}
-          canRedo={canRedo}
           workflowName={currentWorkflowSummary?.name}
           workflowCount={workflowList.length}
-          onUndo={undo}
-          onRedo={redo}
           onOpenWorkflowManager={() => setWorkflowManagerOpen(true)}
-          onClearCanvas={clearCanvas}
           onRun={runNow}
           onToggleLogicPanel={() => setShowLogicPanel((v) => !v)}
           onLogout={handleLogout}
@@ -344,6 +405,15 @@ export default function App() {
             resetCanvasLinkDraft();
             return;
           }
+          
+          // 点击背景时取消所有选择 (如果没有点击到节点或动作按钮)
+          const target = e.target as HTMLElement;
+          if (!target.closest("[data-node-action='true'], .node-card, .storyboard-node-card, button, input, select, textarea")) {
+            setSelectedNodeId(null);
+            setSelectedNodeIds(new Set());
+            setSelectedGroupId(null);
+          }
+          
           onCanvasPointerDown(e);
         }}
         onPointerMove={onPointerMove}
@@ -354,7 +424,7 @@ export default function App() {
         }}
         onPointerUp={(e) => {
           onPointerUp(e);
-          if (isLinkingOnCanvas) finishCanvasLink();
+          if (shouldFinishCanvasLinkOnCanvasPointerUp(isLinkingOnCanvas)) finishCanvasLink();
         }}
         onPointerLeave={(e) => {
           onPointerUp(e);
@@ -387,11 +457,20 @@ export default function App() {
           draftCursor={draftCursor}
         />
 
-        {isLinkingOnCanvas && (
-          <div className="absolute left-1/2 top-5 z-40 -translate-x-1/2 rounded-full border border-cyan-400/30 bg-[#0f1728]/92 px-4 py-2 text-xs text-cyan-100 shadow-[0_10px_30px_rgba(6,18,42,0.45)] backdrop-blur-md">
-            拖到兼容输入端口完成连接，按 Esc 或点击空白处取消
-          </div>
-        )}
+        <GroupsLayer
+          groups={groups}
+          pan={pan}
+          zoom={zoom}
+          selectedNodeId={selectedNodeId}
+          selectedGroupId={selectedGroupId}
+          memberCountByGroup={memberCountByGroup}
+          onSelectGroup={setSelectedGroupId}
+          onRunGroup={runGroup}
+          onUngroup={handleUngroup}
+          onDeleteGroup={handleUngroup}
+          onMoveGroup={moveGroup}
+          isRunning={isRunning}
+        />
 
         {nodes.length === 0 && !isWelcomeDismissed && currentView === "canvas" && (
           <EmptyCanvasState onDismiss={() => setIsWelcomeDismissed(true)} />
@@ -499,7 +578,7 @@ export default function App() {
           onPreview={(content, title, nodeId, items, currentIndex) =>
             setPreviewContent({ title: title || "预览内容", content, nodeId, items, currentIndex })
           }
-          onSelectNode={setSelectedNodeId}
+          onSelectNode={(nodeId, e) => handleSelectNode(nodeId, e)}
           onUpdateNodeData={updateNodeData}
           onUpdateNodeProperty={updateNodeProperty}
           resolvedInputsMap={resolvedInputsMap}
@@ -528,10 +607,7 @@ export default function App() {
             showGrid={showGrid}
             showMiniMap={showMiniMap}
             snapToGridEnabled={snapToGridEnabled}
-            onAutoLayout={() => {
-              autoLayout();
-              showNotice("已自动布局");
-            }}
+            selectedCount={selectedNodeIds.size}
             onFitView={() => {
               fitView();
               showNotice("已自适应居中");
@@ -548,6 +624,16 @@ export default function App() {
               setSnapToGridEnabled((v) => !v);
               showNotice(snapToGridEnabled ? "已关闭网格吸附" : "已开启网格吸附");
             }}
+            onCreateGroup={handleCreateGroup}
+          />
+        )}
+        {currentView === "canvas" && (
+          <CanvasHistoryDock
+            canUndo={canUndo}
+            canRedo={canRedo}
+            onUndo={undo}
+            onRedo={redo}
+            onClearCanvas={clearCanvas}
           />
         )}
         {currentView === "canvas" && (

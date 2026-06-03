@@ -9,7 +9,7 @@ import { motion, AnimatePresence } from "motion/react";
 interface NodeCardProps {
   node: GraphNode;
   selected: boolean;
-  onSelect: () => void;
+  onSelect: (e: React.MouseEvent) => void;
   onDelete: () => void;
   onDuplicate: () => void;
   onDragStart: (event: React.PointerEvent, node: GraphNode) => void;
@@ -138,9 +138,9 @@ function NodeCardImpl({
       }}
       onClick={(e) => {
         e.stopPropagation();
-        onSelect();
+        onSelect(e);
       }}
-      className={`absolute text-left rounded-2xl border bg-[#0b0e14]/90 shadow-[0_24px_50px_-12px_rgba(0,0,0,0.5)] backdrop-blur-xl transition-all duration-500 cursor-grab active:cursor-grabbing will-change-transform ${
+      className={`absolute node-card text-left rounded-2xl border bg-[#0b0e14]/90 shadow-[0_24px_50px_-12px_rgba(0,0,0,0.5)] backdrop-blur-xl transition-all duration-500 cursor-grab active:cursor-grabbing will-change-transform ${
         selected
           ? "border-indigo-500/50 ring-1 ring-indigo-500/20 shadow-[0_0_0_1px_rgba(99,102,241,0.1),0_32px_64px_-16px_rgba(0,0,0,0.6)]"
           : "border-white/[0.06] hover:border-white/[0.12]"

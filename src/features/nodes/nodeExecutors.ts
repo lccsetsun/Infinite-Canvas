@@ -25,16 +25,31 @@ export interface ExecutorResult {
 
 export type NodeExecutor = (ctx: ExecutorContext) => Promise<ExecutorResult>;
 
+export const TEXT_NODE_MODEL = "deepseek-v4-flash";
+
+export function normalizeApiKey(apiKey: string): string {
+  return apiKey.trim();
+}
+
+export function assertApiKey(apiKey: string, providerLabel: string): string {
+  const normalizedApiKey = normalizeApiKey(apiKey);
+  if (!normalizedApiKey) {
+    throw new Error(`${providerLabel} API key 未填写，请先到 API 设置里保存访问密钥`);
+  }
+  return normalizedApiKey;
+}
+
 async function callGeminiProxy(
   body: { model?: string; contents: string; config?: Record<string, unknown> },
   apiKey: string
 ): Promise<{ text: string }> {
+  const normalizedApiKey = assertApiKey(apiKey, "DeepSeek");
   const r = await fetch("/api/gemini/proxy", {
     method: "POST",
     credentials: "include",
     headers: {
       "Content-Type": "application/json",
-      ...(apiKey ? { "X-Api-Key": apiKey } : {})
+      ...(normalizedApiKey ? { "X-Api-Key": normalizedApiKey } : {})
     },
     body: JSON.stringify(body)
   });
@@ -51,6 +66,7 @@ async function callOpenAICompatible(
 ): Promise<{ text: string }> {
   const base = cfg.baseUrl.replace(/\/+$/, "");
   const url = `${base}/chat/completions`;
+  const normalizedApiKey = assertApiKey(cfg.apiKey, "DeepSeek");
   const messages: { role: "system" | "user"; content: string }[] = [];
   if (cfg.systemPrompt && cfg.systemPrompt.trim()) {
     messages.push({ role: "system", content: cfg.systemPrompt });
@@ -63,7 +79,7 @@ async function callOpenAICompatible(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {}),
+        ...(normalizedApiKey ? { Authorization: `Bearer ${normalizedApiKey}` } : {}),
       },
       body: JSON.stringify({
         model: cfg.model,
@@ -124,7 +140,7 @@ export const executors: Partial<Record<NodeClass, NodeExecutor>> = {
   text_node: async ({ inputs, properties, apiConfig }) => {
     const userPrompt = pickString(inputs, properties, "user_prompt", "prompt");
     const nodeSystemPrompt = pickString(inputs, properties, "system_prompt");
-    const model = (properties.model as string) || apiConfig.model || "gemini-2.0-flash";
+    const model = TEXT_NODE_MODEL;
     const isGemini = (apiConfig.baseUrl || "").includes("generativelanguage.googleapis.com");
 
     let text = "";
@@ -255,8 +271,55 @@ export const executors: Partial<Record<NodeClass, NodeExecutor>> = {
   ai_video_node: async ({ inputs, properties }) => {
     const prompt = pickString(inputs, properties, "text", "prompt");
     return { outputs: { 0: prompt } };
-  }
+  },
+
+  script_node: async ({ inputs, properties }) => {
+    const upstreamScript = pickString(inputs, properties, "剧本", "script");
+    const storedRows = (properties.rows as Array<{ id: string; title: string; prompt: string; duration: number }>) ?? [];
+    const stories = storedRows.length > 0 ? storedRows : (upstreamScript ? parseScriptIntoRows(upstreamScript) : []);
+    const firstImage = (properties.firstImageUrl as string) || "";
+    return {
+      outputs: {
+        0: JSON.stringify({ rows: stories }),
+        1: firstImage,
+      },
+      patch: { storyboard: stories.map((r) => ({ ...r, imageStatus: "idle", videoStatus: "idle" })) },
+    };
+  },
+
+  audio_node: async ({ inputs, properties }) => {
+    const prompt = pickString(inputs, properties, "prompt", "提示词");
+    const duration = pickNumber(inputs, properties, "duration") ?? Number(properties.duration ?? 8);
+    const seed = encodeURIComponent(`${prompt}-${duration}-${Date.now()}`);
+    return {
+      outputs: { 0: prompt || "audio" },
+      patch: { audioUrl: `https://example.com/audio/${seed}.mp3`, status: "success" },
+    };
+  },
 };
+
+function parseScriptIntoRows(script: string): Array<{ id: string; title: string; prompt: string; duration: number }> {
+  const lines = script
+    .split(/\n+/)
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+  const rows: Array<{ id: string; title: string; prompt: string; duration: number }> = [];
+  let idx = 1;
+  for (const line of lines) {
+    const m = line.match(/^(?:镜头|分镜|scene)?\s*(\d+)\s*[.、:：-]?\s*(.+?)(?:[（(](\d+)\s*s?[）)])?$/i);
+    if (m) {
+      const num = m[1] ? parseInt(m[1], 10) : idx;
+      const title = (m[2] || "").trim();
+      const dur = m[3] ? parseInt(m[3], 10) : 5;
+      rows.push({ id: `row_${Date.now()}_${rows.length}`, title: `分镜 ${num}`, prompt: title, duration: dur });
+    } else {
+      rows.push({ id: `row_${Date.now()}_${rows.length}`, title: `分镜 ${idx}`, prompt: line, duration: 5 });
+    }
+    idx += 1;
+    if (rows.length >= 12) break;
+  }
+  return rows;
+}
 
 export function getExecutor(type: NodeClass): NodeExecutor | undefined {
   return executors[type];

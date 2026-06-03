@@ -7,9 +7,7 @@ import {
   Empty,
   Input,
   InputNumber,
-  Segmented,
   Slider,
-  Space,
   Switch,
   Tabs,
   Tooltip,
@@ -24,6 +22,7 @@ import {
   Brain,
   Check,
   CheckCircle2,
+  Clock,
   Cpu,
   Copy,
   Download,
@@ -33,7 +32,6 @@ import {
   HelpCircle,
   Key,
   Lightbulb,
-  Pencil,
   Plus,
   Power,
   RefreshCw,
@@ -102,7 +100,7 @@ function genId() {
   return `api_${Date.now().toString(36)}_${Math.floor(Math.random() * 1e6).toString(36)}`;
 }
 
-function maskKey(key: string): string {
+function _maskKey(key: string): string {
   if (!key) return "未设置";
   if (key.length <= 8) return "•".repeat(key.length);
   return `${key.slice(0, 4)}••••${key.slice(-4)}`;
@@ -828,7 +826,7 @@ function ProfileManager({
   );
 }
 
-function Card({ title, extra, children, className = "" }: { title: React.ReactNode; extra?: React.ReactNode; children: React.ReactNode; className?: string }) {
+function _Card({ title, extra, children, className = "" }: { title: React.ReactNode; extra?: React.ReactNode; children: React.ReactNode; className?: string }) {
   return (
     <div className={`rounded-2xl border border-white/5 bg-white/[0.02] overflow-hidden ${className}`}>
       <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.04] bg-white/[0.01]">
@@ -1020,7 +1018,7 @@ function ConnectionTab({
   );
 }
 
-function ProviderGrid({ value, onChange }: { value: ApiProvider; onChange: (p: ApiProvider) => void }) {
+function _ProviderGrid({ value, onChange }: { value: ApiProvider; onChange: (p: ApiProvider) => void }) {
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
       {PROVIDER_ORDER.map((p) => {

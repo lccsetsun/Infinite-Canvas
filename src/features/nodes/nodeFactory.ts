@@ -124,14 +124,24 @@ const NODE_BLUEPRINTS: Partial<Record<NodeClass, NodeBlueprint>> = {
     },
   },
   image_node: {
-    title: "图片",
+    title: "图片节点",
     inputs: [
       { name: "prompt", type: "STRING" },
       { name: "negative_prompt", type: "STRING" },
       { name: "aspect_ratio", type: "STRING" },
     ],
     outputs: [{ name: "图片", type: "IMAGE" }],
-    properties: { imageUrl: "" },
+    properties: {
+      imageUrl: "",
+      text: "",
+      model: "lib-navo-pro",
+      aspect_ratio: "16:9",
+      resolution: "2K",
+      quantity: "1张",
+      camera: "摄像机",
+      imageTool: "style",
+      referenceImage: "",
+    },
   },
   video_node: {
     title: "视频",
@@ -141,7 +151,17 @@ const NODE_BLUEPRINTS: Partial<Record<NodeClass, NodeBlueprint>> = {
       { name: "aspect_ratio", type: "STRING" },
     ],
     outputs: [{ name: "视频", type: "VIDEO" }],
-    properties: { videoUrl: "" },
+    properties: {
+      videoUrl: "",
+      text: "",
+      model: "seedance-2-0-vip",
+      aspect_ratio: "16:9",
+      resolution: "720P",
+      duration: "5s",
+      audio: true,
+      quantity: "1个",
+      videoTool: "text-to-video",
+    },
   },
   upload_image: {
     title: "上传图片",
@@ -154,6 +174,50 @@ const NODE_BLUEPRINTS: Partial<Record<NodeClass, NodeBlueprint>> = {
     inputs: [],
     outputs: [{ name: "视频", type: "VIDEO" }],
     properties: { videoUrl: "" },
+  },
+  script_node: {
+    title: "分镜脚本",
+    inputs: [
+      { name: "剧本", type: "STRING" },
+    ],
+    outputs: [
+      { name: "分镜表", type: "SCRIPT" },
+      { name: "首张分镜图", type: "IMAGE" },
+    ],
+    properties: {
+      rows: [] as Array<{
+        id: string;
+        title: string;
+        prompt: string;
+        duration: number;
+      }>,
+      aspectRatio: "16:9",
+      imageModel: "flux-1",
+      videoModel: "sora",
+      defaultDuration: 5,
+    },
+  },
+  audio_node: {
+    title: "音频",
+    inputs: [
+      { name: "提示词", type: "STRING" },
+      { name: "时长", type: "NUMBER" },
+    ],
+    outputs: [{ name: "音频", type: "AUDIO" }],
+    properties: {
+      audioUrl: "",
+      text: "",
+      model: "minimax-speech-2.8-hd",
+      duration: 8,
+      voice: "alloy",
+      energy: 1,
+    },
+  },
+  group: {
+    title: "工作流组",
+    inputs: [],
+    outputs: [],
+    properties: { color: "#6366f1" },
   },
 };
 

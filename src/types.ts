@@ -1,8 +1,23 @@
-export type DataType = "STRING" | "NUMBER" | "IMAGE" | "VIDEO" | "MODEL" | "ANY";
+export type DataType = "STRING" | "NUMBER" | "IMAGE" | "VIDEO" | "AUDIO" | "SCRIPT" | "MODEL" | "ANY";
 
 export interface NodeTerminal {
   name: string;
   type: DataType;
+}
+
+export interface StoryboardRow {
+  id: string;
+  title: string;
+  prompt: string;
+  duration: number;
+  imageUrl?: string;
+  videoUrl?: string;
+  imageStatus: "idle" | "loading" | "success" | "error";
+  videoStatus: "idle" | "loading" | "success" | "error";
+  imageError?: string;
+  videoError?: string;
+  model?: string;
+  aspectRatio?: string;
 }
 
 export type NodeClass =
@@ -26,7 +41,21 @@ export type NodeClass =
   | "image_node"
   | "video_node"
   | "upload_image"
-  | "upload_video";
+  | "upload_video"
+  | "script_node"
+  | "audio_node"
+  | "group";
+
+export interface GroupBox {
+  id: string;
+  title: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  color?: string;
+  collapsed?: boolean;
+}
 
 export interface GraphNode {
   id: string;
@@ -37,6 +66,7 @@ export interface GraphNode {
   inputs: NodeTerminal[];
   outputs: NodeTerminal[];
   properties: Record<string, any>;
+  groupId?: string | null;
   data?: {
     image?: string;
     videoUrl?: string;
@@ -44,9 +74,11 @@ export interface GraphNode {
     number?: number;
     response?: string;
     imageUrl?: string;
+    audioUrl?: string;
     loading?: boolean;
     progress?: number;
     error?: string;
+    storyboard?: StoryboardRow[];
   };
 }
 
@@ -64,6 +96,7 @@ export interface WorkflowPreset {
   description: string;
   nodes: GraphNode[];
   links: GraphLink[];
+  groups?: GroupBox[];
 }
 
 export interface ExecutionLog {

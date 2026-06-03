@@ -1,8 +1,10 @@
 import React from "react";
-import { Ellipse, Group, Leafer, Path, Rect, Text } from "leafer-ui";
+import { Ellipse, Group, Leafer, Path, Rect } from "leafer-ui";
+import "@leafer-in/animate";
 import { GraphLink, GraphNode } from "../../types";
 import { getInputAnchor, getNodeById, getOutputAnchor, GRID_SIZE, linkPath, getNodeWidth, getNodeHeight } from "./geometry";
 import { isDataTypeCompatible } from "../../utils/linking";
+import { CONNECTION_DRAFT_STYLE, CONNECTION_LINK_STYLE } from "../../utils/connectionVisualTokens";
 
 interface LeaferCanvasProps {
   nodes: GraphNode[];
@@ -115,7 +117,7 @@ function buildGrid(group: Group, pan: { x: number; y: number }, zoom: number, wi
 function buildLinks(group: Group, nodes: GraphNode[], links: GraphLink[]) {
   group.clear();
 
-  links.forEach((link, index) => {
+  links.forEach((link) => {
     const fromNode = getNodeById(nodes, link.fromNodeId);
     const toNode = getNodeById(nodes, link.toNodeId);
     if (!fromNode || !toNode) {
@@ -127,22 +129,55 @@ function buildLinks(group: Group, nodes: GraphNode[], links: GraphLink[]) {
     const to = getInputAnchor(toNode, link.toInputIndex);
     const path = linkPath(from, to);
 
-    const p1 = new Path({
-      path,
-      stroke: "#7af538",
-      strokeWidth: 3,
-      opacity: 0.9,
-    });
-    
-    const p2 = new Path({
-      path,
-      stroke: "#2fb8ff",
-      strokeWidth: 1.5,
-      opacity: 0.8,
-    });
+    group.add(
+      new Path({
+        path,
+        stroke: CONNECTION_LINK_STYLE.glow.stroke,
+        strokeWidth: CONNECTION_LINK_STYLE.glow.strokeWidth,
+        opacity: CONNECTION_LINK_STYLE.glow.opacity,
+        shadow: CONNECTION_LINK_STYLE.glow.shadow,
+        hitFill: "none",
+      } as never)
+    );
 
-    group.add(p1 as never);
-    group.add(p2 as never);
+    group.add(
+      new Path({
+        path,
+        stroke: CONNECTION_LINK_STYLE.base.stroke,
+        strokeWidth: CONNECTION_LINK_STYLE.base.strokeWidth,
+        opacity: CONNECTION_LINK_STYLE.base.opacity,
+        hitFill: "none",
+      } as never)
+    );
+
+    group.add(
+      new Path({
+        path,
+        stroke: CONNECTION_LINK_STYLE.core.stroke,
+        strokeWidth: CONNECTION_LINK_STYLE.core.strokeWidth,
+        opacity: CONNECTION_LINK_STYLE.core.opacity,
+        hitFill: "none",
+      } as never)
+    );
+    
+    const flowPath = new Path({
+      path,
+      stroke: CONNECTION_LINK_STYLE.flow.stroke,
+      strokeWidth: CONNECTION_LINK_STYLE.flow.strokeWidth,
+      opacity: 0.9,
+      dashPattern: [...CONNECTION_LINK_STYLE.flow.dashPattern],
+      dashOffset: 0,
+      hitFill: "none",
+      shadow: CONNECTION_LINK_STYLE.flow.shadow,
+    } as never);
+
+    group.add(flowPath as never);
+
+    // 启动连线流光动画
+    (flowPath as unknown as { animate: (props: Record<string, number>, opts: Record<string, unknown>) => void }).animate(
+      { dashOffset: -116 },
+      { duration: CONNECTION_LINK_STYLE.flow.duration, loop: true, easing: "linear" }
+    );
   });
 }
 
@@ -150,6 +185,8 @@ function buildNodeShells(group: Group, nodes: GraphNode[], selectedNodeId?: stri
   group.clear();
 
   nodes.forEach((node) => {
+    if (hasInlinePortHandles(node)) return;
+
     const isSelected = selectedNodeId === node.id;
     const width = getNodeWidth(node);
     const height = getNodeHeight(node);
@@ -194,38 +231,8 @@ function buildNodeShells(group: Group, nodes: GraphNode[], selectedNodeId?: stri
   });
 }
 
-function addDraftLabel(group: Group, x: number, y: number, text: string, tone: "source" | "valid" | "invalid") {
-  const fill =
-    tone === "source" ? "rgba(34,211,238,0.16)" : tone === "valid" ? "rgba(16,185,129,0.16)" : "rgba(251,191,36,0.16)";
-  const stroke =
-    tone === "source" ? "rgba(34,211,238,0.48)" : tone === "valid" ? "rgba(16,185,129,0.48)" : "rgba(251,191,36,0.48)";
-  const textColor = tone === "invalid" ? "#fde68a" : "#dbeafe";
-  const width = Math.max(110, Math.min(240, text.length * 7.2 + 22));
-
-  group.add(
-    new Rect({
-      x,
-      y,
-      width,
-      height: 28,
-      cornerRadius: 10,
-      fill,
-      stroke,
-      strokeWidth: 1,
-      hitFill: "none",
-    } as never)
-  );
-
-  group.add(
-    new Text({
-      x: x + 10,
-      y: y + 7,
-      text,
-      fontSize: 12,
-      fill: textColor,
-      hitFill: "none",
-    } as never)
-  );
+function hasInlinePortHandles(node: GraphNode) {
+  return ["text_node", "image_node", "video_node", "audio_node", "script_node"].includes(node.type);
 }
 
 function buildNodeDecorators(
@@ -240,6 +247,8 @@ function buildNodeDecorators(
   group.clear();
 
   nodes.forEach((node) => {
+    if (hasInlinePortHandles(node)) return;
+
     const isSelected = selectedNodeId === node.id;
     const fromNode = draftFromNodeId ? getNodeById(nodes, draftFromNodeId) : null;
     const fromOutput = fromNode?.outputs[draftFromOutputIndex];
@@ -279,7 +288,6 @@ function buildNodeDecorators(
           fill: isDraftTarget ? "#fbbf24" : isCompatibleWhileLinking ? "#34d399" : "#10b981",
           stroke: "#ecfeff",
           strokeWidth: isDraftTarget ? 3 : isCompatibleWhileLinking ? 2.5 : 2,
-          shadow: !isDraftTarget ? "0 0 12px rgba(16, 185, 129, 0.55)" : "0 0 14px rgba(251, 191, 36, 0.7)",
           opacity: fromOutput && !isDraftTarget && !isCompatibleWhileLinking ? 0.78 : 1,
           hitFill: "none",
         } as never)
@@ -298,9 +306,6 @@ function buildNodeDecorators(
           fill: isDraftSource ? "#22d3ee" : "#a78bfa",
           stroke: "#f5f3ff",
           strokeWidth: isDraftSource ? 3 : 2,
-          shadow: isDraftSource
-            ? "0 0 16px rgba(34, 211, 238, 0.8)"
-            : "0 0 12px rgba(167, 139, 250, 0.6)",
           hitFill: "none",
         } as never)
       );
@@ -331,16 +336,16 @@ function buildDraftPreview(
       : draftCursor;
   if (!to) return;
   const path = linkPath(from, to);
-  const color = draftIssue ? "rgba(251,191,36,0.95)" : "rgba(34,211,238,0.95)";
-  const glow = draftIssue ? "rgba(251,191,36,0.22)" : "rgba(34,211,238,0.18)";
+  const color = draftIssue ? CONNECTION_DRAFT_STYLE.flow.invalidStroke : CONNECTION_DRAFT_STYLE.flow.stroke;
+  const glowColor = draftIssue ? CONNECTION_DRAFT_STYLE.glow.invalidStroke : CONNECTION_DRAFT_STYLE.glow.stroke;
 
   group.add(
     new Path({
       path,
-      stroke: glow,
-      strokeWidth: 8,
-      fill: "none",
-      opacity: 0.85,
+      stroke: glowColor,
+      strokeWidth: CONNECTION_DRAFT_STYLE.glow.strokeWidth,
+      opacity: 0.44,
+      shadow: CONNECTION_DRAFT_STYLE.flow.shadow,
       hitFill: "none",
     } as never)
   );
@@ -348,37 +353,32 @@ function buildDraftPreview(
   group.add(
     new Path({
       path,
-      stroke: color,
-      strokeWidth: 2,
-      fill: "none",
-      dashPattern: [10, 8],
+      stroke: draftIssue ? color : CONNECTION_DRAFT_STYLE.core.stroke,
+      strokeWidth: CONNECTION_DRAFT_STYLE.core.strokeWidth,
+      opacity: CONNECTION_DRAFT_STYLE.core.opacity,
       hitFill: "none",
     } as never)
   );
 
-  const sourceOutput = fromNode.outputs[draftFromOutputIndex];
-  if (sourceOutput) {
-    addDraftLabel(group, from.x + 14, from.y - 38, `${fromNode.title} / ${sourceOutput.name}`, "source");
-  }
+  const flowPath = new Path({
+    path,
+    stroke: color,
+    strokeWidth: CONNECTION_DRAFT_STYLE.flow.strokeWidth,
+    opacity: 0.9,
+    dashPattern: [...CONNECTION_DRAFT_STYLE.flow.dashPattern],
+    dashOffset: 0,
+    hitFill: "none",
+    shadow: draftIssue ? "0 0 16px rgba(250, 204, 21, 0.74)" : CONNECTION_DRAFT_STYLE.flow.shadow,
+  } as never);
 
-  if (toNode && toNode.inputs[draftToInputIndex]) {
-    const targetInput = toNode.inputs[draftToInputIndex];
-    addDraftLabel(
-      group,
-      to.x - 8,
-      to.y - 38,
-      draftIssue ? draftIssue : `${toNode.title} / ${targetInput.name}`,
-      draftIssue ? "invalid" : "valid"
-    );
-  } else if (draftCursor) {
-    addDraftLabel(
-      group,
-      draftCursor.x + 16,
-      draftCursor.y + 12,
-      draftIssue ? draftIssue : "拖到输入端口完成连接",
-      draftIssue ? "invalid" : "valid"
-    );
-  }
+  group.add(flowPath as never);
+
+  // 启动草图流光动画
+  (flowPath as unknown as { animate: (props: Record<string, number>, opts: Record<string, unknown>) => void }).animate(
+    { dashOffset: -60 },
+      { duration: CONNECTION_DRAFT_STYLE.flow.duration, loop: true, easing: "linear" }
+  );
+
 }
 
 export default function LeaferCanvas({
@@ -438,7 +438,10 @@ export default function LeaferCanvas({
     const host = hostRef.current;
     if (!host) return;
 
-    const app = new Leafer({ view: host, fill: background });
+    const app = new Leafer({ view: host, type: "design" });
+    if (background) {
+      host.style.backgroundColor = background;
+    }
     const world = new Group();
     const grid = new Group();
     const linksLayer = new Group();
@@ -545,7 +548,9 @@ export default function LeaferCanvas({
   return (
     <div className="absolute inset-0 z-0 select-none" aria-hidden="true">
       {showGrid && <div className="absolute inset-0 pointer-events-none" style={gridOverlayStyle} />}
-      <div ref={hostRef} className="absolute inset-0" />
+      <div className="absolute inset-0">
+        <div ref={hostRef} className="h-full w-full" />
+      </div>
     </div>
   );
 }

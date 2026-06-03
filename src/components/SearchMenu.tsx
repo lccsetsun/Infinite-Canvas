@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from "react";
-import { FileText, Sparkles, Video, ChevronRight, Image as ImageIcon, Film } from "lucide-react";
+import { FileText, Sparkles, Video, ChevronRight, Image as ImageIcon, Film, Clapperboard, Music2 } from "lucide-react";
 import { NodeClass } from "../types";
 import { motion } from "motion/react";
 
@@ -134,6 +134,20 @@ export default function SearchMenu({ x, y, isContextMenu, onAddNode, onClose, on
                 label="视频创作" 
                 description="生成动态视频内容" 
                 colorClass="text-rose-400 group-hover:text-rose-300" 
+              />
+              <MenuItem 
+                onClick={() => handleSelect("audio_node")} 
+                icon={Music2} 
+                label="音频生成" 
+                description="生成语音、音乐、音效" 
+                colorClass="text-amber-400 group-hover:text-amber-300" 
+              />
+              <MenuItem 
+                onClick={() => handleSelect("script_node")} 
+                icon={Clapperboard} 
+                label="分镜脚本" 
+                description="剧本→批量生图→批量生视频" 
+                colorClass="text-violet-400 group-hover:text-violet-300" 
               />
             </div>
           </section>
