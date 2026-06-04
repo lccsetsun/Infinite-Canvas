@@ -175,7 +175,7 @@ export default function App() {
     showNotice,
   } = useAppUiState();
 
-  const [workflowName, setWorkflowName] = React.useState("默认工作流");
+  const [workflowName, setWorkflowName] = React.useState("默认项目");
   const [autoSaveWorkflow, setAutoSaveWorkflow] = React.useState(true);
   const [menuPos, setMenuPos] = React.useState<{ x: number; y: number } | null>(null);
   const [pendingLinkMenuDraft, setPendingLinkMenuDraft] = React.useState<{
@@ -913,7 +913,7 @@ export default function App() {
             showNotice("API 设置已保存");
           }}
           onSaveWorkflow={() => {
-            showNotice("工作流设置已保存");
+            showNotice("项目设置已保存");
             setCurrentView("canvas");
             setActiveQuickTool(null);
           }}
@@ -1043,7 +1043,7 @@ export default function App() {
         allCategories={allCategories}
         allTags={allTags}
         currentId={currentWorkflowSummary?.id ?? null}
-        workflowName={currentWorkflowSummary?.name ?? "默认工作流"}
+        workflowName={currentWorkflowSummary?.name ?? "默认项目"}
         onClose={() => setWorkflowManagerOpen(false)}
         onSwitch={switchWorkflow}
         onCreate={createWorkflow}

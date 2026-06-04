@@ -185,7 +185,7 @@ const NODE_BLUEPRINTS: Partial<Record<NodeClass, NodeBlueprint>> = {
     },
   },
   group: {
-    title: "工作流组",
+    title: "节点分组",
     inputs: [],
     outputs: [],
     properties: { color: "#6366f1" },

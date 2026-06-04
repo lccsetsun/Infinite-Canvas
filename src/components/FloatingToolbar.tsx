@@ -95,7 +95,7 @@ export default function FloatingToolbar({
           </motion.button>
         </Tooltip>
 
-        <Tooltip content="工作流设置" position="right">
+        <Tooltip content="项目设置" position="right">
           <motion.button
             whileHover={{ scale: 1.1, x: 2 }}
             whileTap={{ scale: 0.9 }}

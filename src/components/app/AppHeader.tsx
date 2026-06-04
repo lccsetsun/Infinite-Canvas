@@ -51,21 +51,21 @@ export default function AppHeader({
       </motion.div>
 
       <div className="flex items-center gap-2.5">
-        <Tooltip content="切换/管理工作流" position="bottom">
+        <Tooltip content="切换/管理项目" position="bottom">
           <button
             onClick={(e) => { e.stopPropagation(); onOpenWorkflowManager?.(); }}
             className="group flex items-center gap-2.5 pl-2.5 pr-3 py-1.5 rounded-xl bg-[#0d1117]/60 hover:bg-[#0d1117] border border-white/[0.06] hover:border-indigo-500/40 transition-all duration-200 cursor-pointer"
-            aria-label="工作流列表"
+            aria-label="项目列表"
           >
             <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500/20 to-cyan-500/20 border border-indigo-500/30 flex items-center justify-center group-hover:scale-105 transition-transform">
               <FolderOpen className="w-3.5 h-3.5 text-indigo-300" />
             </div>
             <div className="flex flex-col items-start -space-y-0.5 min-w-0">
               <span className="text-[13px] font-bold text-gray-100 truncate max-w-[180px]">
-                {workflowName ?? "未命名工作流"}
+                {workflowName ?? "未命名项目"}
               </span>
               <span className="text-[9px] font-mono text-gray-500 uppercase tracking-wider">
-                {workflowCount ?? 0} 个工作流
+                {workflowCount ?? 0} 个项目
               </span>
             </div>
             <ChevronDown className="w-3.5 h-3.5 text-gray-500 group-hover:text-indigo-300 transition-colors" />

@@ -83,7 +83,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
             AI CANVAS
           </h1>
           <p className="text-slate-500 text-xs font-medium tracking-wide">
-            极致效率的 AI 工作流搭建平台
+            极致效率的 AI 项目画布创作平台
           </p>
         </div>
 

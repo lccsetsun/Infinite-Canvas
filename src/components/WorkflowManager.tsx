@@ -135,12 +135,12 @@ export default function WorkflowManager({
       const a = document.createElement("a");
       a.href = url;
       const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-      a.download = `aicanvas-workspace-${workflowName.replace(/[^\w\u4e00-\u9fa5-]+/g, "_")}-${stamp}.json`;
+      a.download = `aicanvas-projects-${workflowName.replace(/[^\w\u4e00-\u9fa5-]+/g, "_")}-${stamp}.json`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      showNotice(`已导出 ${list.length + trash.length} 个工作流 (含 ${trash.length} 回收站)`);
+      showNotice(`已导出 ${list.length + trash.length} 个项目 (含 ${trash.length} 回收站)`);
     } catch (err) {
       showNotice(`导出失败:${err instanceof Error ? err.message : String(err)}`);
     }
@@ -168,7 +168,7 @@ export default function WorkflowManager({
           if (result.imported > 0) parts.push(`导入 ${result.imported}`);
           if (result.renamed > 0) parts.push(`重命名 ${result.renamed}`);
           if (result.skipped > 0) parts.push(`跳过 ${result.skipped}`);
-          showNotice(parts.length > 0 ? `导入完成:${parts.join(", ")}` : "无可导入的工作流");
+          showNotice(parts.length > 0 ? `导入完成:${parts.join(", ")}` : "无可导入的项目");
         }
       } catch (err) {
         showNotice(`读取失败:${err instanceof Error ? err.message : String(err)}`);
@@ -414,14 +414,14 @@ export default function WorkflowManager({
                   <FolderOpen className="w-4 h-4 text-indigo-300" />
                 </div>
                 <div>
-                  <div className="text-[15px] font-bold text-white">工作流管理</div>
+                  <div className="text-[15px] font-bold text-white">项目管理</div>
                   <div className="text-[10px] text-gray-500 font-mono uppercase tracking-wider">
-                    {list.length} 个工作流 · {trash.length} 回收站
+                    {list.length} 个项目 · {trash.length} 回收站
                   </div>
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <Tooltip content={view === "templates" ? "返回工作流列表" : "从预置模板新建工作流"}>
+                <Tooltip content={view === "templates" ? "返回项目列表" : "从预置模板新建项目"}>
                   <button
                     onClick={() => setView(view === "templates" ? "main" : "templates")}
                     aria-label={view === "templates" ? "返回" : "模板"}
@@ -435,7 +435,7 @@ export default function WorkflowManager({
                   </button>
                 </Tooltip>
                 <div className="w-px h-5 bg-white/10 mx-0.5" />
-                <Tooltip content="导出工作流到 JSON 文件">
+                <Tooltip content="导出项目到 JSON 文件">
                   <button
                     onClick={handleExport}
                     aria-label="导出 JSON"
@@ -444,7 +444,7 @@ export default function WorkflowManager({
                     <Download className="w-4 h-4" />
                   </button>
                 </Tooltip>
-                <Tooltip content="从 JSON 文件导入工作流">
+                <Tooltip content="从 JSON 文件导入项目">
                   <button
                     onClick={handleImportClick}
                     aria-label="导入 JSON"
@@ -457,7 +457,7 @@ export default function WorkflowManager({
                 <div
                   className="flex items-center gap-1 p-0.5 rounded-lg bg-[#0d1117] border border-[#2b3142]"
                   role="tablist"
-                  aria-label="工作流标签切换"
+                  aria-label="项目标签切换"
                 >
                   <button
                     role="tab"
@@ -470,7 +470,7 @@ export default function WorkflowManager({
                     }`}
                   >
                     <FolderOpen className="w-3 h-3" />
-                    工作流
+                    项目
                     <span className={`text-[9px] font-mono ${activeTab === "active" ? "text-indigo-300" : "text-gray-600"}`}>
                       {list.length}
                     </span>
@@ -513,7 +513,7 @@ export default function WorkflowManager({
                       if (e.key === "Enter") handleCreate();
                       if (e.key === "Escape") setNewName("");
                     }}
-                    placeholder="新工作流名称 (留空将自动命名)"
+                    placeholder="新项目名称 (留空将自动命名)"
                     className="flex-1 bg-[#0a0d14] border border-[#2b3142] rounded-lg px-3 py-2 text-sm text-gray-200 outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 transition-all placeholder:text-gray-600"
                   />
                   <button
@@ -535,7 +535,7 @@ export default function WorkflowManager({
                 <div className="px-6 py-3 border-b border-[#252c3a] bg-rose-500/[0.04] flex items-center justify-between gap-3">
                   <div className="text-[11px] text-rose-300/80 flex items-center gap-1.5">
                     <Archive className="w-3.5 h-3.5" />
-                    回收站中共有 <span className="font-bold text-rose-200">{trash.length}</span> 个工作流
+                    回收站中共有 <span className="font-bold text-rose-200">{trash.length}</span> 个项目
                     {expiredCount > 0 && (
                       <span className="text-rose-400/90">
                         · <span className="font-bold text-rose-200">{expiredCount}</span> 个已过期(30 天)
@@ -544,11 +544,11 @@ export default function WorkflowManager({
                   </div>
                   <div className="flex items-center gap-2">
                     {expiredCount > 0 && (
-                      <Tooltip content={`立即清理 ${expiredCount} 个超过 30 天的过期工作流 (系统每小时也会自动清理)`}>
+                      <Tooltip content={`立即清理 ${expiredCount} 个超过 30 天的过期项目 (系统每小时也会自动清理)`}>
                         <button
                           onClick={() => {
                             const n = onPurgeExpired();
-                            if (n > 0) showNotice(`已清理 ${n} 个过期工作流`);
+                            if (n > 0) showNotice(`已清理 ${n} 个过期项目`);
                           }}
                           className="px-3 py-1.5 rounded-md text-[11px] font-bold flex items-center gap-1.5 bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 border border-amber-500/30 transition-colors"
                         >
@@ -629,7 +629,7 @@ export default function WorkflowManager({
                     onChange={(e) => setSearchQuery(e.target.value)}
                     onFocus={() => setSearchInputFocused(true)}
                     onBlur={() => setSearchInputFocused(false)}
-                    placeholder="搜索工作流名称..."
+                    placeholder="搜索项目名称..."
                     className="flex-1 bg-transparent border-none text-[12px] text-gray-200 outline-none placeholder:text-gray-600"
                   />
                   {searchQuery ? (
@@ -651,7 +651,7 @@ export default function WorkflowManager({
                 </div>
                 {searchQuery && (
                   <div className="mt-1.5 px-3 text-[10px] font-mono text-gray-500 uppercase tracking-wider">
-                    匹配 <span className="text-indigo-300 font-bold">{filteredList.length}</span> / {sourceList.length} 个{activeTab === "trash" ? "已删除" : ""}工作流
+                    匹配 <span className="text-indigo-300 font-bold">{filteredList.length}</span> / {sourceList.length} 个{activeTab === "trash" ? "已删除" : ""}项目
                   </div>
                 )}
               </div>
@@ -662,7 +662,7 @@ export default function WorkflowManager({
                 <div className="space-y-3">
                   <div className="text-[11px] text-gray-500 px-1 flex items-center gap-1.5">
                     <Library className="w-3 h-3 text-violet-400" />
-                    从预置模板快速创建工作流 ({WORKFLOW_TEMPLATES.length} 个,
+                    从预置模板快速创建项目 ({WORKFLOW_TEMPLATES.length} 个,
                     <span className="text-amber-400 ml-1">⭐ = 开箱即用 demo,可一键替换当前画布</span>)
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
@@ -732,12 +732,12 @@ export default function WorkflowManager({
                 activeTab === "trash" ? (
                   <div className="py-12 flex flex-col items-center justify-center text-gray-600 gap-2">
                     <Archive className="w-10 h-10 opacity-30" />
-                    <span className="text-sm">回收站是空的,没有已删除的工作流</span>
+                    <span className="text-sm">回收站是空的,没有已删除的项目</span>
                   </div>
                 ) : (
                   <div className="py-12 flex flex-col items-center justify-center text-gray-600 gap-2">
                     <FileText className="w-10 h-10 opacity-30" />
-                    <span className="text-sm">暂无工作流,在上方输入名称并点击"新建"</span>
+                    <span className="text-sm">暂无项目,在上方输入名称并点击"新建"</span>
                   </div>
                 )
               ) : filteredList.length === 0 ? (
@@ -747,7 +747,7 @@ export default function WorkflowManager({
                   </div>
                   <div className="text-center space-y-1">
                     <div className="text-sm font-semibold text-gray-300">
-                      未找到匹配 "<span className="text-indigo-300">{searchQuery}</span>" 的工作流
+                      未找到匹配 "<span className="text-indigo-300">{searchQuery}</span>" 的项目
                     </div>
                     <div className="text-[11px] text-gray-600">
                       尝试其他关键词,或
@@ -960,7 +960,7 @@ export default function WorkflowManager({
 
                         <div className="flex items-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
                           {activeTab === "active" && !isCurrent && !isEditing && (
-                            <Tooltip content="切换到该工作流">
+                            <Tooltip content="切换到该项目">
                               <button
                                 onClick={() => {
                                   onSwitch(wf.id);
@@ -996,7 +996,7 @@ export default function WorkflowManager({
                             </Tooltip>
                           )}
                           {activeTab === "trash" && (
-                            <Tooltip content="还原到工作流列表">
+                            <Tooltip content="还原到项目列表">
                               <button
                                 onClick={() => handleRestore(wf.id, wf.name)}
                                 className="p-2 rounded-lg hover:bg-emerald-500/15 text-gray-400 hover:text-emerald-300 transition-colors"

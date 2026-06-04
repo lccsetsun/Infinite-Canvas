@@ -13,7 +13,7 @@ export default function EmptyCanvasState({ onDismiss }: EmptyCanvasStateProps) {
         </div>
         <div className="text-center space-y-2">
           <h2 className="text-2xl font-bold text-white/90 tracking-tight">准备好开始创作了吗？</h2>
-          <p className="text-gray-400 text-sm">点击下方按钮或使用左侧工具栏开启你的第一个画布</p>
+          <p className="text-gray-400 text-sm">新建一个项目,在自由画布上开始创作</p>
         </div>
         <button
           data-no-canvas-drag="true"
@@ -25,7 +25,7 @@ export default function EmptyCanvasState({ onDismiss }: EmptyCanvasStateProps) {
           className="pointer-events-auto px-8 py-3.5 rounded-2xl bg-indigo-500 hover:bg-indigo-400 text-white font-bold transition-all shadow-xl shadow-indigo-500/25 active:scale-95 flex items-center gap-2.5 group"
         >
           <Plus className="w-5 h-5 group-hover:rotate-90 transition-transform" />
-          新建画布
+          新建项目
         </button>
       </div>
     </div>

@@ -9,7 +9,7 @@ import { NodeOutputMap, buildResolvedInputsMap, resolveNodeInputs, topologicalLe
 const STORAGE_KEY = "aicanvas_workspace_v2";
 const HISTORY_LIMIT = 50;
 const PERSIST_DEBOUNCE_MS = 800;
-const DEFAULT_WORKFLOW_NAME = "默认工作流";
+const DEFAULT_WORKFLOW_NAME = "默认项目";
 const WORKSPACE_VERSION = 2 as const;
 const WORKSPACE_LEGACY_VERSIONS = [1] as const;
 const TRASH_RETENTION_DAYS = 30;
@@ -243,7 +243,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
   const initialNodes = normalizeNodes(initialWf?.data.nodes ?? []);
 
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [logs, setLogs] = useState<ExecutionLog[]>([makeLog("info", "初始化完成:工作流编辑器已就绪。")]);
+  const [logs, setLogs] = useState<ExecutionLog[]>([makeLog("info", "初始化完成:项目画布已就绪。")]);
   const [linkFromNodeId, setLinkFromNodeId] = useState("");
   const [linkToNodeId, setLinkToNodeId] = useState("");
   const [linkFromOutputIndex, setLinkFromOutputIndex] = useState(0);
@@ -817,7 +817,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     const color = colors[groups.length % colors.length];
     const group: import("../types").GroupBox = {
       id,
-      title: title?.trim() || `工作流组 ${groups.length + 1}`,
+      title: title?.trim() || `节点分组 ${groups.length + 1}`,
       x: minX,
       y: minY,
       width: maxX - minX,
@@ -935,13 +935,13 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
 
     const { levels, hasCycle, cyclePath } = topologicalLevels(nodes, links);
     if (hasCycle) {
-      appendLog("error", `工作流存在循环依赖,无法执行。涉及节点:${cyclePath.join(", ")}`);
+      appendLog("error", `项目存在循环依赖,无法执行。涉及节点:${cyclePath.join(", ")}`);
       return;
     }
 
     setIsRunning(true);
     setNodeOutputs(new Map());
-    appendLog("info", `开始执行工作流 "${currentWorkflowSummary?.name ?? ""}",共 ${nodes.length} 个节点,分 ${levels.length} 层并发`);
+    appendLog("info", `开始执行项目 "${currentWorkflowSummary?.name ?? ""}",共 ${nodes.length} 个节点,分 ${levels.length} 层并发`);
 
     for (let i = 0; i < levels.length; i++) {
       const level = levels[i];
@@ -949,7 +949,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       await Promise.all(level.map((node) => runNode(node.id)));
     }
 
-    appendLog("success", "工作流执行完成。");
+    appendLog("success", "项目执行完成。");
     setIsRunning(false);
   }, [nodes, links, isRunning, runNode, appendLog, currentWorkflowSummary]);
 
@@ -993,12 +993,12 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
   }, [appendLog, syncCurrentWorkflowMeta]);
 
   const createWorkflow = useCallback((name?: string): WorkflowSummary => {
-    const wf = makeEmptyWorkflow(name?.trim() || `工作流 ${Object.keys(workspace.workflows).length + 1}`);
+    const wf = makeEmptyWorkflow(name?.trim() || `项目 ${Object.keys(workspace.workflows).length + 1}`);
     setWorkspace((prev) => ({
       ...prev,
       workflows: { ...prev.workflows, [wf.summary.id]: wf },
     }));
-    appendLog("success", `已新建工作流 "${wf.summary.name}"`);
+    appendLog("success", `已新建项目 "${wf.summary.name}"`);
     return wf.summary;
   }, [appendLog, workspace.workflows]);
 
@@ -1073,7 +1073,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       resetHistory({ nodes, links });
       appendLog(
         "success",
-        `已从模板 "${tmpl.name}" 创建工作流 (${nodes.length} 节点, ${links.length} 连线, 分类 "${tmpl.category}", 预填 ${outputsMap.size} 个占位结果)`
+        `已从模板 "${tmpl.name}" 创建项目 (${nodes.length} 节点, ${links.length} 连线, 分类 "${tmpl.category}", 预填 ${outputsMap.size} 个占位结果)`
       );
       return wf.summary;
     },
@@ -1088,7 +1088,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         return false;
       }
       if (!workspace.workflows[workspace.currentId]) {
-        appendLog("warning", "当前没有可重置的工作流");
+        appendLog("warning", "当前没有可重置的项目");
         return false;
       }
       const now = Date.now();
@@ -1160,11 +1160,11 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
 
   const switchWorkflow = useCallback((id: string): boolean => {
     if (!workspace.workflows[id]) {
-      appendLog("warning", `工作流 ${id} 不存在`);
+      appendLog("warning", `项目 ${id} 不存在`);
       return false;
     }
     if (id === workspace.currentId) {
-      appendLog("info", `已在工作流 "${workspace.workflows[id].summary.name}"`);
+      appendLog("info", `已在项目 "${workspace.workflows[id].summary.name}"`);
       return true;
     }
     setWorkspace((prev) => {
@@ -1177,7 +1177,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       setSelectedNodeId(null);
       clearLinkDraft();
       resetHistory({ nodes: nextNodes, links: target.data.links });
-      appendLog("info", `已切换到工作流 "${target.summary.name}" (${nextNodes.length} 节点, ${target.data.links.length} 连线)`);
+      appendLog("info", `已切换到项目 "${target.summary.name}" (${nextNodes.length} 节点, ${target.data.links.length} 连线)`);
       return { ...prev, currentId: id };
     });
     return true;
@@ -1186,7 +1186,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
   const renameWorkflow = useCallback((id: string, name: string): boolean => {
     const trimmed = name.trim();
     if (!trimmed) {
-      appendLog("warning", "工作流名称不能为空");
+      appendLog("warning", "项目名称不能为空");
       return false;
     }
     if (!workspace.workflows[id]) return false;
@@ -1298,7 +1298,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     const removed = workspace.workflows[id];
     const remaining = (Object.values(workspace.workflows) as Workflow[]).filter((w) => w.summary.id !== id);
     if (remaining.length === 0) {
-      appendLog("warning", "至少需要保留一个工作流");
+      appendLog("warning", "至少需要保留一个项目");
       return false;
     }
     const wasCurrent = id === workspace.currentId;
@@ -1338,7 +1338,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     const src = workspace.trash.find((w) => w.summary.id === id);
     if (!src) return false;
     if (workspace.workflows[id]) {
-      appendLog("warning", `工作流 "${src.summary.name}" 已存在,无法还原`);
+      appendLog("warning", `项目 "${src.summary.name}" 已存在,无法还原`);
       return false;
     }
     const now = Date.now();
@@ -1370,7 +1370,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     const count = workspace.trash.length;
     if (count === 0) return 0;
     setWorkspace((prev) => ({ ...prev, trash: [] }));
-    appendLog("warning", `已清空回收站 (${count} 个工作流被永久删除)`);
+    appendLog("warning", `已清空回收站 (${count} 个项目被永久删除)`);
     return count;
   }, [workspace, appendLog]);
 
@@ -1382,7 +1382,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     setWorkspace((prev) => ({ ...prev, trash: prev.trash.filter((w) => !expiredIds.has(w.summary.id)) }));
     appendLog(
       "warning",
-      `自动清理回收站:已永久删除 ${expired.length} 个超过 ${TRASH_RETENTION_DAYS} 天的过期工作流${expired.length > 0 ? ` ("${expired.slice(0, 3).map((w) => w.summary.name).join('", "')}${expired.length > 3 ? '" 等' : '"'})` : ""}`
+      `自动清理回收站:已永久删除 ${expired.length} 个超过 ${TRASH_RETENTION_DAYS} 天的过期项目${expired.length > 0 ? ` ("${expired.slice(0, 3).map((w) => w.summary.name).join('", "')}${expired.length > 3 ? '" 等' : '"'})` : ""}`
     );
     return expired.length;
   }, [workspace, appendLog]);
@@ -1421,7 +1421,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       ...prev,
       workflows: { ...prev.workflows, [wf.summary.id]: wf },
     }));
-    appendLog("success", `已复制为新工作流 "${wf.summary.name}" (${wf.data.nodes.length} 节点)`);
+    appendLog("success", `已复制为新项目 "${wf.summary.name}" (${wf.data.nodes.length} 节点)`);
     return wf.summary;
   }, [workspace, appendLog]);
 
@@ -1542,7 +1542,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         (sum, w) => sum + w.data.nodes.length,
         0
       );
-      appendLog("info", `已从本地恢复 ${Object.keys(initial.workflows).length} 个工作流 (合计 ${totalNodes} 节点)`);
+      appendLog("info", `已从本地恢复 ${Object.keys(initial.workflows).length} 个项目 (合计 ${totalNodes} 节点)`);
     }
   }, [appendLog, initial]);
 
