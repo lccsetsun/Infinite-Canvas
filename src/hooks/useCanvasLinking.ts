@@ -1,5 +1,6 @@
 import React from "react";
 import { GraphLink, GraphNode } from "../types";
+import { resolveAutoConnectTarget } from "../utils/autoConnectTarget";
 import { getLinkDraftIssue } from "../utils/linking";
 
 interface WorldPoint {
@@ -28,6 +29,13 @@ interface UseCanvasLinkingOptions {
   setSelectedNodeId: (nodeId: string) => void;
   showNotice: (message: string, duration?: number) => void;
   toWorld: (clientX: number, clientY: number) => WorldPoint;
+  onBlankLinkDrop?: (draft: {
+    clientX: number;
+    clientY: number;
+    fromNodeId: string;
+    fromOutputIndex: number;
+    worldPoint: WorldPoint;
+  }) => void;
 }
 
 export function useCanvasLinking({
@@ -46,9 +54,11 @@ export function useCanvasLinking({
   setSelectedNodeId,
   showNotice,
   toWorld,
+  onBlankLinkDrop,
 }: UseCanvasLinkingOptions) {
   const [isLinkingOnCanvas, setIsLinkingOnCanvas] = React.useState(false);
   const [draftCursor, setDraftCursor] = React.useState<WorldPoint | null>(null);
+  const autoCompletingRef = React.useRef(false);
 
   const resetCanvasLinkDraft = React.useCallback(() => {
     clearLinkDraft();
@@ -65,6 +75,7 @@ export function useCanvasLinking({
       setLinkToInputIndex(0);
       setDraftCursor(toWorld(clientX, clientY));
       setIsLinkingOnCanvas(true);
+      autoCompletingRef.current = false;
     },
     [setSelectedNodeId, setLinkFromNodeId, setLinkFromOutputIndex, setLinkToNodeId, setLinkToInputIndex, toWorld]
   );
@@ -182,28 +193,29 @@ export function useCanvasLinking({
       
       // Hit testing for ports using elementFromPoint since implicit capture might block onPointerEnter
       // We use a small timeout or just direct call, but ensure it's robust
+      if (autoCompletingRef.current) return;
+
       const target = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement;
       const inputTarget = getInputDropTarget(target);
       
       if (inputTarget) {
-        const { inputIndex, nodeId } = inputTarget;
+        const autoTarget = resolveAutoConnectTarget({
+          candidateInputIndex: inputTarget.inputIndex,
+          candidateNodeId: inputTarget.nodeId,
+          fromNodeId: linkFromNodeId,
+          fromOutputIndex: linkFromOutputIndex,
+          links,
+          nodes,
+        });
         
-        if (nodeId !== linkToNodeId || inputIndex !== linkToInputIndex) {
-          const issue = getLinkDraftIssue({
-            fromNodeId: linkFromNodeId,
-            toNodeId: nodeId,
-            fromOutputIndex: linkFromOutputIndex,
-            toInputIndex: inputIndex,
-            nodes,
-            links,
-          });
-          if (!issue) {
-            setLinkToNodeId(nodeId);
-            setLinkToInputIndex(inputIndex);
-          } else if (linkToNodeId) {
-            setLinkToNodeId("");
-            setLinkToInputIndex(0);
-          }
+        if (autoTarget) {
+          setLinkToNodeId(autoTarget.nodeId);
+          setLinkToInputIndex(autoTarget.inputIndex);
+          autoCompletingRef.current = true;
+          finishCanvasLinkRef.current(autoTarget.nodeId, autoTarget.inputIndex);
+        } else if (linkToNodeId) {
+          setLinkToNodeId("");
+          setLinkToInputIndex(0);
         }
       } else if (linkToNodeId) {
         setLinkToNodeId("");
@@ -212,12 +224,23 @@ export function useCanvasLinking({
     };
     
     const onUp = (e: PointerEvent) => {
+      if (autoCompletingRef.current) return;
+
       // Final hit test on release
       const target = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement;
       const inputTarget = getInputDropTarget(target);
       
       if (inputTarget) {
         finishCanvasLinkRef.current(inputTarget.nodeId, inputTarget.inputIndex);
+      } else if (onBlankLinkDrop && linkFromNodeId) {
+        onBlankLinkDrop({
+          clientX: e.clientX,
+          clientY: e.clientY,
+          fromNodeId: linkFromNodeId,
+          fromOutputIndex: linkFromOutputIndex,
+          worldPoint: toWorld(e.clientX, e.clientY),
+        });
+        resetCanvasLinkDraft();
       } else {
         finishCanvasLinkRef.current();
       }
@@ -229,7 +252,7 @@ export function useCanvasLinking({
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
     };
-  }, [isLinkingOnCanvas, toWorld, setDraftCursor, linkFromNodeId, linkFromOutputIndex, linkToNodeId, linkToInputIndex, nodes, links, setLinkToNodeId, setLinkToInputIndex]);
+  }, [isLinkingOnCanvas, toWorld, setDraftCursor, linkFromNodeId, linkFromOutputIndex, linkToNodeId, linkToInputIndex, nodes, links, setLinkToNodeId, setLinkToInputIndex, onBlankLinkDrop, resetCanvasLinkDraft]);
 
   return {
     beginCanvasLink,

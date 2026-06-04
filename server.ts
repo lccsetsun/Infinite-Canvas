@@ -311,6 +311,24 @@ function readMiniMaxVideoUrl(data: any): string {
   return candidates.find((value) => typeof value === "string" && value.length > 0) || "";
 }
 
+function readMiniMaxAudioUrl(data: any): string {
+  const candidates = [
+    data?.audio_file,
+    data?.audioFile,
+    data?.audio_url,
+    data?.audioUrl,
+    data?.url,
+    data?.data?.audio_file,
+    data?.data?.audioFile,
+    data?.data?.audio_url,
+    data?.data?.audioUrl,
+    data?.data?.url,
+    data?.data?.extra_info?.audio_file,
+    data?.data?.extra_info?.audio_url,
+  ];
+  return candidates.find((value) => typeof value === "string" && value.length > 0) || "";
+}
+
 app.post("/api/minimax/image-generation", async (req, res) => {
   try {
     const apiKey = String(req.header("X-MiniMax-Api-Key") || process.env.MINIMAX_API_KEY || "").trim();
@@ -553,6 +571,113 @@ app.post("/api/minimax/video-generation", async (req, res) => {
   } catch (error: any) {
     console.error("MiniMax Video Generation Error:", error);
     res.status(500).json({ error: error.message || "Failed to generate video using MiniMax" });
+  }
+});
+
+app.post("/api/minimax/audio-generation", async (req, res) => {
+  try {
+    const apiKey = String(req.header("X-MiniMax-Api-Key") || process.env.MINIMAX_API_KEY || "").trim();
+    if (!apiKey) {
+      res.status(401).json({ error: "MiniMax API Key 未配置，请先在 API 设置里新增 MiniMax 配置并保存密钥" });
+      return;
+    }
+
+    const {
+      model = "speech-2.8-hd",
+      text,
+      voice_id = "male-qn-qingse",
+      speed = 1,
+      vol = 1,
+      pitch = 0,
+      emotion,
+      audio_sample_rate = 32000,
+      bitrate = 128000,
+      format = "mp3",
+      base_url,
+    } = req.body || {};
+
+    if (typeof text !== "string" || !text.trim()) {
+      res.status(400).json({ error: "Text is required" });
+      return;
+    }
+
+    const voiceSetting: Record<string, unknown> = {
+      voice_id,
+      speed,
+      vol,
+      pitch,
+    };
+    if (typeof emotion === "string" && emotion.trim() && emotion !== "auto") {
+      voiceSetting.emotion = emotion.trim();
+    }
+
+    const payload: Record<string, unknown> = {
+      model,
+      text,
+      stream: false,
+      voice_setting: voiceSetting,
+      audio_setting: {
+        sample_rate: audio_sample_rate,
+        bitrate,
+        format,
+        channel: 1,
+      },
+      output_format: "url",
+    };
+
+    const response = await fetch(resolveMiniMaxEndpoint(base_url, "t2a_v2"), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const textBody = await response.text();
+    let data: any = {};
+    try {
+      data = textBody ? JSON.parse(textBody) : {};
+    } catch {
+      data = { raw: textBody };
+    }
+
+    if (!response.ok) {
+      const message = data?.base_resp?.status_msg || data?.message || data?.error || textBody || response.statusText;
+      res.status(response.status).json({ error: `MiniMax 音频生成失败: ${message}` });
+      return;
+    }
+
+    const statusCode = data?.base_resp?.status_code;
+    if (typeof statusCode === "number" && statusCode !== 0) {
+      res.status(502).json({ error: `MiniMax 音频生成失败: ${data?.base_resp?.status_msg || statusCode}` });
+      return;
+    }
+
+    const audioUrl = readMiniMaxAudioUrl(data);
+    if (!audioUrl) {
+      res.status(502).json({ error: "MiniMax 未返回音频链接" });
+      return;
+    }
+
+    res.json({
+      audioUrl,
+      metadata: {
+        model,
+        voice_id,
+        speed,
+        vol,
+        pitch,
+        emotion,
+        audio_sample_rate,
+        bitrate,
+        format,
+      },
+      raw: process.env.NODE_ENV === "production" ? undefined : data,
+    });
+  } catch (error: any) {
+    console.error("MiniMax Audio Generation Error:", error);
+    res.status(500).json({ error: error.message || "Failed to generate audio using MiniMax" });
   }
 });
 

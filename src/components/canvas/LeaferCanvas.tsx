@@ -160,25 +160,6 @@ function buildLinks(group: Group, nodes: GraphNode[], links: GraphLink[]) {
         hitFill: "none",
       } as never)
     );
-    
-    const flowPath = new Path({
-      path,
-      stroke: CONNECTION_LINK_STYLE.flow.stroke,
-      strokeWidth: CONNECTION_LINK_STYLE.flow.strokeWidth,
-      opacity: 0.9,
-      dashPattern: [...CONNECTION_LINK_STYLE.flow.dashPattern],
-      dashOffset: 0,
-      hitFill: "none",
-      shadow: CONNECTION_LINK_STYLE.flow.shadow,
-    } as never);
-
-    group.add(flowPath as never);
-
-    // 启动连线流光动画
-    (flowPath as unknown as { animate: (props: Record<string, number>, opts: Record<string, unknown>) => void }).animate(
-      { dashOffset: -116 },
-      { duration: CONNECTION_LINK_STYLE.flow.duration, loop: true, easing: "linear" }
-    );
   });
 }
 

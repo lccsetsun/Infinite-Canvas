@@ -20,11 +20,11 @@ describe("api provider presets", () => {
     expect(Object.keys(PROVIDER_PRESETS)).toEqual(["deepseek", "minimax"]);
   });
 
-  it("configures MiniMax image and video defaults", async () => {
+  it("configures MiniMax image, video, and audio defaults", async () => {
     expect(PROVIDER_PRESETS.minimax).toMatchObject({
       baseUrl: "https://api.minimaxi.com/v1",
       defaultModel: "image-01",
-      models: ["image-01", "MiniMax-Hailuo-2.3"],
+      models: ["image-01", "MiniMax-Hailuo-2.3", "speech-2.8-hd"],
     });
 
     await expect(
@@ -46,7 +46,7 @@ describe("api provider presets", () => {
       })
     ).resolves.toMatchObject({
       ok: true,
-      models: ["image-01", "MiniMax-Hailuo-2.3"],
+      models: ["image-01", "MiniMax-Hailuo-2.3", "speech-2.8-hd"],
     });
   });
 

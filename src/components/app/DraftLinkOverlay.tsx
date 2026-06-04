@@ -36,7 +36,6 @@ export default function DraftLinkOverlay({
   const path = linkPath(from, to);
   const flowStroke = draftIssue ? CONNECTION_DRAFT_STYLE.flow.invalidStroke : CONNECTION_DRAFT_STYLE.flow.stroke;
   const glowStroke = draftIssue ? CONNECTION_DRAFT_STYLE.glow.invalidStroke : CONNECTION_DRAFT_STYLE.glow.stroke;
-  const dashPattern = CONNECTION_DRAFT_STYLE.flow.dashPattern.join(" ");
 
   return (
     <svg className="pointer-events-none absolute inset-0 z-[35] overflow-visible" aria-hidden="true">
@@ -62,22 +61,41 @@ export default function DraftLinkOverlay({
         <path
           d={path}
           fill="none"
-          stroke={draftIssue ? flowStroke : CONNECTION_DRAFT_STYLE.core.stroke}
+          stroke={draftIssue ? flowStroke : "rgba(151,210,255,0.56)"}
           strokeLinecap="round"
-          strokeWidth={CONNECTION_DRAFT_STYLE.core.strokeWidth}
-          opacity={CONNECTION_DRAFT_STYLE.core.opacity}
+          strokeWidth={6.5}
+          opacity={draftIssue ? CONNECTION_DRAFT_STYLE.core.opacity : 0.9}
         />
         <path
           d={path}
-          className="animate-[draft-link-flow_0.95s_linear_infinite]"
+          fill="none"
+          stroke={draftIssue ? flowStroke : "rgba(236,248,255,0.88)"}
+          strokeLinecap="round"
+          strokeWidth={2.3}
+          opacity="0.94"
+        />
+        <path
+          d={path}
+          className="link-energy-pulse"
           fill="none"
           stroke={flowStroke}
-          strokeDasharray={dashPattern}
+          strokeDasharray="54 260"
           strokeLinecap="round"
-          strokeWidth={CONNECTION_DRAFT_STYLE.flow.strokeWidth}
+          strokeWidth={draftIssue ? CONNECTION_DRAFT_STYLE.flow.strokeWidth : 8}
           opacity="0.96"
           filter="url(#draft-link-overlay-glow)"
         />
+        {!draftIssue && (
+          <path
+            d={path}
+            className="link-energy-pulse link-energy-pulse-soft"
+            fill="none"
+            stroke="rgba(178,225,255,0.96)"
+            strokeDasharray="28 286"
+            strokeLinecap="round"
+            strokeWidth={3.2}
+          />
+        )}
       </g>
     </svg>
   );

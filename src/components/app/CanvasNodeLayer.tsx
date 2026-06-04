@@ -6,7 +6,7 @@ import ImageNodeCard from "../canvas/ImageNodeCard";
 import VideoNodeCard from "../canvas/VideoNodeCard";
 import AudioNodeCard from "../canvas/AudioNodeCard";
 import { getInputAnchor, getOutputAnchor } from "../canvas/geometry";
-import { GraphNode, VideoFrameAnalysisSegment } from "../../types";
+import { GraphNode, VideoFrameAnalysisOverview, VideoFrameAnalysisSegment } from "../../types";
 
 interface CanvasNodeLayerProps {
   apiConfig: {
@@ -30,9 +30,11 @@ interface CanvasNodeLayerProps {
   onFinishCanvasLink: (nodeId?: string, inputIndex?: number) => void;
   onHoverCanvasLinkTarget: (nodeId: string, inputIndex: number) => void;
   onLeaveCanvasLinkTarget: (nodeId: string, inputIndex: number) => void;
+  onNodeContextMenu: (nodeId: string, event: React.MouseEvent) => void;
   onNodeDragStart: (event: React.PointerEvent, node: GraphNode) => void;
   onPreview: (content: string, title?: string, nodeId?: string, items?: string[], currentIndex?: number) => void;
-  onAnalyzeVideo?: (node: GraphNode, segments: VideoFrameAnalysisSegment[]) => Promise<void> | void;
+  onAnalyzeVideo?: (node: GraphNode, segments: VideoFrameAnalysisSegment[], overview: VideoFrameAnalysisOverview) => Promise<void> | void;
+  onReverseSegmentAnalysis?: (node: GraphNode) => Promise<void> | void;
   onSelectNode: (nodeId: string, e?: React.MouseEvent) => void;
   onUpdateNodeData: (nodeId: string, data: any) => void;
   onUpdateNodeProperty: (nodeId: string, key: string, value: unknown) => void;
@@ -59,9 +61,11 @@ export default function CanvasNodeLayer({
   onFinishCanvasLink,
   onHoverCanvasLinkTarget,
   onLeaveCanvasLinkTarget,
+  onNodeContextMenu,
   onNodeDragStart,
   onPreview,
   onAnalyzeVideo,
+  onReverseSegmentAnalysis,
   onSelectNode,
   onUpdateNodeData,
   onUpdateNodeProperty,
@@ -83,6 +87,7 @@ export default function CanvasNodeLayer({
             className="absolute left-0 top-0"
             data-canvas-node-id={node.id}
             style={{ transform: `translate3d(${node.x}px, ${node.y}px, 0)` }}
+            onContextMenu={(event) => onNodeContextMenu(node.id, event)}
           >
             {node.type === "text_node" ? (
               <TextNodeCard
@@ -102,6 +107,7 @@ export default function CanvasNodeLayer({
                 onUpdateProperty={onUpdateNodeProperty}
                 onUpdateData={onUpdateNodeData}
                 onPreview={onPreview}
+                onReverseSegmentAnalysis={onReverseSegmentAnalysis}
                 resolvedInputs={resolvedInputsMap?.get(node.id)}
                 onRun={onRunNode}
                 // 连线相关

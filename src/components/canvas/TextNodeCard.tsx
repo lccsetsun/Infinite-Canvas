@@ -1,7 +1,7 @@
 import React from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "motion/react";
-import { AlertTriangle, ArrowUp, Check, Copy, Cpu, FileText, Loader2, MessageSquareText, Plus } from "lucide-react";
+import { AlertTriangle, ArrowUp, Check, Copy, Cpu, Eye, FileText, Loader2, MessageSquareText, Plus, Wand2 } from "lucide-react";
 import { GraphNode } from "../../types";
 import { getNodeWidth } from "./geometry";
 import { findResolvedStringInput } from "../../utils/resolvedInputs";
@@ -18,6 +18,7 @@ interface TextNodeCardProps {
   onDragStart: (event: React.PointerEvent, node: GraphNode) => void;
   onUpdateProperty?: (nodeId: string, key: string, value: unknown) => void;
   onPreview?: (content: string, title?: string, nodeId?: string, items?: string[], currentIndex?: number) => void;
+  onReverseSegmentAnalysis?: (node: GraphNode) => Promise<void> | void;
   resolvedInputs?: Record<string, unknown>;
   onRun?: (nodeId: string) => void;
   // 连线相关
@@ -68,6 +69,14 @@ function TextSkeleton({ active }: { active: boolean }) {
   );
 }
 
+function isPointerOnVerticalScrollbar(event: React.PointerEvent<HTMLElement>) {
+  const target = event.currentTarget;
+  if (target.scrollHeight <= target.clientHeight) return false;
+  const scrollbarWidth = Math.max(10, target.offsetWidth - target.clientWidth);
+  const rect = target.getBoundingClientRect();
+  return event.clientX >= rect.right - scrollbarWidth - 2;
+}
+
 function TextNodeCardImpl({
   node,
   selected,
@@ -77,6 +86,7 @@ function TextNodeCardImpl({
   onDragStart,
   onUpdateProperty,
   onPreview,
+  onReverseSegmentAnalysis,
   resolvedInputs,
   onRun,
   isLinkingOnCanvas,
@@ -93,6 +103,7 @@ function TextNodeCardImpl({
   const isRunning = node.properties.status === "loading" || node.data?.loading === true;
   const [copied, setCopied] = React.useState(false);
   const [isHovered, setIsHovered] = React.useState(false);
+  const [isReversingSegments, setIsReversingSegments] = React.useState(false);
   const [outputMenuPos, setOutputMenuPos] = React.useState<{ x: number; y: number } | null>(null);
   const inputPortRef = React.useRef<HTMLDivElement | null>(null);
   const outputPortRef = React.useRef<HTMLDivElement | null>(null);
@@ -112,6 +123,11 @@ function TextNodeCardImpl({
   const showPortHandles = shouldShowInlinePortHandles({ isHovered, isLinkingOnCanvas, selected });
   const hasCompactContent = Boolean(responseText || errorText);
   const showPromptComposer = (isHovered || selected) && !hasCompactContent;
+  const canReverseSegments =
+    node.properties.isFullVideoAnalysisText === true &&
+    typeof node.properties.frameAnalysisVideoUrl === "string" &&
+    Array.isArray(node.properties.frameAnalysisSegments) &&
+    node.properties.frameAnalysisSegments.length > 0;
 
   const handleRun = () => {
     if (isRunning) return;
@@ -132,6 +148,17 @@ function TextNodeCardImpl({
     if (!responseText) return;
     setOutputMenuPos(null);
     onPreview?.(responseText, "文本节点输出", node.id);
+  };
+
+  const handleReverseSegments = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!canReverseSegments || isReversingSegments || !onReverseSegmentAnalysis) return;
+    setIsReversingSegments(true);
+    try {
+      await onReverseSegmentAnalysis(node);
+    } finally {
+      setIsReversingSegments(false);
+    }
   };
 
   const handleOutputContextMenu = (e: React.MouseEvent) => {
@@ -228,6 +255,51 @@ function TextNodeCardImpl({
         }`}
         style={{ width: getNodeWidth(node), minHeight: 290 }}
       >
+        <AnimatePresence>
+          {selected && responseText && (
+            <motion.div
+              data-node-action="true"
+              initial={{ opacity: 0, y: 8, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 8, scale: 0.96 }}
+              transition={{ duration: 0.16, ease: "easeOut" }}
+              className="absolute left-1/2 top-0 z-40 flex h-14 -translate-x-1/2 -translate-y-[calc(100%+18px)] items-center gap-2 rounded-[20px] border border-slate-500/18 bg-[#121923]/95 px-4 shadow-[0_18px_44px_-24px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-2xl"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                onClick={handlePreview}
+                className="flex h-9 w-9 items-center justify-center rounded-[12px] text-slate-400 transition-colors hover:bg-white/[0.06] hover:text-slate-100"
+                title="全屏预览"
+              >
+                <Eye className="h-5 w-5" />
+              </button>
+              {canReverseSegments && (
+                <>
+                  <div className="mx-1 h-7 w-px bg-slate-500/22" />
+                  <button
+                    type="button"
+                    data-node-action="true"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      void handleReverseSegments(e);
+                    }}
+                    disabled={isReversingSegments}
+                    className={`flex h-9 w-9 items-center justify-center rounded-[12px] transition-colors ${
+                      isReversingSegments
+                        ? "cursor-wait bg-cyan-100/10 text-cyan-100"
+                        : "text-slate-400 hover:bg-white/[0.06] hover:text-slate-100"
+                    }`}
+                    title="反推分段分析"
+                  >
+                    {isReversingSegments ? <Loader2 className="h-5 w-5 animate-spin" /> : <Wand2 className="h-5 w-5" />}
+                  </button>
+                </>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
         <div className="pointer-events-none absolute inset-x-0 top-0 h-px rounded-t-[18px] bg-gradient-to-r from-transparent via-slate-100/25 to-transparent" />
         <div className="pointer-events-none absolute inset-0 rounded-[18px] bg-[radial-gradient(circle_at_28%_0%,rgba(34,211,238,0.08),transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.035),transparent_34%)]" />
         {isRunning && (
@@ -237,7 +309,7 @@ function TextNodeCardImpl({
         )}
         {/* Hover side icons */}
         <div
-          className="absolute -left-24 top-1/2 z-10 flex h-28 w-24 -translate-y-1/2 items-center justify-center"
+          className="absolute -left-11 top-1/2 z-10 -translate-y-1/2"
           onMouseEnter={() => setIsHovered(true)}
         >
           <motion.div
@@ -277,7 +349,7 @@ function TextNodeCardImpl({
           </motion.div>
         </div>
         <div
-          className="absolute -right-24 top-1/2 z-10 flex h-28 w-24 -translate-y-1/2 items-center justify-center"
+          className="absolute -right-11 top-1/2 z-10 -translate-y-1/2"
           onMouseEnter={() => setIsHovered(true)}
         >
           <motion.div
@@ -387,8 +459,15 @@ function TextNodeCardImpl({
                       <span className="line-clamp-6">{errorText}</span>
                     </div>
                   ) : responseText ? (
-                    <div className="w-full text-[14px] leading-[1.78] text-slate-100/82">
-                      <div className="line-clamp-7">{renderMarkdown(responseText)}</div>
+                    <div
+                      data-canvas-passthrough="true"
+                      className="custom-scrollbar max-h-[250px] w-full overflow-y-auto pr-2 text-[14px] leading-[1.78] text-slate-100/82"
+                      onPointerDown={(e) => {
+                        if (isPointerOnVerticalScrollbar(e)) e.stopPropagation();
+                      }}
+                      onWheel={(e) => e.stopPropagation()}
+                    >
+                      <div className="whitespace-pre-wrap">{renderMarkdown(responseText)}</div>
                     </div>
                   ) : (
                     <div className="w-full">

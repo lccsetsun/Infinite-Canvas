@@ -143,7 +143,7 @@ function ImageNodeCardImpl({
             initial={{ opacity: 0, x: 10 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 10 }}
-            className="absolute -left-[76px] top-1/2 z-10 flex h-28 w-24 -translate-y-1/2 items-center justify-center"
+            className="absolute -left-11 top-1/2 z-10 -translate-y-1/2"
           >
             <div
               role="button"
@@ -175,7 +175,7 @@ function ImageNodeCardImpl({
             initial={{ opacity: 0, x: -10 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -10 }}
-            className="absolute -right-[76px] top-1/2 z-10 flex h-28 w-24 -translate-y-1/2 items-center justify-center"
+            className="absolute -right-11 top-1/2 z-10 -translate-y-1/2"
           >
             <div
               role="button"

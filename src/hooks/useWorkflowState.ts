@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { createNodeFromType } from "../features/nodes/nodeFactory";
 import { getExecutor } from "../features/nodes/nodeExecutors";
 import { WORKFLOW_TEMPLATES } from "../features/templates/workflowTemplates";
-import { ExecutionLog, GraphLink, GraphNode, NodeClass, VideoFrameAnalysisSegment } from "../types";
+import { ExecutionLog, GraphLink, GraphNode, NodeClass, VideoFrameAnalysisOverview, VideoFrameAnalysisSegment, VideoSegmentTextAnalysis } from "../types";
 import { findFirstCompatibleInputIndex, getLinkDraftIssue, isDataTypeCompatible } from "../utils/linking";
 import { NodeOutputMap, buildResolvedInputsMap, resolveNodeInputs, topologicalLevels } from "../runtime/dataflow";
 
@@ -19,6 +19,18 @@ const VIDEO_IMAGE_INPUT = { name: "image", type: "IMAGE" as const };
 const MINIMAX_IMAGE_RATIOS = new Set(["1:1", "16:9", "4:3", "3:2", "2:3", "3:4", "9:16", "21:9"]);
 const IMAGE_NODE_MODEL_FALLBACKS = new Set(["", "lib-navo-pro", "flux-1", "sdxl", "midjourney"]);
 const TEXT_NODE_MODEL_FALLBACKS = new Set(["", "deepseek-v4-flash"]);
+const FRAME_IMAGE_MAX_WIDTH = 520;
+const FRAME_IMAGE_MAX_HEIGHT = 390;
+
+function fitFrameImageSize(width: number, height: number) {
+  const safeWidth = Math.max(1, width);
+  const safeHeight = Math.max(1, height);
+  const scale = Math.min(FRAME_IMAGE_MAX_WIDTH / safeWidth, FRAME_IMAGE_MAX_HEIGHT / safeHeight, 1);
+  return {
+    width: Math.round(safeWidth * scale),
+    height: Math.round(safeHeight * scale),
+  };
+}
 
 interface HistorySnapshot {
   nodes: GraphNode[];
@@ -334,7 +346,13 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     setHistoryState({ stack: [snapshot], pointer: 0 });
   }, []);
 
-  const addNode = (type: NodeClass, x?: number, y?: number, initialProps?: Record<string, unknown>) => {
+  const addNode = (
+    type: NodeClass,
+    x?: number,
+    y?: number,
+    initialProps?: Record<string, unknown>,
+    connectFromDraft?: { fromNodeId: string; fromOutputIndex: number; toInputIndex?: number }
+  ) => {
     const id = makeId("node");
     const nextX = x ?? 80 + (nodes.length % 4) * 280;
     const nextY = y ?? 120 + Math.floor(nodes.length / 4) * 180;
@@ -349,8 +367,11 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       node.title = `视频节点 ${nodes.filter((n) => n.type === "video_node").length + 1}`;
     }
     if (initialProps) {
-      const { __uploadedAssetUrl, __uploadedAssetKind, __uploadedAssetName, ...restProps } = initialProps;
+      const { __nodeTitle, __uploadedAssetUrl, __uploadedAssetKind, __uploadedAssetName, ...restProps } = initialProps;
       node.properties = { ...node.properties, ...restProps };
+      if (typeof __nodeTitle === "string" && __nodeTitle.trim()) {
+        node.title = __nodeTitle.trim();
+      }
       if (__uploadedAssetKind === "image" && typeof __uploadedAssetUrl === "string") {
         node.data = {
           ...(node.data || {}),
@@ -377,15 +398,50 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       }
     }
     const nextNodes = [...nodes, node];
+    let nextLinks = links;
+    if (connectFromDraft) {
+      const fromNodeCandidate = nextNodes.find((n) => n.id === connectFromDraft.fromNodeId);
+      const toNodeCandidate = node;
+      const requestedInputIndex = connectFromDraft.toInputIndex ?? 0;
+      const fromOutput = fromNodeCandidate?.outputs[connectFromDraft.fromOutputIndex];
+      const requestedInput = toNodeCandidate.inputs[requestedInputIndex];
+      const normalizedInputIndex =
+        fromNodeCandidate && fromOutput && (!requestedInput || !isDataTypeCompatible(fromOutput.type, requestedInput.type))
+          ? findFirstCompatibleInputIndex(fromNodeCandidate, toNodeCandidate, connectFromDraft.fromOutputIndex)
+          : requestedInputIndex;
+      const normalizedDraft = {
+        fromNodeId: connectFromDraft.fromNodeId,
+        fromOutputIndex: connectFromDraft.fromOutputIndex,
+        toNodeId: id,
+        toInputIndex: normalizedInputIndex,
+      };
+      const issue = getLinkDraftIssue({ ...normalizedDraft, nodes: nextNodes, links });
+      if (issue) {
+        appendLog("warning", issue);
+      } else {
+        nextLinks = [
+          ...links,
+          {
+            id: makeId("link"),
+            fromNodeId: normalizedDraft.fromNodeId,
+            fromOutputIndex: normalizedDraft.fromOutputIndex,
+            toNodeId: normalizedDraft.toNodeId,
+            toInputIndex: normalizedDraft.toInputIndex,
+          },
+        ];
+      }
+    }
     setNodes(nextNodes);
+    setLinks(nextLinks);
     setSelectedNodeId(node.id);
     syncCurrentWorkflowMeta((wf) => ({
       ...wf,
       summary: { ...wf.summary, updatedAt: Date.now() },
-      data: { ...wf.data, nodes: nextNodes },
+      data: { ...wf.data, nodes: nextNodes, links: nextLinks },
     }));
-    pushHistory({ nodes: nextNodes, links });
+    pushHistory({ nodes: nextNodes, links: nextLinks });
     appendLog("success", `已添加节点:${node.title}`);
+    return id;
   };
 
   const removeNode = (nodeId: string) => {
@@ -535,23 +591,111 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
   }, []);
 
   const addVideoFrameAnalysis = useCallback(
-    (videoNodeId: string, segments: VideoFrameAnalysisSegment[]) => {
+    (videoNodeId: string, segments: VideoFrameAnalysisSegment[], overview: VideoFrameAnalysisOverview, analysisMarkdown: string) => {
       const sourceNode = nodes.find((n) => n.id === videoNodeId);
-      if (!sourceNode || segments.length === 0) {
+      if (!sourceNode || segments.length === 0 || !overview.imageUrl) {
         appendLog("warning", "逐帧分析失败:未找到视频节点或没有可用分段");
         return;
       }
 
       const baseX = sourceNode.x + 720;
       const baseY = sourceNode.y;
+      const childX = baseX + 720;
       const nextNodes = [...nodes];
       const nextLinks = [...links];
       const nextOutputs: NodeOutputMap = new Map(nodeOutputs);
       const createdNodes: GraphNode[] = [];
+      const videoUrl = (sourceNode.data?.videoUrl as string) || (sourceNode.properties.videoUrl as string) || "";
+
+      const makePreviewNode = (title: string, x: number, y: number) => {
+        const id = makeId("node");
+        const node = createNodeFromType("video_node", id, x, y);
+        node.title = title;
+        node.properties = {
+          ...node.properties,
+          videoUrl,
+          text: "",
+        };
+        node.data = {
+          ...(node.data || {}),
+          videoUrl,
+          videoNaturalWidth: sourceNode.data?.videoNaturalWidth,
+          videoNaturalHeight: sourceNode.data?.videoNaturalHeight,
+          videoDisplayWidth: sourceNode.data?.videoDisplayWidth,
+          videoDisplayHeight: sourceNode.data?.videoDisplayHeight,
+          status: "success",
+          loading: false,
+        };
+        nextNodes.push(node);
+        createdNodes.push(node);
+        nextOutputs.set(id, new Map([[0, videoUrl]]));
+        nextLinks.push({
+          id: makeId("link"),
+          fromNodeId: sourceNode.id,
+          fromOutputIndex: 0,
+          toNodeId: id,
+          toInputIndex: 0,
+        });
+        return node;
+      };
+
+      const analysisPreview = makePreviewNode("完整视频分析", baseX, baseY);
+      const segmentPreview = makePreviewNode("分段逐帧拆解", baseX, baseY + 520);
+
+      const textId = makeId("node");
+      const textNode = createNodeFromType("text_node", textId, childX, baseY);
+      textNode.title = "完整视频分析文本";
+      textNode.properties = {
+        ...textNode.properties,
+        frameAnalysisVideoUrl: videoUrl,
+        frameAnalysisSegments: segments.map(({ title, start, end, frameCount, width, height }) => ({ title, start, end, frameCount, width, height })),
+        isFullVideoAnalysisText: true,
+        response: analysisMarkdown,
+        text: "完整视频分析结果",
+      };
+      textNode.data = { response: analysisMarkdown, loading: false, status: "success" };
+      nextNodes.push(textNode);
+      createdNodes.push(textNode);
+      nextOutputs.set(textId, new Map([[0, analysisMarkdown]]));
+      nextLinks.push({
+        id: makeId("link"),
+        fromNodeId: analysisPreview.id,
+        fromOutputIndex: 0,
+        toNodeId: textId,
+        toInputIndex: 1,
+      });
+
+      const overviewSize = fitFrameImageSize(overview.width, overview.height);
+      const overviewId = makeId("node");
+      const overviewNode = createNodeFromType("image_node", overviewId, childX, baseY + 300);
+      overviewNode.title = "完整视频逐帧总览";
+      overviewNode.properties = {
+        ...overviewNode.properties,
+        imageUrl: overview.imageUrl,
+        text: "",
+      };
+      overviewNode.data = {
+        imageUrl: overview.imageUrl,
+        imageNaturalWidth: overview.width,
+        imageNaturalHeight: overview.height,
+        imageDisplayWidth: overviewSize.width,
+        imageDisplayHeight: overviewSize.height,
+      };
+      nextNodes.push(overviewNode);
+      createdNodes.push(overviewNode);
+      nextOutputs.set(overviewId, new Map([[0, overview.imageUrl]]));
+      nextLinks.push({
+        id: makeId("link"),
+        fromNodeId: analysisPreview.id,
+        fromOutputIndex: 0,
+        toNodeId: overviewId,
+        toInputIndex: 0,
+      });
 
       segments.forEach((segment, index) => {
         const id = makeId("node");
-        const node = createNodeFromType("image_node", id, baseX, baseY + index * 230);
+        const size = fitFrameImageSize(segment.width, segment.height);
+        const node = createNodeFromType("image_node", id, childX, baseY + 620 + index * 230);
         node.title = segment.title;
         node.properties = {
           ...node.properties,
@@ -562,15 +706,15 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
           imageUrl: segment.imageUrl,
           imageNaturalWidth: segment.width,
           imageNaturalHeight: segment.height,
-          imageDisplayWidth: Math.min(280, segment.width),
-          imageDisplayHeight: Math.round(Math.min(280, segment.width) * (segment.height / Math.max(segment.width, 1))),
+          imageDisplayWidth: size.width,
+          imageDisplayHeight: size.height,
         };
         nextNodes.push(node);
         createdNodes.push(node);
         nextOutputs.set(id, new Map([[0, segment.imageUrl]]));
         nextLinks.push({
           id: makeId("link"),
-          fromNodeId: sourceNode.id,
+          fromNodeId: segmentPreview.id,
           fromOutputIndex: 0,
           toNodeId: id,
           toInputIndex: 0,
@@ -587,7 +731,64 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         data: { ...wf.data, nodes: nextNodes, links: nextLinks, nodeOutputs: mapToOutputs(nextOutputs) },
       }));
       pushHistory({ nodes: nextNodes, links: nextLinks });
-      appendLog("success", `逐帧分析完成:生成 ${segments.length} 个关键帧节点`);
+      appendLog("success", `逐帧分析完成:生成 2 个视频预览节点、1 个分析文本节点、1 个总览图和 ${segments.length} 个分段图节点`);
+    },
+    [appendLog, links, nodeOutputs, nodes, pushHistory, syncCurrentWorkflowMeta]
+  );
+
+  const addSegmentVideoAnalyses = useCallback(
+    (parentNodeId: string, analyses: VideoSegmentTextAnalysis[]) => {
+      const parentNode = nodes.find((n) => n.id === parentNodeId);
+      if (!parentNode || analyses.length === 0) {
+        appendLog("warning", "反推失败:未找到分析文本节点或没有分段结果");
+        return;
+      }
+
+      const baseX = parentNode.x + 620;
+      const baseY = parentNode.y;
+      const nextNodes = [...nodes];
+      const nextLinks = [...links];
+      const nextOutputs: NodeOutputMap = new Map(nodeOutputs);
+      const createdNodes: GraphNode[] = [];
+
+      analyses.forEach((analysis, index) => {
+        const id = makeId("node");
+        const node = createNodeFromType("text_node", id, baseX, baseY + index * 260);
+        node.title = `${analysis.title} 分析`;
+        node.properties = {
+          ...node.properties,
+          response: analysis.text,
+          text: `${analysis.title} 视频分析结果`,
+          sourceSegment: {
+            title: analysis.title,
+            start: analysis.start,
+            end: analysis.end,
+          },
+        };
+        node.data = { response: analysis.text, loading: false, status: "success" };
+        nextNodes.push(node);
+        createdNodes.push(node);
+        nextOutputs.set(id, new Map([[0, analysis.text]]));
+        nextLinks.push({
+          id: makeId("link"),
+          fromNodeId: parentNode.id,
+          fromOutputIndex: 0,
+          toNodeId: id,
+          toInputIndex: 1,
+        });
+      });
+
+      setNodes(nextNodes);
+      setLinks(nextLinks);
+      setNodeOutputs(nextOutputs);
+      setSelectedNodeId(createdNodes[0]?.id ?? parentNode.id);
+      syncCurrentWorkflowMeta((wf) => ({
+        ...wf,
+        summary: { ...wf.summary, updatedAt: Date.now() },
+        data: { ...wf.data, nodes: nextNodes, links: nextLinks, nodeOutputs: mapToOutputs(nextOutputs) },
+      }));
+      pushHistory({ nodes: nextNodes, links: nextLinks });
+      appendLog("success", `反推完成:生成 ${analyses.length} 个分段视频分析文本节点`);
     },
     [appendLog, links, nodeOutputs, nodes, pushHistory, syncCurrentWorkflowMeta]
   );
@@ -1381,6 +1582,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     updateNodeProperty,
     updateNodeData,
     addVideoFrameAnalysis,
+    addSegmentVideoAnalyses,
     clearCanvas,
     clearExecution,
     addLinkFromDraft,

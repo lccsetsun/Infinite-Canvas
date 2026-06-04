@@ -24,12 +24,12 @@ export const PROVIDER_PRESETS: Record<ApiProvider, ProviderPreset> = {
   },
   minimax: {
     label: "MiniMax",
-    description: "MiniMax 图像与视频生成能力",
+    description: "MiniMax 图像、视频与音频生成能力",
     baseUrl: "https://api.minimaxi.com/v1",
-    models: ["image-01", "MiniMax-Hailuo-2.3"],
+    models: ["image-01", "MiniMax-Hailuo-2.3", "speech-2.8-hd"],
     defaultModel: "image-01",
     keyHint: "MiniMax API Key",
-    docsUrl: "https://platform.minimax.io/docs/api-reference/video-generation-t2v",
+    docsUrl: "https://platform.minimax.io/docs/api-reference/speech-t2a-http",
   },
 };
 

@@ -16,6 +16,7 @@ import PreviewModal, { PreviewContent } from "./components/app/PreviewModal";
 import SettingsPanels from "./components/app/SettingsPanels";
 import WorkflowManager from "./components/WorkflowManager";
 import LoginPage from "./pages/LoginPage";
+import { Copy, Eye, Trash2 } from "lucide-react";
 import { snapPointToGrid } from "./components/canvas/geometry";
 import { useCanvasInteraction } from "./hooks/useCanvasInteraction";
 import { useCanvasLinking } from "./hooks/useCanvasLinking";
@@ -23,8 +24,9 @@ import { useMiniMapConfig } from "./hooks/useMiniMapConfig";
 import { useWorkflowState } from "./hooks/useWorkflowState";
 import { useAppUiState } from "./hooks/useAppUiState";
 import { shouldFinishCanvasLinkOnCanvasPointerUp } from "./utils/canvasPointerPolicy";
+import { cropImageGridCell, getGridChildNodePosition } from "./utils/imageGridSplit";
 import { ConfigProvider, theme } from "antd";
-import { GraphNode, NodeClass, VideoFrameAnalysisSegment } from "./types";
+import { GraphNode, NodeClass, VideoFrameAnalysisOverview, VideoFrameAnalysisSegment, VideoSegmentTextAnalysis } from "./types";
 import { ApiSettings, getActiveProfile, getProviderProfile, loadApiSettings, saveApiSettings } from "./features/api/apiSettings";
 
 const LogicPanel = React.lazy(() => import("./components/LogicPanel"));
@@ -76,6 +78,7 @@ export default function App() {
     updateNodeProperty,
     updateNodeData,
     addVideoFrameAnalysis,
+    addSegmentVideoAnalyses,
     logs,
     linkFromNodeId,
     linkToNodeId,
@@ -175,12 +178,28 @@ export default function App() {
   const [workflowName, setWorkflowName] = React.useState("默认工作流");
   const [autoSaveWorkflow, setAutoSaveWorkflow] = React.useState(true);
   const [menuPos, setMenuPos] = React.useState<{ x: number; y: number } | null>(null);
+  const [pendingLinkMenuDraft, setPendingLinkMenuDraft] = React.useState<{
+    clientX: number;
+    clientY: number;
+    fromNodeId: string;
+    fromOutputIndex: number;
+  } | null>(null);
   const [previewContent, setPreviewContent] = React.useState<PreviewContent | null>(null);
   const [canvasSize, setCanvasSize] = React.useState({ width: 0, height: 0 });
   const [selectedGroupId, setSelectedGroupId] = React.useState<string | null>(null);
   const [selectedLinkId, setSelectedLinkId] = React.useState<string | null>(null);
   const [selectedNodeIds, setSelectedNodeIds] = React.useState<Set<string>>(new Set());
+  const [nodeContextMenu, setNodeContextMenu] = React.useState<{ nodeId: string; x: number; y: number } | null>(null);
+  const nodeContextMenuNode = React.useMemo(
+    () => (nodeContextMenu ? nodes.find((node) => node.id === nodeContextMenu.nodeId) ?? null : null),
+    [nodeContextMenu, nodes]
+  );
+  const nodeContextMenuText = React.useMemo(() => {
+    if (!nodeContextMenuNode || nodeContextMenuNode.type !== "text_node") return "";
+    return (nodeContextMenuNode.data?.response as string) || (nodeContextMenuNode.properties.response as string) || "";
+  }, [nodeContextMenuNode]);
   const menuCloseTimerRef = React.useRef<number | null>(null);
+  const autoFitStateRef = React.useRef<{ workflowId: string | null; nodeCount: number } | null>(null);
 
   const memberCountByGroup = React.useMemo(() => {
     const m = new Map<string, number>();
@@ -231,17 +250,70 @@ export default function App() {
     setSelectedNodeId,
     showNotice,
     toWorld,
+    onBlankLinkDrop: (draft) => {
+      const rect = canvasRef.current?.getBoundingClientRect();
+      setPendingLinkMenuDraft({
+        clientX: draft.clientX,
+        clientY: draft.clientY,
+        fromNodeId: draft.fromNodeId,
+        fromOutputIndex: draft.fromOutputIndex,
+      });
+      setMenuPos({
+        x: draft.clientX - (rect?.left ?? 0),
+        y: draft.clientY - (rect?.top ?? 0),
+      });
+      setIsMenuFromToolbar(false);
+    },
   });
 
-  const addNodeAtPosition = (type: NodeClass, x: number, y: number, initialProps?: Record<string, any>) => {
+  const addNodeAtPosition = (
+    type: NodeClass,
+    x: number,
+    y: number,
+    initialProps?: Record<string, any>,
+    connectFromDraft?: { fromNodeId: string; fromOutputIndex: number; toInputIndex?: number }
+  ) => {
     const world = toWorld(x, y);
     // Center the node (approx 280x300) around the click point
     const snapped = snapPointToGrid({
       x: world.x - 140,
       y: world.y - 120,
     });
-    addNode(type, snapped.x, snapped.y, initialProps);
+    addNode(type, snapped.x, snapped.y, initialProps, connectFromDraft);
   };
+
+  const handleSplitImageGrid = React.useCallback(
+    async (nodeId: string, imageUrl: string, gridSize: number, cellIndex: number) => {
+      const sourceNode = nodes.find((n) => n.id === nodeId);
+      if (!sourceNode) {
+        showNotice("来源节点不存在，无法切分");
+        return;
+      }
+      try {
+        const { dataUrl, crop } = await cropImageGridCell(imageUrl, gridSize, cellIndex);
+        const position = getGridChildNodePosition(sourceNode, gridSize, cellIndex);
+        addNode(
+          "image_node",
+          position.x,
+          position.y,
+          {
+            __nodeTitle: `宫格切分 ${gridSize}x${gridSize} #${cellIndex + 1}`,
+            __uploadedAssetUrl: dataUrl,
+            __uploadedAssetKind: "image",
+            imageUrl: dataUrl,
+            text: `来自 ${sourceNode.title} 的 ${gridSize}x${gridSize} 第 ${cellIndex + 1} 格 (${crop.sw}x${crop.sh})`,
+            status: "success",
+          },
+          { fromNodeId: nodeId, fromOutputIndex: 0, toInputIndex: 0 }
+        );
+        showNotice(`已生成第 ${cellIndex + 1} 格子节点并自动连线`);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "图片切分失败";
+        showNotice(message);
+      }
+    },
+    [addNode, nodes, showNotice]
+  );
 
   const moveGroup = React.useCallback((groupId: string, x: number, y: number) => {
     const group = groups.find((g) => g.id === groupId);
@@ -282,6 +354,27 @@ export default function App() {
     setSelectedLinkId(linkId);
   }, [setSelectedNodeId]);
 
+  const handleNodeContextMenu = React.useCallback((nodeId: string, event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const rect = canvasRef.current?.getBoundingClientRect();
+    setSelectedGroupId(null);
+    setSelectedLinkId(null);
+    setSelectedNodeIds(new Set([nodeId]));
+    setSelectedNodeId(nodeId);
+    setMenuPos(null);
+    setPendingLinkMenuDraft(null);
+    setNodeContextMenu({
+      nodeId,
+      x: event.clientX - (rect?.left ?? 0),
+      y: event.clientY - (rect?.top ?? 0),
+    });
+  }, [canvasRef, setSelectedNodeId]);
+
+  const closeNodeContextMenu = React.useCallback(() => {
+    setNodeContextMenu(null);
+  }, []);
+
   const handleCreateGroup = () => {
     const ids = Array.from(selectedNodeIds);
     if (ids.length < 2) {
@@ -296,17 +389,112 @@ export default function App() {
   };
 
   const handleAnalyzeVideo = React.useCallback(
-    async (node: GraphNode, segments: VideoFrameAnalysisSegment[]) => {
+    async (node: GraphNode, segments: VideoFrameAnalysisSegment[], overview: VideoFrameAnalysisOverview) => {
       const videoUrl = (node.data?.videoUrl as string) || (node.properties.videoUrl as string) || "";
       if (!videoUrl || segments.length === 0) {
         showNotice("没有可分析的视频或关键帧");
         return;
       }
 
-      addVideoFrameAnalysis(node.id, segments);
-      showNotice("关键帧拼图已生成");
+      showNotice("正在分析完整视频");
+      let analysisMarkdown = "";
+      try {
+        const response = await fetch("/api/video/frame-analysis", {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+            ...(deepseekApiProfile?.apiKey ? { "X-DeepSeek-Api-Key": deepseekApiProfile.apiKey } : {}),
+            ...(deepseekApiProfile?.baseUrl ? { "X-DeepSeek-Base-Url": deepseekApiProfile.baseUrl } : {}),
+            ...(deepseekApiProfile?.model ? { "X-DeepSeek-Model": deepseekApiProfile.model } : {}),
+          },
+          body: JSON.stringify({
+            video_url: videoUrl,
+            segments: segments.map(({ title, start, end, frameCount, width, height }) => ({ title, start, end, frameCount, width, height })),
+          }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data?.error || "视频分析失败");
+        analysisMarkdown = typeof data?.text === "string" ? data.text : "";
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "视频分析失败";
+        analysisMarkdown = `## 完整视频分析\n\n后端分析失败: ${message}\n\n已生成完整逐帧总览图和分段关键帧节点。`;
+        showNotice(message);
+      }
+
+      addVideoFrameAnalysis(node.id, segments, overview, analysisMarkdown);
+      showNotice("逐帧分析结构已生成");
     },
-    [addVideoFrameAnalysis, showNotice]
+    [addVideoFrameAnalysis, deepseekApiProfile, showNotice]
+  );
+
+  const handleReverseSegmentAnalysis = React.useCallback(
+    async (node: GraphNode) => {
+      const videoUrl = typeof node.properties.frameAnalysisVideoUrl === "string" ? node.properties.frameAnalysisVideoUrl : "";
+      const rawSegments = Array.isArray(node.properties.frameAnalysisSegments) ? node.properties.frameAnalysisSegments : [];
+      const segments = rawSegments
+        .map((segment) => ({
+          title: typeof segment?.title === "string" ? segment.title : "",
+          start: typeof segment?.start === "number" ? segment.start : 0,
+          end: typeof segment?.end === "number" ? segment.end : 0,
+          frameCount: typeof segment?.frameCount === "number" ? segment.frameCount : 0,
+          width: typeof segment?.width === "number" ? segment.width : 0,
+          height: typeof segment?.height === "number" ? segment.height : 0,
+        }))
+        .filter((segment) => segment.title && segment.end >= segment.start);
+
+      if (!videoUrl || segments.length === 0) {
+        showNotice("没有可反推的分段信息");
+        return;
+      }
+
+      showNotice(`正在反推 ${segments.length} 个分段视频分析`);
+      const analyses: VideoSegmentTextAnalysis[] = await Promise.all(
+        segments.map(async (segment) => {
+          try {
+            const response = await fetch("/api/video/frame-analysis", {
+              method: "POST",
+              credentials: "include",
+              headers: {
+                "Content-Type": "application/json",
+                ...(deepseekApiProfile?.apiKey ? { "X-DeepSeek-Api-Key": deepseekApiProfile.apiKey } : {}),
+                ...(deepseekApiProfile?.baseUrl ? { "X-DeepSeek-Base-Url": deepseekApiProfile.baseUrl } : {}),
+                ...(deepseekApiProfile?.model ? { "X-DeepSeek-Model": deepseekApiProfile.model } : {}),
+              },
+              body: JSON.stringify({
+                video_url: videoUrl,
+                segments: [segment],
+                prompt: [
+                  `请只分析视频的这个时间分段: ${segment.title} (${segment.start.toFixed(1)}s-${segment.end.toFixed(1)}s)。`,
+                  "输出 Markdown，包含：画面内容、主体运动、镜头运动、节奏变化、可用于后续生成/剪辑的提示。",
+                  "不要分析其他时间段。",
+                ].join("\n"),
+              }),
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(data?.error || "分段反推失败");
+            return {
+              title: segment.title,
+              start: segment.start,
+              end: segment.end,
+              text: typeof data?.text === "string" && data.text.trim() ? data.text : `## ${segment.title}\n\n暂无分析结果。`,
+            };
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "分段反推失败";
+            return {
+              title: segment.title,
+              start: segment.start,
+              end: segment.end,
+              text: `## ${segment.title}\n\n反推失败: ${message}`,
+            };
+          }
+        })
+      );
+
+      addSegmentVideoAnalyses(node.id, analyses);
+      showNotice("分段反推完成");
+    },
+    [addSegmentVideoAnalyses, deepseekApiProfile, showNotice]
   );
 
   const handleUngroup = React.useCallback((groupId: string) => {
@@ -328,6 +516,8 @@ export default function App() {
 
   const openQuickMenu = React.useCallback(() => {
     clearMenuCloseTimer();
+    setPendingLinkMenuDraft(null);
+    setNodeContextMenu(null);
     setIsMenuFromToolbar(true);
     setMenuPos({ x: 24, y: 74 });
   }, [clearMenuCloseTimer, setIsMenuFromToolbar]);
@@ -363,9 +553,15 @@ export default function App() {
   }, [canvasRef]);
 
   React.useEffect(() => {
-    fitView();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodes.length]);
+    const workflowId = currentWorkflowSummary?.id ?? null;
+    const prev = autoFitStateRef.current;
+    autoFitStateRef.current = { workflowId, nodeCount: nodes.length };
+
+    const shouldFit =
+      nodes.length > 0 &&
+      (!prev || prev.workflowId !== workflowId || prev.nodeCount === 0);
+    if (shouldFit) fitView();
+  }, [currentWorkflowSummary?.id, fitView, nodes.length]);
 
   React.useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -465,6 +661,7 @@ export default function App() {
             setSelectedNodeIds(new Set());
             setSelectedGroupId(null);
             setSelectedLinkId(null);
+            closeNodeContextMenu();
           }
           
           onCanvasPointerDown(e);
@@ -490,6 +687,8 @@ export default function App() {
             return;
           }
           onContextMenu(e);
+          setPendingLinkMenuDraft(null);
+          closeNodeContextMenu();
           setMenuPos({ x: e.clientX, y: e.clientY - 64 });
           setIsMenuFromToolbar(false);
           clearMenuCloseTimer();
@@ -517,6 +716,7 @@ export default function App() {
             nodes={nodes}
             pan={pan}
             zoom={zoom}
+            selectedNodeId={selectedNodeId}
             selectedLinkId={selectedLinkId}
             onSelectLink={handleSelectLink}
             onDeleteLink={removeLink}
@@ -552,11 +752,28 @@ export default function App() {
                   clearMenuCloseTimer();
                   setMenuPos(null);
                   setIsMenuFromToolbar(false);
+                  setPendingLinkMenuDraft(null);
+                  closeNodeContextMenu();
                 }}
                 onAddNode={(type, x, y, initialProps) => {
-                  addNodeAtPosition(type, x, y, initialProps);
+                  if (pendingLinkMenuDraft) {
+                    addNodeAtPosition(
+                      type,
+                      pendingLinkMenuDraft.clientX,
+                      pendingLinkMenuDraft.clientY,
+                      initialProps,
+                      {
+                        fromNodeId: pendingLinkMenuDraft.fromNodeId,
+                        fromOutputIndex: pendingLinkMenuDraft.fromOutputIndex,
+                      }
+                    );
+                  } else {
+                    addNodeAtPosition(type, x, y, initialProps);
+                  }
                   setCurrentView("canvas");
                   setActiveQuickTool(null);
+                  setPendingLinkMenuDraft(null);
+                  closeNodeContextMenu();
                 }}
                 onHoverStart={clearMenuCloseTimer}
                 onHoverEnd={scheduleMenuClose}
@@ -564,6 +781,89 @@ export default function App() {
             </React.Suspense>
           )}
         </AnimatePresence>
+
+        {nodeContextMenu && (
+          <div
+            data-node-action="true"
+            className="absolute z-50 w-44 overflow-hidden rounded-xl border border-white/10 bg-[#141923]/96 p-1.5 text-sm text-slate-100 shadow-[0_24px_60px_-28px_rgba(0,0,0,0.95),0_0_28px_rgba(56,189,248,0.12)] backdrop-blur-xl"
+            style={{
+              left: Math.min(nodeContextMenu.x, Math.max(12, canvasSize.width - 188)),
+              top: Math.min(nodeContextMenu.y, Math.max(12, canvasSize.height - (nodeContextMenuNode?.type === "text_node" ? 178 : 96))),
+            }}
+            onPointerDown={(event) => event.stopPropagation()}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+            }}
+          >
+            {nodeContextMenuNode?.type === "text_node" && (
+              <>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left font-semibold text-slate-200 transition hover:bg-cyan-300/10 hover:text-cyan-100"
+                  onClick={() => {
+                    if (!nodeContextMenuText) {
+                      showNotice("当前文本节点暂无内容可复制");
+                      closeNodeContextMenu();
+                      return;
+                    }
+                    void navigator.clipboard.writeText(nodeContextMenuText);
+                    showNotice("文本内容已复制");
+                    closeNodeContextMenu();
+                  }}
+                >
+                  <Copy className="h-4 w-4" />
+                  复制内容
+                </button>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left font-semibold text-slate-200 transition hover:bg-cyan-300/10 hover:text-cyan-100"
+                  onClick={() => {
+                    if (!nodeContextMenuText) {
+                      showNotice("当前文本节点暂无内容可查看");
+                      closeNodeContextMenu();
+                      return;
+                    }
+                    setPreviewContent({
+                      content: nodeContextMenuText,
+                      nodeId: nodeContextMenu.nodeId,
+                      title: "文本节点输出",
+                    });
+                    closeNodeContextMenu();
+                  }}
+                >
+                  <Eye className="h-4 w-4" />
+                  展开查看
+                </button>
+                <div className="my-1 h-px bg-white/10" />
+              </>
+            )}
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left font-semibold text-slate-200 transition hover:bg-cyan-300/10 hover:text-cyan-100"
+              onClick={() => {
+                duplicateNode(nodeContextMenu.nodeId);
+                closeNodeContextMenu();
+              }}
+            >
+              <Copy className="h-4 w-4" />
+              复制节点
+            </button>
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left font-semibold text-rose-100/90 transition hover:bg-rose-400/12 hover:text-rose-50"
+              onClick={() => {
+                removeNode(nodeContextMenu.nodeId);
+                setSelectedNodeIds(new Set());
+                setSelectedLinkId(null);
+                closeNodeContextMenu();
+              }}
+            >
+              <Trash2 className="h-4 w-4" />
+              删除节点
+            </button>
+          </div>
+        )}
 
         <FloatingToolbar
           menuOpen={isMenuFromToolbar}
@@ -640,11 +940,13 @@ export default function App() {
           onFinishCanvasLink={finishCanvasLink}
           onHoverCanvasLinkTarget={hoverCanvasLinkTarget}
           onLeaveCanvasLinkTarget={leaveCanvasLinkTarget}
+          onNodeContextMenu={handleNodeContextMenu}
           onNodeDragStart={onNodeDragStart}
           onPreview={(content, title, nodeId, items, currentIndex) =>
             setPreviewContent({ title: title || "预览内容", content, nodeId, items, currentIndex })
           }
           onAnalyzeVideo={handleAnalyzeVideo}
+          onReverseSegmentAnalysis={handleReverseSegmentAnalysis}
           onSelectNode={(nodeId, e) => handleSelectNode(nodeId, e)}
           onUpdateNodeData={updateNodeData}
           onUpdateNodeProperty={updateNodeProperty}
@@ -728,6 +1030,7 @@ export default function App() {
           onClose={() => setPreviewContent(null)}
           onPreviewChange={setPreviewContent}
           onUpdateNodeText={(nodeId, text) => updateNodeProperty(nodeId, "text", text)}
+          onSplitImageGrid={handleSplitImageGrid}
           showNotice={showNotice}
         />
       )}

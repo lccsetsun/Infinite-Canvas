@@ -66,6 +66,7 @@ export interface GraphNode {
     videoNaturalHeight?: number;
     videoFrameUrl?: string;
     audioUrl?: string;
+    audioDuration?: number;
     loading?: boolean;
     progress?: number;
     status?: string;
@@ -89,6 +90,20 @@ export interface VideoFrameAnalysisSegment {
   width: number;
   height: number;
   frameCount: number;
+}
+
+export interface VideoFrameAnalysisOverview {
+  imageUrl: string;
+  width: number;
+  height: number;
+  frameCount: number;
+}
+
+export interface VideoSegmentTextAnalysis {
+  title: string;
+  start: number;
+  end: number;
+  text: string;
 }
 
 export interface WorkflowPreset {

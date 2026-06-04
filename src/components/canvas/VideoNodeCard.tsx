@@ -1,7 +1,7 @@
 import React from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowUp, Camera, ChevronUp, Download, Eye, Film, Loader2, Pause, Play, Plus, ScanSearch, Volume2, VolumeX } from "lucide-react";
-import { GraphNode, VideoFrameAnalysisSegment } from "../../types";
+import { GraphNode, VideoFrameAnalysisOverview, VideoFrameAnalysisSegment } from "../../types";
 import { findResolvedStringInput } from "../../utils/resolvedInputs";
 import { shouldShowInlinePortHandles } from "../../utils/portHandleVisibility";
 import { getNodeWidth, VIDEO_NODE_WIDTH } from "./geometry";
@@ -18,7 +18,7 @@ interface VideoNodeCardProps {
   onUpdateProperty?: (nodeId: string, key: string, value: unknown) => void;
   onUpdateData?: (nodeId: string, data: Partial<GraphNode["data"]>) => void;
   onPreview?: (content: string, title?: string, nodeId?: string, items?: string[], currentIndex?: number) => void;
-  onAnalyzeVideo?: (node: GraphNode, segments: VideoFrameAnalysisSegment[]) => Promise<void> | void;
+  onAnalyzeVideo?: (node: GraphNode, segments: VideoFrameAnalysisSegment[], overview: VideoFrameAnalysisOverview) => Promise<void> | void;
   resolvedInputs?: Record<string, unknown>;
   onRun?: (nodeId: string) => void;
   isLinkingOnCanvas?: boolean;
@@ -251,47 +251,37 @@ function VideoNodeCardImpl({
       const durationSeconds = Math.max(video.duration || 15, 1);
       const segmentLength = 15;
       const segmentCount = Math.max(1, Math.ceil(durationSeconds / segmentLength));
-      const frameCount: number = 12;
-      const columns = 4;
+      const frameCount: number = 15;
+      const columns = 5;
       const rows = 3;
-      const tileWidth = 220;
-      const tileHeight = 124;
-      const labelHeight = 30;
+      const tileWidth = 176;
+      const tileHeight = 99;
       video.pause();
 
       const segments: VideoFrameAnalysisSegment[] = [];
+      const segmentCanvases: HTMLCanvasElement[] = [];
       for (let index = 0; index < segmentCount; index += 1) {
         const start = index * segmentLength;
         const end = Math.min(durationSeconds, start + segmentLength);
         const canvas = document.createElement("canvas");
         canvas.width = columns * tileWidth;
-        canvas.height = rows * tileHeight + labelHeight;
+        canvas.height = rows * tileHeight;
         const ctx = canvas.getContext("2d");
         if (!ctx) throw new Error("无法创建逐帧分析画布");
 
-        ctx.fillStyle = "#0d1117";
+        ctx.fillStyle = "#000000";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = "#cbd5e1";
-        ctx.font = "600 18px sans-serif";
-        ctx.fillText(`分段${index + 1}_${Math.round(start)}-${Math.round(end)}秒`, 16, 21);
-        ctx.fillStyle = "#64748b";
-        ctx.font = "500 13px sans-serif";
-        ctx.fillText(`${frameCount} frames`, canvas.width - 96, 21);
 
         for (let frameIndex = 0; frameIndex < frameCount; frameIndex += 1) {
           const progress = frameCount === 1 ? 0 : frameIndex / (frameCount - 1);
           const sampleAt = start + Math.max(0.05, (end - start) * progress - 0.02);
           await seekVideo(video, sampleAt);
           const x = (frameIndex % columns) * tileWidth;
-          const y = labelHeight + Math.floor(frameIndex / columns) * tileHeight;
+          const y = Math.floor(frameIndex / columns) * tileHeight;
           ctx.drawImage(video, x, y, tileWidth, tileHeight);
-          ctx.fillStyle = "rgba(0,0,0,0.45)";
-          ctx.fillRect(x + 6, y + 6, 48, 20);
-          ctx.fillStyle = "#e2e8f0";
-          ctx.font = "600 11px sans-serif";
-          ctx.fillText(`${sampleAt.toFixed(1)}s`, x + 12, y + 20);
         }
 
+        segmentCanvases.push(canvas);
         segments.push({
           title: `分段${index + 1}_${Math.round(start)}-${Math.round(end)}秒`,
           start,
@@ -303,7 +293,25 @@ function VideoNodeCardImpl({
         });
       }
 
-      await onAnalyzeVideo?.(node, segments);
+      const overviewCanvas = document.createElement("canvas");
+      overviewCanvas.width = segmentCanvases[0]?.width || columns * tileWidth;
+      overviewCanvas.height = segmentCanvases.reduce((sum, canvas) => sum + canvas.height, 0) || rows * tileHeight;
+      const overviewCtx = overviewCanvas.getContext("2d");
+      if (!overviewCtx) throw new Error("无法创建完整逐帧总览画布");
+      overviewCtx.fillStyle = "#000000";
+      overviewCtx.fillRect(0, 0, overviewCanvas.width, overviewCanvas.height);
+      let offsetY = 0;
+      for (const canvas of segmentCanvases) {
+        overviewCtx.drawImage(canvas, 0, offsetY);
+        offsetY += canvas.height;
+      }
+
+      await onAnalyzeVideo?.(node, segments, {
+        imageUrl: overviewCanvas.toDataURL("image/jpeg", 0.86),
+        width: overviewCanvas.width,
+        height: overviewCanvas.height,
+        frameCount: segments.reduce((sum, segment) => sum + segment.frameCount, 0),
+      });
     } catch (error) {
       onUpdateData?.(node.id, { error: error instanceof Error ? error.message : "逐帧分析失败" });
     } finally {
@@ -320,7 +328,7 @@ function VideoNodeCardImpl({
             initial={{ opacity: 0, x: 10 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 10 }}
-            className="absolute -left-[76px] top-1/2 z-10 flex h-28 w-24 -translate-y-1/2 items-center justify-center"
+            className="absolute -left-11 top-1/2 z-10 -translate-y-1/2"
           >
             <div
               role="button"
@@ -352,7 +360,7 @@ function VideoNodeCardImpl({
             initial={{ opacity: 0, x: -10 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -10 }}
-            className="absolute -right-[76px] top-1/2 z-10 flex h-28 w-24 -translate-y-1/2 items-center justify-center"
+            className="absolute -right-11 top-1/2 z-10 -translate-y-1/2"
           >
             <div
               role="button"

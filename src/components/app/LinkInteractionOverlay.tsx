@@ -1,6 +1,7 @@
 import React from "react";
 import { Trash2 } from "lucide-react";
 import { GraphLink, GraphNode } from "../../types";
+import { isLinkConnectedToNode } from "../../utils/linkAnimationState";
 import { getInputAnchor, getNodeById, getOutputAnchor, linkPath } from "../canvas/geometry";
 
 interface LinkInteractionOverlayProps {
@@ -8,6 +9,7 @@ interface LinkInteractionOverlayProps {
   nodes: GraphNode[];
   pan: { x: number; y: number };
   zoom: number;
+  selectedNodeId: string | null;
   selectedLinkId: string | null;
   onSelectLink: (linkId: string | null) => void;
   onDeleteLink: (linkId: string) => void;
@@ -33,10 +35,12 @@ export default function LinkInteractionOverlay({
   nodes,
   pan,
   zoom,
+  selectedNodeId,
   selectedLinkId,
   onSelectLink,
   onDeleteLink,
 }: LinkInteractionOverlayProps) {
+  const [hoveredLinkId, setHoveredLinkId] = React.useState<string | null>(null);
   const renderedLinks = links
     .map((link) => {
       const fromNode = getNodeById(nodes, link.fromNodeId);
@@ -46,11 +50,13 @@ export default function LinkInteractionOverlay({
       const from = getOutputAnchor(fromNode, link.fromOutputIndex);
       const to = getInputAnchor(toNode, link.toInputIndex);
       return {
+        fromNodeId: link.fromNodeId,
         from,
         id: link.id,
         midpoint: getBezierMidpoint(from, to),
         path: linkPath(from, to),
         to,
+        toNodeId: link.toNodeId,
       };
     })
     .filter((link): link is NonNullable<typeof link> => Boolean(link));
@@ -62,18 +68,93 @@ export default function LinkInteractionOverlay({
   return (
     <div className="pointer-events-none absolute inset-0 z-[18] overflow-visible" aria-hidden={links.length === 0}>
       <svg className="absolute inset-0 h-full w-full overflow-visible" aria-hidden="true">
+        <defs>
+          <filter id="active-link-energy-glow" x="-35%" y="-80%" width="170%" height="260%">
+            <feGaussianBlur stdDeviation="4.5" result="blur" />
+            <feColorMatrix
+              in="blur"
+              type="matrix"
+              values="0 0 0 0 0.15  0 0 0 0 0.58  0 0 0 0 1  0 0 0 1 0"
+              result="blueGlow"
+            />
+            <feMerge>
+              <feMergeNode in="blueGlow" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
         <g transform={`translate(${pan.x} ${pan.y}) scale(${zoom})`}>
           {renderedLinks.map((link) => {
             const selected = link.id === selectedLinkId;
+            const hovered = link.id === hoveredLinkId;
+            const active = isLinkConnectedToNode(link, selectedNodeId);
             return (
               <React.Fragment key={link.id}>
-                {selected && (
+                {active && (
+                  <>
+                    <path
+                      d={link.path}
+                      fill="none"
+                      stroke="rgba(43,122,178,0.42)"
+                      strokeLinecap="round"
+                      strokeWidth={11}
+                      opacity={0.72}
+                      filter="url(#active-link-energy-glow)"
+                    />
+                    <path
+                      d={link.path}
+                      fill="none"
+                      stroke="rgba(151,210,255,0.52)"
+                      strokeLinecap="round"
+                      strokeWidth={6.4}
+                      opacity={0.92}
+                    />
+                    <path
+                      d={link.path}
+                      fill="none"
+                      stroke="rgba(236,248,255,0.86)"
+                      strokeLinecap="round"
+                      strokeWidth={2.2}
+                      opacity={0.9}
+                    />
+                    <path
+                      d={link.path}
+                      className="link-energy-pulse"
+                      fill="none"
+                      stroke="rgba(83,178,255,0.98)"
+                      strokeDasharray="54 260"
+                      strokeLinecap="round"
+                      strokeWidth={8}
+                      filter="url(#active-link-energy-glow)"
+                    />
+                    <path
+                      d={link.path}
+                      className="link-energy-pulse link-energy-pulse-soft"
+                      fill="none"
+                      stroke="rgba(178,225,255,0.96)"
+                      strokeDasharray="28 286"
+                      strokeLinecap="round"
+                      strokeWidth={3.2}
+                    />
+                  </>
+                )}
+                {(hovered || selected) && (
                   <path
                     d={link.path}
                     fill="none"
-                    stroke="rgba(248,113,113,0.92)"
+                    stroke={hovered ? "rgba(34,211,238,0.82)" : "rgba(125,211,252,0.7)"}
                     strokeLinecap="round"
-                    strokeWidth={3}
+                    strokeWidth={hovered ? 9 : 7}
+                    opacity={hovered ? 0.5 : 0.36}
+                  />
+                )}
+                {(hovered || selected) && (
+                  <path
+                    d={link.path}
+                    fill="none"
+                    stroke={hovered ? "rgba(236,254,255,0.98)" : "rgba(165,243,252,0.92)"}
+                    strokeLinecap="round"
+                    strokeWidth={hovered ? 3.8 : 3}
                     opacity={0.92}
                   />
                 )}
@@ -86,6 +167,8 @@ export default function LinkInteractionOverlay({
                   style={{ pointerEvents: "stroke" }}
                   className="cursor-pointer"
                   onPointerDown={(event) => event.stopPropagation()}
+                  onPointerEnter={() => setHoveredLinkId(link.id)}
+                  onPointerLeave={() => setHoveredLinkId((current) => (current === link.id ? null : current))}
                   onClick={(event) => {
                     event.stopPropagation();
                     onSelectLink(link.id);

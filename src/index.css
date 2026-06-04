@@ -282,6 +282,21 @@ body {
 
   @keyframes draft-link-flow {
     from { stroke-dashoffset: 0; }
-    to { stroke-dashoffset: -80; }
+    to { stroke-dashoffset: -112; }
+  }
+
+  @keyframes link-energy-flow {
+    from { stroke-dashoffset: 0; }
+    to { stroke-dashoffset: -314; }
+  }
+
+  .link-energy-pulse {
+    animation: link-energy-flow 1.08s cubic-bezier(0.42, 0, 0.18, 1) infinite;
+    opacity: 0.92;
+  }
+
+  .link-energy-pulse-soft {
+    animation-delay: -0.42s;
+    opacity: 0.78;
   }
 }

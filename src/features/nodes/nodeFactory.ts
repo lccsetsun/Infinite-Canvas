@@ -126,6 +126,7 @@ const NODE_BLUEPRINTS: Partial<Record<NodeClass, NodeBlueprint>> = {
   image_node: {
     title: "图片节点",
     inputs: [
+      { name: "source_image", type: "IMAGE" },
       { name: "prompt", type: "STRING" },
       { name: "negative_prompt", type: "STRING" },
       { name: "aspect_ratio", type: "STRING" },
@@ -172,10 +173,15 @@ const NODE_BLUEPRINTS: Partial<Record<NodeClass, NodeBlueprint>> = {
     properties: {
       audioUrl: "",
       text: "",
-      model: "minimax-speech-2.8-hd",
-      duration: 8,
-      voice: "alloy",
-      energy: 1,
+      model: "speech-2.8-hd",
+      voice_id: "male-qn-qingse",
+      speed: 1,
+      vol: 1,
+      pitch: 0,
+      emotion: "auto",
+      format: "mp3",
+      audio_sample_rate: 32000,
+      bitrate: 128000,
     },
   },
   group: {

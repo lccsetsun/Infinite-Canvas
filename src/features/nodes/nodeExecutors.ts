@@ -36,10 +36,12 @@ export type NodeExecutor = (ctx: ExecutorContext) => Promise<ExecutorResult>;
 export const TEXT_NODE_MODEL = "deepseek-chat";
 export const MINIMAX_IMAGE_MODEL = "image-01";
 export const MINIMAX_VIDEO_MODEL = "MiniMax-Hailuo-2.3";
+export const MINIMAX_AUDIO_MODEL = "speech-2.8-hd";
 
 const MINIMAX_ASPECT_RATIOS = new Set(["1:1", "16:9", "4:3", "3:2", "2:3", "3:4", "9:16", "21:9"]);
 const MINIMAX_IMAGE_MODELS = new Set([MINIMAX_IMAGE_MODEL]);
 const MINIMAX_VIDEO_MODELS = new Set([MINIMAX_VIDEO_MODEL, "minimax-video"]);
+const MINIMAX_AUDIO_MODELS = new Set([MINIMAX_AUDIO_MODEL, "speech-02-hd", "speech-02-turbo"]);
 const DEEPSEEK_MODEL_ALIASES: Record<string, string> = {
   "": TEXT_NODE_MODEL,
   "deepseek-v4-flash": TEXT_NODE_MODEL,
@@ -181,6 +183,18 @@ function normalizeMiniMaxVideoResolution(value: unknown): string {
   return resolution === "1080P" ? "1080P" : "768P";
 }
 
+function normalizeMiniMaxAudioModel(model: unknown): string {
+  const value = typeof model === "string" ? model.trim() : "";
+  if (!value || value === "minimax-speech-2.8-hd") return MINIMAX_AUDIO_MODEL;
+  return MINIMAX_AUDIO_MODELS.has(value) ? value : MINIMAX_AUDIO_MODEL;
+}
+
+function clampNumber(value: unknown, fallback: number, min: number, max: number): number {
+  const raw = typeof value === "string" ? Number.parseFloat(value) : Number(value);
+  if (!Number.isFinite(raw)) return fallback;
+  return Math.min(max, Math.max(min, raw));
+}
+
 async function callMiniMaxTextToImage(
   properties: Record<string, unknown>,
   prompt: string,
@@ -294,6 +308,61 @@ async function callMiniMaxTextToVideo(
     videoUrl,
     taskId: typeof data?.taskId === "string" ? data.taskId : undefined,
     fileId: typeof data?.fileId === "string" ? data.fileId : undefined,
+    metadata: typeof data?.metadata === "object" && data.metadata ? data.metadata : undefined,
+  };
+}
+
+async function callMiniMaxTextToAudio(
+  properties: Record<string, unknown>,
+  text: string,
+  model: string,
+  minimaxApiKey?: string,
+  minimaxBaseUrl?: string
+): Promise<{
+  audioUrl: string;
+  metadata?: Record<string, unknown>;
+}> {
+  if (!text.trim()) {
+    throw new Error("请输入音频生成文本");
+  }
+  if (text.length > 10000) {
+    throw new Error("MiniMax 音频文本最长 10000 字符，请精简后重试");
+  }
+
+  const response = await fetch("/api/minimax/audio-generation", {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      ...(minimaxApiKey?.trim() ? { "X-MiniMax-Api-Key": minimaxApiKey.trim() } : {}),
+    },
+    body: JSON.stringify({
+      model,
+      text,
+      voice_id: typeof properties.voice_id === "string" ? properties.voice_id : properties.voice || "male-qn-qingse",
+      speed: clampNumber(properties.speed, 1, 0.5, 2),
+      vol: clampNumber(properties.vol, 1, 0.1, 10),
+      pitch: clampNumber(properties.pitch, 0, -12, 12),
+      emotion: typeof properties.emotion === "string" ? properties.emotion : "auto",
+      audio_sample_rate: clampNumber(properties.audio_sample_rate, 32000, 8000, 44100),
+      bitrate: clampNumber(properties.bitrate, 128000, 32000, 320000),
+      format: typeof properties.format === "string" ? properties.format : "mp3",
+      base_url: minimaxBaseUrl,
+    }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data?.error || `MiniMax 音频生成失败 (${response.status})`);
+  }
+
+  const audioUrl = typeof data?.audioUrl === "string" ? data.audioUrl : "";
+  if (!audioUrl) {
+    throw new Error("MiniMax 未返回音频链接");
+  }
+
+  return {
+    audioUrl,
     metadata: typeof data?.metadata === "object" && data.metadata ? data.metadata : undefined,
   };
 }
@@ -465,13 +534,20 @@ export const executors: Partial<Record<NodeClass, NodeExecutor>> = {
     return { outputs: { 0: prompt } };
   },
 
-  audio_node: async ({ inputs, properties }) => {
+  audio_node: async ({ inputs, properties, apiConfig }) => {
     const prompt = pickString(inputs, properties, "prompt", "提示词");
-    const duration = pickNumber(inputs, properties, "duration") ?? Number(properties.duration ?? 8);
-    const seed = encodeURIComponent(`${prompt}-${duration}-${Date.now()}`);
+    const minimaxApiKey = apiConfig.providerApiKeys?.minimax || apiConfig.minimaxApiKey || apiConfig.apiKey;
+    const minimaxBaseUrl = apiConfig.providerBaseUrls?.minimax || apiConfig.minimaxBaseUrl;
+    const model = normalizeMiniMaxAudioModel(properties.model || apiConfig.providerModels?.minimax);
+    const result = await callMiniMaxTextToAudio(properties, prompt, model, minimaxApiKey, minimaxBaseUrl);
     return {
-      outputs: { 0: prompt || "audio" },
-      patch: { audioUrl: `https://example.com/audio/${seed}.mp3`, status: "success" },
+      outputs: { 0: result.audioUrl },
+      patch: {
+        audioUrl: result.audioUrl,
+        minimaxMetadata: result.metadata,
+        model,
+        status: "success",
+      },
     };
   },
 };
