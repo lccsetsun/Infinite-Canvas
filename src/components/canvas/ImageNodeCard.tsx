@@ -272,10 +272,9 @@ function ImageNodeCardImpl({
                   <button
                     type="button"
                     onClick={() => onPreview?.(imageUrl, "图片节点预览 · 宫格切分", node.id)}
-                    className="flex h-9 items-center justify-center gap-1.5 rounded-[12px] px-2.5 text-slate-300 transition-colors hover:bg-cyan-300/[0.08] hover:text-cyan-100"
+                    className="flex h-9 w-9 items-center justify-center rounded-[12px] text-slate-300 transition-colors hover:bg-cyan-300/[0.08] hover:text-cyan-100"
                   >
                     <Grid3X3 className="h-[18px] w-[18px]" />
-                    <span className="text-[12px] font-bold">宫格切分</span>
                   </button>
                 </Tooltip>
               </motion.div>
