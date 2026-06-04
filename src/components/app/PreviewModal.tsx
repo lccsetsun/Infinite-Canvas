@@ -2,6 +2,7 @@ import { ChevronDown, ChevronLeft, ChevronRight, Download, Grid3X3, X } from "lu
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
 import { downloadMediaAsset, extensionFromAssetUrl, isPreviewableAsset } from "../../utils/mediaAssets";
+import { formatGridCellLabel } from "../../utils/imageGridSplit";
 
 export interface PreviewContent {
   content: string;
@@ -53,7 +54,8 @@ export default function PreviewModal({ preview, onClose, onPreviewChange, onUpda
   const isPromptEditor = preview.title === PROMPT_EDITOR_TITLE;
   const [gridMenuOpen, setGridMenuOpen] = useState(() => preview.title.includes("宫格切分"));
   const [customGridOpen, setCustomGridOpen] = useState(false);
-  const [activeGridSize, setActiveGridSize] = useState<number | null>(null);
+  const [activeGridSize, setActiveGridSize] = useState<number | null>(() => (preview.title.includes("宫格切分") ? 2 : null));
+  const [selectedGridCell, setSelectedGridCell] = useState<number | null>(null);
 
   const showPrevious = () => {
     if (!preview.items?.length) return;
@@ -99,30 +101,56 @@ export default function PreviewModal({ preview, onClose, onPreviewChange, onUpda
     setGridMenuOpen(false);
     setCustomGridOpen(false);
     setActiveGridSize(null);
+    setSelectedGridCell(null);
   };
 
   const renderGridOverlay = () => {
     if (!activeGridSize || isVideoPreview(preview) || !preview.nodeId || !onSplitImageGrid) return null;
+    const selectedLabel = selectedGridCell === null ? "" : formatGridCellLabel(activeGridSize, selectedGridCell);
     return (
       <div
-        className="absolute inset-0 grid overflow-hidden rounded-[10px]"
-        style={{
-          gridTemplateColumns: `repeat(${activeGridSize}, minmax(0, 1fr))`,
-          gridTemplateRows: `repeat(${activeGridSize}, minmax(0, 1fr))`,
-        }}
+        className="absolute inset-0 overflow-hidden rounded-[10px]"
       >
-        {Array.from({ length: activeGridSize * activeGridSize }, (_, index) => (
-          <button
-            key={index}
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              splitGridCell(activeGridSize, index);
-            }}
-            className="min-h-0 min-w-0 border border-white/70 bg-white/0 transition-colors hover:bg-cyan-300/24 focus-visible:bg-cyan-300/24 focus-visible:outline-none"
-            title={`切分第 ${index + 1} 格`}
-          />
-        ))}
+        <div
+          className="absolute inset-0 grid"
+          style={{
+            gridTemplateColumns: `repeat(${activeGridSize}, minmax(0, 1fr))`,
+            gridTemplateRows: `repeat(${activeGridSize}, minmax(0, 1fr))`,
+          }}
+        >
+          {Array.from({ length: activeGridSize * activeGridSize }, (_, index) => {
+            const selected = selectedGridCell === index;
+            return (
+              <button
+                key={index}
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedGridCell(index);
+                }}
+                className={`relative min-h-0 min-w-0 border border-white/70 transition-colors focus-visible:outline-none ${
+                  selected ? "bg-cyan-200/22 shadow-[inset_0_0_0_3px_rgba(34,211,238,0.78)]" : "bg-white/0 hover:bg-cyan-300/16"
+                }`}
+                title={`选择第 ${index + 1} 格`}
+              />
+            );
+          })}
+        </div>
+        {selectedGridCell !== null && (
+          <div
+            className="absolute left-1/2 top-1/2 z-10 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-2 rounded-2xl border border-cyan-100/20 bg-[#0b1220]/86 px-4 py-3 text-white shadow-[0_24px_70px_-24px_rgba(0,0,0,0.95),0_0_34px_rgba(34,211,238,0.2)] backdrop-blur-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-[13px] font-bold text-cyan-50/88">{selectedLabel}</div>
+            <button
+              type="button"
+              onClick={() => splitGridCell(activeGridSize, selectedGridCell)}
+              className="rounded-xl bg-cyan-300 px-4 py-2 text-[13px] font-black text-slate-950 shadow-[0_16px_34px_-18px_rgba(103,232,249,0.95)] transition hover:bg-white"
+            >
+              生成子节点
+            </button>
+          </div>
+        )}
       </div>
     );
   };
@@ -139,7 +167,7 @@ export default function PreviewModal({ preview, onClose, onPreviewChange, onUpda
           onClick={onClose}
         >
           {!isVideo && preview.nodeId && onSplitImageGrid && (
-            <div className="absolute left-6 top-6 z-30" onClick={(e) => e.stopPropagation()}>
+            <div className="absolute right-32 top-6 z-30" onClick={(e) => e.stopPropagation()}>
               <button
                 type="button"
                 onClick={() => setGridMenuOpen((v) => !v)}
@@ -157,7 +185,9 @@ export default function PreviewModal({ preview, onClose, onPreviewChange, onUpda
                       type="button"
                       onClick={() => {
                         setActiveGridSize(option.size);
+                        setSelectedGridCell(null);
                         setCustomGridOpen(false);
+                        setGridMenuOpen(false);
                       }}
                       className="block w-full rounded-xl px-3 py-3 text-left text-[15px] font-bold transition-colors hover:bg-white/10"
                     >
@@ -186,7 +216,12 @@ export default function PreviewModal({ preview, onClose, onPreviewChange, onUpda
                             <button
                               key={index}
                               type="button"
-                              onClick={() => splitGridCell(5, index)}
+                              onClick={() => {
+                                setActiveGridSize(5);
+                                setSelectedGridCell(index);
+                                setCustomGridOpen(false);
+                                setGridMenuOpen(false);
+                              }}
                               className="aspect-square rounded-md bg-white/13 transition-colors hover:bg-cyan-300/35 focus-visible:bg-cyan-300/35 focus-visible:outline-none"
                               title={`切分第 ${index + 1} 格`}
                             />

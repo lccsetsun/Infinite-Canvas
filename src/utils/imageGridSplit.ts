@@ -44,6 +44,11 @@ export function getGridChildNodePosition(source: { x: number; y: number }, gridS
   };
 }
 
+export function formatGridCellLabel(gridSize: number, cellIndex: number) {
+  const crop = getGridCellCrop({ width: gridSize, height: gridSize }, gridSize, cellIndex);
+  return `第 ${Math.min(Math.max(0, Math.floor(cellIndex)), gridSize * gridSize - 1) + 1} 格 (${crop.row + 1}行${crop.col + 1}列)`;
+}
+
 export async function cropImageGridCell(imageUrl: string, gridSize: number, cellIndex: number): Promise<{ dataUrl: string; crop: GridCellCrop }> {
   const image = await loadImage(imageUrl);
   const crop = getGridCellCrop({ width: image.naturalWidth || image.width, height: image.naturalHeight || image.height }, gridSize, cellIndex);

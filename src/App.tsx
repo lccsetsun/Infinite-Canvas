@@ -307,6 +307,7 @@ export default function App() {
           { fromNodeId: nodeId, fromOutputIndex: 0, toInputIndex: 0 }
         );
         showNotice(`已生成第 ${cellIndex + 1} 格子节点并自动连线`);
+        setPreviewContent(null);
       } catch (error) {
         const message = error instanceof Error ? error.message : "图片切分失败";
         showNotice(message);

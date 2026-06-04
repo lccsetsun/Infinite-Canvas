@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getGridCellCrop, getGridChildNodePosition } from "./imageGridSplit";
+import { formatGridCellLabel, getGridCellCrop, getGridChildNodePosition } from "./imageGridSplit";
 
 describe("image grid split helpers", () => {
   it("calculates the crop rectangle for a selected grid cell", () => {
@@ -18,5 +18,9 @@ describe("image grid split helpers", () => {
       x: 700,
       y: 310,
     });
+  });
+
+  it("formats the selected cell label", () => {
+    expect(formatGridCellLabel(2, 1)).toBe("第 2 格 (1行2列)");
   });
 });
