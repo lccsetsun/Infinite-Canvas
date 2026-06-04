@@ -209,6 +209,25 @@ export default function App() {
     return m;
   }, [nodes]);
 
+  const handleCreateProjectFromWelcome = React.useCallback(() => {
+    setIsWelcomeDismissed(true);
+    setCurrentView("canvas");
+    setActiveQuickTool(null);
+
+    const project = createWorkflow();
+    if (project) {
+      switchWorkflow(project.id);
+      showNotice(`已创建并切换到 "${project.name}"`);
+    }
+  }, [
+    createWorkflow,
+    setActiveQuickTool,
+    setCurrentView,
+    setIsWelcomeDismissed,
+    showNotice,
+    switchWorkflow,
+  ]);
+
   const {
     canvasRef,
     pan,
@@ -740,7 +759,7 @@ export default function App() {
         />
 
         {nodes.length === 0 && !isWelcomeDismissed && currentView === "canvas" && (
-          <EmptyCanvasState onDismiss={() => setIsWelcomeDismissed(true)} />
+          <EmptyCanvasState onCreateProject={handleCreateProjectFromWelcome} />
         )}
         <AnimatePresence>
           {menuPos && (

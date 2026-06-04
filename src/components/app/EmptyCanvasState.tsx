@@ -1,10 +1,10 @@
 import { LayoutGrid, Plus } from "lucide-react";
 
 interface EmptyCanvasStateProps {
-  onDismiss: () => void;
+  onCreateProject: () => void;
 }
 
-export default function EmptyCanvasState({ onDismiss }: EmptyCanvasStateProps) {
+export default function EmptyCanvasState({ onCreateProject }: EmptyCanvasStateProps) {
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none">
       <div className="flex flex-col items-center gap-6 animate-in fade-in zoom-in duration-700">
@@ -20,7 +20,7 @@ export default function EmptyCanvasState({ onDismiss }: EmptyCanvasStateProps) {
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => {
             e.stopPropagation();
-            onDismiss();
+            onCreateProject();
           }}
           className="pointer-events-auto px-8 py-3.5 rounded-2xl bg-indigo-500 hover:bg-indigo-400 text-white font-bold transition-all shadow-xl shadow-indigo-500/25 active:scale-95 flex items-center gap-2.5 group"
         >
