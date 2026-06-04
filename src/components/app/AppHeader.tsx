@@ -28,33 +28,32 @@ export default function AppHeader({
       transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
       className="h-16 border-b border-[#232939] bg-[#171b26]/95 backdrop-blur px-4 flex items-center justify-between z-[80]"
     >
-      <motion.div
-        initial={{ x: -30, opacity: 0, filter: "blur(10px)" }}
-        animate={{ x: 0, opacity: 1, filter: "blur(0px)" }}
-        transition={{ duration: 1, ease: [0.23, 1, 0.32, 1] }}
-        className="group relative flex h-12 items-center px-5 rounded-2xl bg-[#0d1117]/40 backdrop-blur-2xl border border-white/5 hover:border-white/10 transition-all duration-700 overflow-hidden cursor-default"
-      >
-        <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/10 via-transparent to-emerald-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-1000" />
-
-        <div className="relative flex items-center gap-1.5 leading-none">
-          <span className="text-xl font-black tracking-tighter text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.2)]">AI</span>
-          <span className="text-xl font-black tracking-tighter bg-gradient-to-r from-emerald-400 via-cyan-400 to-indigo-400 bg-clip-text text-transparent">
-            CANVAS
-          </span>
-        </div>
-
+      <div className="flex items-center gap-3 min-w-0">
         <motion.div
-          animate={{ x: ["-100%", "250%"] }}
-          transition={{ duration: 3.5, repeat: Infinity, ease: "easeInOut", repeatDelay: 1.5 }}
-          className="absolute top-0 bottom-0 w-16 bg-gradient-to-r from-transparent via-white/[0.08] to-transparent -skew-x-[30deg]"
-        />
-      </motion.div>
+          initial={{ x: -30, opacity: 0, filter: "blur(10px)" }}
+          animate={{ x: 0, opacity: 1, filter: "blur(0px)" }}
+          transition={{ duration: 1, ease: [0.23, 1, 0.32, 1] }}
+          className="group relative flex h-12 items-center px-5 rounded-2xl bg-[#0d1117]/40 backdrop-blur-2xl border border-white/5 hover:border-white/10 transition-all duration-700 overflow-hidden cursor-default"
+        >
+          <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/10 via-transparent to-emerald-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-1000" />
 
-      <div className="flex items-center gap-2.5">
+          <div className="relative flex items-center gap-1.5 leading-none">
+            <span className="text-xl font-black tracking-tighter text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.2)]">AI</span>
+            <span className="text-xl font-black tracking-tighter bg-gradient-to-r from-emerald-400 via-cyan-400 to-indigo-400 bg-clip-text text-transparent">
+              CANVAS
+            </span>
+          </div>
+
+          <motion.div
+            animate={{ x: ["-100%", "250%"] }}
+            transition={{ duration: 3.5, repeat: Infinity, ease: "easeInOut", repeatDelay: 1.5 }}
+            className="absolute top-0 bottom-0 w-16 bg-gradient-to-r from-transparent via-white/[0.08] to-transparent -skew-x-[30deg]"
+          />
+        </motion.div>
         <Tooltip content="切换/管理项目" position="bottom">
           <button
             onClick={(e) => { e.stopPropagation(); onOpenWorkflowManager?.(); }}
-            className="group flex items-center gap-2.5 pl-2.5 pr-3 py-1.5 rounded-xl bg-[#0d1117]/60 hover:bg-[#0d1117] border border-white/[0.06] hover:border-indigo-500/40 transition-all duration-200 cursor-pointer"
+            className="group flex min-w-[156px] max-w-[240px] items-center gap-2.5 pl-2.5 pr-3 py-1.5 rounded-xl bg-[#0d1117]/60 hover:bg-[#0d1117] border border-white/[0.06] hover:border-indigo-500/40 transition-all duration-200 cursor-pointer"
             aria-label="项目列表"
           >
             <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500/20 to-cyan-500/20 border border-indigo-500/30 flex items-center justify-center group-hover:scale-105 transition-transform">
@@ -71,7 +70,9 @@ export default function AppHeader({
             <ChevronDown className="w-3.5 h-3.5 text-gray-500 group-hover:text-indigo-300 transition-colors" />
           </button>
         </Tooltip>
+      </div>
 
+      <div className="flex items-center gap-2.5">
         <Tooltip content={showLogicPanel ? "关闭运行日志" : "查看运行日志"} position="bottom">
           <button
             onClick={(e) => {

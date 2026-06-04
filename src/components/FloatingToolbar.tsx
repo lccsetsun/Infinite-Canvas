@@ -25,7 +25,7 @@ export default function FloatingToolbar({
     <motion.div 
       initial={{ x: -20, opacity: 0 }}
       animate={{ x: 0, opacity: 1 }}
-      className="absolute left-6 top-24 z-[110] w-[76px] rounded-[38px] border border-white/10 bg-[#0d1117]/80 backdrop-blur-xl shadow-[0_24px_50px_-12px_rgba(0,0,0,0.5),inset_0_1px_1px_rgba(255,255,255,0.05)] p-2.5 flex flex-col items-center gap-4"
+      className="absolute left-6 top-44 z-[110] w-[76px] rounded-[38px] border border-white/10 bg-[#0d1117]/80 backdrop-blur-xl shadow-[0_24px_50px_-12px_rgba(0,0,0,0.5),inset_0_1px_1px_rgba(255,255,255,0.05)] p-2.5 flex flex-col items-center gap-4"
     >
       <motion.button
         whileHover={{ scale: 1.05 }}
