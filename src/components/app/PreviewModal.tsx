@@ -259,6 +259,11 @@ export default function PreviewModal({ preview, onClose, onPreviewChange, onUpda
           )}
 
           <div className="absolute right-6 top-6 z-20 flex items-center gap-2">
+            {preview.items && preview.items.length > 1 && (
+              <span className="rounded-full border border-slate-400/18 bg-slate-900/46 px-2.5 py-1 text-[11px] font-semibold text-slate-300/72">
+                {currentPreviewIndex + 1}/{preview.items.length}
+              </span>
+            )}
             <button
               onClick={(e) => {
                 e.stopPropagation();

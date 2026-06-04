@@ -142,6 +142,7 @@ export default function CanvasNodeLayer({
                 }}
                 onUpdateProperty={onUpdateNodeProperty}
                 onUpdateData={onUpdateNodeData}
+                onSetPrimaryImageResult={onSetPrimaryImageResult}
                 onPreview={onPreview}
                 resolvedInputs={resolvedInputsMap?.get(node.id)}
                 onRun={onRunNode}

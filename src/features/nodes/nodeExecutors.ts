@@ -418,6 +418,7 @@ export const executors: Partial<Record<NodeClass, NodeExecutor>> = {
         patch: {
           imageUrl: result.imageUrls[0],
           imageUrls: result.imageUrls,
+          activeImageIndex: 0,
           minimaxRequestId: result.requestId,
           minimaxMetadata: result.metadata,
           status: "success",

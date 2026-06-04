@@ -82,6 +82,30 @@ export default function LinkInteractionOverlay({
               <feMergeNode in="SourceGraphic" />
             </feMerge>
           </filter>
+          <linearGradient id="active-link-purple-core" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="rgba(99,102,241,0.18)" />
+            <stop offset="52%" stopColor="rgba(129,140,248,0.34)" />
+            <stop offset="100%" stopColor="rgba(168,85,247,0.22)" />
+          </linearGradient>
+          <linearGradient id="active-link-purple-tail" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="rgba(99,102,241,0)" />
+            <stop offset="22%" stopColor="rgba(99,102,241,0.04)" />
+            <stop offset="54%" stopColor="rgba(129,140,248,0.28)" />
+            <stop offset="82%" stopColor="rgba(147,51,234,0.96)" />
+            <stop offset="100%" stopColor="rgba(244,114,182,0.1)" />
+          </linearGradient>
+          <linearGradient id="active-link-purple-tail-far" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="rgba(99,102,241,0)" />
+            <stop offset="42%" stopColor="rgba(129,140,248,0.06)" />
+            <stop offset="86%" stopColor="rgba(192,132,252,0.34)" />
+            <stop offset="100%" stopColor="rgba(244,114,182,0.06)" />
+          </linearGradient>
+          <linearGradient id="active-link-purple-head" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="rgba(224,231,255,0.08)" />
+            <stop offset="38%" stopColor="rgba(255,255,255,0.98)" />
+            <stop offset="72%" stopColor="rgba(255,255,255,1)" />
+            <stop offset="100%" stopColor="rgba(233,213,255,0.96)" />
+          </linearGradient>
         </defs>
         <g transform={`translate(${pan.x} ${pan.y}) scale(${zoom})`}>
           {renderedLinks.map((link) => {
@@ -95,46 +119,70 @@ export default function LinkInteractionOverlay({
                     <path
                       d={link.path}
                       fill="none"
-                      stroke="rgba(43,122,178,0.42)"
+                      stroke="rgba(88,72,173,0.22)"
                       strokeLinecap="round"
-                      strokeWidth={11}
-                      opacity={0.72}
+                      strokeWidth={7}
+                      opacity={0.42}
                       filter="url(#active-link-energy-glow)"
                     />
                     <path
                       d={link.path}
                       fill="none"
-                      stroke="rgba(151,210,255,0.52)"
+                      stroke="url(#active-link-purple-core)"
                       strokeLinecap="round"
-                      strokeWidth={6.4}
-                      opacity={0.92}
+                      strokeWidth={4}
+                      opacity={0.72}
                     />
                     <path
                       d={link.path}
                       fill="none"
-                      stroke="rgba(236,248,255,0.86)"
+                      stroke="rgba(237,233,254,0.86)"
                       strokeLinecap="round"
-                      strokeWidth={2.2}
-                      opacity={0.9}
+                      strokeWidth={1.45}
+                      opacity={0.82}
+                    />
+                    <path
+                      d={link.path}
+                      className="link-energy-pulse link-energy-pulse-far"
+                      pathLength={100}
+                      fill="none"
+                      stroke="url(#active-link-purple-tail-far)"
+                      strokeDasharray="58 42"
+                      strokeLinecap="round"
+                      strokeWidth={2.6}
+                      opacity={0.3}
                     />
                     <path
                       d={link.path}
                       className="link-energy-pulse"
+                      pathLength={100}
                       fill="none"
-                      stroke="rgba(83,178,255,0.98)"
-                      strokeDasharray="54 260"
+                      stroke="url(#active-link-purple-tail)"
+                      strokeDasharray="34 66"
                       strokeLinecap="round"
-                      strokeWidth={8}
+                      strokeWidth={3.1}
                       filter="url(#active-link-energy-glow)"
                     />
                     <path
                       d={link.path}
                       className="link-energy-pulse link-energy-pulse-soft"
+                      pathLength={100}
                       fill="none"
-                      stroke="rgba(178,225,255,0.96)"
-                      strokeDasharray="28 286"
+                      stroke="rgba(196,181,253,0.68)"
+                      strokeDasharray="14 86"
                       strokeLinecap="round"
-                      strokeWidth={3.2}
+                      strokeWidth={1.45}
+                    />
+                    <path
+                      d={link.path}
+                      className="link-energy-pulse-head"
+                      pathLength={100}
+                      fill="none"
+                      stroke="url(#active-link-purple-head)"
+                      strokeDasharray="3 97"
+                      strokeLinecap="round"
+                      strokeWidth={2.35}
+                      filter="url(#active-link-energy-glow)"
                     />
                   </>
                 )}

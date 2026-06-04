@@ -160,9 +160,12 @@ function ImageNodeCardImpl({
   }, [imageUrl, node.data?.imageNodeHeight, node.data?.imageNodeWidth, node.id, onUpdateData, resolvedImageUrls.length, resultImageSize.height, resultImageSize.width]);
 
   React.useEffect(() => {
-    setActiveImageIndex(0);
+    const nextIndex = typeof node.data?.activeImageIndex === "number" && node.data.activeImageIndex >= 0
+      ? Math.min(node.data.activeImageIndex, Math.max(0, resolvedImageUrls.length - 1))
+      : 0;
+    setActiveImageIndex(nextIndex);
     setNaturalImageSize(null);
-  }, [imageSetKey]);
+  }, [imageSetKey, node.data?.activeImageIndex, resolvedImageUrls.length]);
 
   React.useEffect(() => {
     const nextIndex = node.data?.activeImageIndex;

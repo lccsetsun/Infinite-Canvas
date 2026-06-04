@@ -287,16 +287,41 @@ body {
 
   @keyframes link-energy-flow {
     from { stroke-dashoffset: 0; }
-    to { stroke-dashoffset: -314; }
+    to { stroke-dashoffset: -100; }
+  }
+
+  @keyframes link-energy-head-glint {
+    0%, 100% { opacity: 0.92; }
+    48% { opacity: 1; }
+    68% { opacity: 0.96; }
   }
 
   .link-energy-pulse {
-    animation: link-energy-flow 1.08s cubic-bezier(0.42, 0, 0.18, 1) infinite;
-    opacity: 0.92;
+    animation: link-energy-flow 1.26s linear infinite;
+    opacity: 0.98;
+  }
+
+  .link-energy-pulse-far {
+    animation-duration: 1.62s;
+    animation-delay: -0.46s;
+    opacity: 0.42;
   }
 
   .link-energy-pulse-soft {
-    animation-delay: -0.42s;
-    opacity: 0.78;
+    animation-duration: 1.42s;
+    animation-delay: -0.22s;
+    opacity: 0.56;
+  }
+
+  .link-energy-pulse-head {
+    animation: link-energy-flow 1.04s linear infinite, link-energy-head-glint 1.68s ease-in-out infinite;
+    animation-delay: -0.01s;
+    opacity: 1;
+  }
+
+  .link-energy-pulse-head-aura {
+    animation: link-energy-flow 1.04s linear infinite, link-energy-head-glint 1.92s ease-in-out infinite;
+    animation-delay: -0.01s, -0.22s;
+    opacity: 0.48;
   }
 }

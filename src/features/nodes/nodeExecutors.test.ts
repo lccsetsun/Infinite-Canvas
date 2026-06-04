@@ -58,7 +58,9 @@ describe("image_node MiniMax executor", () => {
       })
     );
     expect(result?.outputs[0]).toBe("https://example.com/minimax.png");
+    expect(result?.patch?.imageUrl).toBe("https://example.com/minimax.png");
     expect(result?.patch?.imageUrls).toEqual(["https://example.com/minimax.png"]);
+    expect(result?.patch?.activeImageIndex).toBe(0);
   });
 
   it("uses node aspect ratio property when no aspect input is connected", async () => {
