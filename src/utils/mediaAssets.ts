@@ -3,7 +3,7 @@ export function isLocalBrowserAsset(url: string) {
 }
 
 export function isPreviewableAsset(url: string) {
-  return url.startsWith("http://") || url.startsWith("https://") || isLocalBrowserAsset(url);
+  return url.startsWith("http://") || url.startsWith("https://") || url.startsWith("/") || isLocalBrowserAsset(url);
 }
 
 export function extensionFromAssetUrl(url: string, fallback: string) {

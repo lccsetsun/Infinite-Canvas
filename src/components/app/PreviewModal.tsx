@@ -51,7 +51,7 @@ function renderMarkdown(text: string) {
 export default function PreviewModal({ preview, onClose, onPreviewChange, onUpdateNodeText, onSplitImageGrid, showNotice }: PreviewModalProps) {
   const isMediaAsset = isPreviewableAsset(preview.content);
   const isPromptEditor = preview.title === PROMPT_EDITOR_TITLE;
-  const [gridMenuOpen, setGridMenuOpen] = useState(false);
+  const [gridMenuOpen, setGridMenuOpen] = useState(() => preview.title.includes("宫格切分"));
   const [customGridOpen, setCustomGridOpen] = useState(false);
   const [activeGridSize, setActiveGridSize] = useState<number | null>(null);
 
