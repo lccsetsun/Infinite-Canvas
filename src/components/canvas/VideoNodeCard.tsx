@@ -59,6 +59,23 @@ function fitVideoSize(naturalSize: { width: number; height: number } | null, asp
   return { width: Math.round(maxHeight * ratio), height: maxHeight };
 }
 
+function getFrameAnalysisTileSize(video: HTMLVideoElement) {
+  const sourceWidth = video.videoWidth || 16;
+  const sourceHeight = video.videoHeight || 9;
+  const aspect = sourceWidth > 0 && sourceHeight > 0 ? sourceWidth / sourceHeight : 16 / 9;
+  const longSide = 176;
+  if (aspect >= 1) {
+    return {
+      width: longSide,
+      height: Math.max(72, Math.round(longSide / aspect)),
+    };
+  }
+  return {
+    width: Math.max(72, Math.round(longSide * aspect)),
+    height: longSide,
+  };
+}
+
 function formatTime(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds <= 0) return "0:00";
   const minutes = Math.floor(seconds / 60);
@@ -254,8 +271,7 @@ function VideoNodeCardImpl({
       const frameCount: number = 15;
       const columns = 5;
       const rows = 3;
-      const tileWidth = 176;
-      const tileHeight = 99;
+      const { width: tileWidth, height: tileHeight } = getFrameAnalysisTileSize(video);
       video.pause();
 
       const segments: VideoFrameAnalysisSegment[] = [];
