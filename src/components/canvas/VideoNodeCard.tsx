@@ -120,6 +120,7 @@ function VideoNodeCardImpl({
   const [muted, setMuted] = React.useState(false);
   const [frameMenuOpen, setFrameMenuOpen] = React.useState(false);
   const [isAnalyzingFrames, setIsAnalyzingFrames] = React.useState(false);
+  const previewNodeRef = React.useRef<HTMLDivElement | null>(null);
   const [naturalVideoSize, setNaturalVideoSize] = React.useState<{ width: number; height: number } | null>(() => {
     const width = node.data?.videoNaturalWidth;
     const height = node.data?.videoNaturalHeight;
@@ -151,6 +152,29 @@ function VideoNodeCardImpl({
     const height = node.data?.videoNaturalHeight;
     setNaturalVideoSize(typeof width === "number" && typeof height === "number" ? { width, height } : null);
   }, [node.data?.videoNaturalHeight, node.data?.videoNaturalWidth, videoUrl]);
+
+  React.useEffect(() => {
+    if (!videoUrl || !previewNodeRef.current) return;
+
+    const syncNodeBounds = () => {
+      const nextWidth = Math.round(previewNodeRef.current?.offsetWidth ?? 0);
+      const nextHeight = Math.round(previewNodeRef.current?.offsetHeight ?? 0);
+      if (
+        nextWidth > 0 &&
+        nextHeight > 0 &&
+        (node.data?.videoNodeWidth !== nextWidth || node.data?.videoNodeHeight !== nextHeight)
+      ) {
+        onUpdateData?.(node.id, {
+          videoNodeWidth: nextWidth,
+          videoNodeHeight: nextHeight,
+        });
+      }
+    };
+
+    syncNodeBounds();
+    const frame = window.requestAnimationFrame(syncNodeBounds);
+    return () => window.cancelAnimationFrame(frame);
+  }, [node.data?.videoNodeHeight, node.data?.videoNodeWidth, node.id, onUpdateData, resultVideoSize.height, resultVideoSize.width, videoUrl]);
 
   const handleRun = () => {
     if (isRunning) return;
@@ -417,6 +441,7 @@ function VideoNodeCardImpl({
         transition={{ type: "spring", damping: 22, stiffness: 280 }}
         className="absolute text-left"
         style={{ width: resultVideoSize.width }}
+        ref={previewNodeRef}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
       >

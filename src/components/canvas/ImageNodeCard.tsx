@@ -1,6 +1,6 @@
 import React from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowUp, ChevronUp, Download, Eye, Grid3X3, Image as ImageIcon, Loader2, Plus, Wand2 } from "lucide-react";
+import { ArrowUp, ChevronLeft, ChevronRight, ChevronUp, Download, Eye, Grid3X3, Image as ImageIcon, Loader2, Plus, Wand2 } from "lucide-react";
 import { GraphNode } from "../../types";
 import { findResolvedStringInput } from "../../utils/resolvedInputs";
 import { shouldShowInlinePortHandles } from "../../utils/portHandleVisibility";
@@ -17,6 +17,7 @@ interface ImageNodeCardProps {
   onDragStart: (event: React.PointerEvent, node: GraphNode) => void;
   onUpdateProperty?: (nodeId: string, key: string, value: unknown) => void;
   onUpdateData?: (nodeId: string, data: Partial<GraphNode["data"]>) => void;
+  onSetPrimaryImageResult?: (nodeId: string, imageUrl: string, imageIndex: number) => void;
   onPreview?: (content: string, title?: string, nodeId?: string, items?: string[], currentIndex?: number) => void;
   resolvedInputs?: Record<string, unknown>;
   onRun?: (nodeId: string) => void;
@@ -36,6 +37,7 @@ const RESULT_IMAGE_MAX_HEIGHT = 390;
 const RATIO_OPTIONS = ["16:9", "9:16", "4:3", "3:4", "1:1", "21:9"];
 const QUANTITY_OPTIONS = ["1张", "2张", "3张", "4张"];
 const MINIMAX_IMAGE_MODEL = "MiniMax Image 01";
+const VISIBLE_THUMBNAIL_COUNT = 3;
 const MINIMAX_RATIO_SIZE: Record<string, string> = {
   "16:9": "1280×720",
   "9:16": "720×1280",
@@ -65,11 +67,6 @@ function fitImageSize(naturalSize: { width: number; height: number } | null, asp
   return { width: Math.round(maxHeight * ratio), height: maxHeight };
 }
 
-function cycleValue<T>(values: T[], current: T): T {
-  const index = values.indexOf(current);
-  return values[(index + 1) % values.length] ?? values[0];
-}
-
 function ImageNodeCardImpl({
   node,
   selected,
@@ -79,6 +76,7 @@ function ImageNodeCardImpl({
   onDragStart,
   onUpdateProperty,
   onUpdateData,
+  onSetPrimaryImageResult,
   onPreview,
   resolvedInputs,
   onRun,
@@ -95,15 +93,28 @@ function ImageNodeCardImpl({
 }: ImageNodeCardProps) {
   const isRunning = node.data?.loading === true;
   const [isHovered, setIsHovered] = React.useState(false);
+  const [openSelect, setOpenSelect] = React.useState<"ratio" | "quantity" | null>(null);
+  const controlsRef = React.useRef<HTMLDivElement | null>(null);
+  const [activeImageIndex, setActiveImageIndex] = React.useState(() => {
+    const index = node.data?.activeImageIndex;
+    return typeof index === "number" && index >= 0 ? index : 0;
+  });
   const [naturalImageSize, setNaturalImageSize] = React.useState<{ width: number; height: number } | null>(() => {
     const width = node.data?.imageNaturalWidth;
     const height = node.data?.imageNaturalHeight;
     return typeof width === "number" && typeof height === "number" ? { width, height } : null;
   });
+  const previewNodeRef = React.useRef<HTMLDivElement | null>(null);
 
   const upstreamPrompt = findResolvedStringInput(resolvedInputs, ["prompt", "text", "原始提示词", "用户提示词"]);
   const promptText = upstreamPrompt?.value || (node.properties.text as string) || "";
-  const imageUrl = (node.data?.imageUrl as string) || (node.properties.imageUrl as string) || "";
+  const imageUrls =
+    Array.isArray(node.data?.imageUrls) && node.data?.imageUrls.length
+      ? node.data.imageUrls.filter((url): url is string => typeof url === "string" && Boolean(url))
+      : [];
+  const fallbackImageUrl = (node.data?.imageUrl as string) || (node.properties.imageUrl as string) || "";
+  const resolvedImageUrls = imageUrls.length ? imageUrls : fallbackImageUrl ? [fallbackImageUrl] : [];
+  const imageUrl = resolvedImageUrls[activeImageIndex] || resolvedImageUrls[0] || "";
   const aspectRatio = (node.properties.aspect_ratio as string) || "16:9";
   const quantity = (node.properties.quantity as string) || "1张";
   const nodeBadgeTitle = node.title === "图片节点" || node.title === "图片" ? "图片节点 1" : node.title;
@@ -113,6 +124,7 @@ function ImageNodeCardImpl({
     () => fitImageSize(naturalImageSize, aspectRatio, IMAGE_NODE_WIDTH, RESULT_IMAGE_MAX_HEIGHT),
     [aspectRatio, naturalImageSize],
   );
+  const imageSetKey = React.useMemo(() => resolvedImageUrls.join("||"), [resolvedImageUrls]);
   const naturalSizeLabel =
     naturalImageSize && naturalImageSize.width > 0 && naturalImageSize.height > 0
       ? `${naturalImageSize.width} × ${naturalImageSize.height}`
@@ -124,8 +136,61 @@ function ImageNodeCardImpl({
     setNaturalImageSize(typeof width === "number" && typeof height === "number" ? { width, height } : null);
   }, [node.data?.imageNaturalHeight, node.data?.imageNaturalWidth, imageUrl]);
 
+  React.useEffect(() => {
+    if (!imageUrl || !previewNodeRef.current) return;
+
+    const syncNodeBounds = () => {
+      const nextWidth = Math.round(previewNodeRef.current?.offsetWidth ?? 0);
+      const nextHeight = Math.round(previewNodeRef.current?.offsetHeight ?? 0);
+      if (
+        nextWidth > 0 &&
+        nextHeight > 0 &&
+        (node.data?.imageNodeWidth !== nextWidth || node.data?.imageNodeHeight !== nextHeight)
+      ) {
+        onUpdateData?.(node.id, {
+          imageNodeWidth: nextWidth,
+          imageNodeHeight: nextHeight,
+        });
+      }
+    };
+
+    syncNodeBounds();
+    const frame = window.requestAnimationFrame(syncNodeBounds);
+    return () => window.cancelAnimationFrame(frame);
+  }, [imageUrl, node.data?.imageNodeHeight, node.data?.imageNodeWidth, node.id, onUpdateData, resolvedImageUrls.length, resultImageSize.height, resultImageSize.width]);
+
+  React.useEffect(() => {
+    setActiveImageIndex(0);
+    setNaturalImageSize(null);
+  }, [imageSetKey]);
+
+  React.useEffect(() => {
+    const nextIndex = node.data?.activeImageIndex;
+    if (typeof nextIndex === "number" && nextIndex >= 0 && nextIndex !== activeImageIndex) {
+      setActiveImageIndex(Math.min(nextIndex, Math.max(0, resolvedImageUrls.length - 1)));
+    }
+  }, [activeImageIndex, node.data?.activeImageIndex, resolvedImageUrls.length]);
+
+  React.useEffect(() => {
+    if (!openSelect) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (controlsRef.current && !controlsRef.current.contains(event.target as Node)) {
+        setOpenSelect(null);
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [openSelect]);
+
+  React.useEffect(() => {
+    if (!selected) setOpenSelect(null);
+  }, [selected]);
+
   const handleRun = () => {
     if (isRunning) return;
+    setOpenSelect(null);
     onRun?.(node.id);
   };
 
@@ -134,6 +199,32 @@ function ImageNodeCardImpl({
     const filename = `${nodeBadgeTitle.replace(/\s+/g, "-") || "image-node"}-${Date.now()}.${extensionFromAssetUrl(imageUrl, "png")}`;
     await downloadMediaAsset(imageUrl, filename);
   };
+
+  const cycleActiveImage = React.useCallback(
+    (direction: -1 | 1) => {
+      if (resolvedImageUrls.length <= 1) return;
+      const nextIndex = (activeImageIndex + direction + resolvedImageUrls.length) % resolvedImageUrls.length;
+      setActiveImageIndex(nextIndex);
+      setNaturalImageSize(null);
+      onSetPrimaryImageResult?.(node.id, resolvedImageUrls[nextIndex], nextIndex);
+    },
+    [activeImageIndex, node.id, onSetPrimaryImageResult, resolvedImageUrls],
+  );
+
+  const visibleThumbnailItems = React.useMemo(() => {
+    if (resolvedImageUrls.length <= VISIBLE_THUMBNAIL_COUNT) {
+      return resolvedImageUrls.map((url, index) => ({ url, index }));
+    }
+
+    const startIndex =
+      ((activeImageIndex - Math.floor(VISIBLE_THUMBNAIL_COUNT / 2)) % resolvedImageUrls.length + resolvedImageUrls.length) %
+      resolvedImageUrls.length;
+
+    return Array.from({ length: VISIBLE_THUMBNAIL_COUNT }, (_, offset) => {
+      const index = (startIndex + offset) % resolvedImageUrls.length;
+      return { url: resolvedImageUrls[index], index };
+    });
+  }, [activeImageIndex, resolvedImageUrls]);
 
   const portHandles = (
     <AnimatePresence>
@@ -216,6 +307,7 @@ function ImageNodeCardImpl({
         transition={{ type: "spring", damping: 22, stiffness: 280 }}
         className="absolute text-left"
         style={{ width: resultImageSize.width }}
+        ref={previewNodeRef}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
       >
@@ -262,7 +354,7 @@ function ImageNodeCardImpl({
                 <Tooltip content="全屏预览" position="top">
                   <button
                     type="button"
-                    onClick={() => onPreview?.(imageUrl, "图片节点预览", node.id)}
+                    onClick={() => onPreview?.(imageUrl, "图片节点预览", node.id, resolvedImageUrls, activeImageIndex)}
                     className="flex h-9 w-9 items-center justify-center rounded-[12px] text-slate-400 transition-colors hover:bg-white/[0.06] hover:text-slate-100"
                   >
                     <Eye className="h-5 w-5" />
@@ -271,7 +363,7 @@ function ImageNodeCardImpl({
                 <Tooltip content="宫格切分" position="top">
                   <button
                     type="button"
-                    onClick={() => onPreview?.(imageUrl, "图片节点预览 · 宫格切分", node.id)}
+                    onClick={() => onPreview?.(imageUrl, "图片节点预览 · 宫格切分", node.id, resolvedImageUrls, activeImageIndex)}
                     className="flex h-9 w-9 items-center justify-center rounded-[12px] text-slate-300 transition-colors hover:bg-cyan-300/[0.08] hover:text-cyan-100"
                   >
                     <Grid3X3 className="h-[18px] w-[18px]" />
@@ -294,37 +386,101 @@ function ImageNodeCardImpl({
                 )}
               </span>
             </div>
-            <span className="shrink-0 text-[12px] font-medium tabular-nums text-slate-400/72">{naturalSizeLabel}</span>
+            <div className="flex shrink-0 items-center gap-3">
+              {resolvedImageUrls.length > 1 && (
+                <span className="rounded-full border border-slate-400/18 bg-slate-900/46 px-2.5 py-1 text-[11px] font-semibold text-slate-300/72">
+                  {activeImageIndex + 1}/{resolvedImageUrls.length}
+                </span>
+              )}
+              <span className="text-[12px] font-medium tabular-nums text-slate-400/72">{naturalSizeLabel}</span>
+            </div>
           </div>
-          <div className={`overflow-hidden rounded-[8px] bg-white ${selected ? "ring-2 ring-sky-400" : ""}`} style={{ width: resultImageSize.width, height: resultImageSize.height }}>
-            <img
-              src={imageUrl}
-              alt="生成图片"
-              className="block h-full w-full object-contain"
-              draggable={false}
-              onLoad={(e) => {
-                const img = e.currentTarget;
-                const naturalSize = {
-                  width: img.naturalWidth || resultImageSize.width,
-                  height: img.naturalHeight || resultImageSize.height,
-                };
-                const displaySize = fitImageSize(naturalSize, aspectRatio, IMAGE_NODE_WIDTH, RESULT_IMAGE_MAX_HEIGHT);
-                setNaturalImageSize(naturalSize);
-                if (
-                  node.data?.imageNaturalWidth !== naturalSize.width ||
-                  node.data?.imageNaturalHeight !== naturalSize.height ||
-                  node.data?.imageDisplayWidth !== displaySize.width ||
-                  node.data?.imageDisplayHeight !== displaySize.height
-                ) {
-                  onUpdateData?.(node.id, {
-                    imageNaturalWidth: naturalSize.width,
-                    imageNaturalHeight: naturalSize.height,
-                    imageDisplayWidth: displaySize.width,
-                    imageDisplayHeight: displaySize.height,
-                  });
-                }
-              }}
-            />
+          <div className="flex w-full flex-col items-center">
+            <div
+              className={`mx-auto overflow-hidden rounded-[8px] bg-white ${selected ? "ring-2 ring-sky-400" : ""}`}
+              style={{ width: resultImageSize.width, height: resultImageSize.height }}
+            >
+              <img
+                src={imageUrl}
+                alt="生成图片"
+                className="block h-full w-full object-contain"
+                draggable={false}
+                onLoad={(e) => {
+                  const img = e.currentTarget;
+                  const naturalSize = {
+                    width: img.naturalWidth || resultImageSize.width,
+                    height: img.naturalHeight || resultImageSize.height,
+                  };
+                  const displaySize = fitImageSize(naturalSize, aspectRatio, IMAGE_NODE_WIDTH, RESULT_IMAGE_MAX_HEIGHT);
+                  setNaturalImageSize(naturalSize);
+                  if (
+                    node.data?.imageNaturalWidth !== naturalSize.width ||
+                    node.data?.imageNaturalHeight !== naturalSize.height ||
+                    node.data?.imageDisplayWidth !== displaySize.width ||
+                    node.data?.imageDisplayHeight !== displaySize.height
+                  ) {
+                    onUpdateData?.(node.id, {
+                      imageNaturalWidth: naturalSize.width,
+                      imageNaturalHeight: naturalSize.height,
+                      imageDisplayWidth: displaySize.width,
+                      imageDisplayHeight: displaySize.height,
+                    });
+                  }
+                }}
+              />
+            </div>
+            {resolvedImageUrls.length > 1 && (
+              <div
+                data-node-action="true"
+                className="mt-3 flex w-full items-center justify-center gap-3"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  onClick={() => cycleActiveImage(-1)}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-400/18 bg-slate-900/42 text-slate-200/78 transition-all hover:border-slate-300/32 hover:bg-slate-800/70 hover:text-white"
+                  title="上一张"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                <div className="flex items-center justify-center gap-2">
+                  {visibleThumbnailItems.map(({ url, index }) => {
+                    const isActive = index === activeImageIndex;
+                    return (
+                      <button
+                        key={`${url}-${index}`}
+                        type="button"
+                        onClick={() => {
+                          setActiveImageIndex(index);
+                          setNaturalImageSize(null);
+                          onSetPrimaryImageResult?.(node.id, url, index);
+                        }}
+                        className={`relative h-14 w-20 shrink-0 overflow-hidden rounded-[10px] border transition-all ${
+                          isActive
+                            ? "border-sky-300 shadow-[0_0_0_1px_rgba(125,211,252,0.45),0_12px_28px_-18px_rgba(56,189,248,0.6)]"
+                            : "border-slate-400/18 opacity-80 hover:border-slate-300/36 hover:opacity-100"
+                        }`}
+                        title={`查看第 ${index + 1} 张`}
+                      >
+                        <img src={url} alt={`生成图片 ${index + 1}`} className="h-full w-full object-cover" draggable={false} />
+                        <div className="absolute inset-x-0 bottom-0 flex h-5 items-center justify-center bg-black/42 text-[10px] font-semibold text-white/90">
+                          {index + 1}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => cycleActiveImage(1)}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-400/18 bg-slate-900/42 text-slate-200/78 transition-all hover:border-slate-300/32 hover:bg-slate-800/70 hover:text-white"
+                  title="下一张"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+            )}
           </div>
         </motion.div>
       </motion.div>
@@ -423,36 +579,120 @@ function ImageNodeCardImpl({
               placeholder={upstreamPrompt ? `已由上游节点 (${upstreamPrompt.key}) 提供提示词` : "描述你想要生成的画面内容"}
               className="h-[92px] w-full resize-none bg-transparent px-1 text-[15px] leading-7 text-slate-100/88 outline-none placeholder:text-slate-400/42 disabled:cursor-not-allowed disabled:text-slate-400/45 custom-scrollbar"
             />
-            <div className="mt-3 flex items-center gap-2 border-t border-cyan-100/8 pt-3">
+            <div ref={controlsRef} className="mt-3 flex items-center gap-2 border-t border-cyan-100/8 pt-3">
               <div className="flex h-10 min-w-[172px] items-center gap-2 rounded-[14px] border border-cyan-100/8 bg-slate-950/18 px-3 text-[13px] font-medium text-cyan-50/78 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]">
                 <Wand2 className="h-3.5 w-3.5 text-cyan-100/50" />
                 <span>{MINIMAX_IMAGE_MODEL}</span>
               </div>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onUpdateProperty?.(node.id, "aspect_ratio", cycleValue(RATIO_OPTIONS, aspectRatio));
-                }}
-                className="inline-flex h-10 min-w-[160px] items-center justify-center gap-2 rounded-[14px] border border-cyan-100/8 bg-slate-950/18 px-3 text-[13px] font-medium text-cyan-50/76 transition-colors hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
-              >
-                <span>{aspectRatio} · {MINIMAX_RATIO_SIZE[aspectRatio] || MINIMAX_RATIO_SIZE["16:9"]}</span>
-                <ChevronUp className="h-3.5 w-3.5 rotate-180 text-slate-300/55" />
-              </button>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  const next = cycleValue(QUANTITY_OPTIONS, quantity);
-                  onUpdateProperty?.(node.id, "quantity", next);
-                  onUpdateProperty?.(node.id, "n", Number.parseInt(next, 10));
-                }}
-                className="inline-flex h-10 min-w-[76px] items-center justify-center gap-1.5 rounded-[14px] border border-cyan-100/8 bg-slate-950/14 px-3 text-[13px] font-medium text-cyan-50/62 transition-colors hover:border-cyan-100/18 hover:bg-cyan-100/[0.045] hover:text-cyan-50"
-              >
-                <span>{quantity.replace("张", "")}</span>
-                <span className="text-[12px] text-cyan-50/45">张</span>
-                <ChevronUp className="h-3.5 w-3.5 rotate-180 text-slate-300/55" />
-              </button>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setOpenSelect((current) => (current === "ratio" ? null : "ratio"));
+                  }}
+                  className={`relative inline-flex h-10 min-w-[160px] items-center justify-center gap-2 rounded-[14px] border px-3 text-[13px] font-medium transition-colors ${
+                    openSelect === "ratio"
+                      ? "border-cyan-100/34 bg-cyan-100/[0.075] text-cyan-50"
+                      : "border-cyan-100/8 bg-slate-950/18 text-cyan-50/76 hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
+                  }`}
+                >
+                  <span>{aspectRatio} · {MINIMAX_RATIO_SIZE[aspectRatio] || MINIMAX_RATIO_SIZE["16:9"]}</span>
+                  <ChevronUp className={`h-3.5 w-3.5 text-slate-300/55 transition-transform ${openSelect === "ratio" ? "" : "rotate-180"}`} />
+                </button>
+                <AnimatePresence>
+                  {openSelect === "ratio" && (
+                    <motion.div
+                      data-node-action="true"
+                      initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                      transition={{ duration: 0.15, ease: "easeOut" }}
+                      className="absolute bottom-[calc(100%+12px)] left-0 z-50 w-[226px] rounded-[16px] border border-cyan-100/12 bg-[#0d121c]/96 p-2 shadow-[0_22px_56px_-22px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-2xl"
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {RATIO_OPTIONS.map((ratio) => {
+                        const isActive = ratio === aspectRatio;
+                        return (
+                          <button
+                            key={ratio}
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onUpdateProperty?.(node.id, "aspect_ratio", ratio);
+                              setOpenSelect(null);
+                            }}
+                            className={`flex h-10 w-full items-center justify-between rounded-[12px] px-3 text-left transition-colors ${
+                              isActive ? "bg-cyan-300/[0.1] text-cyan-50" : "text-slate-300/76 hover:bg-white/[0.055] hover:text-slate-100"
+                            }`}
+                          >
+                            <span className="text-[13px] font-semibold">{ratio}</span>
+                            <span className="flex items-center gap-2 text-[12px] tabular-nums text-slate-400/82">
+                              {MINIMAX_RATIO_SIZE[ratio]}
+                              <span className={`h-1.5 w-1.5 rounded-full ${isActive ? "bg-cyan-300 shadow-[0_0_10px_rgba(103,232,249,0.9)]" : "bg-slate-500/35"}`} />
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setOpenSelect((current) => (current === "quantity" ? null : "quantity"));
+                  }}
+                  className={`relative inline-flex h-10 min-w-[76px] items-center justify-center gap-1.5 rounded-[14px] border px-3 text-[13px] font-medium transition-colors ${
+                    openSelect === "quantity"
+                      ? "border-cyan-100/34 bg-cyan-100/[0.075] text-cyan-50"
+                      : "border-cyan-100/8 bg-slate-950/14 text-cyan-50/62 hover:border-cyan-100/18 hover:bg-cyan-100/[0.045] hover:text-cyan-50"
+                  }`}
+                >
+                  <span>{quantity.replace("张", "")}</span>
+                  <span className="text-[12px] text-cyan-50/45">张</span>
+                  <ChevronUp className={`h-3.5 w-3.5 text-slate-300/55 transition-transform ${openSelect === "quantity" ? "" : "rotate-180"}`} />
+                </button>
+                <AnimatePresence>
+                  {openSelect === "quantity" && (
+                    <motion.div
+                      data-node-action="true"
+                      initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                      transition={{ duration: 0.15, ease: "easeOut" }}
+                      className="absolute bottom-[calc(100%+12px)] left-0 z-50 w-[112px] rounded-[16px] border border-cyan-100/12 bg-[#0d121c]/96 p-2 shadow-[0_22px_56px_-22px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-2xl"
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {QUANTITY_OPTIONS.map((option) => {
+                        const isActive = option === quantity;
+                        return (
+                          <button
+                            key={option}
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onUpdateProperty?.(node.id, "quantity", option);
+                              onUpdateProperty?.(node.id, "n", Number.parseInt(option, 10));
+                              setOpenSelect(null);
+                            }}
+                            className={`flex h-10 w-full items-center justify-between rounded-[12px] px-3 text-left transition-colors ${
+                              isActive ? "bg-cyan-300/[0.1] text-cyan-50" : "text-slate-300/76 hover:bg-white/[0.055] hover:text-slate-100"
+                            }`}
+                          >
+                            <span className="text-[13px] font-semibold">{option}</span>
+                            <span className={`h-1.5 w-1.5 rounded-full ${isActive ? "bg-cyan-300 shadow-[0_0_10px_rgba(103,232,249,0.9)]" : "bg-slate-500/35"}`} />
+                          </button>
+                        );
+                      })}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
               <button
                 type="button"
                 onClick={(e) => {

@@ -38,6 +38,7 @@ interface CanvasNodeLayerProps {
   onSelectNode: (nodeId: string, e?: React.MouseEvent) => void;
   onUpdateNodeData: (nodeId: string, data: any) => void;
   onUpdateNodeProperty: (nodeId: string, key: string, value: unknown) => void;
+  onSetPrimaryImageResult?: (nodeId: string, imageUrl: string, imageIndex: number) => void;
   resolvedInputsMap?: Map<string, Record<string, unknown>>;
   onRunNode?: (nodeId: string) => void;
 }
@@ -69,6 +70,7 @@ export default function CanvasNodeLayer({
   onSelectNode,
   onUpdateNodeData,
   onUpdateNodeProperty,
+  onSetPrimaryImageResult,
   resolvedInputsMap,
   onRunNode,
 }: CanvasNodeLayerProps) {
@@ -106,6 +108,7 @@ export default function CanvasNodeLayer({
                 }}
                 onUpdateProperty={onUpdateNodeProperty}
                 onUpdateData={onUpdateNodeData}
+                onSetPrimaryImageResult={onSetPrimaryImageResult}
                 onPreview={onPreview}
                 onReverseSegmentAnalysis={onReverseSegmentAnalysis}
                 resolvedInputs={resolvedInputsMap?.get(node.id)}

@@ -60,6 +60,34 @@ describe("image_node MiniMax executor", () => {
     expect(result?.outputs[0]).toBe("https://example.com/minimax.png");
     expect(result?.patch?.imageUrls).toEqual(["https://example.com/minimax.png"]);
   });
+
+  it("uses node aspect ratio property when no aspect input is connected", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ imageUrls: ["https://example.com/minimax-4-3.png"] }),
+    } as Response);
+
+    const executor = getExecutor("image_node");
+    await executor?.({
+      inputs: { prompt: "五只小鸭子" },
+      properties: {
+        model: "image-01",
+        aspect_ratio: "4:3",
+        quantity: "1张",
+        n: 1,
+        prompt_optimizer: false,
+      },
+      apiConfig: {
+        baseUrl: "",
+        apiKey: "",
+        minimaxApiKey: "mini-test-key",
+        minimaxBaseUrl: "https://api.minimaxi.com/v1",
+      },
+    });
+
+    const request = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body));
+    expect(request.aspect_ratio).toBe("4:3");
+  });
 });
 
 describe("video_node MiniMax executor", () => {

@@ -127,6 +127,7 @@ async function callOpenAICompatible(
 function pickString(inputs: Record<string, unknown>, properties: Record<string, unknown>, ...keys: string[]): string {
   for (const k of keys) {
     if (typeof inputs[k] === "string" && (inputs[k] as string).trim()) return inputs[k] as string;
+    if (typeof properties[k] === "string" && (properties[k] as string).trim()) return properties[k] as string;
   }
   const fallback = (properties.text as string) ?? "";
   return fallback;

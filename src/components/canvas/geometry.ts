@@ -12,11 +12,15 @@ export const NODE_HEIGHT = 180;
 export function getNodeWidth(node: GraphNode) {
   if (node.type === "text_node") return TEXT_NODE_WIDTH;
   if (node.type === "image_node") {
+    const nodeWidth = node.data?.imageNodeWidth;
+    if (node.data?.imageUrl && typeof nodeWidth === "number" && Number.isFinite(nodeWidth) && nodeWidth > 0) return nodeWidth;
     const displayWidth = node.data?.imageDisplayWidth;
     if (node.data?.imageUrl && typeof displayWidth === "number" && Number.isFinite(displayWidth) && displayWidth > 0) return displayWidth;
     return IMAGE_NODE_WIDTH;
   }
   if (node.type === "video_node") {
+    const nodeWidth = node.data?.videoNodeWidth;
+    if (node.data?.videoUrl && typeof nodeWidth === "number" && Number.isFinite(nodeWidth) && nodeWidth > 0) return nodeWidth;
     const displayWidth = node.data?.videoDisplayWidth;
     if (node.data?.videoUrl && typeof displayWidth === "number" && Number.isFinite(displayWidth) && displayWidth > 0) return displayWidth;
     return VIDEO_NODE_WIDTH;
@@ -27,12 +31,16 @@ export function getNodeWidth(node: GraphNode) {
 
 export function getNodeHeight(node: GraphNode) {
   if (node.type === "image_node") {
+    const nodeHeight = node.data?.imageNodeHeight;
+    if (node.data?.imageUrl && typeof nodeHeight === "number" && Number.isFinite(nodeHeight) && nodeHeight > 0) return nodeHeight;
     const displayHeight = node.data?.imageDisplayHeight;
     if (node.data?.imageUrl && typeof displayHeight === "number" && Number.isFinite(displayHeight) && displayHeight > 0) return displayHeight + 30;
     return GENERATIVE_NODE_HEIGHT;
   }
   if (node.type === "text_node") return GENERATIVE_NODE_HEIGHT;
   if (node.type === "video_node") {
+    const nodeHeight = node.data?.videoNodeHeight;
+    if (node.data?.videoUrl && typeof nodeHeight === "number" && Number.isFinite(nodeHeight) && nodeHeight > 0) return nodeHeight;
     const displayHeight = node.data?.videoDisplayHeight;
     if (node.data?.videoUrl && typeof displayHeight === "number" && Number.isFinite(displayHeight) && displayHeight > 0) return displayHeight + 30;
     return GENERATIVE_NODE_HEIGHT;

@@ -77,6 +77,7 @@ export default function App() {
     updateNodePosition,
     updateNodeProperty,
     updateNodeData,
+    setPrimaryImageResult,
     addVideoFrameAnalysis,
     addSegmentVideoAnalyses,
     logs,
@@ -989,6 +990,7 @@ export default function App() {
           onSelectNode={(nodeId, e) => handleSelectNode(nodeId, e)}
           onUpdateNodeData={updateNodeData}
           onUpdateNodeProperty={updateNodeProperty}
+          onSetPrimaryImageResult={setPrimaryImageResult}
           resolvedInputsMap={resolvedInputsMap}
           onRunNode={runNode}
         />
@@ -1069,6 +1071,7 @@ export default function App() {
           onClose={() => setPreviewContent(null)}
           onPreviewChange={setPreviewContent}
           onUpdateNodeText={(nodeId, text) => updateNodeProperty(nodeId, "text", text)}
+          onSetPrimaryImageResult={setPrimaryImageResult}
           onSplitImageGrid={handleSplitImageGrid}
           showNotice={showNotice}
         />

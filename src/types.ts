@@ -56,12 +56,18 @@ export interface GraphNode {
     number?: number;
     response?: string;
     imageUrl?: string;
+    imageUrls?: string[];
+    activeImageIndex?: number;
+    imageNodeWidth?: number;
+    imageNodeHeight?: number;
     imageDisplayWidth?: number;
     imageDisplayHeight?: number;
     imageNaturalWidth?: number;
     imageNaturalHeight?: number;
     videoDisplayWidth?: number;
     videoDisplayHeight?: number;
+    videoNodeWidth?: number;
+    videoNodeHeight?: number;
     videoNaturalWidth?: number;
     videoNaturalHeight?: number;
     videoFrameUrl?: string;

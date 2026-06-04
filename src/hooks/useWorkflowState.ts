@@ -608,6 +608,30 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     setNodes((prev) => prev.map((n) => (n.id === nodeId ? { ...n, data: { ...(n.data || {}), ...data } } : n)));
   }, []);
 
+  const setPrimaryImageResult = useCallback((nodeId: string, imageUrl: string, imageIndex: number) => {
+    setNodes((prev) =>
+      prev.map((n) =>
+        n.id === nodeId
+          ? {
+              ...n,
+              data: {
+                ...(n.data || {}),
+                imageUrl,
+                activeImageIndex: imageIndex,
+              },
+            }
+          : n
+      )
+    );
+    setNodeOutputs((prev) => {
+      const next = new Map(prev);
+      const inner = new Map(next.get(nodeId) ?? []);
+      inner.set(0, imageUrl);
+      next.set(nodeId, inner);
+      return next;
+    });
+  }, []);
+
   const addVideoFrameAnalysis = useCallback(
     (videoNodeId: string, segments: VideoFrameAnalysisSegment[], overview: VideoFrameAnalysisOverview, analysisMarkdown: string) => {
       const sourceNode = nodes.find((n) => n.id === videoNodeId);
@@ -1599,6 +1623,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     updateNodePosition,
     updateNodeProperty,
     updateNodeData,
+    setPrimaryImageResult,
     addVideoFrameAnalysis,
     addSegmentVideoAnalyses,
     clearCanvas,

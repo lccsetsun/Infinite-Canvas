@@ -1,6 +1,6 @@
 import { ChevronDown, ChevronLeft, ChevronRight, Download, Grid3X3, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { downloadMediaAsset, extensionFromAssetUrl, isPreviewableAsset } from "../../utils/mediaAssets";
 import { formatGridCellLabel } from "../../utils/imageGridSplit";
 
@@ -17,6 +17,7 @@ interface PreviewModalProps {
   onClose: () => void;
   onPreviewChange: (preview: PreviewContent) => void;
   onUpdateNodeText: (nodeId: string, text: string) => void;
+  onSetPrimaryImageResult?: (nodeId: string, imageUrl: string, imageIndex: number) => void;
   onSplitImageGrid?: (nodeId: string, imageUrl: string, gridSize: number, cellIndex: number) => void;
   showNotice: (message: string) => void;
 }
@@ -28,6 +29,7 @@ const GRID_SPLIT_OPTIONS = [
   { label: "16宫格 (4x4)", size: 4 },
   { label: "25宫格 (5x5)", size: 5 },
 ];
+const VISIBLE_PREVIEW_THUMBNAILS = 3;
 
 function isVideoPreview(preview: PreviewContent): boolean {
   return (
@@ -49,36 +51,57 @@ function renderMarkdown(text: string) {
   );
 }
 
-export default function PreviewModal({ preview, onClose, onPreviewChange, onUpdateNodeText, onSplitImageGrid, showNotice }: PreviewModalProps) {
+export default function PreviewModal({ preview, onClose, onPreviewChange, onUpdateNodeText, onSetPrimaryImageResult, onSplitImageGrid, showNotice }: PreviewModalProps) {
   const isMediaAsset = isPreviewableAsset(preview.content);
   const isPromptEditor = preview.title === PROMPT_EDITOR_TITLE;
   const [gridMenuOpen, setGridMenuOpen] = useState(() => preview.title.includes("宫格切分"));
   const [customGridOpen, setCustomGridOpen] = useState(false);
   const [activeGridSize, setActiveGridSize] = useState<number | null>(() => (preview.title.includes("宫格切分") ? 2 : null));
   const [selectedGridCell, setSelectedGridCell] = useState<number | null>(null);
+  const currentPreviewIndex = preview.currentIndex ?? 0;
+  const visiblePreviewItems = useMemo(() => {
+    if (!preview.items?.length) return [];
+    if (preview.items.length <= VISIBLE_PREVIEW_THUMBNAILS) {
+      return preview.items.map((url, index) => ({ url, index }));
+    }
+
+    const startIndex =
+      ((currentPreviewIndex - Math.floor(VISIBLE_PREVIEW_THUMBNAILS / 2)) % preview.items.length + preview.items.length) %
+      preview.items.length;
+
+    return Array.from({ length: VISIBLE_PREVIEW_THUMBNAILS }, (_, offset) => {
+      const index = (startIndex + offset) % preview.items!.length;
+      return { url: preview.items![index], index };
+    });
+  }, [currentPreviewIndex, preview.items]);
+
+  const applyPreviewIndex = (nextIndex: number) => {
+    if (!preview.items?.length) return;
+    const nextContent = preview.items[nextIndex];
+    onPreviewChange({
+      ...preview,
+      content: nextContent,
+      currentIndex: nextIndex,
+      title: preview.title.includes("#") ? preview.title.replace(/#\d+/, `#${nextIndex + 1}`) : preview.title,
+    });
+
+    if (!isVideoPreview(preview) && preview.nodeId) {
+      onSetPrimaryImageResult?.(preview.nodeId, nextContent, nextIndex);
+    }
+  };
 
   const showPrevious = () => {
     if (!preview.items?.length) return;
     const currentIndex = preview.currentIndex ?? 0;
     const nextIndex = (currentIndex - 1 + preview.items.length) % preview.items.length;
-    onPreviewChange({
-      ...preview,
-      content: preview.items[nextIndex],
-      currentIndex: nextIndex,
-      title: preview.title.includes("#") ? preview.title.replace(/#\d+/, `#${nextIndex + 1}`) : preview.title,
-    });
+    applyPreviewIndex(nextIndex);
   };
 
   const showNext = () => {
     if (!preview.items?.length) return;
     const currentIndex = preview.currentIndex ?? 0;
     const nextIndex = (currentIndex + 1) % preview.items.length;
-    onPreviewChange({
-      ...preview,
-      content: preview.items[nextIndex],
-      currentIndex: nextIndex,
-      title: preview.title.includes("#") ? preview.title.replace(/#\d+/, `#${nextIndex + 1}`) : preview.title,
-    });
+    applyPreviewIndex(nextIndex);
   };
 
   const downloadAsset = () => {
@@ -299,6 +322,52 @@ export default function PreviewModal({ preview, onClose, onPreviewChange, onUpda
               </div>
             )}
           </motion.div>
+          {!isVideo && preview.items && preview.items.length > 1 && (
+            <div
+              className="absolute bottom-6 left-1/2 z-20 flex -translate-x-1/2 items-center justify-center gap-3 rounded-[22px] border border-white/10 bg-[#0d1420]/72 px-4 py-3 shadow-[0_24px_70px_-28px_rgba(0,0,0,0.92)] backdrop-blur-xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                onClick={showPrevious}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/4 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+                title="上一张"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+              <div className="flex items-center justify-center gap-2">
+                {visiblePreviewItems.map(({ url, index }) => {
+                  const isActive = index === currentPreviewIndex;
+                  return (
+                    <button
+                      key={`${url}-${index}`}
+                      type="button"
+                      onClick={() => applyPreviewIndex(index)}
+                      className={`relative h-16 w-24 shrink-0 overflow-hidden rounded-[12px] border transition-all ${
+                        isActive
+                          ? "border-sky-300 shadow-[0_0_0_1px_rgba(125,211,252,0.52),0_16px_32px_-18px_rgba(56,189,248,0.72)]"
+                          : "border-white/12 opacity-80 hover:border-white/24 hover:opacity-100"
+                      }`}
+                      title={`查看第 ${index + 1} 张`}
+                    >
+                      <img src={url} alt={`预览图 ${index + 1}`} className="h-full w-full object-cover" draggable={false} />
+                      <div className="absolute inset-x-0 bottom-0 flex h-5 items-center justify-center bg-black/46 text-[10px] font-semibold text-white/90">
+                        {index + 1}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+              <button
+                type="button"
+                onClick={showNext}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/4 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+                title="下一张"
+              >
+                <ChevronRight className="h-5 w-5" />
+              </button>
+            </div>
+          )}
         </motion.div>
       </AnimatePresence>
     );
