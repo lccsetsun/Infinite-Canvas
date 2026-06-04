@@ -555,7 +555,7 @@ export default function App() {
     setPendingLinkMenuDraft(null);
     setNodeContextMenu(null);
     setIsMenuFromToolbar(true);
-    setMenuPos({ x: 24, y: 74 });
+    setMenuPos({ x: 24, y: 154 });
   }, [clearMenuCloseTimer, setIsMenuFromToolbar]);
 
   const scheduleMenuClose = React.useCallback(() => {
@@ -774,8 +774,11 @@ export default function App() {
           isRunning={isRunning}
         />
 
-        {nodes.length === 0 && !isWelcomeDismissed && currentView === "canvas" && (
-          <EmptyCanvasState onCreateProject={handleCreateProjectFromWelcome} />
+        {nodes.length === 0 && currentView === "canvas" && (
+          <EmptyCanvasState
+            mode={isWelcomeDismissed ? "empty-project" : "welcome"}
+            onPrimaryAction={isWelcomeDismissed ? openQuickMenu : handleCreateProjectFromWelcome}
+          />
         )}
         <AnimatePresence>
           {menuPos && (
