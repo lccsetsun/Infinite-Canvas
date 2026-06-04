@@ -96,8 +96,6 @@ export default function App() {
     allCategories,
     allTags,
     createWorkflow,
-    createWorkflowFromTemplate,
-    resetCurrentToDemo,
     switchWorkflow,
     renameWorkflow,
     setWorkflowCategory,
@@ -1084,8 +1082,6 @@ export default function App() {
         onClose={() => setWorkflowManagerOpen(false)}
         onSwitch={switchWorkflow}
         onCreate={createWorkflow}
-        onCreateFromTemplate={createWorkflowFromTemplate}
-        onResetToDemo={resetCurrentToDemo}
         onRename={renameWorkflow}
         onSetCategory={setWorkflowCategory}
         onAddTag={addTagToWorkflow}

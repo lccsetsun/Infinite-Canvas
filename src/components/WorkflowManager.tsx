@@ -1,12 +1,10 @@
 import React from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Check, Copy, FileText, Plus, Trash2, X, Pencil, FolderOpen, AlertTriangle, Search, SearchX, Archive, RotateCcw, Trash, Download, Upload, FolderTree, Hash, GripVertical, Clock, Library } from "lucide-react";
+import { Check, Copy, FileText, Plus, Trash2, X, Pencil, FolderOpen, AlertTriangle, Search, SearchX, Archive, Trash, Download, Upload, FolderTree, Hash, GripVertical, Clock } from "lucide-react";
 import { Tooltip } from "./common/Tooltip";
 import { WorkflowSummary } from "../hooks/useWorkflowState";
-import { WORKFLOW_TEMPLATES, WorkflowTemplate } from "../features/templates/workflowTemplates";
 
 type Tab = "active" | "trash";
-type View = "main" | "templates";
 
 interface WorkflowManagerProps {
   open: boolean;
@@ -19,8 +17,6 @@ interface WorkflowManagerProps {
   onClose: () => void;
   onSwitch: (id: string) => void;
   onCreate: (name?: string) => WorkflowSummary | null;
-  onCreateFromTemplate: (templateId: string, customName?: string) => WorkflowSummary | null;
-  onResetToDemo: (templateId: string) => boolean;
   onRename: (id: string, name: string) => boolean;
   onSetCategory: (id: string, category: string) => boolean;
   onAddTag: (id: string, tag: string) => boolean;
@@ -86,8 +82,6 @@ export default function WorkflowManager({
   onClose,
   onSwitch,
   onCreate,
-  onCreateFromTemplate,
-  onResetToDemo,
   onRename,
   onSetCategory,
   onAddTag,
@@ -112,7 +106,6 @@ export default function WorkflowManager({
   const [searchQuery, setSearchQuery] = React.useState("");
   const [searchInputFocused, setSearchInputFocused] = React.useState(false);
   const [activeTab, setActiveTab] = React.useState<Tab>("active");
-  const [view, setView] = React.useState<View>("main");
   const [categoryFilter, setCategoryFilter] = React.useState<string>("");
   const [tagInputFor, setTagInputFor] = React.useState<string | null>(null);
   const [tagInputValue, setTagInputValue] = React.useState("");
@@ -208,7 +201,6 @@ export default function WorkflowManager({
       setDragSourceId(null);
       setDropTargetId(null);
       setActiveTab("active");
-      setView("main");
       setTimeout(() => inputRef.current?.focus(), 50);
     }
   }, [open]);
@@ -365,24 +357,6 @@ export default function WorkflowManager({
     setDropTargetId(null);
   };
 
-  const handlePickTemplate = (tmpl: WorkflowTemplate) => {
-    const wf = onCreateFromTemplate(tmpl.id);
-    if (wf) {
-      showNotice(`已从模板 "${tmpl.name}" 创建 (${tmpl.nodes.length} 节点, ${tmpl.links.length} 连线)`);
-      onSwitch(wf.id);
-      onClose();
-    }
-  };
-
-  const handleResetToDemo = (tmpl: WorkflowTemplate) => {
-    if (window.confirm(`确定要清空当前画布并载入 demo "${tmpl.name}" 吗?\n\n当前画布的所有节点和连线将被替换为该 demo 的内容,操作可通过 Ctrl+Z 撤销。`)) {
-      if (onResetToDemo(tmpl.id)) {
-        showNotice(`已重置为 demo "${tmpl.name}"`);
-        onClose();
-      }
-    }
-  };
-
   return (
     <AnimatePresence>
       {open && (
@@ -422,20 +396,6 @@ export default function WorkflowManager({
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <Tooltip content={view === "templates" ? "返回项目列表" : "从预置模板新建项目"}>
-                  <button
-                    onClick={() => setView(view === "templates" ? "main" : "templates")}
-                    aria-label={view === "templates" ? "返回" : "模板"}
-                    className={`p-2 rounded-lg transition-colors ${
-                      view === "templates"
-                        ? "bg-violet-500/20 text-violet-200"
-                        : "text-gray-400 hover:text-violet-300 hover:bg-white/5"
-                    }`}
-                  >
-                    {view === "templates" ? <X className="w-4 h-4" /> : <Library className="w-4 h-4" />}
-                  </button>
-                </Tooltip>
-                <div className="w-px h-5 bg-white/10 mx-0.5" />
                 <Tooltip content="导出项目到 JSON 文件">
                   <button
                     onClick={handleExport}
@@ -528,12 +488,6 @@ export default function WorkflowManager({
                     <div className="text-[10px] text-gray-500">回收站</div>
                     <div className="mt-1 text-2xl font-black text-rose-200">{trash.length}</div>
                   </div>
-                  <button
-                    onClick={() => setView("templates")}
-                    className="col-span-2 rounded-xl border border-violet-500/25 bg-violet-500/[0.06] px-3 py-2 text-left text-[12px] font-bold text-violet-200 transition hover:bg-violet-500/[0.1]"
-                  >
-                    从模板创建项目
-                  </button>
                 </div>
                 <div className="col-span-2 flex items-center gap-2 max-lg:col-span-1">
                   <input
@@ -689,77 +643,7 @@ export default function WorkflowManager({
             )}
 
             <div className="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-2">
-              {view === "templates" ? (
-                <div className="space-y-3">
-                  <div className="text-[11px] text-gray-500 px-1 flex items-center gap-1.5">
-                    <Library className="w-3 h-3 text-violet-400" />
-                    从预置模板快速创建项目 ({WORKFLOW_TEMPLATES.length} 个,
-                    <span className="text-amber-400 ml-1">⭐ = 开箱即用 demo,可一键替换当前画布</span>)
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-                    {WORKFLOW_TEMPLATES.map((tmpl) => (
-                      <div
-                        key={tmpl.id}
-                        className={`group relative text-left p-3.5 rounded-xl border transition-all ${
-                          tmpl.isDemo
-                            ? "border-amber-500/30 bg-amber-500/[0.03] hover:border-amber-500/50 hover:bg-amber-500/[0.06]"
-                            : "border-[#252c3a] bg-[#0d1117] hover:border-violet-500/40 hover:bg-violet-500/[0.04]"
-                        }`}
-                      >
-                        {tmpl.isDemo && (
-                          <div className="absolute -top-2 -right-2 px-1.5 py-0.5 rounded-md bg-amber-500 text-amber-950 text-[9px] font-black uppercase tracking-wider shadow-lg shadow-amber-500/20">
-                            ⭐ Demo
-                          </div>
-                        )}
-                        <button
-                          onClick={() => handlePickTemplate(tmpl)}
-                          className="w-full text-left"
-                        >
-                          <div className="flex items-start gap-2.5">
-                            <div className={`w-9 h-9 rounded-lg flex items-center justify-center text-[20px] shrink-0 group-hover:scale-105 transition-transform ${
-                              tmpl.isDemo ? "bg-amber-500/15 border border-amber-500/30" : "bg-violet-500/15 border border-violet-500/30"
-                            }`}>
-                              {tmpl.emoji}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="text-[13px] font-bold text-gray-100">{tmpl.name}</div>
-                              <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-2">{tmpl.description}</div>
-                              <div className="flex items-center gap-2 mt-2 text-[9px] font-mono text-gray-600">
-                                <span className={`px-1.5 py-0.5 rounded ${tmpl.isDemo ? "bg-amber-500/10 text-amber-300" : "bg-violet-500/10 text-violet-300"}`}>
-                                  {tmpl.category}
-                                </span>
-                                <span>{tmpl.nodes.length} 节点</span>
-                                <span>·</span>
-                                <span>{tmpl.links.length} 连线</span>
-                                {tmpl.defaultOutputs && (
-                                  <>
-                                    <span>·</span>
-                                    <span className="text-emerald-400">已预填示例</span>
-                                  </>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        </button>
-                        {tmpl.isDemo && (
-                          <Tooltip content="清空当前画布,载入此 demo(可通过 Ctrl+Z 撤销)">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleResetToDemo(tmpl);
-                              }}
-                              className="mt-2 w-full px-2 py-1 rounded text-[10px] font-bold text-amber-300 hover:text-amber-100 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 transition-colors flex items-center justify-center gap-1"
-                            >
-                              <RotateCcw className="w-3 h-3" />
-                              重置当前画布为 demo
-                            </button>
-                          </Tooltip>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : sourceList.length === 0 ? (
+              {sourceList.length === 0 ? (
                 activeTab === "trash" ? (
                   <div className="py-12 flex flex-col items-center justify-center text-gray-600 gap-2">
                     <Archive className="w-10 h-10 opacity-30" />
