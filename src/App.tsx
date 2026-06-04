@@ -214,6 +214,18 @@ export default function App() {
     setCurrentView("canvas");
     setActiveQuickTool(null);
 
+    if (
+      workflowList.length === 1 &&
+      nodes.length === 0 &&
+      links.length === 0 &&
+      currentWorkflowSummary?.id &&
+      currentWorkflowSummary.name === "默认项目"
+    ) {
+      renameWorkflow(currentWorkflowSummary.id, "项目 1");
+      showNotice('已进入空白项目 "项目 1"');
+      return;
+    }
+
     const project = createWorkflow();
     if (project) {
       switchWorkflow(project.id);
@@ -221,11 +233,17 @@ export default function App() {
     }
   }, [
     createWorkflow,
+    currentWorkflowSummary?.id,
+    currentWorkflowSummary?.name,
+    links.length,
+    nodes.length,
+    renameWorkflow,
     setActiveQuickTool,
     setCurrentView,
     setIsWelcomeDismissed,
     showNotice,
     switchWorkflow,
+    workflowList.length,
   ]);
 
   const {

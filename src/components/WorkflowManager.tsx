@@ -179,6 +179,7 @@ export default function WorkflowManager({
   };
 
   const sourceList = activeTab === "active" ? list : trash;
+  const currentProject = list.find((wf) => wf.id === currentId) ?? null;
   const filteredList = React.useMemo(() => {
     let arr = sourceList;
     if (categoryFilter) {
@@ -397,7 +398,7 @@ export default function WorkflowManager({
             animate={{ scale: 1, y: 0, opacity: 1 }}
             exit={{ scale: 0.95, y: 20, opacity: 0 }}
             transition={{ type: "spring", damping: 25, stiffness: 300 }}
-            className="relative w-full max-w-[640px] max-h-[80vh] bg-[#121723] border border-[#2b3142] rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+            className="relative w-full max-w-[960px] max-h-[86vh] bg-[#121723] border border-[#2b3142] rounded-2xl shadow-2xl flex flex-col overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             <input
@@ -408,15 +409,15 @@ export default function WorkflowManager({
               className="hidden"
               aria-hidden="true"
             />
-            <div className="h-14 px-6 border-b border-[#252c3a] flex items-center justify-between shrink-0 bg-[#161b29]">
+            <div className="px-6 py-4 border-b border-[#252c3a] flex items-center justify-between shrink-0 bg-[#161b29]">
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500/20 to-cyan-500/20 border border-indigo-500/30 flex items-center justify-center">
-                  <FolderOpen className="w-4 h-4 text-indigo-300" />
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500/20 to-cyan-500/20 border border-indigo-500/30 flex items-center justify-center shadow-[0_0_24px_rgba(99,102,241,0.16)]">
+                  <FolderOpen className="w-5 h-5 text-indigo-300" />
                 </div>
                 <div>
-                  <div className="text-[15px] font-bold text-white">项目管理</div>
-                  <div className="text-[10px] text-gray-500 font-mono uppercase tracking-wider">
-                    {list.length} 个项目 · {trash.length} 回收站
+                  <div className="text-lg font-bold text-white tracking-tight">项目中心</div>
+                  <div className="text-[11px] text-gray-500">
+                    每个项目都是一张独立自由画布,可创建、切换、归档和导入导出。
                   </div>
                 </div>
               </div>
@@ -503,8 +504,38 @@ export default function WorkflowManager({
             </div>
 
             {activeTab === "active" && (
-              <div className="px-6 py-4 border-b border-[#252c3a] bg-[#0d1117]/40">
-                <div className="flex items-center gap-2">
+              <div className="grid grid-cols-[minmax(0,1fr)_260px] gap-4 px-6 py-4 border-b border-[#252c3a] bg-[#0d1117]/40 max-lg:grid-cols-1">
+                <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/[0.05] p-4">
+                  <div className="text-[11px] font-mono uppercase tracking-wider text-indigo-300/80">当前项目</div>
+                  <div className="mt-1 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="truncate text-xl font-black text-white">{currentProject?.name ?? workflowName}</div>
+                      <div className="mt-1 text-[11px] text-gray-500">
+                        {currentProject ? `更新于 ${formatTime(currentProject.updatedAt)} · 创建于 ${new Date(currentProject.createdAt).toLocaleDateString()}` : "本地自动保存"}
+                      </div>
+                    </div>
+                    <div className="shrink-0 rounded-lg border border-indigo-500/30 bg-indigo-500/15 px-2.5 py-1 text-[11px] font-bold text-indigo-200">
+                      正在编辑
+                    </div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="rounded-xl border border-white/[0.08] bg-[#0a0d14]/70 p-3">
+                    <div className="text-[10px] text-gray-500">项目</div>
+                    <div className="mt-1 text-2xl font-black text-white">{list.length}</div>
+                  </div>
+                  <div className="rounded-xl border border-white/[0.08] bg-[#0a0d14]/70 p-3">
+                    <div className="text-[10px] text-gray-500">回收站</div>
+                    <div className="mt-1 text-2xl font-black text-rose-200">{trash.length}</div>
+                  </div>
+                  <button
+                    onClick={() => setView("templates")}
+                    className="col-span-2 rounded-xl border border-violet-500/25 bg-violet-500/[0.06] px-3 py-2 text-left text-[12px] font-bold text-violet-200 transition hover:bg-violet-500/[0.1]"
+                  >
+                    从模板创建项目
+                  </button>
+                </div>
+                <div className="col-span-2 flex items-center gap-2 max-lg:col-span-1">
                   <input
                     ref={inputRef}
                     value={newName}
@@ -518,10 +549,10 @@ export default function WorkflowManager({
                   />
                   <button
                     onClick={handleCreate}
-                    className="px-4 py-2 rounded-lg bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white text-sm font-bold flex items-center gap-1.5 shadow-lg shadow-indigo-500/20 active:scale-95 transition-all"
+                    className="px-5 py-2 rounded-lg bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white text-sm font-bold flex items-center gap-1.5 shadow-lg shadow-indigo-500/20 active:scale-95 transition-all"
                   >
                     <Plus className="w-4 h-4" />
-                    新建
+                    新建项目
                   </button>
                 </div>
               </div>

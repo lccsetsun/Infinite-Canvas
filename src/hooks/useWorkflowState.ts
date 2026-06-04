@@ -101,6 +101,23 @@ function makeWorkspace(initialName?: string): Workspace {
   };
 }
 
+function migrateProjectName(name: string): string {
+  if (name === "默认工作流") return "默认项目";
+  const generatedName = name.match(/^工作流\s+(\d+)$/);
+  if (generatedName) return `项目 ${generatedName[1]}`;
+  return name;
+}
+
+function migrateProjectWorkflow(wf: Workflow): Workflow {
+  return {
+    ...wf,
+    summary: {
+      ...wf.summary,
+      name: migrateProjectName(wf.summary.name),
+    },
+  };
+}
+
 function loadWorkspace(): Workspace {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -110,7 +127,7 @@ function loadWorkspace(): Workspace {
         if (parsed.version === WORKSPACE_VERSION && parsed.workflows[parsed.currentId]) {
           const migrated: Workspace = {
             ...parsed,
-            trash: Array.isArray(parsed.trash) ? parsed.trash : [],
+            trash: Array.isArray(parsed.trash) ? parsed.trash.map(migrateProjectWorkflow) : [],
             workflows: backfillSortIndex(parsed.workflows),
           };
           return migrated;
@@ -140,9 +157,10 @@ function backfillSortIndex(workflows: Record<string, Workflow>): Record<string, 
       const step = 1000;
       i += 1;
       out[wf.summary.id] = {
-        ...wf,
+        ...migrateProjectWorkflow(wf),
         summary: {
           ...wf.summary,
+          name: migrateProjectName(wf.summary.name),
           tags: wf.summary.tags ?? [],
           sortIndex: typeof wf.summary.sortIndex === "number" ? wf.summary.sortIndex : i * step,
         },
