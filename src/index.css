@@ -156,14 +156,15 @@ body {
     cursor: crosshair;
     color: rgba(226, 232, 240, 0.92);
     background:
-      radial-gradient(circle at 50% 45%, rgba(255,255,255,0.14), transparent 34%),
-      radial-gradient(circle at 50% 50%, rgba(var(--port-rgb),0.22), rgba(8,12,18,0.94) 62%);
-    border-color: rgba(var(--port-rgb), 0.52);
+      radial-gradient(circle at 50% 38%, rgba(255,255,255,0.12), transparent 30%),
+      radial-gradient(circle at 50% 52%, rgba(var(--port-rgb),0.18), rgba(10,12,22,0.96) 60%),
+      linear-gradient(145deg, rgba(var(--port-rgb),0.2), rgba(15,18,28,0.18));
+    border-color: rgba(var(--port-rgb), 0.36);
     box-shadow:
-      0 0 0 1px rgba(255,255,255,0.08) inset,
-      0 0 0 1px rgba(var(--port-rgb),0.18),
-      0 14px 34px -18px rgba(var(--port-rgb),0.78),
-      0 0 24px -10px rgba(var(--port-rgb),0.9);
+      0 0 0 1px rgba(255,255,255,0.06) inset,
+      0 0 0 1px rgba(var(--port-rgb),0.12),
+      0 12px 28px -18px rgba(var(--port-rgb),0.5),
+      0 0 18px -10px rgba(var(--port-rgb),0.58);
     backdrop-filter: blur(14px);
   }
 
@@ -177,8 +178,8 @@ body {
 
   .canvas-port-handle::before {
     inset: -7px;
-    border: 1px solid rgba(var(--port-rgb), 0.26);
-    background: radial-gradient(circle, rgba(var(--port-rgb),0.16), transparent 64%);
+    border: 1px solid rgba(var(--port-rgb), 0.2);
+    background: radial-gradient(circle, rgba(var(--port-rgb),0.12), transparent 64%);
     opacity: 0;
     transform: scale(0.72);
     transition: opacity 180ms ease, transform 180ms ease;
@@ -186,22 +187,26 @@ body {
 
   .canvas-port-handle::after {
     inset: 7px;
-    border: 1px solid rgba(255,255,255,0.12);
-    background: radial-gradient(circle, rgba(var(--port-rgb),0.34), rgba(255,255,255,0.05));
-    box-shadow: 0 0 14px rgba(var(--port-rgb),0.56);
+    border: 1px solid rgba(255,255,255,0.1);
+    background: radial-gradient(circle, rgba(var(--port-rgb),0.28), rgba(255,255,255,0.03));
+    box-shadow: 0 0 14px rgba(var(--port-rgb),0.42);
     z-index: -1;
+  }
+
+  .canvas-port-handle[data-port-role="output"]::after {
+    background: radial-gradient(circle, rgba(var(--port-rgb),0.34), rgba(255,255,255,0.02));
   }
 
   .canvas-port-handle:hover,
   .canvas-port-active,
   .canvas-port-hot {
     color: white;
-    border-color: rgba(var(--port-rgb), 0.9);
+    border-color: rgba(var(--port-rgb), 0.72);
     box-shadow:
-      0 0 0 1px rgba(255,255,255,0.14) inset,
-      0 0 0 1px rgba(var(--port-rgb),0.42),
-      0 18px 40px -18px rgba(var(--port-rgb),0.9),
-      0 0 34px -8px rgba(var(--port-rgb),1);
+      0 0 0 1px rgba(255,255,255,0.12) inset,
+      0 0 0 1px rgba(var(--port-rgb),0.28),
+      0 16px 36px -18px rgba(var(--port-rgb),0.78),
+      0 0 28px -8px rgba(var(--port-rgb),0.9);
   }
 
   .canvas-port-handle:hover::before,
@@ -215,7 +220,7 @@ body {
     width: 16px;
     height: 16px;
     stroke-width: 2.15;
-    filter: drop-shadow(0 0 8px rgba(var(--port-rgb),0.76));
+    filter: drop-shadow(0 0 8px rgba(var(--port-rgb),0.58));
     transition: transform 180ms ease, stroke-width 180ms ease;
   }
 
@@ -227,11 +232,46 @@ body {
   }
 
   .canvas-port-input {
-    --port-rgb: 45, 212, 191;
+    --port-rgb: 139, 92, 246;
   }
 
   .canvas-port-output {
     --port-rgb: 129, 140, 248;
+  }
+
+  .canvas-port-hot {
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,0.14) inset,
+      0 0 0 1px rgba(var(--port-rgb),0.34),
+      0 18px 40px -18px rgba(var(--port-rgb),0.9),
+      0 0 34px -8px rgba(var(--port-rgb),1);
+  }
+
+  .canvas-port-active {
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,0.16) inset,
+      0 0 0 1px rgba(var(--port-rgb),0.42),
+      0 20px 42px -18px rgba(var(--port-rgb),0.96),
+      0 0 38px -6px rgba(var(--port-rgb),1);
+  }
+
+  @keyframes port-ignite-ring {
+    0% {
+      opacity: 0;
+      transform: scale(0.82);
+    }
+    28% {
+      opacity: 0.92;
+    }
+    100% {
+      opacity: 0;
+      transform: scale(1.48);
+    }
+  }
+
+  .canvas-port-active::after,
+  .canvas-port-hot::after {
+    animation: port-ignite-ring 1.1s ease-out infinite;
   }
 
   .canvas-port-invalid {

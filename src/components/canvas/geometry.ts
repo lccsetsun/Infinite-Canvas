@@ -72,6 +72,12 @@ export function getInputAnchor(node: GraphNode, inputIndex: number) {
   
   // 对于 LibTV 风格的生成类节点，输入锚点固定在左侧中心
   if (["text_node", "image_node", "video_node", "audio_node"].includes(node.type)) {
+    if (node.type === "image_node" && typeof node.data?.imagePortCenterY === "number") {
+      return { x: node.x, y: node.y + node.data.imagePortCenterY };
+    }
+    if (node.type === "video_node" && typeof node.data?.videoPortCenterY === "number") {
+      return { x: node.x, y: node.y + node.data.videoPortCenterY };
+    }
     return { x: node.x, y: node.y + height / 2 };
   }
   
@@ -85,6 +91,12 @@ export function getOutputAnchor(node: GraphNode, outputIndex: number) {
   
   // 对于 LibTV 风格的生成类节点，输出锚点固定在右侧中心
   if (["text_node", "image_node", "video_node", "audio_node"].includes(node.type)) {
+    if (node.type === "image_node" && typeof node.data?.imagePortCenterY === "number") {
+      return { x: node.x + width, y: node.y + node.data.imagePortCenterY };
+    }
+    if (node.type === "video_node" && typeof node.data?.videoPortCenterY === "number") {
+      return { x: node.x + width, y: node.y + node.data.videoPortCenterY };
+    }
     return { x: node.x + width, y: node.y + height / 2 };
   }
   

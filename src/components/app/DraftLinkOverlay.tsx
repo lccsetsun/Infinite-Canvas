@@ -47,6 +47,17 @@ export default function DraftLinkOverlay({
             <feMergeNode in="SourceGraphic" />
           </feMerge>
         </filter>
+        <linearGradient id="draft-link-purple-tail" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="rgba(99,102,241,0)" />
+          <stop offset="30%" stopColor="rgba(129,140,248,0.16)" />
+          <stop offset="76%" stopColor="rgba(147,51,234,0.92)" />
+          <stop offset="100%" stopColor="rgba(244,114,182,0.1)" />
+        </linearGradient>
+        <linearGradient id="draft-link-purple-head" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="rgba(224,231,255,0.08)" />
+          <stop offset="48%" stopColor="rgba(255,255,255,0.98)" />
+          <stop offset="100%" stopColor="rgba(233,213,255,0.96)" />
+        </linearGradient>
       </defs>
       <g transform={`translate(${pan.x} ${pan.y}) scale(${zoom})`}>
         <path
@@ -61,27 +72,28 @@ export default function DraftLinkOverlay({
         <path
           d={path}
           fill="none"
-          stroke={draftIssue ? flowStroke : "rgba(151,210,255,0.56)"}
+          stroke={draftIssue ? flowStroke : "rgba(129,140,248,0.32)"}
           strokeLinecap="round"
-          strokeWidth={6.5}
+          strokeWidth={5.6}
           opacity={draftIssue ? CONNECTION_DRAFT_STYLE.core.opacity : 0.9}
         />
         <path
           d={path}
           fill="none"
-          stroke={draftIssue ? flowStroke : "rgba(236,248,255,0.88)"}
+          stroke={draftIssue ? flowStroke : "rgba(233,213,255,0.84)"}
           strokeLinecap="round"
-          strokeWidth={2.3}
+          strokeWidth={1.8}
           opacity="0.94"
         />
         <path
           d={path}
           className="link-energy-pulse"
+          pathLength={100}
           fill="none"
-          stroke={flowStroke}
-          strokeDasharray="54 260"
+          stroke={draftIssue ? flowStroke : "url(#draft-link-purple-tail)"}
+          strokeDasharray={draftIssue ? "54 260" : "34 66"}
           strokeLinecap="round"
-          strokeWidth={draftIssue ? CONNECTION_DRAFT_STYLE.flow.strokeWidth : 8}
+          strokeWidth={draftIssue ? CONNECTION_DRAFT_STYLE.flow.strokeWidth : 4.2}
           opacity="0.96"
           filter="url(#draft-link-overlay-glow)"
         />
@@ -89,11 +101,25 @@ export default function DraftLinkOverlay({
           <path
             d={path}
             className="link-energy-pulse link-energy-pulse-soft"
+            pathLength={100}
             fill="none"
-            stroke="rgba(178,225,255,0.96)"
-            strokeDasharray="28 286"
+            stroke="rgba(196,181,253,0.68)"
+            strokeDasharray="16 84"
             strokeLinecap="round"
-            strokeWidth={3.2}
+            strokeWidth={1.8}
+          />
+        )}
+        {!draftIssue && (
+          <path
+            d={path}
+            className="link-energy-pulse-head"
+            pathLength={100}
+            fill="none"
+            stroke="url(#draft-link-purple-head)"
+            strokeDasharray="3 97"
+            strokeLinecap="round"
+            strokeWidth={2.1}
+            filter="url(#draft-link-overlay-glow)"
           />
         )}
       </g>

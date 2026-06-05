@@ -60,6 +60,7 @@ export interface GraphNode {
     activeImageIndex?: number;
     imageNodeWidth?: number;
     imageNodeHeight?: number;
+    imagePortCenterY?: number;
     imageDisplayWidth?: number;
     imageDisplayHeight?: number;
     imageNaturalWidth?: number;
@@ -68,6 +69,7 @@ export interface GraphNode {
     videoDisplayHeight?: number;
     videoNodeWidth?: number;
     videoNodeHeight?: number;
+    videoPortCenterY?: number;
     videoNaturalWidth?: number;
     videoNaturalHeight?: number;
     videoFrameUrl?: string;

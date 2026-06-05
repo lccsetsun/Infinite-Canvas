@@ -186,24 +186,54 @@ export default function LinkInteractionOverlay({
                     />
                   </>
                 )}
-                {(hovered || selected) && (
+                {hovered && !selected && (
                   <path
                     d={link.path}
                     fill="none"
-                    stroke={hovered ? "rgba(34,211,238,0.82)" : "rgba(125,211,252,0.7)"}
+                    stroke="rgba(129,140,248,0.32)"
                     strokeLinecap="round"
-                    strokeWidth={hovered ? 9 : 7}
-                    opacity={hovered ? 0.5 : 0.36}
+                    strokeWidth={6.8}
+                    opacity={0.28}
                   />
                 )}
-                {(hovered || selected) && (
+                {hovered && !selected && (
                   <path
                     d={link.path}
                     fill="none"
-                    stroke={hovered ? "rgba(236,254,255,0.98)" : "rgba(165,243,252,0.92)"}
+                    stroke="rgba(233,213,255,0.88)"
                     strokeLinecap="round"
-                    strokeWidth={hovered ? 3.8 : 3}
-                    opacity={0.92}
+                    strokeWidth={2.2}
+                    opacity={0.82}
+                  />
+                )}
+                {selected && (
+                  <path
+                    d={link.path}
+                    fill="none"
+                    stroke="rgba(147,51,234,0.42)"
+                    strokeLinecap="round"
+                    strokeWidth={7.8}
+                    opacity={0.36}
+                  />
+                )}
+                {selected && (
+                  <path
+                    d={link.path}
+                    fill="none"
+                    stroke="rgba(216,180,254,0.96)"
+                    strokeLinecap="round"
+                    strokeWidth={2.8}
+                    opacity={0.94}
+                  />
+                )}
+                {selected && (
+                  <path
+                    d={link.path}
+                    fill="none"
+                    stroke="rgba(255,255,255,0.9)"
+                    strokeLinecap="round"
+                    strokeWidth={1.2}
+                    opacity={0.86}
                   />
                 )}
                 <path
@@ -234,7 +264,7 @@ export default function LinkInteractionOverlay({
           data-node-action="true"
           aria-label="删除连线"
           title="删除连线"
-          className="absolute flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-rose-300/30 bg-[#121923]/95 text-rose-100 shadow-[0_10px_28px_rgba(0,0,0,0.42),0_0_18px_rgba(248,113,113,0.22)] transition hover:border-rose-200/60 hover:bg-rose-500/20 hover:text-white"
+          className="absolute flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-violet-200/18 bg-[#121923]/96 text-violet-100 shadow-[0_10px_28px_rgba(0,0,0,0.42),0_0_18px_rgba(129,140,248,0.18)] transition hover:border-fuchsia-200/38 hover:bg-[linear-gradient(135deg,rgba(99,102,241,0.22),rgba(168,85,247,0.22))] hover:text-white"
           style={{ left: buttonLeft, pointerEvents: "auto", top: buttonTop }}
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => {

@@ -58,7 +58,6 @@ export function useCanvasLinking({
 }: UseCanvasLinkingOptions) {
   const [isLinkingOnCanvas, setIsLinkingOnCanvas] = React.useState(false);
   const [draftCursor, setDraftCursor] = React.useState<WorldPoint | null>(null);
-  const autoCompletingRef = React.useRef(false);
 
   const resetCanvasLinkDraft = React.useCallback(() => {
     clearLinkDraft();
@@ -75,7 +74,6 @@ export function useCanvasLinking({
       setLinkToInputIndex(0);
       setDraftCursor(toWorld(clientX, clientY));
       setIsLinkingOnCanvas(true);
-      autoCompletingRef.current = false;
     },
     [setSelectedNodeId, setLinkFromNodeId, setLinkFromOutputIndex, setLinkToNodeId, setLinkToInputIndex, toWorld]
   );
@@ -190,10 +188,6 @@ export function useCanvasLinking({
       window.requestAnimationFrame(() => {
         setDraftCursor(toWorld(e.clientX, e.clientY));
       });
-      
-      // Hit testing for ports using elementFromPoint since implicit capture might block onPointerEnter
-      // We use a small timeout or just direct call, but ensure it's robust
-      if (autoCompletingRef.current) return;
 
       const target = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement;
       const inputTarget = getInputDropTarget(target);
@@ -211,8 +205,6 @@ export function useCanvasLinking({
         if (autoTarget) {
           setLinkToNodeId(autoTarget.nodeId);
           setLinkToInputIndex(autoTarget.inputIndex);
-          autoCompletingRef.current = true;
-          finishCanvasLinkRef.current(autoTarget.nodeId, autoTarget.inputIndex);
         } else if (linkToNodeId) {
           setLinkToNodeId("");
           setLinkToInputIndex(0);
@@ -224,8 +216,6 @@ export function useCanvasLinking({
     };
     
     const onUp = (e: PointerEvent) => {
-      if (autoCompletingRef.current) return;
-
       // Final hit test on release
       const target = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement;
       const inputTarget = getInputDropTarget(target);

@@ -121,6 +121,7 @@ function VideoNodeCardImpl({
   const [frameMenuOpen, setFrameMenuOpen] = React.useState(false);
   const [isAnalyzingFrames, setIsAnalyzingFrames] = React.useState(false);
   const previewNodeRef = React.useRef<HTMLDivElement | null>(null);
+  const mediaFrameRef = React.useRef<HTMLDivElement | null>(null);
   const [naturalVideoSize, setNaturalVideoSize] = React.useState<{ width: number; height: number } | null>(() => {
     const width = node.data?.videoNaturalWidth;
     const height = node.data?.videoNaturalHeight;
@@ -159,14 +160,16 @@ function VideoNodeCardImpl({
     const syncNodeBounds = () => {
       const nextWidth = Math.round(previewNodeRef.current?.offsetWidth ?? 0);
       const nextHeight = Math.round(previewNodeRef.current?.offsetHeight ?? 0);
+      const nextPortCenterY = Math.round((mediaFrameRef.current?.offsetTop ?? 0) + (mediaFrameRef.current?.offsetHeight ?? 0) / 2);
       if (
         nextWidth > 0 &&
         nextHeight > 0 &&
-        (node.data?.videoNodeWidth !== nextWidth || node.data?.videoNodeHeight !== nextHeight)
+        (node.data?.videoNodeWidth !== nextWidth || node.data?.videoNodeHeight !== nextHeight || node.data?.videoPortCenterY !== nextPortCenterY)
       ) {
         onUpdateData?.(node.id, {
           videoNodeWidth: nextWidth,
           videoNodeHeight: nextHeight,
+          videoPortCenterY: nextPortCenterY,
         });
       }
     };
@@ -368,7 +371,8 @@ function VideoNodeCardImpl({
             initial={{ opacity: 0, x: 10 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 10 }}
-            className="absolute -left-11 top-1/2 z-10 -translate-y-1/2"
+            className="absolute -left-11 z-10 -translate-y-1/2"
+            style={{ top: node.data?.videoPortCenterY ?? "50%" }}
           >
             <div
               role="button"
@@ -400,7 +404,8 @@ function VideoNodeCardImpl({
             initial={{ opacity: 0, x: -10 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -10 }}
-            className="absolute -right-11 top-1/2 z-10 -translate-y-1/2"
+            className="absolute -right-11 z-10 -translate-y-1/2"
+            style={{ top: node.data?.videoPortCenterY ?? "50%" }}
           >
             <div
               role="button"
@@ -524,7 +529,7 @@ function VideoNodeCardImpl({
             </div>
             <span className="shrink-0 text-[12px] font-medium tabular-nums text-slate-400/72">{naturalSizeLabel}</span>
           </div>
-          <div className={`relative overflow-hidden rounded-[8px] bg-black ${selected ? "ring-2 ring-sky-400" : ""}`} style={{ width: resultVideoSize.width, height: resultVideoSize.height }}>
+          <div ref={mediaFrameRef} className={`relative overflow-hidden rounded-[8px] bg-black ${selected ? "ring-2 ring-sky-400" : ""}`} style={{ width: resultVideoSize.width, height: resultVideoSize.height }}>
             <video
               ref={videoRef}
               src={videoUrl}

@@ -105,6 +105,7 @@ function ImageNodeCardImpl({
     return typeof width === "number" && typeof height === "number" ? { width, height } : null;
   });
   const previewNodeRef = React.useRef<HTMLDivElement | null>(null);
+  const mediaFrameRef = React.useRef<HTMLDivElement | null>(null);
 
   const upstreamPrompt = findResolvedStringInput(resolvedInputs, ["prompt", "text", "原始提示词", "用户提示词"]);
   const promptText = upstreamPrompt?.value || (node.properties.text as string) || "";
@@ -142,14 +143,16 @@ function ImageNodeCardImpl({
     const syncNodeBounds = () => {
       const nextWidth = Math.round(previewNodeRef.current?.offsetWidth ?? 0);
       const nextHeight = Math.round(previewNodeRef.current?.offsetHeight ?? 0);
+      const nextPortCenterY = Math.round((mediaFrameRef.current?.offsetTop ?? 0) + (mediaFrameRef.current?.offsetHeight ?? 0) / 2);
       if (
         nextWidth > 0 &&
         nextHeight > 0 &&
-        (node.data?.imageNodeWidth !== nextWidth || node.data?.imageNodeHeight !== nextHeight)
+        (node.data?.imageNodeWidth !== nextWidth || node.data?.imageNodeHeight !== nextHeight || node.data?.imagePortCenterY !== nextPortCenterY)
       ) {
         onUpdateData?.(node.id, {
           imageNodeWidth: nextWidth,
           imageNodeHeight: nextHeight,
+          imagePortCenterY: nextPortCenterY,
         });
       }
     };
@@ -237,7 +240,8 @@ function ImageNodeCardImpl({
             initial={{ opacity: 0, x: 10 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 10 }}
-            className="absolute -left-11 top-1/2 z-10 -translate-y-1/2"
+            className="absolute -left-11 z-10 -translate-y-1/2"
+            style={{ top: node.data?.imagePortCenterY ?? "50%" }}
           >
             <div
               role="button"
@@ -269,7 +273,8 @@ function ImageNodeCardImpl({
             initial={{ opacity: 0, x: -10 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -10 }}
-            className="absolute -right-11 top-1/2 z-10 -translate-y-1/2"
+            className="absolute -right-11 z-10 -translate-y-1/2"
+            style={{ top: node.data?.imagePortCenterY ?? "50%" }}
           >
             <div
               role="button"
@@ -357,19 +362,19 @@ function ImageNodeCardImpl({
                 <Tooltip content="全屏预览" position="top">
                   <button
                     type="button"
-                    onClick={() => onPreview?.(imageUrl, "图片节点预览", node.id, resolvedImageUrls, activeImageIndex)}
-                    className="flex h-9 w-9 items-center justify-center rounded-[12px] text-slate-400 transition-colors hover:bg-white/[0.06] hover:text-slate-100"
-                  >
-                    <Eye className="h-5 w-5" />
-                  </button>
-                </Tooltip>
-                <Tooltip content="宫格切分" position="top">
-                  <button
-                    type="button"
                     onClick={() => onPreview?.(imageUrl, "图片节点预览 · 宫格切分", node.id, resolvedImageUrls, activeImageIndex)}
                     className="flex h-9 w-9 items-center justify-center rounded-[12px] text-slate-300 transition-colors hover:bg-cyan-300/[0.08] hover:text-cyan-100"
                   >
                     <Grid3X3 className="h-[18px] w-[18px]" />
+                  </button>
+                </Tooltip>
+                <Tooltip content="全屏预览" position="top">
+                  <button
+                    type="button"
+                    onClick={() => onPreview?.(imageUrl, "图片节点预览", node.id, resolvedImageUrls, activeImageIndex)}
+                    className="flex h-9 w-9 items-center justify-center rounded-[12px] text-slate-400 transition-colors hover:bg-white/[0.06] hover:text-slate-100"
+                  >
+                    <Eye className="h-5 w-5" />
                   </button>
                 </Tooltip>
               </motion.div>
@@ -400,6 +405,7 @@ function ImageNodeCardImpl({
           </div>
           <div className="flex w-full flex-col items-center">
             <div
+              ref={mediaFrameRef}
               className={`mx-auto overflow-hidden rounded-[8px] bg-white ${selected ? "ring-2 ring-sky-400" : ""}`}
               style={{ width: resultImageSize.width, height: resultImageSize.height }}
             >

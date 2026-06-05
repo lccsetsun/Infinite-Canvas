@@ -33,13 +33,13 @@ export const CONNECTION_DRAFT_STYLE = {
   flow: {
     dashPattern: [34, 48],
     duration: 0.72,
-    invalidStroke: "#facc15",
+    invalidStroke: "#fbbf24",
     shadow: "0 0 24px rgba(103, 232, 249, 0.94), 0 0 50px rgba(99, 102, 241, 0.58)",
     stroke: "#67e8f9",
     strokeWidth: 4,
   },
   glow: {
-    invalidStroke: "rgba(251, 191, 36, 0.48)",
+    invalidStroke: "rgba(251, 191, 36, 0.22)",
     stroke: "rgba(34, 211, 238, 0.48)",
     strokeWidth: 10,
   },
