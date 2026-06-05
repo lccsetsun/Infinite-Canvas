@@ -1,12 +1,13 @@
 import React from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowUp, ChevronLeft, ChevronRight, ChevronUp, Download, Eye, Grid3X3, Image as ImageIcon, Loader2, Plus, Wand2 } from "lucide-react";
+import { ArrowUp, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, Eye, Grid3X3, Image as ImageIcon, Loader2, Plus, Undo2, Wand2 } from "lucide-react";
 import { GraphNode } from "../../types";
 import { findResolvedStringInput } from "../../utils/resolvedInputs";
 import { shouldShowInlinePortHandles } from "../../utils/portHandleVisibility";
 import { getNodeWidth, IMAGE_NODE_WIDTH } from "./geometry";
 import { Tooltip } from "../common/Tooltip";
 import { downloadMediaAsset, extensionFromAssetUrl } from "../../utils/mediaAssets";
+import { formatGridCellLabel } from "../../utils/imageGridSplit";
 
 interface ImageNodeCardProps {
   node: GraphNode;
@@ -18,6 +19,7 @@ interface ImageNodeCardProps {
   onUpdateProperty?: (nodeId: string, key: string, value: unknown) => void;
   onUpdateData?: (nodeId: string, data: Partial<GraphNode["data"]>) => void;
   onSetPrimaryImageResult?: (nodeId: string, imageUrl: string, imageIndex: number) => void;
+  onSplitImageGrid?: (nodeId: string, imageUrl: string, gridRows: number, gridCols: number, cellIndices: number[]) => void;
   onPreview?: (content: string, title?: string, nodeId?: string, items?: string[], currentIndex?: number) => void;
   resolvedInputs?: Record<string, unknown>;
   onRun?: (nodeId: string) => void;
@@ -33,11 +35,19 @@ interface ImageNodeCardProps {
   getCanvasLinkTargetIssue?: (nodeId: string, inputIndex: number) => string | null;
 }
 
-const RESULT_IMAGE_MAX_HEIGHT = 390;
+const RESULT_IMAGE_MAX_HEIGHT = 585;
 const RATIO_OPTIONS = ["16:9", "9:16", "4:3", "3:4", "1:1", "21:9"];
 const QUANTITY_OPTIONS = ["1张", "2张", "3张", "4张"];
 const MINIMAX_IMAGE_MODEL = "MiniMax Image 01";
 const VISIBLE_THUMBNAIL_COUNT = 3;
+const GRID_SPLIT_PRESETS = [
+  { label: "4宫格 (2×2)", rows: 2, cols: 2 },
+  { label: "9宫格 (3×3)", rows: 3, cols: 3 },
+  { label: "16宫格 (4×4)", rows: 4, cols: 4 },
+  { label: "25宫格 (5×5)", rows: 5, cols: 5 },
+] as const;
+const CUSTOM_GRID_MAX_ROWS = 5;
+const CUSTOM_GRID_MAX_COLS = 5;
 const MINIMAX_RATIO_SIZE: Record<string, string> = {
   "16:9": "1280×720",
   "9:16": "720×1280",
@@ -55,7 +65,7 @@ function parseAspectRatio(ratio: string): number {
 
 function fitImageSize(naturalSize: { width: number; height: number } | null, aspectRatio: string, maxWidth: number, maxHeight: number) {
   if (naturalSize && naturalSize.width > 0 && naturalSize.height > 0) {
-    const scale = Math.min(maxWidth / naturalSize.width, maxHeight / naturalSize.height, 1);
+    const scale = Math.min(maxWidth / naturalSize.width, maxHeight / naturalSize.height);
     return {
       width: Math.round(naturalSize.width * scale),
       height: Math.round(naturalSize.height * scale),
@@ -77,6 +87,7 @@ function ImageNodeCardImpl({
   onUpdateProperty,
   onUpdateData,
   onSetPrimaryImageResult,
+  onSplitImageGrid,
   onPreview,
   resolvedInputs,
   onRun,
@@ -94,7 +105,14 @@ function ImageNodeCardImpl({
   const isRunning = node.data?.loading === true;
   const [isHovered, setIsHovered] = React.useState(false);
   const [openSelect, setOpenSelect] = React.useState<"ratio" | "quantity" | null>(null);
+  const [gridMenuOpen, setGridMenuOpen] = React.useState(false);
+  const [customGridOpen, setCustomGridOpen] = React.useState(false);
+  const [hoverCustomGrid, setHoverCustomGrid] = React.useState<{ rows: number; cols: number } | null>(null);
+  const [activeGridSelection, setActiveGridSelection] = React.useState<{ rows: number; cols: number } | null>(null);
+  const [selectedGridCells, setSelectedGridCells] = React.useState<number[]>([]);
+  const [hoveredGridCell, setHoveredGridCell] = React.useState<number | null>(null);
   const controlsRef = React.useRef<HTMLDivElement | null>(null);
+  const gridMenuRef = React.useRef<HTMLDivElement | null>(null);
   const [activeImageIndex, setActiveImageIndex] = React.useState(() => {
     const index = node.data?.activeImageIndex;
     return typeof index === "number" && index >= 0 ? index : 0;
@@ -191,7 +209,60 @@ function ImageNodeCardImpl({
   }, [openSelect]);
 
   React.useEffect(() => {
-    if (!selected) setOpenSelect(null);
+    if (!gridMenuOpen && !customGridOpen) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (gridMenuRef.current && !gridMenuRef.current.contains(event.target as Node)) {
+        setGridMenuOpen(false);
+        setCustomGridOpen(false);
+        setHoverCustomGrid(null);
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [customGridOpen, gridMenuOpen]);
+
+  React.useEffect(() => {
+    if (!activeGridSelection || !previewNodeRef.current) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (previewNodeRef.current && !previewNodeRef.current.contains(event.target as Node)) {
+        setActiveGridSelection(null);
+        setSelectedGridCells([]);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setActiveGridSelection(null);
+        setSelectedGridCells([]);
+      }
+      if (event.key === "Enter" && selectedGridCells.length > 0) {
+        event.preventDefault();
+        onSplitImageGrid?.(node.id, imageUrl, activeGridSelection.rows, activeGridSelection.cols, selectedGridCells);
+        setSelectedGridCells([]);
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [activeGridSelection, imageUrl, node.id, onSplitImageGrid, selectedGridCells]);
+
+  React.useEffect(() => {
+    if (!selected) {
+      setOpenSelect(null);
+      setGridMenuOpen(false);
+      setCustomGridOpen(false);
+      setHoverCustomGrid(null);
+      setActiveGridSelection(null);
+      setSelectedGridCells([]);
+      setHoveredGridCell(null);
+    }
   }, [selected]);
 
   const handleRun = () => {
@@ -231,6 +302,60 @@ function ImageNodeCardImpl({
       return { url: resolvedImageUrls[index], index };
     });
   }, [activeImageIndex, resolvedImageUrls]);
+
+  const activeGridCellCount = activeGridSelection ? activeGridSelection.rows * activeGridSelection.cols : 0;
+
+  const handleActivatePresetGrid = (rows: number, cols: number) => {
+    setActiveGridSelection({ rows, cols });
+    setSelectedGridCells([]);
+    setGridMenuOpen(false);
+    setCustomGridOpen(false);
+    setHoverCustomGrid(null);
+  };
+
+  const handleApplyCustomGrid = (rows: number, cols: number) => {
+    setActiveGridSelection({ rows, cols });
+    setSelectedGridCells([]);
+    setGridMenuOpen(false);
+    setCustomGridOpen(false);
+    setHoverCustomGrid(null);
+  };
+
+  const handleExitGridSplitMode = () => {
+    setActiveGridSelection(null);
+    setSelectedGridCells([]);
+    setHoveredGridCell(null);
+  };
+
+  const handleSplitCell = (cellIndex: number) => {
+    if (!activeGridSelection || !imageUrl || !onSplitImageGrid) return;
+    onSplitImageGrid(node.id, imageUrl, activeGridSelection.rows, activeGridSelection.cols, [cellIndex]);
+    setSelectedGridCells([]);
+  };
+
+  const handleGridCellClick = (cellIndex: number, additive: boolean) => {
+    if (!activeGridSelection) return;
+    if (additive) {
+      setSelectedGridCells((current) =>
+        current.includes(cellIndex) ? current.filter((value) => value !== cellIndex) : [...current, cellIndex].sort((a, b) => a - b)
+      );
+      return;
+    }
+
+    if (selectedGridCells.length > 0 && selectedGridCells.includes(cellIndex)) {
+      handleSplitCell(cellIndex);
+      return;
+    }
+
+    setSelectedGridCells([cellIndex]);
+  };
+
+  const getGridBadgeLabel = (cellIndex: number) => {
+    if (!activeGridSelection) return String(cellIndex + 1);
+    const row = Math.floor(cellIndex / activeGridSelection.cols) + 1;
+    const col = (cellIndex % activeGridSelection.cols) + 1;
+    return `${row}-${col}`;
+  };
 
   const portHandles = (
     <AnimatePresence>
@@ -349,34 +474,160 @@ function ImageNodeCardImpl({
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => e.stopPropagation()}
               >
-                <Tooltip content="下载图片" position="top">
-                  <button
-                    type="button"
-                    onClick={downloadImage}
-                    className="flex h-9 w-9 items-center justify-center rounded-[12px] text-slate-400 transition-colors hover:bg-white/[0.06] hover:text-slate-100"
-                  >
-                    <Download className="h-5 w-5" />
-                  </button>
-                </Tooltip>
-                <div className="mx-1 h-7 w-px bg-slate-500/22" />
-                <Tooltip content="全屏预览" position="top">
-                  <button
-                    type="button"
-                    onClick={() => onPreview?.(imageUrl, "图片节点预览 · 宫格切分", node.id, resolvedImageUrls, activeImageIndex)}
-                    className="flex h-9 w-9 items-center justify-center rounded-[12px] text-slate-300 transition-colors hover:bg-cyan-300/[0.08] hover:text-cyan-100"
-                  >
-                    <Grid3X3 className="h-[18px] w-[18px]" />
-                  </button>
-                </Tooltip>
-                <Tooltip content="全屏预览" position="top">
-                  <button
-                    type="button"
-                    onClick={() => onPreview?.(imageUrl, "图片节点预览", node.id, resolvedImageUrls, activeImageIndex)}
-                    className="flex h-9 w-9 items-center justify-center rounded-[12px] text-slate-400 transition-colors hover:bg-white/[0.06] hover:text-slate-100"
-                  >
-                    <Eye className="h-5 w-5" />
-                  </button>
-                </Tooltip>
+                {activeGridSelection ? (
+                  <>
+                    <Tooltip content="退出宫格切分" position="top">
+                      <button
+                        type="button"
+                        onClick={handleExitGridSplitMode}
+                        className="flex h-9 w-9 items-center justify-center rounded-[12px] text-slate-300 transition-colors hover:bg-white/[0.06] hover:text-white"
+                      >
+                        <Undo2 className="h-5 w-5" />
+                      </button>
+                    </Tooltip>
+                    <div className="mx-1 h-7 w-px bg-slate-500/22" />
+                    <div className="flex h-9 items-center gap-2 rounded-[12px] px-1 text-[13px] font-medium text-slate-200/88">
+                      <Grid3X3 className="h-[18px] w-[18px] text-violet-300/88" />
+                      <span>
+                        {selectedGridCells.length > 0
+                          ? `已选 ${selectedGridCells.length} 个宫格`
+                          : "请选择宫格"}
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <Tooltip content="下载图片" position="top">
+                      <button
+                        type="button"
+                        onClick={downloadImage}
+                        className="flex h-9 w-9 items-center justify-center rounded-[12px] text-slate-400 transition-colors hover:bg-white/[0.06] hover:text-slate-100"
+                      >
+                        <Download className="h-5 w-5" />
+                      </button>
+                    </Tooltip>
+                    <div className="relative" ref={gridMenuRef}>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setGridMenuOpen((value) => !value);
+                          setCustomGridOpen(false);
+                          setHoverCustomGrid(null);
+                        }}
+                        className={`flex h-9 min-w-[114px] items-center justify-center gap-2 whitespace-nowrap rounded-[12px] border px-3 text-[13px] font-semibold transition-colors ${
+                          gridMenuOpen || activeGridSelection
+                            ? "border-violet-400/28 bg-violet-500/[0.12] text-violet-50"
+                            : "border-slate-500/18 bg-transparent text-slate-300 hover:bg-white/[0.06] hover:text-slate-100"
+                        }`}
+                      >
+                        <Grid3X3 className="h-[18px] w-[18px]" />
+                        <span className="whitespace-nowrap">宫格切分</span>
+                        <ChevronDown className={`h-4 w-4 transition-transform ${gridMenuOpen ? "rotate-180" : ""}`} />
+                      </button>
+                      <AnimatePresence>
+                        {gridMenuOpen && (
+                          <motion.div
+                            initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                            transition={{ duration: 0.16, ease: "easeOut" }}
+                            className="absolute left-0 top-[calc(100%+12px)] z-50 flex items-start gap-3"
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <div className="w-[220px] rounded-[20px] border border-slate-400/16 bg-[#121923]/96 p-3 text-white shadow-[0_28px_70px_-28px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl">
+                              <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-slate-100/18 to-transparent" />
+                              {GRID_SPLIT_PRESETS.map((option) => {
+                                const isActive = activeGridSelection?.rows === option.rows && activeGridSelection?.cols === option.cols;
+                                return (
+                                  <button
+                                    key={`${option.rows}x${option.cols}`}
+                                    type="button"
+                                    onClick={() => handleActivatePresetGrid(option.rows, option.cols)}
+                                    className={`mb-1 flex h-12 w-full items-center rounded-[14px] px-4 text-left text-[14px] font-semibold transition-colors ${
+                                      isActive
+                                        ? "bg-violet-500/[0.16] text-violet-50 shadow-[inset_0_0_0_1px_rgba(139,92,246,0.26)]"
+                                        : "text-slate-100/92 hover:bg-white/[0.055] hover:text-white"
+                                    }`}
+                                  >
+                                    {option.label}
+                                  </button>
+                                );
+                              })}
+                              <div className="my-2 h-px bg-slate-400/12" />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setCustomGridOpen((value) => !value);
+                                  setHoverCustomGrid(activeGridSelection ?? { rows: 2, cols: 2 });
+                                }}
+                                className={`flex h-12 w-full items-center justify-between rounded-[14px] border px-4 text-left text-[14px] font-semibold transition-colors ${
+                                  customGridOpen
+                                    ? "border-violet-400/28 bg-violet-500/[0.12] text-violet-50"
+                                    : "border-slate-400/16 text-slate-100/92 hover:bg-white/[0.055] hover:text-white"
+                                }`}
+                              >
+                                <span>自定义</span>
+                                <ChevronRight className="h-4 w-4" />
+                              </button>
+                            </div>
+                            <AnimatePresence>
+                              {customGridOpen && (
+                                <motion.div
+                                  initial={{ opacity: 0, x: -6, scale: 0.98 }}
+                                  animate={{ opacity: 1, x: 0, scale: 1 }}
+                                  exit={{ opacity: 0, x: -6, scale: 0.98 }}
+                                  transition={{ duration: 0.16, ease: "easeOut" }}
+                                  className="w-[308px] rounded-[20px] border border-slate-400/16 bg-[#121923]/96 p-5 text-white shadow-[0_28px_70px_-28px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl"
+                                >
+                                  <div className="mb-4 flex items-center justify-between">
+                                    <div className="text-[14px] font-semibold text-slate-100/62">自定义宫格</div>
+                                    <div className="text-[14px] font-semibold text-slate-100/88 tabular-nums">
+                                      {(hoverCustomGrid ?? activeGridSelection ?? { rows: 2, cols: 2 }).rows} x {(hoverCustomGrid ?? activeGridSelection ?? { rows: 2, cols: 2 }).cols}
+                                    </div>
+                                  </div>
+                                  <div className="grid grid-cols-5 gap-2">
+                                    {Array.from({ length: CUSTOM_GRID_MAX_ROWS * CUSTOM_GRID_MAX_COLS }, (_, index) => {
+                                      const row = Math.floor(index / CUSTOM_GRID_MAX_COLS) + 1;
+                                      const col = (index % CUSTOM_GRID_MAX_COLS) + 1;
+                                      const previewGrid = hoverCustomGrid ?? activeGridSelection ?? { rows: 2, cols: 2 };
+                                      const isIncluded = row <= previewGrid.rows && col <= previewGrid.cols;
+                                      return (
+                                        <button
+                                          key={`custom-grid-${row}-${col}`}
+                                          type="button"
+                                          onMouseEnter={() => setHoverCustomGrid({ rows: row, cols: col })}
+                                          onFocus={() => setHoverCustomGrid({ rows: row, cols: col })}
+                                          onClick={() => handleApplyCustomGrid(row, col)}
+                                          className={`aspect-square rounded-[8px] border transition-colors ${
+                                            isIncluded
+                                              ? "border-violet-400/34 bg-violet-500/[0.24] shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_0_0_1px_rgba(109,40,217,0.14)]"
+                                              : "border-slate-400/10 bg-slate-200/[0.08] hover:border-slate-300/18 hover:bg-slate-200/[0.12]"
+                                          }`}
+                                          title={`${row} x ${col}`}
+                                        />
+                                      );
+                                    })}
+                                  </div>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                    <Tooltip content="全屏预览" position="top">
+                      <button
+                        type="button"
+                        onClick={() => onPreview?.(imageUrl, "图片节点预览", node.id, resolvedImageUrls, activeImageIndex)}
+                        className="flex h-9 w-9 items-center justify-center rounded-[12px] text-slate-400 transition-colors hover:bg-white/[0.06] hover:text-slate-100"
+                      >
+                        <Eye className="h-5 w-5" />
+                      </button>
+                    </Tooltip>
+                  </>
+                )}
               </motion.div>
             )}
           </AnimatePresence>
@@ -406,37 +657,78 @@ function ImageNodeCardImpl({
           <div className="flex w-full flex-col items-center">
             <div
               ref={mediaFrameRef}
-              className={`mx-auto overflow-hidden rounded-[8px] bg-white ${selected ? "ring-2 ring-sky-400" : ""}`}
+              className={`mx-auto overflow-hidden rounded-[8px] bg-white ${selected ? "shadow-[0_0_0_1.5px_rgba(192,132,252,0.58),0_0_0_6px_rgba(139,92,246,0.14),0_0_38px_rgba(109,40,217,0.18)]" : ""}`}
               style={{ width: resultImageSize.width, height: resultImageSize.height }}
             >
-              <img
-                src={imageUrl}
-                alt="生成图片"
-                className="block h-full w-full object-contain"
-                draggable={false}
-                onLoad={(e) => {
-                  const img = e.currentTarget;
-                  const naturalSize = {
-                    width: img.naturalWidth || resultImageSize.width,
-                    height: img.naturalHeight || resultImageSize.height,
-                  };
-                  const displaySize = fitImageSize(naturalSize, aspectRatio, IMAGE_NODE_WIDTH, RESULT_IMAGE_MAX_HEIGHT);
-                  setNaturalImageSize(naturalSize);
-                  if (
-                    node.data?.imageNaturalWidth !== naturalSize.width ||
-                    node.data?.imageNaturalHeight !== naturalSize.height ||
-                    node.data?.imageDisplayWidth !== displaySize.width ||
-                    node.data?.imageDisplayHeight !== displaySize.height
-                  ) {
-                    onUpdateData?.(node.id, {
-                      imageNaturalWidth: naturalSize.width,
-                      imageNaturalHeight: naturalSize.height,
-                      imageDisplayWidth: displaySize.width,
-                      imageDisplayHeight: displaySize.height,
-                    });
-                  }
-                }}
-              />
+              <div className="relative h-full w-full">
+                <img
+                  src={imageUrl}
+                  alt="生成图片"
+                  className="block h-full w-full object-contain"
+                  draggable={false}
+                  onLoad={(e) => {
+                    const img = e.currentTarget;
+                    const naturalSize = {
+                      width: img.naturalWidth || resultImageSize.width,
+                      height: img.naturalHeight || resultImageSize.height,
+                    };
+                    const displaySize = fitImageSize(naturalSize, aspectRatio, IMAGE_NODE_WIDTH, RESULT_IMAGE_MAX_HEIGHT);
+                    setNaturalImageSize(naturalSize);
+                    if (
+                      node.data?.imageNaturalWidth !== naturalSize.width ||
+                      node.data?.imageNaturalHeight !== naturalSize.height ||
+                      node.data?.imageDisplayWidth !== displaySize.width ||
+                      node.data?.imageDisplayHeight !== displaySize.height
+                    ) {
+                      onUpdateData?.(node.id, {
+                        imageNaturalWidth: naturalSize.width,
+                        imageNaturalHeight: naturalSize.height,
+                        imageDisplayWidth: displaySize.width,
+                        imageDisplayHeight: displaySize.height,
+                      });
+                    }
+                  }}
+                />
+                {selected && activeGridSelection && onSplitImageGrid && (
+                  <div
+                    data-node-action="true"
+                    className="absolute inset-0 grid"
+                    style={{
+                      gridTemplateColumns: `repeat(${activeGridSelection.cols}, minmax(0, 1fr))`,
+                      gridTemplateRows: `repeat(${activeGridSelection.rows}, minmax(0, 1fr))`,
+                    }}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {Array.from({ length: activeGridCellCount }, (_, index) => {
+                      const isSelected = selectedGridCells.includes(index);
+                      const isHovered = hoveredGridCell === index;
+                      return (
+                      <button
+                        key={`split-cell-${index}`}
+                        type="button"
+                        onMouseEnter={() => setHoveredGridCell(index)}
+                        onMouseLeave={() => setHoveredGridCell((current) => (current === index ? null : current))}
+                        onClick={(event) => handleGridCellClick(index, event.shiftKey)}
+                        className={`relative min-h-0 min-w-0 border transition-colors focus-visible:outline-none ${
+                          isSelected
+                            ? "border-violet-300/82 bg-violet-400/[0.18] shadow-[inset_0_0_0_1px_rgba(167,139,250,0.2),0_0_24px_rgba(109,40,217,0.12)]"
+                            : "border-white/70 bg-white/0 hover:bg-violet-400/[0.1]"
+                        }`}
+                      >
+                        <span className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-[10px] border border-white/10 bg-[#0b1220]/72 px-2.5 py-1 text-[12px] font-semibold tracking-[0.02em] text-white/92 shadow-[0_12px_28px_-16px_rgba(0,0,0,0.92),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-md">
+                          {getGridBadgeLabel(index)}
+                        </span>
+                        {isHovered && (
+                          <span className="pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 translate-y-[20px] rounded-md border border-violet-300/18 bg-[#0b1220]/88 px-2 py-1 text-[10px] font-medium text-slate-200/92 shadow-[0_12px_28px_-18px_rgba(0,0,0,0.9),0_0_18px_rgba(109,40,217,0.14)]">
+                            Shift 可多选
+                          </span>
+                        )}
+                      </button>
+                    )})}
+                  </div>
+                )}
+              </div>
             </div>
             {resolvedImageUrls.length > 1 && (
               <div
@@ -522,7 +814,9 @@ function ImageNodeCardImpl({
           onSelect(e);
         }}
         className={`group node-card relative cursor-grab rounded-[18px] border bg-[#121723]/88 shadow-[0_28px_80px_-26px_rgba(0,0,0,0.92),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl transition-all duration-300 active:cursor-grabbing ${
-          selected ? "border-slate-200/50 ring-2 ring-cyan-200/10 shadow-[0_0_0_1px_rgba(148,163,184,0.12),0_30px_90px_-28px_rgba(56,189,248,0.34)]" : "border-[#2b3142]/90 hover:border-slate-300/35"
+          selected
+            ? "border-violet-300/26 -translate-y-[1px] shadow-[0_40px_100px_-34px_rgba(0,0,0,0.98),0_0_0_1px_rgba(196,181,253,0.2),0_0_0_7px_rgba(139,92,246,0.08),0_0_48px_rgba(109,40,217,0.18)]"
+            : "border-[#2b3142]/90 hover:border-slate-300/35"
         }`}
         style={{ width: nodeWidth, minHeight: 290 }}
       >

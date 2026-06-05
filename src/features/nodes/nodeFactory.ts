@@ -113,7 +113,7 @@ const NODE_BLUEPRINTS: Partial<Record<NodeClass, NodeBlueprint>> = {
     title: "文本",
     inputs: [
       { name: "system_prompt", type: "STRING" },
-      { name: "user_prompt", type: "STRING" },
+      { name: "user_prompt", type: "ANY" },
     ],
     outputs: [{ name: "文本", type: "STRING" }],
     properties: {

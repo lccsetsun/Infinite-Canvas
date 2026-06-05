@@ -529,7 +529,7 @@ function VideoNodeCardImpl({
             </div>
             <span className="shrink-0 text-[12px] font-medium tabular-nums text-slate-400/72">{naturalSizeLabel}</span>
           </div>
-          <div ref={mediaFrameRef} className={`relative overflow-hidden rounded-[8px] bg-black ${selected ? "ring-2 ring-sky-400" : ""}`} style={{ width: resultVideoSize.width, height: resultVideoSize.height }}>
+          <div ref={mediaFrameRef} className={`relative overflow-hidden rounded-[8px] bg-black ${selected ? "shadow-[0_0_0_1.5px_rgba(192,132,252,0.58),0_0_0_6px_rgba(139,92,246,0.14),0_0_38px_rgba(109,40,217,0.18)]" : ""}`} style={{ width: resultVideoSize.width, height: resultVideoSize.height }}>
             <video
               ref={videoRef}
               src={videoUrl}
@@ -652,7 +652,9 @@ function VideoNodeCardImpl({
           onSelect(e);
         }}
         className={`group node-card relative cursor-grab rounded-[18px] border bg-[#121723]/88 shadow-[0_28px_80px_-26px_rgba(0,0,0,0.92),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl transition-all duration-300 active:cursor-grabbing ${
-          selected ? "border-slate-200/50 ring-2 ring-cyan-200/10 shadow-[0_0_0_1px_rgba(148,163,184,0.12),0_30px_90px_-28px_rgba(56,189,248,0.34)]" : "border-[#2b3142]/90 hover:border-slate-300/35"
+          selected
+            ? "border-violet-300/26 -translate-y-[1px] shadow-[0_40px_100px_-34px_rgba(0,0,0,0.98),0_0_0_1px_rgba(196,181,253,0.2),0_0_0_7px_rgba(139,92,246,0.08),0_0_48px_rgba(109,40,217,0.18)]"
+            : "border-[#2b3142]/90 hover:border-slate-300/35"
         }`}
         style={{ width: nodeWidth, minHeight: 290 }}
       >

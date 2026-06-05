@@ -1,8 +1,7 @@
-import { ChevronDown, ChevronLeft, ChevronRight, Download, Grid3X3, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useMemo, useState } from "react";
 import { downloadMediaAsset, extensionFromAssetUrl, isPreviewableAsset } from "../../utils/mediaAssets";
-import { formatGridCellLabel } from "../../utils/imageGridSplit";
 
 export interface PreviewContent {
   content: string;
@@ -18,17 +17,10 @@ interface PreviewModalProps {
   onPreviewChange: (preview: PreviewContent) => void;
   onUpdateNodeText: (nodeId: string, text: string) => void;
   onSetPrimaryImageResult?: (nodeId: string, imageUrl: string, imageIndex: number) => void;
-  onSplitImageGrid?: (nodeId: string, imageUrl: string, gridSize: number, cellIndex: number) => void;
   showNotice: (message: string) => void;
 }
 
 const PROMPT_EDITOR_TITLE = "提示词编辑";
-const GRID_SPLIT_OPTIONS = [
-  { label: "4宫格 (2x2)", size: 2 },
-  { label: "9宫格 (3x3)", size: 3 },
-  { label: "16宫格 (4x4)", size: 4 },
-  { label: "25宫格 (5x5)", size: 5 },
-];
 const VISIBLE_PREVIEW_THUMBNAILS = 3;
 
 function isVideoPreview(preview: PreviewContent): boolean {
@@ -51,13 +43,9 @@ function renderMarkdown(text: string) {
   );
 }
 
-export default function PreviewModal({ preview, onClose, onPreviewChange, onUpdateNodeText, onSetPrimaryImageResult, onSplitImageGrid, showNotice }: PreviewModalProps) {
+export default function PreviewModal({ preview, onClose, onPreviewChange, onUpdateNodeText, onSetPrimaryImageResult, showNotice }: PreviewModalProps) {
   const isMediaAsset = isPreviewableAsset(preview.content);
   const isPromptEditor = preview.title === PROMPT_EDITOR_TITLE;
-  const [gridMenuOpen, setGridMenuOpen] = useState(() => preview.title.includes("宫格切分"));
-  const [customGridOpen, setCustomGridOpen] = useState(false);
-  const [activeGridSize, setActiveGridSize] = useState<number | null>(() => (preview.title.includes("宫格切分") ? 2 : null));
-  const [selectedGridCell, setSelectedGridCell] = useState<number | null>(null);
   const currentPreviewIndex = preview.currentIndex ?? 0;
   const visiblePreviewItems = useMemo(() => {
     if (!preview.items?.length) return [];
@@ -115,69 +103,6 @@ export default function PreviewModal({ preview, onClose, onPreviewChange, onUpda
     }
   };
 
-  const splitGridCell = (gridSize: number, cellIndex: number) => {
-    if (!preview.nodeId || !onSplitImageGrid) {
-      showNotice("当前预览没有来源节点，无法生成子节点");
-      return;
-    }
-    onSplitImageGrid(preview.nodeId, preview.content, gridSize, cellIndex);
-    setGridMenuOpen(false);
-    setCustomGridOpen(false);
-    setActiveGridSize(null);
-    setSelectedGridCell(null);
-  };
-
-  const renderGridOverlay = () => {
-    if (!activeGridSize || isVideoPreview(preview) || !preview.nodeId || !onSplitImageGrid) return null;
-    const selectedLabel = selectedGridCell === null ? "" : formatGridCellLabel(activeGridSize, selectedGridCell);
-    return (
-      <div
-        className="absolute inset-0 overflow-hidden rounded-[10px]"
-      >
-        <div
-          className="absolute inset-0 grid"
-          style={{
-            gridTemplateColumns: `repeat(${activeGridSize}, minmax(0, 1fr))`,
-            gridTemplateRows: `repeat(${activeGridSize}, minmax(0, 1fr))`,
-          }}
-        >
-          {Array.from({ length: activeGridSize * activeGridSize }, (_, index) => {
-            const selected = selectedGridCell === index;
-            return (
-              <button
-                key={index}
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setSelectedGridCell(index);
-                }}
-                className={`relative min-h-0 min-w-0 border border-white/70 transition-colors focus-visible:outline-none ${
-                  selected ? "bg-cyan-200/22 shadow-[inset_0_0_0_3px_rgba(34,211,238,0.78)]" : "bg-white/0 hover:bg-cyan-300/16"
-                }`}
-                title={`选择第 ${index + 1} 格`}
-              />
-            );
-          })}
-        </div>
-        {selectedGridCell !== null && (
-          <div
-            className="absolute left-1/2 top-1/2 z-10 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-2 rounded-2xl border border-cyan-100/20 bg-[#0b1220]/86 px-4 py-3 text-white shadow-[0_24px_70px_-24px_rgba(0,0,0,0.95),0_0_34px_rgba(34,211,238,0.2)] backdrop-blur-xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="text-[13px] font-bold text-cyan-50/88">{selectedLabel}</div>
-            <button
-              type="button"
-              onClick={() => splitGridCell(activeGridSize, selectedGridCell)}
-              className="rounded-xl bg-cyan-300 px-4 py-2 text-[13px] font-black text-slate-950 shadow-[0_16px_34px_-18px_rgba(103,232,249,0.95)] transition hover:bg-white"
-            >
-              生成子节点
-            </button>
-          </div>
-        )}
-      </div>
-    );
-  };
-
   if (isMediaAsset && !isPromptEditor) {
     const isVideo = isVideoPreview(preview);
     return (
@@ -189,75 +114,6 @@ export default function PreviewModal({ preview, onClose, onPreviewChange, onUpda
           className="fixed inset-0 z-[100] flex items-center justify-center bg-black/94 p-8"
           onClick={onClose}
         >
-          {!isVideo && preview.nodeId && onSplitImageGrid && (
-            <div className="absolute right-32 top-6 z-30" onClick={(e) => e.stopPropagation()}>
-              <button
-                type="button"
-                onClick={() => setGridMenuOpen((v) => !v)}
-                className="flex h-11 items-center gap-2 rounded-xl bg-white/10 px-4 text-sm font-bold text-white/88 backdrop-blur-md transition-colors hover:bg-white/16"
-              >
-                <Grid3X3 className="h-5 w-5" />
-                宫格切分
-                <ChevronDown className="h-4 w-4" />
-              </button>
-              {gridMenuOpen && (
-                <div className="absolute left-0 top-12 w-56 rounded-2xl border border-white/10 bg-[#2f2f2f]/96 p-2 text-white shadow-2xl backdrop-blur-xl">
-                  {GRID_SPLIT_OPTIONS.map((option) => (
-                    <button
-                      key={option.size}
-                      type="button"
-                      onClick={() => {
-                        setActiveGridSize(option.size);
-                        setSelectedGridCell(null);
-                        setCustomGridOpen(false);
-                        setGridMenuOpen(false);
-                      }}
-                      className="block w-full rounded-xl px-3 py-3 text-left text-[15px] font-bold transition-colors hover:bg-white/10"
-                    >
-                      {option.label}
-                    </button>
-                  ))}
-                  <div className="my-2 h-px bg-white/14" />
-                  <div
-                    className="relative"
-                    onMouseEnter={() => setCustomGridOpen(true)}
-                    onMouseLeave={() => setCustomGridOpen(false)}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => setCustomGridOpen((v) => !v)}
-                      className="flex w-full items-center justify-between rounded-xl px-3 py-3 text-left text-[15px] font-bold transition-colors hover:bg-white/10"
-                    >
-                      自定义
-                      <ChevronRight className="h-4 w-4" />
-                    </button>
-                    {customGridOpen && (
-                      <div className="absolute left-full top-0 ml-3 w-72 rounded-2xl border border-white/10 bg-[#343434]/96 p-5 shadow-2xl backdrop-blur-xl">
-                        <div className="mb-4 text-sm font-bold text-white/56">自定义宫格</div>
-                        <div className="grid grid-cols-5 gap-2">
-                          {Array.from({ length: 25 }, (_, index) => (
-                            <button
-                              key={index}
-                              type="button"
-                              onClick={() => {
-                                setActiveGridSize(5);
-                                setSelectedGridCell(index);
-                                setCustomGridOpen(false);
-                                setGridMenuOpen(false);
-                              }}
-                              className="aspect-square rounded-md bg-white/13 transition-colors hover:bg-cyan-300/35 focus-visible:bg-cyan-300/35 focus-visible:outline-none"
-                              title={`切分第 ${index + 1} 格`}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
           <div className="absolute right-6 top-6 z-20 flex items-center gap-2">
             {preview.items && preview.items.length > 1 && (
               <span className="rounded-full border border-slate-400/18 bg-slate-900/46 px-2.5 py-1 text-[11px] font-semibold text-slate-300/72">
@@ -323,7 +179,6 @@ export default function PreviewModal({ preview, onClose, onPreviewChange, onUpda
             ) : (
               <div className="relative max-h-full max-w-full">
                 <img src={preview.content} alt="Preview" className="block max-h-[calc(100vh-4rem)] max-w-full rounded-[10px] object-contain" />
-                {renderGridOverlay()}
               </div>
             )}
           </motion.div>

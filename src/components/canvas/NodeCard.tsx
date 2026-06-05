@@ -142,21 +142,21 @@ function NodeCardImpl({
       }}
       className={`absolute node-card text-left rounded-2xl border bg-[#0b0e14]/90 shadow-[0_24px_50px_-12px_rgba(0,0,0,0.5)] backdrop-blur-xl transition-all duration-500 cursor-grab active:cursor-grabbing will-change-transform ${
         selected
-          ? "border-indigo-500/50 ring-1 ring-indigo-500/20 shadow-[0_0_0_1px_rgba(99,102,241,0.1),0_32px_64px_-16px_rgba(0,0,0,0.6)]"
+          ? "border-violet-300/24 -translate-y-[1px] shadow-[0_40px_82px_-24px_rgba(0,0,0,0.78),0_0_0_1px_rgba(196,181,253,0.18),0_0_0_7px_rgba(139,92,246,0.08),0_0_42px_rgba(109,40,217,0.16)]"
           : "border-white/[0.06] hover:border-white/[0.12]"
       }`}
       style={{ width: getNodeWidth(node), ...style }}
     >
       <div className={`h-11 px-4 flex items-center justify-between border-b transition-colors ${
-        selected ? "border-indigo-400/30 bg-indigo-500/5" : "border-[#252c3a] bg-white/[0.02]"
+        selected ? "border-violet-400/20 bg-violet-500/[0.04]" : "border-[#252c3a] bg-white/[0.02]"
       }`}>
         <div className="flex items-center gap-2.5">
-          <div className={`p-1.5 rounded-lg ${selected ? "bg-indigo-500/20 text-indigo-400" : "bg-white/5 text-gray-400"}`}>
+          <div className={`p-1.5 rounded-lg ${selected ? "bg-violet-500/18 text-violet-300" : "bg-white/5 text-gray-400"}`}>
             {node.type === "text_node" && <MessageSquare className="w-3.5 h-3.5" />}
             {node.type === "image_node" && <ImageIcon className="w-3.5 h-3.5" />}
             {node.type === "video_node" && <VideoIcon className="w-3.5 h-3.5" />}
           </div>
-          <span className={`text-[13px] font-bold tracking-tight ${selected ? "text-white" : "text-gray-200"}`}>
+          <span className={`text-[13px] font-bold tracking-tight ${selected ? "text-violet-50" : "text-gray-200"}`}>
             {node.title}
           </span>
         </div>

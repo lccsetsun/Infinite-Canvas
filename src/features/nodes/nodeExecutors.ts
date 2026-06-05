@@ -133,6 +133,37 @@ function pickString(inputs: Record<string, unknown>, properties: Record<string, 
   return fallback;
 }
 
+function stringifyPromptValue(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    const items = value.map((item) => stringifyPromptValue(item)).filter((item) => item.trim());
+    return items.join("\n");
+  }
+  if (value && typeof value === "object") {
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch {
+      return "";
+    }
+  }
+  return "";
+}
+
+function pickPromptLike(inputs: Record<string, unknown>, properties: Record<string, unknown>, ...keys: string[]): string {
+  for (const k of keys) {
+    const inputValue = stringifyPromptValue(inputs[k]);
+    if (inputValue.trim()) return inputValue;
+
+    const propertyValue = stringifyPromptValue(properties[k]);
+    if (propertyValue.trim()) return propertyValue;
+  }
+
+  return stringifyPromptValue(properties.text);
+}
+
 function pickNumber(inputs: Record<string, unknown>, properties: Record<string, unknown>, key: string): number | undefined {
   if (typeof inputs[key] === "number" && Number.isFinite(inputs[key] as number)) return inputs[key] as number;
   const raw = (properties as any)[key];
@@ -370,7 +401,7 @@ async function callMiniMaxTextToAudio(
 
 export const executors: Partial<Record<NodeClass, NodeExecutor>> = {
   text_node: async ({ inputs, properties, apiConfig }) => {
-    const userPrompt = pickString(inputs, properties, "user_prompt", "prompt");
+    const userPrompt = pickPromptLike(inputs, properties, "user_prompt", "prompt");
     const nodeSystemPrompt = pickString(inputs, properties, "system_prompt");
     const deepseekBaseUrl = apiConfig.providerBaseUrls?.deepseek || apiConfig.deepseekBaseUrl || apiConfig.baseUrl;
     const deepseekApiKey = apiConfig.providerApiKeys?.deepseek || apiConfig.deepseekApiKey || apiConfig.apiKey;

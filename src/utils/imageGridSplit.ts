@@ -15,15 +15,21 @@ export interface GridCellCrop {
 const CHILD_NODE_X_OFFSET = 380;
 const CHILD_NODE_Y_STEP = 130;
 
-export function getGridCellCrop(size: ImageSize, gridSize: number, cellIndex: number): GridCellCrop {
-  const safeGridSize = Math.max(1, Math.floor(gridSize));
-  const safeCellIndex = Math.min(Math.max(0, Math.floor(cellIndex)), safeGridSize * safeGridSize - 1);
-  const row = Math.floor(safeCellIndex / safeGridSize);
-  const col = safeCellIndex % safeGridSize;
-  const x1 = Math.floor((size.width * col) / safeGridSize);
-  const x2 = Math.floor((size.width * (col + 1)) / safeGridSize);
-  const y1 = Math.floor((size.height * row) / safeGridSize);
-  const y2 = Math.floor((size.height * (row + 1)) / safeGridSize);
+function normalizeGridShape(rowsOrGridSize: number, cols?: number) {
+  const rows = Math.max(1, Math.floor(rowsOrGridSize));
+  const normalizedCols = Math.max(1, Math.floor(cols ?? rowsOrGridSize));
+  return { rows, cols: normalizedCols };
+}
+
+export function getGridCellCrop(size: ImageSize, rowsOrGridSize: number, cellIndex: number, cols?: number): GridCellCrop {
+  const { rows, cols: normalizedCols } = normalizeGridShape(rowsOrGridSize, cols);
+  const safeCellIndex = Math.min(Math.max(0, Math.floor(cellIndex)), rows * normalizedCols - 1);
+  const row = Math.floor(safeCellIndex / normalizedCols);
+  const col = safeCellIndex % normalizedCols;
+  const x1 = Math.floor((size.width * col) / normalizedCols);
+  const x2 = Math.floor((size.width * (col + 1)) / normalizedCols);
+  const y1 = Math.floor((size.height * row) / rows);
+  const y2 = Math.floor((size.height * (row + 1)) / rows);
 
   return {
     sx: x1,
@@ -35,23 +41,35 @@ export function getGridCellCrop(size: ImageSize, gridSize: number, cellIndex: nu
   };
 }
 
-export function getGridChildNodePosition(source: { x: number; y: number }, gridSize: number, cellIndex: number) {
-  const safeGridSize = Math.max(1, Math.floor(gridSize));
-  const row = Math.floor(Math.min(Math.max(0, Math.floor(cellIndex)), safeGridSize * safeGridSize - 1) / safeGridSize);
+export function getGridChildNodePosition(source: { x: number; y: number }, rowsOrGridSize: number, cellIndex: number, cols?: number) {
+  const { rows, cols: normalizedCols } = normalizeGridShape(rowsOrGridSize, cols);
+  const row = Math.floor(Math.min(Math.max(0, Math.floor(cellIndex)), rows * normalizedCols - 1) / normalizedCols);
   return {
     x: Math.round(source.x + CHILD_NODE_X_OFFSET),
     y: Math.round(source.y + row * CHILD_NODE_Y_STEP),
   };
 }
 
-export function formatGridCellLabel(gridSize: number, cellIndex: number) {
-  const crop = getGridCellCrop({ width: gridSize, height: gridSize }, gridSize, cellIndex);
-  return `第 ${Math.min(Math.max(0, Math.floor(cellIndex)), gridSize * gridSize - 1) + 1} 格 (${crop.row + 1}行${crop.col + 1}列)`;
+export function formatGridCellLabel(rowsOrGridSize: number, cellIndex: number, cols?: number) {
+  const { rows, cols: normalizedCols } = normalizeGridShape(rowsOrGridSize, cols);
+  const crop = getGridCellCrop({ width: normalizedCols, height: rows }, rows, cellIndex, normalizedCols);
+  return `第 ${Math.min(Math.max(0, Math.floor(cellIndex)), rows * normalizedCols - 1) + 1} 格 (${crop.row + 1}行${crop.col + 1}列)`;
 }
 
-export async function cropImageGridCell(imageUrl: string, gridSize: number, cellIndex: number): Promise<{ dataUrl: string; crop: GridCellCrop }> {
+export async function cropImageGridCell(
+  imageUrl: string,
+  rowsOrGridSize: number,
+  cellIndex: number,
+  cols?: number
+): Promise<{ dataUrl: string; crop: GridCellCrop }> {
   const image = await loadImage(imageUrl);
-  const crop = getGridCellCrop({ width: image.naturalWidth || image.width, height: image.naturalHeight || image.height }, gridSize, cellIndex);
+  const { rows, cols: normalizedCols } = normalizeGridShape(rowsOrGridSize, cols);
+  const crop = getGridCellCrop(
+    { width: image.naturalWidth || image.width, height: image.naturalHeight || image.height },
+    rows,
+    cellIndex,
+    normalizedCols
+  );
   const canvas = document.createElement("canvas");
   canvas.width = crop.sw;
   canvas.height = crop.sh;

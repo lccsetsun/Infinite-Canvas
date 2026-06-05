@@ -39,6 +39,7 @@ interface CanvasNodeLayerProps {
   onUpdateNodeData: (nodeId: string, data: any) => void;
   onUpdateNodeProperty: (nodeId: string, key: string, value: unknown) => void;
   onSetPrimaryImageResult?: (nodeId: string, imageUrl: string, imageIndex: number) => void;
+  onSplitImageGrid?: (nodeId: string, imageUrl: string, gridRows: number, gridCols: number, cellIndices: number[]) => void;
   resolvedInputsMap?: Map<string, Record<string, unknown>>;
   onRunNode?: (nodeId: string) => void;
 }
@@ -71,6 +72,7 @@ export default function CanvasNodeLayer({
   onUpdateNodeData,
   onUpdateNodeProperty,
   onSetPrimaryImageResult,
+  onSplitImageGrid,
   resolvedInputsMap,
   onRunNode,
 }: CanvasNodeLayerProps) {
@@ -143,6 +145,7 @@ export default function CanvasNodeLayer({
                 onUpdateProperty={onUpdateNodeProperty}
                 onUpdateData={onUpdateNodeData}
                 onSetPrimaryImageResult={onSetPrimaryImageResult}
+                onSplitImageGrid={onSplitImageGrid}
                 onPreview={onPreview}
                 resolvedInputs={resolvedInputsMap?.get(node.id)}
                 onRun={onRunNode}

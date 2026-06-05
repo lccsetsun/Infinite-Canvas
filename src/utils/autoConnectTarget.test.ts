@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { GraphLink, GraphNode } from "../types";
 import { resolveAutoConnectTarget } from "./autoConnectTarget";
+import { createNodeFromType } from "../features/nodes/nodeFactory";
 
 function mockNode(partial: Partial<GraphNode> & Pick<GraphNode, "id" | "title" | "type">): GraphNode {
   return {
@@ -56,5 +57,25 @@ describe("resolveAutoConnectTarget", () => {
         nodes: [text, image],
       })
     ).toBeNull();
+  });
+
+  it("auto-connects any upstream node into a text node user prompt input", () => {
+    const imageSource = mockNode({
+      id: "imageSource",
+      title: "图片节点",
+      type: "image_node",
+      outputs: [{ name: "图片", type: "IMAGE" }],
+    });
+    const textNode = createNodeFromType("text_node", "textTarget", 0, 0);
+
+    expect(
+      resolveAutoConnectTarget({
+        candidateNodeId: "textTarget",
+        fromNodeId: "imageSource",
+        fromOutputIndex: 0,
+        links,
+        nodes: [imageSource, textNode],
+      })
+    ).toEqual({ nodeId: "textTarget", inputIndex: 1 });
   });
 });

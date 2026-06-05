@@ -319,30 +319,37 @@ export default function App() {
   };
 
   const handleSplitImageGrid = React.useCallback(
-    async (nodeId: string, imageUrl: string, gridSize: number, cellIndex: number) => {
+    async (nodeId: string, imageUrl: string, gridRows: number, gridCols: number, cellIndices: number[]) => {
       const sourceNode = nodes.find((n) => n.id === nodeId);
       if (!sourceNode) {
         showNotice("来源节点不存在，无法切分");
         return;
       }
       try {
-        const { dataUrl, crop } = await cropImageGridCell(imageUrl, gridSize, cellIndex);
-        const position = getGridChildNodePosition(sourceNode, gridSize, cellIndex);
-        addNode(
-          "image_node",
-          position.x,
-          position.y,
-          {
-            __nodeTitle: `宫格切分 ${gridSize}x${gridSize} #${cellIndex + 1}`,
-            __uploadedAssetUrl: dataUrl,
-            __uploadedAssetKind: "image",
-            imageUrl: dataUrl,
-            text: `来自 ${sourceNode.title} 的 ${gridSize}x${gridSize} 第 ${cellIndex + 1} 格 (${crop.sw}x${crop.sh})`,
-            status: "success",
-          },
-          { fromNodeId: nodeId, fromOutputIndex: 0, toInputIndex: 0 }
+        const normalizedCellIndices = Array.from(new Set(cellIndices.map((index) => Math.max(0, Math.floor(index))))).sort((a, b) => a - b);
+        for (const cellIndex of normalizedCellIndices) {
+          const { dataUrl, crop } = await cropImageGridCell(imageUrl, gridRows, cellIndex, gridCols);
+          const position = getGridChildNodePosition(sourceNode, gridRows, cellIndex, gridCols);
+          addNode(
+            "image_node",
+            position.x,
+            position.y,
+            {
+              __nodeTitle: `宫格切分 ${gridRows}x${gridCols} #${cellIndex + 1}`,
+              __uploadedAssetUrl: dataUrl,
+              __uploadedAssetKind: "image",
+              imageUrl: dataUrl,
+              text: `来自 ${sourceNode.title} 的 ${gridRows}x${gridCols} 第 ${cellIndex + 1} 格 (${crop.sw}x${crop.sh})`,
+              status: "success",
+            },
+            { fromNodeId: nodeId, fromOutputIndex: 0, toInputIndex: 0 }
+          );
+        }
+        showNotice(
+          normalizedCellIndices.length > 1
+            ? `已生成 ${normalizedCellIndices.length} 个格子节点并自动连线`
+            : `已生成第 ${normalizedCellIndices[0] + 1} 格子节点并自动连线`
         );
-        showNotice(`已生成第 ${cellIndex + 1} 格子节点并自动连线`);
         setPreviewContent(null);
       } catch (error) {
         const message = error instanceof Error ? error.message : "图片切分失败";
@@ -991,6 +998,7 @@ export default function App() {
           onUpdateNodeData={updateNodeData}
           onUpdateNodeProperty={updateNodeProperty}
           onSetPrimaryImageResult={setPrimaryImageResult}
+          onSplitImageGrid={handleSplitImageGrid}
           resolvedInputsMap={resolvedInputsMap}
           onRunNode={runNode}
         />
@@ -1072,7 +1080,6 @@ export default function App() {
           onPreviewChange={setPreviewContent}
           onUpdateNodeText={(nodeId, text) => updateNodeProperty(nodeId, "text", text)}
           onSetPrimaryImageResult={setPrimaryImageResult}
-          onSplitImageGrid={handleSplitImageGrid}
           showNotice={showNotice}
         />
       )}

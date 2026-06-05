@@ -244,4 +244,27 @@ describe("text_node executor", () => {
       model: "deepseek-chat",
     });
   });
+
+  it("coerces non-string upstream inputs into the user prompt", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: "ok" } }] }),
+    } as Response);
+
+    const executor = getExecutor("text_node");
+    await executor?.({
+      inputs: { user_prompt: 42 },
+      properties: { model: "deepseek-chat" },
+      apiConfig: {
+        baseUrl: "https://api.deepseek.com",
+        apiKey: "sk-test",
+        model: "deepseek-chat",
+      },
+    });
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect(JSON.parse(String((init as RequestInit).body))).toMatchObject({
+      messages: [{ role: "user", content: "42" }],
+    });
+  });
 });

@@ -189,12 +189,25 @@ function normalizeNodePorts(node: GraphNode): GraphNode {
   let nextNode = node;
   if (nextNode.type === "text_node") {
     const model = String(nextNode.properties.model || "");
-    if (TEXT_NODE_MODEL_FALLBACKS.has(model)) {
+    let inputsChanged = false;
+    const normalizedInputs = nextNode.inputs.map((input, index) => {
+      if (input.name === "user_prompt" || index === 1) {
+        if (input.name !== "user_prompt" || input.type !== "ANY") inputsChanged = true;
+        return { ...input, name: "user_prompt", type: "ANY" as const };
+      }
+      if (input.name === "system_prompt" || index === 0) {
+        if (input.name !== "system_prompt" || input.type !== "STRING") inputsChanged = true;
+        return { ...input, name: "system_prompt", type: "STRING" as const };
+      }
+      return input;
+    });
+    if (TEXT_NODE_MODEL_FALLBACKS.has(model) || inputsChanged) {
       nextNode = {
         ...nextNode,
+        inputs: normalizedInputs,
         properties: {
           ...nextNode.properties,
-          model: "deepseek-chat",
+          model: TEXT_NODE_MODEL_FALLBACKS.has(model) ? "deepseek-chat" : model,
         },
       };
     }
