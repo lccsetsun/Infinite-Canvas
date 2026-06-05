@@ -24,7 +24,7 @@ describe("api provider presets", () => {
     expect(PROVIDER_PRESETS.minimax).toMatchObject({
       baseUrl: "https://api.minimaxi.com/v1",
       defaultModel: "image-01",
-      models: ["image-01", "MiniMax-Hailuo-2.3", "speech-2.8-hd"],
+      models: ["image-01", "MiniMax-M3", "MiniMax-Hailuo-2.3", "speech-2.8-hd"],
     });
 
     await expect(
@@ -46,7 +46,7 @@ describe("api provider presets", () => {
       })
     ).resolves.toMatchObject({
       ok: true,
-      models: ["image-01", "MiniMax-Hailuo-2.3", "speech-2.8-hd"],
+      models: ["image-01", "MiniMax-M3", "MiniMax-Hailuo-2.3", "speech-2.8-hd"],
     });
   });
 

@@ -153,6 +153,33 @@ export default function App() {
     },
   });
 
+  const textNodeReferenceImagesMap = React.useMemo(() => {
+    const nodeById = new Map(nodes.map((node) => [node.id, node]));
+    const map = new Map<string, string[]>();
+
+    for (const link of links) {
+      const targetNode = nodeById.get(link.toNodeId);
+      const sourceNode = nodeById.get(link.fromNodeId);
+      if (!targetNode || !sourceNode || targetNode.type !== "text_node") continue;
+
+      const imageUrl =
+        typeof sourceNode.data?.imageUrl === "string" && sourceNode.data.imageUrl.trim()
+          ? sourceNode.data.imageUrl.trim()
+          : typeof sourceNode.properties.imageUrl === "string" && sourceNode.properties.imageUrl.trim()
+            ? sourceNode.properties.imageUrl.trim()
+            : "";
+
+      if (!imageUrl) continue;
+      const existing = map.get(targetNode.id) ?? [];
+      if (!existing.includes(imageUrl)) {
+        existing.push(imageUrl);
+        map.set(targetNode.id, existing);
+      }
+    }
+
+    return map;
+  }, [links, nodes]);
+
   const {
     showLogicPanel,
     setShowLogicPanel,
@@ -969,7 +996,14 @@ export default function App() {
         />
 
         <CanvasNodeLayer
-          apiConfig={{ baseUrl: apiBaseUrl, apiKey }}
+          apiConfig={{
+            baseUrl: apiBaseUrl,
+            apiKey,
+            providerModels: {
+              deepseek: deepseekApiProfile?.model || "",
+              minimax: minimaxApiProfile?.model || "",
+            },
+          }}
           isLinkingOnCanvas={isLinkingOnCanvas}
           linkFromNodeId={linkFromNodeId}
           linkFromOutputIndex={linkFromOutputIndex}
@@ -1000,6 +1034,7 @@ export default function App() {
           onSetPrimaryImageResult={setPrimaryImageResult}
           onSplitImageGrid={handleSplitImageGrid}
           resolvedInputsMap={resolvedInputsMap}
+          textNodeReferenceImagesMap={textNodeReferenceImagesMap}
           onRunNode={runNode}
         />
         {isLinkingOnCanvas && (

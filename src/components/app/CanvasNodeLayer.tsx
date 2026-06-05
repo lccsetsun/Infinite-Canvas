@@ -12,6 +12,7 @@ interface CanvasNodeLayerProps {
   apiConfig: {
     apiKey: string;
     baseUrl: string;
+    providerModels?: Partial<Record<string, string>>;
   };
   isLinkingOnCanvas: boolean;
   linkFromNodeId: string;
@@ -41,6 +42,7 @@ interface CanvasNodeLayerProps {
   onSetPrimaryImageResult?: (nodeId: string, imageUrl: string, imageIndex: number) => void;
   onSplitImageGrid?: (nodeId: string, imageUrl: string, gridRows: number, gridCols: number, cellIndices: number[]) => void;
   resolvedInputsMap?: Map<string, Record<string, unknown>>;
+  textNodeReferenceImagesMap?: Map<string, string[]>;
   onRunNode?: (nodeId: string) => void;
 }
 
@@ -74,6 +76,7 @@ export default function CanvasNodeLayer({
   onSetPrimaryImageResult,
   onSplitImageGrid,
   resolvedInputsMap,
+  textNodeReferenceImagesMap,
   onRunNode,
 }: CanvasNodeLayerProps) {
   return (
@@ -97,6 +100,7 @@ export default function CanvasNodeLayer({
               <TextNodeCard
                 node={node}
                 selected={selectedNodeId === node.id}
+                apiConfig={apiConfig}
                 onSelect={(e) => onSelectNode(node.id, e)}
                 onDelete={() => onDeleteNode(node.id)}
                 onDuplicate={() => onDuplicateNode(node.id)}
@@ -114,6 +118,7 @@ export default function CanvasNodeLayer({
                 onPreview={onPreview}
                 onReverseSegmentAnalysis={onReverseSegmentAnalysis}
                 resolvedInputs={resolvedInputsMap?.get(node.id)}
+                referenceImageUrls={textNodeReferenceImagesMap?.get(node.id) ?? []}
                 onRun={onRunNode}
                 // 连线相关
                 isLinkingOnCanvas={isLinkingOnCanvas}

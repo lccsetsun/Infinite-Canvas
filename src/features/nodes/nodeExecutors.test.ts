@@ -267,4 +267,129 @@ describe("text_node executor", () => {
       messages: [{ role: "user", content: "42" }],
     });
   });
+
+  it("routes multimodal text requests to MiniMax with ordered reference images", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: "multimodal ok" } }] }),
+    } as Response);
+
+    const executor = getExecutor("text_node");
+    await executor?.({
+      inputs: {
+        user_prompt: "请比较图一和图二的主体差异",
+        reference_images: ["https://example.com/a.png", "https://example.com/b.png"],
+      },
+      properties: { model: "MiniMax-M3" },
+      apiConfig: {
+        baseUrl: "https://api.deepseek.com",
+        apiKey: "sk-test",
+        providerApiKeys: {
+          deepseek: "sk-deepseek",
+          minimax: "mini-key",
+        },
+        providerBaseUrls: {
+          deepseek: "https://api.deepseek.com",
+          minimax: "https://api.minimaxi.com/v1",
+        },
+        providerModels: {
+          deepseek: "deepseek-chat",
+          minimax: "MiniMax-M3",
+        },
+      },
+    });
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("https://api.minimaxi.com/v1/chat/completions");
+    expect((init as RequestInit).headers).toMatchObject({
+      Authorization: "Bearer mini-key",
+    });
+
+    const body = JSON.parse(String((init as RequestInit).body));
+    expect(body.model).toBe("MiniMax-M3");
+    expect(body.messages[0].role).toBe("system");
+    expect(body.messages[1].role).toBe("user");
+    expect(body.messages[1].content).toEqual([
+      { type: "text", text: "请比较图一和图二的主体差异" },
+      { type: "text", text: "下面按顺序提供 2 张参考图，请在回答中用图一、图二等编号区分。" },
+      { type: "image_url", image_url: { url: "https://example.com/a.png", detail: "default" } },
+      { type: "image_url", image_url: { url: "https://example.com/b.png", detail: "default" } },
+    ]);
+  });
+
+  it("falls back to the multimodal text model instead of MiniMax image-01 when reference images exist", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: "multimodal ok" } }] }),
+    } as Response);
+
+    const executor = getExecutor("text_node");
+    await executor?.({
+      inputs: {
+        user_prompt: "分析一下图片",
+        reference_images: ["https://example.com/a.png"],
+      },
+      properties: { model: "image-01" },
+      apiConfig: {
+        baseUrl: "https://api.deepseek.com",
+        apiKey: "sk-test",
+        providerApiKeys: {
+          deepseek: "sk-deepseek",
+          minimax: "mini-key",
+        },
+        providerBaseUrls: {
+          deepseek: "https://api.deepseek.com",
+          minimax: "https://api.minimaxi.com/v1",
+        },
+        providerModels: {
+          deepseek: "deepseek-chat",
+          minimax: "image-01",
+        },
+      },
+    });
+
+    const [, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse(String((init as RequestInit).body));
+    expect(body.model).toBe("MiniMax-M3");
+  });
+
+  it("strips model reasoning blocks before storing text responses", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        choices: [
+          {
+            message: {
+              content:
+                "<think>\nI should inspect the image privately.\n</think>\n# 图一分析\n\n这是一张卡通角色图。",
+            },
+          },
+        ],
+      }),
+    } as Response);
+
+    const executor = getExecutor("text_node");
+    const result = await executor?.({
+      inputs: {
+        user_prompt: "分析一下图片",
+        reference_images: ["https://example.com/a.png"],
+      },
+      properties: { model: "MiniMax-M3" },
+      apiConfig: {
+        baseUrl: "https://api.deepseek.com",
+        apiKey: "sk-test",
+        providerApiKeys: {
+          deepseek: "sk-deepseek",
+          minimax: "mini-key",
+        },
+        providerBaseUrls: {
+          deepseek: "https://api.deepseek.com",
+          minimax: "https://api.minimaxi.com/v1",
+        },
+      },
+    });
+
+    expect(result?.outputs[0]).toBe("# 图一分析\n\n这是一张卡通角色图。");
+    expect(result?.patch?.response).toBe("# 图一分析\n\n这是一张卡通角色图。");
+  });
 });

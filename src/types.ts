@@ -63,6 +63,7 @@ export interface GraphNode {
     imagePortCenterY?: number;
     imageDisplayWidth?: number;
     imageDisplayHeight?: number;
+    textStarterDismissed?: boolean;
     imageNaturalWidth?: number;
     imageNaturalHeight?: number;
     videoDisplayWidth?: number;

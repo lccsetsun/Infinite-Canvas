@@ -37,6 +37,27 @@ interface HistorySnapshot {
   links: GraphLink[];
 }
 
+const NUMBERED_NODE_TITLE_PREFIX: Partial<Record<NodeClass, string>> = {
+  text_node: "文本节点",
+  image_node: "图片节点",
+  video_node: "视频节点",
+  audio_node: "音频节点",
+};
+
+function getNextNumberedNodeTitle(nodes: GraphNode[], type: NodeClass): string | null {
+  const prefix = NUMBERED_NODE_TITLE_PREFIX[type];
+  if (!prefix) return null;
+  const pattern = new RegExp(`^${prefix}\\s+(\\d+)$`);
+  const max = nodes.reduce((currentMax, node) => {
+    if (node.type !== type) return currentMax;
+    const match = node.title.match(pattern);
+    if (!match) return currentMax;
+    const value = Number.parseInt(match[1], 10);
+    return Number.isFinite(value) ? Math.max(currentMax, value) : currentMax;
+  }, 0);
+  return `${prefix} ${max + 1}`;
+}
+
 export interface WorkflowSummary {
   id: string;
   name: string;
@@ -388,15 +409,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     const nextX = x ?? 80 + (nodes.length % 4) * 280;
     const nextY = y ?? 120 + Math.floor(nodes.length / 4) * 180;
     const node = createNodeFromType(type, id, nextX, nextY);
-    if (type === "text_node") {
-      node.title = `文本节点 ${nodes.filter((n) => n.type === "text_node").length + 1}`;
-    }
-    if (type === "image_node") {
-      node.title = `图片节点 ${nodes.filter((n) => n.type === "image_node").length + 1}`;
-    }
-    if (type === "video_node") {
-      node.title = `视频节点 ${nodes.filter((n) => n.type === "video_node").length + 1}`;
-    }
+    node.title = getNextNumberedNodeTitle(nodes, type) || node.title;
     if (initialProps) {
       const { __nodeTitle, __uploadedAssetUrl, __uploadedAssetKind, __uploadedAssetName, ...restProps } = initialProps;
       node.properties = { ...node.properties, ...restProps };
@@ -412,7 +425,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         };
         node.properties.imageUrl = __uploadedAssetUrl;
         if (typeof __uploadedAssetName === "string" && __uploadedAssetName.trim()) {
-          node.title = `图片节点 ${nodes.filter((n) => n.type === "image_node").length + 1}`;
+          node.title = getNextNumberedNodeTitle(nodes, "image_node") || node.title;
         }
       }
       if (__uploadedAssetKind === "video" && typeof __uploadedAssetUrl === "string") {
@@ -424,7 +437,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         };
         node.properties.videoUrl = __uploadedAssetUrl;
         if (typeof __uploadedAssetName === "string" && __uploadedAssetName.trim()) {
-          node.title = `视频节点 ${nodes.filter((n) => n.type === "video_node").length + 1}`;
+          node.title = getNextNumberedNodeTitle(nodes, "video_node") || node.title;
         }
       }
     }
@@ -509,6 +522,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       outputs: src.outputs.map((o) => ({ ...o })),
       properties: { ...src.properties },
       data: src.data ? { ...src.data } : {},
+      title: getNextNumberedNodeTitle(nodes, src.type) || `${src.title} Copy`,
     };
     const nextNodes = [...nodes, clone];
     setNodes(nextNodes);
@@ -931,6 +945,49 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     });
   }, []);
 
+  const collectTextNodeMediaReferences = useCallback(
+    (nodeId: string) => {
+      const imageUrls: string[] = [];
+      const videoUrls: string[] = [];
+      const audioUrls: string[] = [];
+
+      links.forEach((link) => {
+        if (link.toNodeId !== nodeId) return;
+        const sourceNode = nodes.find((candidate) => candidate.id === link.fromNodeId);
+        if (!sourceNode) return;
+
+        if (sourceNode.type === "image_node") {
+          const imageUrl =
+            (typeof sourceNode.data?.imageUrl === "string" && sourceNode.data.imageUrl.trim()) ||
+            (typeof sourceNode.properties.imageUrl === "string" && sourceNode.properties.imageUrl.trim()) ||
+            "";
+          if (imageUrl && !imageUrls.includes(imageUrl)) imageUrls.push(imageUrl);
+          return;
+        }
+
+        if (sourceNode.type === "video_node") {
+          const videoUrl =
+            (typeof sourceNode.data?.videoUrl === "string" && sourceNode.data.videoUrl.trim()) ||
+            (typeof sourceNode.properties.videoUrl === "string" && sourceNode.properties.videoUrl.trim()) ||
+            "";
+          if (videoUrl && !videoUrls.includes(videoUrl)) videoUrls.push(videoUrl);
+          return;
+        }
+
+        if (sourceNode.type === "audio_node") {
+          const audioUrl =
+            (typeof sourceNode.data?.audioUrl === "string" && sourceNode.data.audioUrl.trim()) ||
+            (typeof sourceNode.properties.audioUrl === "string" && sourceNode.properties.audioUrl.trim()) ||
+            "";
+          if (audioUrl && !audioUrls.includes(audioUrl)) audioUrls.push(audioUrl);
+        }
+      });
+
+      return { imageUrls, videoUrls, audioUrls };
+    },
+    [links, nodes]
+  );
+
   const runNode = useCallback(
     async (nodeId: string) => {
       const node = nodes.find((n) => n.id === nodeId);
@@ -942,6 +999,12 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       }
 
       const inputs = resolveNodeInputs(node, links, nodeOutputs);
+      if (node.type === "text_node") {
+        const { imageUrls, videoUrls, audioUrls } = collectTextNodeMediaReferences(nodeId);
+        if (imageUrls.length > 0) inputs.reference_images = imageUrls;
+        if (videoUrls.length > 0) inputs.reference_videos = videoUrls;
+        if (audioUrls.length > 0) inputs.reference_audios = audioUrls;
+      }
       updateNodeData(nodeId, { loading: true, error: undefined, response: undefined, status: "loading" });
       appendLog("info", `开始执行 [${node.title}]`);
 
@@ -958,7 +1021,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         appendLog("error", `[${node.title}] 失败:${message}`);
       }
     },
-    [nodes, links, nodeOutputs, apiConfig, appendLog, updateNodeData, writeNodeOutput]
+    [nodes, links, nodeOutputs, apiConfig, appendLog, updateNodeData, writeNodeOutput, collectTextNodeMediaReferences]
   );
 
   const runGroup = useCallback(async (groupId: string) => {

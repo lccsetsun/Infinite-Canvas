@@ -42,10 +42,16 @@ const MINIMAX_ASPECT_RATIOS = new Set(["1:1", "16:9", "4:3", "3:2", "2:3", "3:4"
 const MINIMAX_IMAGE_MODELS = new Set([MINIMAX_IMAGE_MODEL]);
 const MINIMAX_VIDEO_MODELS = new Set([MINIMAX_VIDEO_MODEL, "minimax-video"]);
 const MINIMAX_AUDIO_MODELS = new Set([MINIMAX_AUDIO_MODEL, "speech-02-hd", "speech-02-turbo"]);
+const MINIMAX_MULTIMODAL_MODEL = "MiniMax-M3";
+const MINIMAX_MULTIMODAL_MODELS = new Set([MINIMAX_MULTIMODAL_MODEL]);
 const DEEPSEEK_MODEL_ALIASES: Record<string, string> = {
   "": TEXT_NODE_MODEL,
   "deepseek-v4-flash": TEXT_NODE_MODEL,
 };
+
+function stripReasoningBlocks(text: string): string {
+  return text.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+}
 
 export function normalizeApiKey(apiKey: string): string {
   return apiKey.trim();
@@ -81,13 +87,38 @@ async function callGeminiProxy(
 }
 
 async function callOpenAICompatible(
-  cfg: { baseUrl: string; apiKey: string; model?: string; temperature?: number; maxTokens?: number; topP?: number; timeout?: number; systemPrompt?: string },
-  contents: string
+  cfg: {
+    baseUrl: string;
+    apiKey: string;
+    model?: string;
+    temperature?: number;
+    maxTokens?: number;
+    topP?: number;
+    timeout?: number;
+    systemPrompt?: string;
+    providerLabel?: string;
+  },
+  contents:
+    | string
+    | Array<
+        | { type: "text"; text: string }
+        | { type: "image_url"; image_url: { url: string } }
+        | { type: "video_url"; video_url: { url: string } }
+      >
 ): Promise<{ text: string }> {
   const base = cfg.baseUrl.replace(/\/+$/, "");
   const url = `${base}/chat/completions`;
-  const normalizedApiKey = assertApiKey(cfg.apiKey, "DeepSeek");
-  const messages: { role: "system" | "user"; content: string }[] = [];
+  const normalizedApiKey = assertApiKey(cfg.apiKey, cfg.providerLabel || "DeepSeek");
+  const messages: {
+    role: "system" | "user";
+    content:
+      | string
+      | Array<
+          | { type: "text"; text: string }
+          | { type: "image_url"; image_url: { url: string } }
+          | { type: "video_url"; video_url: { url: string } }
+        >;
+  }[] = [];
   if (cfg.systemPrompt && cfg.systemPrompt.trim()) {
     messages.push({ role: "system", content: cfg.systemPrompt });
   }
@@ -118,7 +149,7 @@ async function callOpenAICompatible(
     const data = await resp.json();
     const choice = data?.choices?.[0];
     const text = choice?.message?.content ?? choice?.text ?? "";
-    return { text: typeof text === "string" ? text : "" };
+    return { text: typeof text === "string" ? stripReasoningBlocks(text) : "" };
   } finally {
     if (timer !== null) window.clearTimeout(timer);
   }
@@ -131,6 +162,11 @@ function pickString(inputs: Record<string, unknown>, properties: Record<string, 
   }
   const fallback = (properties.text as string) ?? "";
   return fallback;
+}
+
+function normalizeStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
 }
 
 function stringifyPromptValue(value: unknown): string {
@@ -152,10 +188,20 @@ function stringifyPromptValue(value: unknown): string {
   return "";
 }
 
+function looksLikeImagePromptValue(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return false;
+  return (
+    normalized.startsWith("data:image/") ||
+    normalized.startsWith("blob:") ||
+    /\.(png|jpe?g|webp|gif|bmp|svg)(\?.*)?$/.test(normalized)
+  );
+}
+
 function pickPromptLike(inputs: Record<string, unknown>, properties: Record<string, unknown>, ...keys: string[]): string {
   for (const k of keys) {
     const inputValue = stringifyPromptValue(inputs[k]);
-    if (inputValue.trim()) return inputValue;
+    if (inputValue.trim() && !looksLikeImagePromptValue(inputValue)) return inputValue;
 
     const propertyValue = stringifyPromptValue(properties[k]);
     if (propertyValue.trim()) return propertyValue;
@@ -406,11 +452,73 @@ export const executors: Partial<Record<NodeClass, NodeExecutor>> = {
     const deepseekBaseUrl = apiConfig.providerBaseUrls?.deepseek || apiConfig.deepseekBaseUrl || apiConfig.baseUrl;
     const deepseekApiKey = apiConfig.providerApiKeys?.deepseek || apiConfig.deepseekApiKey || apiConfig.apiKey;
     const deepseekModel = apiConfig.providerModels?.deepseek || apiConfig.deepseekModel || apiConfig.model;
+    const minimaxBaseUrl = apiConfig.providerBaseUrls?.minimax || apiConfig.minimaxBaseUrl || apiConfig.baseUrl;
+    const minimaxApiKey = apiConfig.providerApiKeys?.minimax || apiConfig.minimaxApiKey || apiConfig.apiKey;
     const model = normalizeTextModel(properties.model || deepseekModel);
+    const referenceImages = normalizeStringArray(inputs.reference_images);
+    const referenceVideos = normalizeStringArray(inputs.reference_videos);
+    const hasVisualReferences = referenceImages.length > 0 || referenceVideos.length > 0;
     const isGemini = (deepseekBaseUrl || "").includes("generativelanguage.googleapis.com");
 
     let text = "";
-    if (isGemini) {
+    if (hasVisualReferences) {
+      const rawMultimodalModel = typeof properties.model === "string" && properties.model.trim() ? properties.model.trim() : "";
+      const multimodalModel = MINIMAX_MULTIMODAL_MODELS.has(rawMultimodalModel)
+        ? rawMultimodalModel
+        : MINIMAX_MULTIMODAL_MODEL;
+      const multimodalContent: Array<
+        | { type: "text"; text: string }
+        | { type: "image_url"; image_url: { url: string; detail: "default" } }
+        | { type: "video_url"; video_url: { url: string; detail: "default" } }
+      > = [];
+
+      multimodalContent.push({
+        type: "text",
+        text:
+          userPrompt.trim() ||
+          "请根据这些参考内容输出中文结构化分析，明确区分图一、图二等对象，并总结主体、场景、风格、光影和镜头语言。",
+      });
+      if (referenceImages.length > 0) {
+        multimodalContent.push({
+          type: "text",
+          text: `下面按顺序提供 ${referenceImages.length} 张参考图，请在回答中用图一、图二等编号区分。`,
+        });
+      }
+      if (referenceVideos.length > 0) {
+        multimodalContent.push({
+          type: "text",
+          text: `下面按顺序提供 ${referenceVideos.length} 个参考视频，请在回答中用视频一、视频二等编号区分。`,
+        });
+      }
+
+      referenceImages.forEach((url) => {
+        multimodalContent.push({ type: "image_url", image_url: { url, detail: "default" } });
+      });
+
+      referenceVideos.forEach((url) => {
+        multimodalContent.push({ type: "video_url", video_url: { url, detail: "default" } });
+      });
+
+      text = (
+        await callOpenAICompatible(
+          {
+            baseUrl: minimaxBaseUrl,
+            apiKey: minimaxApiKey,
+            model: multimodalModel,
+            providerLabel: "MiniMax",
+            temperature: apiConfig.temperature,
+            maxTokens: apiConfig.maxTokens,
+            topP: apiConfig.topP,
+            timeout: apiConfig.timeout,
+            systemPrompt:
+              nodeSystemPrompt ||
+              apiConfig.systemPrompt ||
+              "你是多模态中文创作助手。你会收到多张参考图或视频，请严格按输入顺序理解它们，并在回答里明确区分图一、图二等引用。",
+          },
+          multimodalContent
+        )
+      ).text;
+    } else if (isGemini) {
       const result = await callGeminiProxy(
         { model, contents: userPrompt, config: { systemInstruction: nodeSystemPrompt } },
         deepseekApiKey
@@ -423,6 +531,7 @@ export const executors: Partial<Record<NodeClass, NodeExecutor>> = {
             baseUrl: deepseekBaseUrl,
             apiKey: deepseekApiKey,
             model,
+            providerLabel: "DeepSeek",
             temperature: apiConfig.temperature,
             maxTokens: apiConfig.maxTokens,
             topP: apiConfig.topP,
