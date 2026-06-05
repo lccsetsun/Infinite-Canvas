@@ -317,6 +317,74 @@ describe("text_node executor", () => {
     ]);
   });
 
+  it("converts blob reference images to base64 data URLs before sending to MiniMax", async () => {
+    const apiResponse = {
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: "multimodal ok" } }] }),
+    } as Response;
+    const blobResponse = new Response(new Blob(["mini-image"], { type: "image/png" }));
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith("blob:")) return blobResponse;
+      return apiResponse;
+    });
+
+    const executor = getExecutor("text_node");
+    await executor?.({
+      inputs: {
+        user_prompt: "分析这张上传图片",
+        reference_images: ["blob:http://127.0.0.1/demo"],
+      },
+      properties: { model: "MiniMax-M3" },
+      apiConfig: {
+        baseUrl: "https://api.deepseek.com",
+        apiKey: "sk-test",
+        providerApiKeys: {
+          deepseek: "sk-deepseek",
+          minimax: "mini-key",
+        },
+        providerBaseUrls: {
+          deepseek: "https://api.deepseek.com",
+          minimax: "https://api.minimaxi.com/v1",
+        },
+      },
+    });
+
+    const [, init] = fetchMock.mock.calls.at(-1)!;
+    const body = JSON.parse(String((init as RequestInit).body));
+    expect(body.messages[1].content[2].type).toBe("image_url");
+    expect(body.messages[1].content[2].image_url.url).toMatch(/^data:image\/png;base64,/);
+  });
+
+  it("rejects placeholder SVG references before calling MiniMax", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    const executor = getExecutor("text_node");
+
+    await expect(
+      executor?.({
+        inputs: {
+          user_prompt: "分析这张图片",
+          reference_images: ["data:image/svg+xml,%3Csvg%3Eplaceholder%3C/svg%3E"],
+        },
+        properties: { model: "MiniMax-M3" },
+        apiConfig: {
+          baseUrl: "https://api.deepseek.com",
+          apiKey: "sk-test",
+          providerApiKeys: {
+            deepseek: "sk-deepseek",
+            minimax: "mini-key",
+          },
+          providerBaseUrls: {
+            deepseek: "https://api.deepseek.com",
+            minimax: "https://api.minimaxi.com/v1",
+          },
+        },
+      })
+    ).rejects.toThrow("请先上传真实参考图或参考视频，默认占位图不能直接发送给模型");
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("falls back to the multimodal text model instead of MiniMax image-01 when reference images exist", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,

@@ -768,35 +768,43 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
   }, [appendLog, links, nodes, pushHistory, syncCurrentWorkflowMeta]);
 
   const syncImagePromptStarterLayout = useCallback((imageNodeId: string, imageNodeWidth: number) => {
-    const imageNode = nodes.find((node) => node.id === imageNodeId && node.type === "image_node");
-    const textNodeId = typeof imageNode?.data?.starterTextNodeId === "string" ? imageNode.data.starterTextNodeId : "";
-    const textNode = nodes.find((node) => node.id === textNodeId && node.type === "text_node");
-    if (!imageNode || !textNode || !Number.isFinite(imageNodeWidth) || imageNodeWidth <= 0) return;
+    if (!Number.isFinite(imageNodeWidth) || imageNodeWidth <= 0) return;
 
-    const nextTextNodeX = getImagePromptStarterTextNodeX(
-      imageNode.x,
-      imageNodeWidth,
-      typeof imageNode.data?.starterGapX === "number" ? imageNode.data.starterGapX : IMAGE_PROMPT_STARTER_GAP_X
-    );
-    if (Math.abs(textNode.x - nextTextNodeX) < 1) return;
+    let nextNodesSnapshot: GraphNode[] | null = null;
+    setNodes((prev) => {
+      const imageNode = prev.find((node) => node.id === imageNodeId && node.type === "image_node");
+      const textNodeId = typeof imageNode?.data?.starterTextNodeId === "string" ? imageNode.data.starterTextNodeId : "";
+      const textNode = prev.find((node) => node.id === textNodeId && node.type === "text_node");
+      if (!imageNode || !textNode) return prev;
 
-    const nextNodes = nodes.map((node) =>
-      node.id === textNode.id
-        ? {
-            ...node,
-            x: nextTextNodeX,
-          }
-        : node
-    );
+      const nextTextNodeX = getImagePromptStarterTextNodeX(
+        imageNode.x,
+        imageNodeWidth,
+        typeof imageNode.data?.starterGapX === "number" ? imageNode.data.starterGapX : IMAGE_PROMPT_STARTER_GAP_X
+      );
+      if (Math.abs(textNode.x - nextTextNodeX) < 1) return prev;
 
-    setNodes(nextNodes);
+      const nextNodes = prev.map((node) =>
+        node.id === textNode.id
+          ? {
+              ...node,
+              x: nextTextNodeX,
+            }
+          : node
+      );
+      nextNodesSnapshot = nextNodes;
+      return nextNodes;
+    });
+
+    if (!nextNodesSnapshot) return;
+
     syncCurrentWorkflowMeta((wf) => ({
       ...wf,
       summary: { ...wf.summary, updatedAt: Date.now() },
-      data: { ...wf.data, nodes: nextNodes, links },
+      data: { ...wf.data, nodes: nextNodesSnapshot, links },
     }));
-    pushHistory({ nodes: nextNodes, links });
-  }, [links, nodes, pushHistory, syncCurrentWorkflowMeta]);
+    pushHistory({ nodes: nextNodesSnapshot, links });
+  }, [links, pushHistory, syncCurrentWorkflowMeta]);
 
   const updateNodeProperty = (nodeId: string, key: string, value: unknown) => {
     setNodes((prev) => prev.map((n) => (n.id === nodeId ? { ...n, properties: { ...n.properties, [key]: value } } : n)));
@@ -823,7 +831,8 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     );
     setNodeOutputs((prev) => {
       const next = new Map(prev);
-      const inner = new Map(next.get(nodeId) ?? []);
+      const existingOutputs = next.get(nodeId);
+      const inner = new Map<number, unknown>(existingOutputs instanceof Map ? existingOutputs : []);
       inner.set(0, imageUrl);
       next.set(nodeId, inner);
       return next;

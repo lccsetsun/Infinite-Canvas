@@ -8,6 +8,7 @@ import { getNodeWidth } from "./geometry";
 import { Tooltip } from "../common/Tooltip";
 import { downloadMediaAsset, extensionFromAssetUrl } from "../../utils/mediaAssets";
 import { formatGridCellLabel } from "../../utils/imageGridSplit";
+import { uploadFileToOss } from "../../features/resource/ossApi";
 
 interface ImageNodeCardProps {
   node: GraphNode;
@@ -24,6 +25,7 @@ interface ImageNodeCardProps {
   onPreview?: (content: string, title?: string, nodeId?: string, items?: string[], currentIndex?: number) => void;
   resolvedInputs?: Record<string, unknown>;
   onRun?: (nodeId: string) => void;
+  onNotice?: (message: string) => void;
   isLinkingOnCanvas?: boolean;
   linkFromNodeId?: string | null;
   linkFromOutputIndex?: number | null;
@@ -119,6 +121,7 @@ function ImageNodeCardImpl({
   onPreview,
   resolvedInputs,
   onRun,
+  onNotice,
   isLinkingOnCanvas,
   linkFromNodeId,
   linkFromOutputIndex,
@@ -153,6 +156,7 @@ function ImageNodeCardImpl({
   const previewNodeRef = React.useRef<HTMLDivElement | null>(null);
   const mediaFrameRef = React.useRef<HTMLDivElement | null>(null);
   const uploadInputRef = React.useRef<HTMLInputElement | null>(null);
+  const [isUploadingAsset, setIsUploadingAsset] = React.useState(false);
 
   const upstreamPrompt = findResolvedStringInput(resolvedInputs, ["prompt", "text", "原始提示词", "用户提示词"]);
   const promptText = upstreamPrompt?.value || (node.properties.text as string) || "";
@@ -315,42 +319,54 @@ function ImageNodeCardImpl({
     uploadInputRef.current?.click();
   }, []);
 
-  const handleImageUpload = React.useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = React.useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file || !file.type.startsWith("image/")) return;
 
-    const uploadedUrl = window.URL.createObjectURL(file);
-    const uploadedImage = new window.Image();
-    uploadedImage.onload = () => {
-      const naturalSize = {
-        width: uploadedImage.naturalWidth || resultImageSize.width,
-        height: uploadedImage.naturalHeight || resultImageSize.height,
+    setIsUploadingAsset(true);
+    try {
+      const asset = await uploadFileToOss(file);
+      const uploadedUrl = asset.url;
+      const uploadedImage = new window.Image();
+      uploadedImage.onload = () => {
+        const naturalSize = {
+          width: uploadedImage.naturalWidth || resultImageSize.width,
+          height: uploadedImage.naturalHeight || resultImageSize.height,
+        };
+        const displaySize = fitImageSize(naturalSize, aspectRatio, resultImageBounds.maxWidth, resultImageBounds.maxHeight);
+        setActiveImageIndex(0);
+        setNaturalImageSize(naturalSize);
+        onUpdateProperty?.(node.id, "imageUrl", uploadedUrl);
+        onUpdateData?.(node.id, {
+          imageUrl: uploadedUrl,
+          imageUrls: [uploadedUrl],
+          activeImageIndex: 0,
+          imageNaturalWidth: naturalSize.width,
+          imageNaturalHeight: naturalSize.height,
+          imageDisplayWidth: displaySize.width,
+          imageDisplayHeight: displaySize.height,
+          uploadedImage: true,
+          isUploadPlaceholder: false,
+          status: "success",
+          loading: false,
+        });
+        if (node.data?.imagePromptStarter) {
+          onSyncImagePromptStarterLayout?.(node.id, displaySize.width);
+        }
+        onSetPrimaryImageResult?.(node.id, uploadedUrl, 0);
+        onNotice?.("图片已上传到 OSS");
       };
-      const displaySize = fitImageSize(naturalSize, aspectRatio, resultImageBounds.maxWidth, resultImageBounds.maxHeight);
-      setActiveImageIndex(0);
-      setNaturalImageSize(naturalSize);
-      onUpdateProperty?.(node.id, "imageUrl", uploadedUrl);
-      onUpdateData?.(node.id, {
-        imageUrl: uploadedUrl,
-        imageUrls: [uploadedUrl],
-        activeImageIndex: 0,
-        imageNaturalWidth: naturalSize.width,
-        imageNaturalHeight: naturalSize.height,
-        imageDisplayWidth: displaySize.width,
-        imageDisplayHeight: displaySize.height,
-        uploadedImage: true,
-        isUploadPlaceholder: false,
-        status: "success",
-        loading: false,
-      });
-      if (node.data?.imagePromptStarter) {
-        onSyncImagePromptStarterLayout?.(node.id, displaySize.width);
-      }
-      onSetPrimaryImageResult?.(node.id, uploadedUrl, 0);
-    };
-    uploadedImage.src = uploadedUrl;
-  }, [aspectRatio, node.data?.imagePromptStarter, node.id, onSetPrimaryImageResult, onSyncImagePromptStarterLayout, onUpdateData, onUpdateProperty, resultImageBounds.maxHeight, resultImageBounds.maxWidth, resultImageSize.height, resultImageSize.width]);
+      uploadedImage.onerror = () => {
+        onNotice?.("图片上传成功，但预览加载失败");
+      };
+      uploadedImage.src = uploadedUrl;
+    } catch (error) {
+      onNotice?.(error instanceof Error ? error.message : "图片上传失败");
+    } finally {
+      setIsUploadingAsset(false);
+    }
+  }, [aspectRatio, node.data?.imagePromptStarter, node.id, onNotice, onSetPrimaryImageResult, onSyncImagePromptStarterLayout, onUpdateData, onUpdateProperty, resultImageBounds.maxHeight, resultImageBounds.maxWidth, resultImageSize.height, resultImageSize.width]);
 
   const cycleActiveImage = React.useCallback(
     (direction: -1 | 1) => {
@@ -392,9 +408,10 @@ function ImageNodeCardImpl({
           type="button"
           data-node-action="true"
           onClick={handleUploadClick}
+          disabled={isUploadingAsset}
           className="flex h-9 w-9 items-center justify-center rounded-[12px] border border-slate-300/14 bg-[#101827]/72 text-slate-300/78 shadow-[0_14px_34px_-24px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.055)] backdrop-blur-xl transition-all hover:-translate-y-0.5 hover:border-violet-300/36 hover:bg-violet-500/[0.16] hover:text-violet-50 hover:shadow-[0_16px_34px_-22px_rgba(139,92,246,0.85),0_0_18px_rgba(139,92,246,0.2)]"
         >
-          <Upload className="h-[18px] w-[18px]" />
+          {isUploadingAsset ? <Loader2 className="h-[18px] w-[18px] animate-spin" /> : <Upload className="h-[18px] w-[18px]" />}
         </button>
       </Tooltip>
     </>

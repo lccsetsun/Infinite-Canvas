@@ -3,11 +3,22 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
+import { createProxyMiddleware } from "http-proxy-middleware";
 
 dotenv.config();
 
 const app = express();
 const PORT = 3000;
+
+app.use(
+  "/dev-api",
+  createProxyMiddleware({
+    target: "http://114.100.248.200:18082",
+    changeOrigin: true,
+    ws: true,
+    pathRewrite: (path) => `/dev-api${path}`,
+  })
+);
 
 app.use(express.json({ limit: "10mb" }));
 

@@ -169,6 +169,54 @@ function normalizeStringArray(value: unknown): string[] {
   return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
 }
 
+function isHttpMediaUrl(value: string) {
+  return /^https?:\/\//i.test(value.trim());
+}
+
+function isBase64DataUrl(value: string) {
+  return /^data:[^;,]+;base64,/i.test(value.trim());
+}
+
+function isSvgDataUrl(value: string) {
+  return /^data:image\/svg\+xml/i.test(value.trim());
+}
+
+function encodeBase64(binary: string): string {
+  if (typeof btoa === "function") return btoa(binary);
+  if (typeof Buffer !== "undefined") return Buffer.from(binary, "binary").toString("base64");
+  throw new Error("Base64 encoding is not supported in this environment");
+}
+
+async function blobToDataUrl(blob: Blob): Promise<string> {
+  const buffer = await blob.arrayBuffer();
+  let binary = "";
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    const chunk = bytes.subarray(index, index + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+  const mime = blob.type || "application/octet-stream";
+  return `data:${mime};base64,${encodeBase64(binary)}`;
+}
+
+async function normalizeVisionReferenceUrl(url: string): Promise<string> {
+  const normalized = url.trim();
+  if (!normalized) return "";
+  if (isSvgDataUrl(normalized)) {
+    return "";
+  }
+  if (isHttpMediaUrl(normalized) || isBase64DataUrl(normalized)) return normalized;
+  if (!normalized.startsWith("blob:") && !normalized.startsWith("data:")) return normalized;
+
+  const response = await fetch(normalized);
+  if (!response.ok) {
+    throw new Error(`Failed to prepare reference media (${response.status})`);
+  }
+  const blob = await response.blob();
+  return blobToDataUrl(blob);
+}
+
 function stringifyPromptValue(value: unknown): string {
   if (typeof value === "string") return value;
   if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
@@ -491,11 +539,22 @@ export const executors: Partial<Record<NodeClass, NodeExecutor>> = {
         });
       }
 
-      referenceImages.forEach((url) => {
+      const normalizedReferenceImages = await Promise.all(referenceImages.map((url) => normalizeVisionReferenceUrl(url)));
+      const normalizedReferenceVideos = await Promise.all(referenceVideos.map((url) => normalizeVisionReferenceUrl(url)));
+      const usableReferenceImages = normalizedReferenceImages.filter(Boolean);
+      const usableReferenceVideos = normalizedReferenceVideos.filter(Boolean);
+
+      if (usableReferenceImages.length === 0 && usableReferenceVideos.length === 0) {
+        throw new Error("请先上传真实参考图或参考视频，默认占位图不能直接发送给模型");
+      }
+
+      usableReferenceImages.forEach((url) => {
+        if (!url) return;
         multimodalContent.push({ type: "image_url", image_url: { url, detail: "default" } });
       });
 
-      referenceVideos.forEach((url) => {
+      usableReferenceVideos.forEach((url) => {
+        if (!url) return;
         multimodalContent.push({ type: "video_url", video_url: { url, detail: "default" } });
       });
 

@@ -35,7 +35,7 @@ describe("sanitizeWorkspaceForStorage", () => {
         },
       },
       trash: [],
-    };
+    } as any;
 
     const sanitized = sanitizeWorkspaceForStorage(workspace);
     const node = sanitized.workflows.wf_1.data.nodes[0];
@@ -79,7 +79,7 @@ describe("sanitizeWorkspaceForStorage", () => {
         },
       },
       trash: [],
-    };
+    } as any;
 
     const sanitized = sanitizeWorkspaceForStorage(workspace);
     const node = sanitized.workflows.wf_1.data.nodes[0];

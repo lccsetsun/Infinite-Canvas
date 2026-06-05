@@ -3,7 +3,7 @@ import { getResultImageBounds } from "./ImageNodeCard";
 
 describe("getResultImageBounds", () => {
   it("uses compact bounds for image prompt starter placeholders", () => {
-    expect(getResultImageBounds("16:9", { isUploadPlaceholder: true })).toEqual({
+    expect(getResultImageBounds("16:9", true)).toEqual({
       maxWidth: 520,
       maxHeight: 390,
     });

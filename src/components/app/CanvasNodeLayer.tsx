@@ -46,6 +46,7 @@ interface CanvasNodeLayerProps {
   textNodeReferenceImagesMap?: Map<string, string[]>;
   onRunNode?: (nodeId: string) => void;
   onCreateImagePromptStarter?: (nodeId: string) => void;
+  onNotice?: (message: string) => void;
 }
 
 export default function CanvasNodeLayer({
@@ -82,6 +83,7 @@ export default function CanvasNodeLayer({
   textNodeReferenceImagesMap,
   onRunNode,
   onCreateImagePromptStarter,
+  onNotice,
 }: CanvasNodeLayerProps) {
   return (
     <div
@@ -160,6 +162,7 @@ export default function CanvasNodeLayer({
                 onPreview={onPreview}
                 resolvedInputs={resolvedInputsMap?.get(node.id)}
                 onRun={onRunNode}
+                onNotice={onNotice}
                 // 连线相关
                 isLinkingOnCanvas={isLinkingOnCanvas}
                 linkFromNodeId={linkFromNodeId}

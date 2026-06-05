@@ -1,6 +1,6 @@
 import React from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Check, Copy, FileText, Plus, Trash2, X, Pencil, FolderOpen, AlertTriangle, Search, SearchX, Archive, Trash, Download, Upload, FolderTree, Hash, GripVertical, Clock } from "lucide-react";
+import { Check, Copy, FileText, Plus, Trash2, X, Pencil, FolderOpen, AlertTriangle, Search, SearchX, Archive, Trash, Download, Upload, FolderTree, Hash, GripVertical, Clock, RotateCcw } from "lucide-react";
 import { Tooltip } from "./common/Tooltip";
 import { WorkflowSummary } from "../hooks/useWorkflowState";
 

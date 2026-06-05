@@ -28,6 +28,8 @@ import { cropImageGridCell, getGridChildNodePosition } from "./utils/imageGridSp
 import { ConfigProvider, theme } from "antd";
 import { GraphNode, NodeClass, VideoFrameAnalysisOverview, VideoFrameAnalysisSegment, VideoSegmentTextAnalysis } from "./types";
 import { ApiSettings, getActiveProfile, getProviderProfile, loadApiSettings, saveApiSettings } from "./features/api/apiSettings";
+import { clearAuthSession, hasAuthSession, setAccessToken } from "./features/auth/authStorage";
+import { logout } from "./features/auth/authApi";
 
 const LogicPanel = React.lazy(() => import("./components/LogicPanel"));
 const SearchMenu = React.lazy(() => import("./components/SearchMenu"));
@@ -48,17 +50,24 @@ export default function App() {
   const apiModel = activeApiProfile.model;
   const [workflowManagerOpen, setWorkflowManagerOpen] = React.useState(false);
   const [isLoggedIn, setIsLoggedIn] = React.useState(() => {
-    return localStorage.getItem("isLoggedIn") === "true";
+    return hasAuthSession();
   });
 
-  const handleLogin = () => {
-    localStorage.setItem("isLoggedIn", "true");
+  const handleLogin = (accessToken: string) => {
+    setAccessToken(accessToken);
     setIsLoggedIn(true);
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem("isLoggedIn");
-    setIsLoggedIn(false);
+  const handleLogout = async () => {
+    try {
+      await logout();
+      showNotice("已退出登录");
+    } catch (error) {
+      showNotice(error instanceof Error ? `退出接口调用失败：${error.message}` : "退出接口调用失败，已清理本地登录态");
+    } finally {
+      clearAuthSession();
+      setIsLoggedIn(false);
+    }
   };
 
   const {
@@ -156,7 +165,7 @@ export default function App() {
   });
 
   const textNodeReferenceImagesMap = React.useMemo(() => {
-    const nodeById = new Map(nodes.map((node) => [node.id, node]));
+    const nodeById = new Map<string, GraphNode>(nodes.map((node) => [node.id, node]));
     const map = new Map<string, string[]>();
 
     for (const link of links) {
@@ -874,6 +883,7 @@ export default function App() {
                   setPendingLinkMenuDraft(null);
                   closeNodeContextMenu();
                 }}
+                onNotice={showNotice}
                 onHoverStart={clearMenuCloseTimer}
                 onHoverEnd={scheduleMenuClose}
               />
@@ -1063,6 +1073,7 @@ export default function App() {
           textNodeReferenceImagesMap={textNodeReferenceImagesMap}
           onRunNode={runNode}
           onCreateImagePromptStarter={handleCreateImagePromptStarter}
+          onNotice={showNotice}
         />
         {isLinkingOnCanvas && (
           <DraftLinkOverlay

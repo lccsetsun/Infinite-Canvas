@@ -53,6 +53,7 @@ export default function LinkInteractionOverlay({
         fromNodeId: link.fromNodeId,
         from,
         id: link.id,
+        locked: link.locked,
         midpoint: getBezierMidpoint(from, to),
         path: linkPath(from, to),
         to,
