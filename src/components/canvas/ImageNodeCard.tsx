@@ -807,7 +807,7 @@ function ImageNodeCardImpl({
                 <img
                   src={imageUrl}
                   alt="生成图片"
-                  className="block h-full w-full object-contain"
+                  className={`block h-full w-full ${isStarterPlaceholder ? "object-cover" : "object-contain"}`}
                   draggable={false}
                   onLoad={(e) => {
                     const img = e.currentTarget;
@@ -947,6 +947,7 @@ function ImageNodeCardImpl({
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
+      {portHandles}
       <motion.div
         onPointerDown={(e) => {
           if (e.button !== 0) {
@@ -975,7 +976,6 @@ function ImageNodeCardImpl({
             <div className="absolute inset-0 -translate-x-full animate-[text-node-shimmer_1.8s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-cyan-200/12 to-transparent" />
           </div>
         )}
-        {portHandles}
         <div
           data-node-action="true"
           className="absolute right-5 top-5 z-30"

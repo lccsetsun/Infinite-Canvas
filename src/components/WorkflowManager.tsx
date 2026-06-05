@@ -1,6 +1,6 @@
 import React from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Check, Copy, FileText, Plus, Trash2, X, Pencil, FolderOpen, AlertTriangle, Search, SearchX, Archive, Trash, Download, Upload, FolderTree, Hash, GripVertical, Clock, RotateCcw } from "lucide-react";
+import { Check, Copy, FileText, Plus, Trash2, X, Pencil, FolderOpen, AlertTriangle, Search, SearchX, Archive, Trash, FolderTree, Hash, GripVertical, Clock, RotateCcw } from "lucide-react";
 import { Tooltip } from "./common/Tooltip";
 import { WorkflowSummary } from "../hooks/useWorkflowState";
 
@@ -28,8 +28,6 @@ interface WorkflowManagerProps {
   onPurge: (id: string) => boolean;
   onEmptyTrash: () => number;
   onPurgeExpired: () => number;
-  onExportJson: () => string;
-  onImportJson: (json: string) => { imported: number; skipped: number; renamed: number; errors: string[] };
   showNotice: (message: string) => void;
 }
 
@@ -93,8 +91,6 @@ export default function WorkflowManager({
   onPurge,
   onEmptyTrash,
   onPurgeExpired,
-  onExportJson,
-  onImportJson,
   showNotice,
 }: WorkflowManagerProps) {
   const [newName, setNewName] = React.useState("");
@@ -118,59 +114,6 @@ export default function WorkflowManager({
   const inputRef = React.useRef<HTMLInputElement>(null);
   const editInputRef = React.useRef<HTMLInputElement>(null);
   const searchInputRef = React.useRef<HTMLInputElement>(null);
-  const importFileRef = React.useRef<HTMLInputElement>(null);
-
-  const handleExport = () => {
-    try {
-      const json = onExportJson();
-      const blob = new Blob([json], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-      a.download = `aicanvas-projects-${workflowName.replace(/[^\w\u4e00-\u9fa5-]+/g, "_")}-${stamp}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      showNotice(`已导出 ${list.length + trash.length} 个项目 (含 ${trash.length} 回收站)`);
-    } catch (err) {
-      showNotice(`导出失败:${err instanceof Error ? err.message : String(err)}`);
-    }
-  };
-
-  const handleImportClick = () => importFileRef.current?.click();
-
-  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-    if (file.size > 10 * 1024 * 1024) {
-      showNotice("文件过大 (>10MB),已拒绝");
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const json = String(reader.result ?? "");
-        const result = onImportJson(json);
-        if (result.errors.length > 0) {
-          showNotice(`导入失败:${result.errors[0]}`);
-        } else {
-          const parts: string[] = [];
-          if (result.imported > 0) parts.push(`导入 ${result.imported}`);
-          if (result.renamed > 0) parts.push(`重命名 ${result.renamed}`);
-          if (result.skipped > 0) parts.push(`跳过 ${result.skipped}`);
-          showNotice(parts.length > 0 ? `导入完成:${parts.join(", ")}` : "无可导入的项目");
-        }
-      } catch (err) {
-        showNotice(`读取失败:${err instanceof Error ? err.message : String(err)}`);
-      }
-    };
-    reader.onerror = () => showNotice("文件读取失败");
-    reader.readAsText(file);
-  };
-
   const sourceList = activeTab === "active" ? list : trash;
   const currentProject = list.find((wf) => wf.id === currentId) ?? null;
   const filteredList = React.useMemo(() => {
@@ -375,14 +318,6 @@ export default function WorkflowManager({
             className="relative w-full max-w-[960px] max-h-[86vh] bg-[#121723] border border-[#2b3142] rounded-2xl shadow-2xl flex flex-col overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            <input
-              ref={importFileRef}
-              type="file"
-              accept="application/json,.json"
-              onChange={handleImportFile}
-              className="hidden"
-              aria-hidden="true"
-            />
             <div className="px-6 py-4 border-b border-[#252c3a] flex items-center justify-between shrink-0 bg-[#161b29]">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500/20 to-cyan-500/20 border border-indigo-500/30 flex items-center justify-center shadow-[0_0_24px_rgba(99,102,241,0.16)]">
@@ -391,68 +326,11 @@ export default function WorkflowManager({
                 <div>
                   <div className="text-lg font-bold text-white tracking-tight">项目中心</div>
                   <div className="text-[11px] text-gray-500">
-                    每个项目都是一张独立自由画布,可创建、切换、归档和导入导出。
+                    每个项目都是一张独立自由画布,可创建、切换和归档。
                   </div>
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <Tooltip content="导出项目到 JSON 文件">
-                  <button
-                    onClick={handleExport}
-                    aria-label="导出 JSON"
-                    className="p-2 rounded-lg hover:bg-white/5 text-gray-400 hover:text-emerald-300 transition-colors"
-                  >
-                    <Download className="w-4 h-4" />
-                  </button>
-                </Tooltip>
-                <Tooltip content="从 JSON 文件导入项目">
-                  <button
-                    onClick={handleImportClick}
-                    aria-label="导入 JSON"
-                    className="p-2 rounded-lg hover:bg-white/5 text-gray-400 hover:text-cyan-300 transition-colors"
-                  >
-                    <Upload className="w-4 h-4" />
-                  </button>
-                </Tooltip>
-                <div className="w-px h-5 bg-white/10 mx-0.5" />
-                <div
-                  className="flex items-center gap-1 p-0.5 rounded-lg bg-[#0d1117] border border-[#2b3142]"
-                  role="tablist"
-                  aria-label="项目标签切换"
-                >
-                  <button
-                    role="tab"
-                    aria-selected={activeTab === "active"}
-                    onClick={() => setActiveTab("active")}
-                    className={`px-3 py-1.5 rounded-md text-[11px] font-bold flex items-center gap-1.5 transition-all ${
-                      activeTab === "active"
-                        ? "bg-indigo-500/20 text-indigo-200 shadow-[0_0_12px_rgba(99,102,241,0.25)]"
-                        : "text-gray-500 hover:text-gray-300"
-                    }`}
-                  >
-                    <FolderOpen className="w-3 h-3" />
-                    项目
-                    <span className={`text-[9px] font-mono ${activeTab === "active" ? "text-indigo-300" : "text-gray-600"}`}>
-                      {list.length}
-                    </span>
-                  </button>
-                  <button
-                    role="tab"
-                    aria-selected={activeTab === "trash"}
-                    onClick={() => setActiveTab("trash")}
-                    className={`px-3 py-1.5 rounded-md text-[11px] font-bold flex items-center gap-1.5 transition-all ${
-                      activeTab === "trash"
-                        ? "bg-rose-500/20 text-rose-200 shadow-[0_0_12px_rgba(244,63,94,0.25)]"
-                        : "text-gray-500 hover:text-gray-300"
-                    }`}
-                  >
-                    <Archive className="w-3 h-3" />
-                    回收站
-                    <span className={`text-[9px] font-mono ${activeTab === "trash" ? "text-rose-300" : "text-gray-600"}`}>
-                      {trash.length}
-                    </span>
-                  </button>
-                </div>
                 <button
                   onClick={onClose}
                   aria-label="关闭"

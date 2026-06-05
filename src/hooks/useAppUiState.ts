@@ -3,7 +3,7 @@ import React from "react";
 export type ViewType = "canvas" | "api" | "workflow";
 export type QuickToolType = "api" | "workflow" | null;
 
-const UI_PREFERENCES_STORAGE_KEY = "aicanvas_ui_preferences_v1";
+const UI_PREFERENCES_STORAGE_KEY = "aicanvas_ui_preferences_v2";
 
 interface UiPreferences {
   showGrid: boolean;
@@ -12,7 +12,7 @@ interface UiPreferences {
 }
 
 const DEFAULT_UI_PREFERENCES: UiPreferences = {
-  showGrid: false,
+  showGrid: true,
   showMiniMap: true,
   snapToGridEnabled: false,
 };
@@ -36,7 +36,6 @@ function loadUiPreferences(): UiPreferences {
 
 export function useAppUiState() {
   const initialUiPreferences = React.useMemo(() => loadUiPreferences(), []);
-  const [showLogicPanel, setShowLogicPanel] = React.useState(false);
   const [isWelcomeDismissed, setIsWelcomeDismissed] = React.useState(false);
   const [isMenuFromToolbar, setIsMenuFromToolbar] = React.useState(false);
   const [showGrid, setShowGrid] = React.useState(initialUiPreferences.showGrid);
@@ -84,8 +83,6 @@ export function useAppUiState() {
   }, [showGrid, showMiniMap, snapToGridEnabled]);
 
   return {
-    showLogicPanel,
-    setShowLogicPanel,
     isWelcomeDismissed,
     setIsWelcomeDismissed,
     isMenuFromToolbar,

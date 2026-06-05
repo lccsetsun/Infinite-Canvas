@@ -1,27 +1,23 @@
 import React from "react";
-import { Terminal, FolderOpen, ChevronDown, LogOut, User } from "lucide-react";
+import { FolderOpen, ChevronDown, LogOut, User } from "lucide-react";
 import { motion } from "motion/react";
 import { Tooltip } from "../common/Tooltip";
 
 interface AppHeaderProps {
-  showLogicPanel: boolean;
   workflowName?: string;
   workflowCount?: number;
   username?: string;
   onOpenWorkflowManager?: () => void;
   onRun: () => void;
-  onToggleLogicPanel: () => void;
   onLogout?: () => void;
 }
 
 export default function AppHeader({
-  showLogicPanel,
   workflowName,
   workflowCount,
   username = "lccsetsun",
   onOpenWorkflowManager,
   onRun: _onRun,
-  onToggleLogicPanel,
   onLogout,
 }: AppHeaderProps) {
   const [menuOpen, setMenuOpen] = React.useState(false);
@@ -99,20 +95,6 @@ export default function AppHeader({
       </div>
 
       <div className="flex items-center gap-3">
-        <Tooltip content={showLogicPanel ? "关闭运行日志" : "查看运行日志"} position="bottom">
-          <button
-            onClick={(event) => {
-              event.stopPropagation();
-              onToggleLogicPanel();
-            }}
-            className={`flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl border border-white/[0.06] bg-[#0d1117]/55 transition-all duration-300 ${
-              showLogicPanel ? "text-indigo-300 shadow-[0_0_15px_rgba(99,102,241,0.2)]" : "text-gray-400 hover:bg-white/[0.07] hover:text-white"
-            }`}
-          >
-            <Terminal className={`h-4 w-4 ${showLogicPanel ? "animate-pulse" : ""}`} />
-          </button>
-        </Tooltip>
-
         <div ref={menuRef} className="relative">
           <button
             type="button"
@@ -124,7 +106,6 @@ export default function AppHeader({
             </div>
             <div className="hidden min-w-0 text-left sm:block">
               <div className="max-w-[140px] truncate text-sm font-semibold text-slate-100">{displayName}</div>
-              <div className="text-[11px] text-slate-500">已登录</div>
             </div>
             <ChevronDown className={`h-4 w-4 text-slate-500 transition-transform ${menuOpen ? "rotate-180" : ""}`} />
           </button>

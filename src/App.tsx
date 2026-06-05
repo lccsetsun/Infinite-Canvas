@@ -31,7 +31,6 @@ import { ApiSettings, getActiveProfile, getProviderProfile, loadApiSettings, sav
 import { clearAuthSession, hasAuthSession, setAccessToken } from "./features/auth/authStorage";
 import { logout } from "./features/auth/authApi";
 
-const LogicPanel = React.lazy(() => import("./components/LogicPanel"));
 const SearchMenu = React.lazy(() => import("./components/SearchMenu"));
 
 export default function App() {
@@ -91,7 +90,6 @@ export default function App() {
     setPrimaryImageResult,
     addVideoFrameAnalysis,
     addSegmentVideoAnalyses,
-    logs,
     linkFromNodeId,
     linkToNodeId,
     linkFromOutputIndex,
@@ -120,8 +118,6 @@ export default function App() {
     purgeWorkflow,
     emptyTrash,
     purgeExpiredTrash,
-    exportWorkspaceJson,
-    importWorkspaceJson,
     setLinkFromNodeId,
     setLinkToNodeId,
     setLinkFromOutputIndex,
@@ -192,8 +188,6 @@ export default function App() {
   }, [links, nodes]);
 
   const {
-    showLogicPanel,
-    setShowLogicPanel,
     isWelcomeDismissed,
     setIsWelcomeDismissed,
     isMenuFromToolbar,
@@ -738,14 +732,12 @@ export default function App() {
         },
       }}
     >
-      <div className="relative w-full h-screen bg-[#0f1218] text-[#e2e8f0] overflow-hidden select-none font-sans">
+      <div className="relative w-full h-screen bg-[#202637] text-[#e2e8f0] overflow-hidden select-none font-sans">
         <AppHeader
-          showLogicPanel={showLogicPanel}
           workflowName={currentWorkflowSummary?.name}
           workflowCount={workflowList.length}
           onOpenWorkflowManager={() => setWorkflowManagerOpen(true)}
           onRun={runNow}
-          onToggleLogicPanel={() => setShowLogicPanel((v) => !v)}
           onLogout={handleLogout}
         />
 
@@ -1088,15 +1080,6 @@ export default function App() {
             draftCursor={draftCursor}
           />
         )}
-        {showLogicPanel && (
-          <React.Suspense fallback={panelFallback}>
-            <LogicPanel
-              logs={logs}
-              onClose={() => setShowLogicPanel(false)}
-            />
-          </React.Suspense>
-        )}
-
         {currentView === "canvas" && showMiniMap && miniMapConfig && (
           <MiniMap
             activeNodeId={selectedNodeId}
@@ -1179,8 +1162,6 @@ export default function App() {
         onPurge={purgeWorkflow}
         onEmptyTrash={emptyTrash}
         onPurgeExpired={purgeExpiredTrash}
-        onExportJson={exportWorkspaceJson}
-        onImportJson={importWorkspaceJson}
         showNotice={showNotice}
       />
     </div>

@@ -53,61 +53,21 @@ function buildGrid(group: Group, pan: { x: number; y: number }, zoom: number, wi
   const endWorldX = ((width - pan.x) / zoom) + worldStep;
   const endWorldY = ((height - pan.y) / zoom) + worldStep;
 
-  for (let worldX = startWorldX; worldX <= endWorldX; worldX += worldStep) {
-    const screenX = Math.round(pan.x + worldX * zoom) + 0.5;
-    const isMajor = Math.abs(Math.round(worldX / worldStep)) % 4 === 0;
-    group.add(
-      new Rect({
-        x: screenX,
-        y: 0,
-        width: isMajor ? 1.25 : 1,
-        height,
-        fill: isMajor ? "rgba(114,137,218,0.28)" : "rgba(114,137,218,0.12)",
-        hitFill: "none",
-      } as never)
-    );
-  }
-
   for (let worldY = startWorldY; worldY <= endWorldY; worldY += worldStep) {
-    const screenY = Math.round(pan.y + worldY * zoom) + 0.5;
-    const isMajor = Math.abs(Math.round(worldY / worldStep)) % 4 === 0;
-    group.add(
-      new Rect({
-        x: 0,
-        y: screenY,
-        width,
-        height: isMajor ? 1.25 : 1,
-        fill: isMajor ? "rgba(114,137,218,0.28)" : "rgba(114,137,218,0.12)",
-        hitFill: "none",
-      } as never)
-    );
-  }
+    for (let worldX = startWorldX; worldX <= endWorldX; worldX += worldStep) {
+      const screenX = Math.round(pan.x + worldX * zoom);
+      const screenY = Math.round(pan.y + worldY * zoom);
+      const isOrigin = Math.abs(worldX) < 0.001 && Math.abs(worldY) < 0.001;
+      const size = isOrigin ? 3.2 : 2.2;
+      const fill = isOrigin ? "rgba(96, 165, 250, 0.52)" : "rgba(148, 163, 184, 0.16)";
 
-  if (screenStep >= 18) {
-    const originX = Math.round(pan.x) + 0.5;
-    const originY = Math.round(pan.y) + 0.5;
-
-    if (originX >= 0 && originX <= width) {
       group.add(
-        new Rect({
-          x: originX,
-          y: 0,
-          width: 1.5,
-          height,
-          fill: "rgba(34,211,238,0.34)",
-          hitFill: "none",
-        } as never)
-      );
-    }
-
-    if (originY >= 0 && originY <= height) {
-      group.add(
-        new Rect({
-          x: 0,
-          y: originY,
-          width,
-          height: 1.5,
-          fill: "rgba(34,211,238,0.34)",
+        new Ellipse({
+          x: screenX - size / 2,
+          y: screenY - size / 2,
+          width: size,
+          height: size,
+          fill,
           hitFill: "none",
         } as never)
       );
@@ -369,7 +329,7 @@ export default function LeaferCanvas({
   pan,
   zoom,
   showGrid,
-  background = "#121214",
+  background = "#202637",
   selectedNodeId,
   showNodeDecorators = true,
   draftFromNodeId = "",
@@ -385,31 +345,13 @@ export default function LeaferCanvas({
   const viewportRef = React.useRef({ pan, showGrid, zoom });
   const gridOverlayStyle = React.useMemo<React.CSSProperties>(() => {
     const screenStep = getAdaptiveGridStep(zoom) * zoom;
-    const majorStep = screenStep * 4;
     const minorX = ((pan.x % screenStep) + screenStep) % screenStep;
     const minorY = ((pan.y % screenStep) + screenStep) % screenStep;
-    const majorX = ((pan.x % majorStep) + majorStep) % majorStep;
-    const majorY = ((pan.y % majorStep) + majorStep) % majorStep;
 
     return {
-      backgroundImage: [
-        "linear-gradient(to right, rgba(132, 160, 255, 0.26) 1px, transparent 1px)",
-        "linear-gradient(to bottom, rgba(132, 160, 255, 0.26) 1px, transparent 1px)",
-        "linear-gradient(to right, rgba(132, 160, 255, 0.11) 1px, transparent 1px)",
-        "linear-gradient(to bottom, rgba(132, 160, 255, 0.11) 1px, transparent 1px)",
-      ].join(", "),
-      backgroundPosition: [
-        `${majorX}px 0`,
-        `0 ${majorY}px`,
-        `${minorX}px 0`,
-        `0 ${minorY}px`,
-      ].join(", "),
-      backgroundSize: [
-        `${majorStep}px ${majorStep}px`,
-        `${majorStep}px ${majorStep}px`,
-        `${screenStep}px ${screenStep}px`,
-        `${screenStep}px ${screenStep}px`,
-      ].join(", "),
+      backgroundImage: "radial-gradient(circle, rgba(148, 163, 184, 0.16) 1px, transparent 1.1px)",
+      backgroundPosition: `${minorX - 1}px ${minorY - 1}px`,
+      backgroundSize: `${screenStep}px ${screenStep}px`,
     };
   }, [pan.x, pan.y, zoom]);
 
