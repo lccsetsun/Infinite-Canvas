@@ -63,6 +63,9 @@ export interface GraphNode {
     imagePortCenterY?: number;
     imageDisplayWidth?: number;
     imageDisplayHeight?: number;
+    imagePromptStarter?: boolean;
+    starterTextNodeId?: string;
+    starterGapX?: number;
     textStarterDismissed?: boolean;
     imageNaturalWidth?: number;
     imageNaturalHeight?: number;
@@ -89,6 +92,7 @@ export interface GraphLink {
   fromOutputIndex: number;
   toNodeId: string;
   toInputIndex: number;
+  locked?: boolean;
 }
 
 export interface VideoFrameAnalysisSegment {

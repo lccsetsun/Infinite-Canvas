@@ -1,6 +1,6 @@
 import React from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowUp, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, Eye, Grid3X3, Image as ImageIcon, Loader2, Plus, Undo2, Wand2 } from "lucide-react";
+import { ArrowUp, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, Eye, Grid3X3, Image as ImageIcon, Loader2, Plus, Undo2, Upload, Wand2 } from "lucide-react";
 import { GraphNode } from "../../types";
 import { findResolvedStringInput } from "../../utils/resolvedInputs";
 import { shouldShowInlinePortHandles } from "../../utils/portHandleVisibility";
@@ -19,6 +19,7 @@ interface ImageNodeCardProps {
   onUpdateProperty?: (nodeId: string, key: string, value: unknown) => void;
   onUpdateData?: (nodeId: string, data: Partial<GraphNode["data"]>) => void;
   onSetPrimaryImageResult?: (nodeId: string, imageUrl: string, imageIndex: number) => void;
+  onSyncImagePromptStarterLayout?: (nodeId: string, imageNodeWidth: number) => void;
   onSplitImageGrid?: (nodeId: string, imageUrl: string, gridRows: number, gridCols: number, cellIndices: number[]) => void;
   onPreview?: (content: string, title?: string, nodeId?: string, items?: string[], currentIndex?: number) => void;
   resolvedInputs?: Record<string, unknown>;
@@ -39,6 +40,8 @@ const RESULT_IMAGE_MAX_WIDTH = 780;
 const RESULT_IMAGE_MAX_HEIGHT = 585;
 const SQUARE_RESULT_IMAGE_MAX_WIDTH = 520;
 const SQUARE_RESULT_IMAGE_MAX_HEIGHT = 390;
+const PLACEHOLDER_RESULT_IMAGE_MAX_WIDTH = 520;
+const PLACEHOLDER_RESULT_IMAGE_MAX_HEIGHT = 390;
 const RATIO_OPTIONS = ["16:9", "9:16", "4:3", "3:4", "1:1", "21:9"];
 const QUANTITY_OPTIONS = ["1张", "2张", "3张", "4张"];
 const MINIMAX_IMAGE_MODEL = "MiniMax Image 01";
@@ -80,6 +83,27 @@ function fitImageSize(naturalSize: { width: number; height: number } | null, asp
   return { width: Math.round(maxHeight * ratio), height: maxHeight };
 }
 
+export function getResultImageBounds(aspectRatio: string, isUploadPlaceholder = false) {
+  if (isUploadPlaceholder) {
+    return {
+      maxWidth: PLACEHOLDER_RESULT_IMAGE_MAX_WIDTH,
+      maxHeight: PLACEHOLDER_RESULT_IMAGE_MAX_HEIGHT,
+    };
+  }
+
+  if (aspectRatio === "1:1") {
+    return {
+      maxWidth: SQUARE_RESULT_IMAGE_MAX_WIDTH,
+      maxHeight: SQUARE_RESULT_IMAGE_MAX_HEIGHT,
+    };
+  }
+
+  return {
+    maxWidth: RESULT_IMAGE_MAX_WIDTH,
+    maxHeight: RESULT_IMAGE_MAX_HEIGHT,
+  };
+}
+
 function ImageNodeCardImpl({
   node,
   selected,
@@ -90,6 +114,7 @@ function ImageNodeCardImpl({
   onUpdateProperty,
   onUpdateData,
   onSetPrimaryImageResult,
+  onSyncImagePromptStarterLayout,
   onSplitImageGrid,
   onPreview,
   resolvedInputs,
@@ -127,6 +152,7 @@ function ImageNodeCardImpl({
   });
   const previewNodeRef = React.useRef<HTMLDivElement | null>(null);
   const mediaFrameRef = React.useRef<HTMLDivElement | null>(null);
+  const uploadInputRef = React.useRef<HTMLInputElement | null>(null);
 
   const upstreamPrompt = findResolvedStringInput(resolvedInputs, ["prompt", "text", "原始提示词", "用户提示词"]);
   const promptText = upstreamPrompt?.value || (node.properties.text as string) || "";
@@ -139,13 +165,11 @@ function ImageNodeCardImpl({
   const imageUrl = resolvedImageUrls[activeImageIndex] || resolvedImageUrls[0] || "";
   const aspectRatio = (node.properties.aspect_ratio as string) || "16:9";
   const quantity = (node.properties.quantity as string) || "1张";
+  const isStarterPlaceholder = node.data?.isUploadPlaceholder === true;
   const nodeBadgeTitle = node.title === "图片节点" || node.title === "图片" ? "图片节点 1" : node.title;
   const nodeBadgeMatch = nodeBadgeTitle.match(/^(.*?)(\s+\d+)$/);
   const nodeWidth = getNodeWidth(node);
-  const resultImageBounds =
-    aspectRatio === "1:1"
-      ? { maxWidth: SQUARE_RESULT_IMAGE_MAX_WIDTH, maxHeight: SQUARE_RESULT_IMAGE_MAX_HEIGHT }
-      : { maxWidth: RESULT_IMAGE_MAX_WIDTH, maxHeight: RESULT_IMAGE_MAX_HEIGHT };
+  const resultImageBounds = getResultImageBounds(aspectRatio, node.data?.isUploadPlaceholder === true);
   const resultImageSize = React.useMemo(
     () => fitImageSize(naturalImageSize, aspectRatio, resultImageBounds.maxWidth, resultImageBounds.maxHeight),
     [aspectRatio, naturalImageSize, resultImageBounds.maxHeight, resultImageBounds.maxWidth],
@@ -155,6 +179,8 @@ function ImageNodeCardImpl({
     naturalImageSize && naturalImageSize.width > 0 && naturalImageSize.height > 0
       ? `${naturalImageSize.width} × ${naturalImageSize.height}`
       : `${resultImageSize.width} × ${resultImageSize.height}`;
+  const shouldShowUploadButton =
+    !imageUrl || node.data?.uploadedImage === true || node.data?.isUploadPlaceholder === true;
 
   React.useEffect(() => {
     const width = node.data?.imageNaturalWidth;
@@ -284,6 +310,48 @@ function ImageNodeCardImpl({
     await downloadMediaAsset(imageUrl, filename);
   };
 
+  const handleUploadClick = React.useCallback((event: React.MouseEvent) => {
+    event.stopPropagation();
+    uploadInputRef.current?.click();
+  }, []);
+
+  const handleImageUpload = React.useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || !file.type.startsWith("image/")) return;
+
+    const uploadedUrl = window.URL.createObjectURL(file);
+    const uploadedImage = new window.Image();
+    uploadedImage.onload = () => {
+      const naturalSize = {
+        width: uploadedImage.naturalWidth || resultImageSize.width,
+        height: uploadedImage.naturalHeight || resultImageSize.height,
+      };
+      const displaySize = fitImageSize(naturalSize, aspectRatio, resultImageBounds.maxWidth, resultImageBounds.maxHeight);
+      setActiveImageIndex(0);
+      setNaturalImageSize(naturalSize);
+      onUpdateProperty?.(node.id, "imageUrl", uploadedUrl);
+      onUpdateData?.(node.id, {
+        imageUrl: uploadedUrl,
+        imageUrls: [uploadedUrl],
+        activeImageIndex: 0,
+        imageNaturalWidth: naturalSize.width,
+        imageNaturalHeight: naturalSize.height,
+        imageDisplayWidth: displaySize.width,
+        imageDisplayHeight: displaySize.height,
+        uploadedImage: true,
+        isUploadPlaceholder: false,
+        status: "success",
+        loading: false,
+      });
+      if (node.data?.imagePromptStarter) {
+        onSyncImagePromptStarterLayout?.(node.id, displaySize.width);
+      }
+      onSetPrimaryImageResult?.(node.id, uploadedUrl, 0);
+    };
+    uploadedImage.src = uploadedUrl;
+  }, [aspectRatio, node.data?.imagePromptStarter, node.id, onSetPrimaryImageResult, onSyncImagePromptStarterLayout, onUpdateData, onUpdateProperty, resultImageBounds.maxHeight, resultImageBounds.maxWidth, resultImageSize.height, resultImageSize.width]);
+
   const cycleActiveImage = React.useCallback(
     (direction: -1 | 1) => {
       if (resolvedImageUrls.length <= 1) return;
@@ -309,6 +377,28 @@ function ImageNodeCardImpl({
       return { url: resolvedImageUrls[index], index };
     });
   }, [activeImageIndex, resolvedImageUrls]);
+
+  const uploadControl = (
+    <>
+      <input
+        ref={uploadInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleImageUpload}
+      />
+      <Tooltip content={imageUrl ? "上传替换图片" : "上传图片"} position="top">
+        <button
+          type="button"
+          data-node-action="true"
+          onClick={handleUploadClick}
+          className="flex h-9 w-9 items-center justify-center rounded-[12px] border border-slate-300/14 bg-[#101827]/72 text-slate-300/78 shadow-[0_14px_34px_-24px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.055)] backdrop-blur-xl transition-all hover:-translate-y-0.5 hover:border-violet-300/36 hover:bg-violet-500/[0.16] hover:text-violet-50 hover:shadow-[0_16px_34px_-22px_rgba(139,92,246,0.85),0_0_18px_rgba(139,92,246,0.2)]"
+        >
+          <Upload className="h-[18px] w-[18px]" />
+        </button>
+      </Tooltip>
+    </>
+  );
 
   const activeGridCellCount = activeGridSelection ? activeGridSelection.rows * activeGridSelection.cols : 0;
 
@@ -469,6 +559,14 @@ function ImageNodeCardImpl({
           style={{ width: resultImageSize.width }}
         >
           {portHandles}
+          <div
+            data-node-action="true"
+            className="absolute right-2 top-8 z-30"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {shouldShowUploadButton ? uploadControl : null}
+          </div>
           <AnimatePresence>
             {selected && (
               <motion.div
@@ -638,33 +736,54 @@ function ImageNodeCardImpl({
               </motion.div>
             )}
           </AnimatePresence>
-          <div className="mb-2 flex items-center justify-between gap-4 text-slate-300/82 drop-shadow-[0_1px_10px_rgba(15,23,42,0.9)]">
-            <div className="flex min-w-0 items-center gap-1.5">
-              <ImageIcon className="h-4 w-4 shrink-0 text-slate-300/72" />
-              <span className="truncate text-[15px] font-medium tracking-tight">
-                {nodeBadgeMatch ? (
-                  <>
-                    <span>{nodeBadgeMatch[1]}</span>
-                    <span className="text-slate-200/72">{nodeBadgeMatch[2]}</span>
-                  </>
-                ) : (
-                  nodeBadgeTitle
-                )}
-              </span>
-            </div>
-            <div className="flex shrink-0 items-center gap-3">
-              {resolvedImageUrls.length > 1 && (
-                <span className="rounded-full border border-slate-400/18 bg-slate-900/46 px-2.5 py-1 text-[11px] font-semibold text-slate-300/72">
-                  {activeImageIndex + 1}/{resolvedImageUrls.length}
+          {isStarterPlaceholder ? (
+            <>
+              <div className="absolute -top-8 left-0 z-30 flex items-center gap-1.5 text-slate-300/82 drop-shadow-[0_1px_10px_rgba(15,23,42,0.9)]">
+                <ImageIcon className="h-4 w-4 shrink-0 text-slate-300/72" />
+                <span className="truncate text-[15px] font-medium tracking-tight">
+                  {nodeBadgeMatch ? (
+                    <>
+                      <span>{nodeBadgeMatch[1]}</span>
+                      <span className="text-slate-200/72">{nodeBadgeMatch[2]}</span>
+                    </>
+                  ) : (
+                    nodeBadgeTitle
+                  )}
                 </span>
-              )}
-              <span className="text-[12px] font-medium tabular-nums text-slate-400/72">{naturalSizeLabel}</span>
+              </div>
+              <div className="absolute -top-8 right-0 z-30 flex shrink-0 items-center gap-3 text-[12px] font-medium tabular-nums text-slate-400/72 drop-shadow-[0_1px_10px_rgba(15,23,42,0.9)]">
+                <span>{naturalSizeLabel}</span>
+              </div>
+            </>
+          ) : (
+            <div className="mb-2 flex items-center justify-between gap-4 text-slate-300/82 drop-shadow-[0_1px_10px_rgba(15,23,42,0.9)]">
+              <div className="flex min-w-0 items-center gap-1.5">
+                <ImageIcon className="h-4 w-4 shrink-0 text-slate-300/72" />
+                <span className="truncate text-[15px] font-medium tracking-tight">
+                  {nodeBadgeMatch ? (
+                    <>
+                      <span>{nodeBadgeMatch[1]}</span>
+                      <span className="text-slate-200/72">{nodeBadgeMatch[2]}</span>
+                    </>
+                  ) : (
+                    nodeBadgeTitle
+                  )}
+                </span>
+              </div>
+              <div className="flex shrink-0 items-center gap-3">
+                {resolvedImageUrls.length > 1 && (
+                  <span className="rounded-full border border-slate-400/18 bg-slate-900/46 px-2.5 py-1 text-[11px] font-semibold text-slate-300/72">
+                    {activeImageIndex + 1}/{resolvedImageUrls.length}
+                  </span>
+                )}
+                <span className="text-[12px] font-medium tabular-nums text-slate-400/72">{naturalSizeLabel}</span>
+              </div>
             </div>
-          </div>
+          )}
           <div className="flex w-full flex-col items-center">
             <div
               ref={mediaFrameRef}
-              className={`mx-auto overflow-hidden rounded-[8px] bg-white ${selected ? "shadow-[0_0_0_1.5px_rgba(192,132,252,0.58),0_0_0_6px_rgba(139,92,246,0.14),0_0_38px_rgba(109,40,217,0.18)]" : ""}`}
+              className={`mx-auto overflow-hidden rounded-[8px] ${isStarterPlaceholder ? "bg-transparent" : "bg-white"} ${selected ? "shadow-[0_0_0_1.5px_rgba(192,132,252,0.58),0_0_0_6px_rgba(139,92,246,0.14),0_0_38px_rgba(109,40,217,0.18)]" : ""}`}
               style={{ width: resultImageSize.width, height: resultImageSize.height }}
             >
               <div className="relative h-full w-full">
@@ -840,6 +959,14 @@ function ImageNodeCardImpl({
           </div>
         )}
         {portHandles}
+        <div
+          data-node-action="true"
+          className="absolute right-5 top-5 z-30"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {shouldShowUploadButton ? uploadControl : null}
+        </div>
         <div className="absolute -top-8 left-0 z-30 flex items-center gap-1.5 text-slate-300/82 drop-shadow-[0_1px_10px_rgba(15,23,42,0.9)]">
           <ImageIcon className="h-4 w-4 text-cyan-100/58" />
           <span className="text-[15px] font-medium tracking-tight">

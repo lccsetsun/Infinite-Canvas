@@ -3,7 +3,9 @@ import { createNodeFromType } from "../features/nodes/nodeFactory";
 import { getExecutor } from "../features/nodes/nodeExecutors";
 import { WORKFLOW_TEMPLATES } from "../features/templates/workflowTemplates";
 import { ExecutionLog, GraphLink, GraphNode, NodeClass, VideoFrameAnalysisOverview, VideoFrameAnalysisSegment, VideoSegmentTextAnalysis } from "../types";
+import { IMAGE_PROMPT_STARTER_GAP_X, getImagePromptStarterTextNodeX } from "../utils/imagePromptStarterLayout";
 import { findFirstCompatibleInputIndex, getLinkDraftIssue, isDataTypeCompatible } from "../utils/linking";
+import { sanitizeWorkspaceForStorage } from "../utils/workspaceStorage";
 import { NodeOutputMap, buildResolvedInputsMap, resolveNodeInputs, topologicalLevels } from "../runtime/dataflow";
 
 const STORAGE_KEY = "aicanvas_workspace_v2";
@@ -21,6 +23,21 @@ const IMAGE_NODE_MODEL_FALLBACKS = new Set(["", "lib-navo-pro", "flux-1", "sdxl"
 const TEXT_NODE_MODEL_FALLBACKS = new Set(["", "deepseek-v4-flash"]);
 const FRAME_IMAGE_MAX_WIDTH = 520;
 const FRAME_IMAGE_MAX_HEIGHT = 390;
+const IMAGE_PROMPT_PLACEHOLDER_URL =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1152' height='864' viewBox='0 0 1152 864'%3E%3Cdefs%3E%3ClinearGradient id='bg' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop stop-color='%23131d2a'/%3E%3Cstop offset='1' stop-color='%230c1018'/%3E%3C/linearGradient%3E%3CradialGradient id='glow' cx='50%25' cy='40%25' r='55%25'%3E%3Cstop stop-color='%238b5cf6' stop-opacity='.32'/%3E%3Cstop offset='1' stop-color='%238b5cf6' stop-opacity='0'/%3E%3C/radialGradient%3E%3C/defs%3E%3Crect width='1152' height='864' rx='44' fill='url(%23bg)'/%3E%3Crect width='1152' height='864' rx='44' fill='url(%23glow)'/%3E%3Cg fill='none' stroke='%23c4b5fd' stroke-width='24' stroke-linecap='round' stroke-linejoin='round' opacity='.72'%3E%3Crect x='420' y='284' width='312' height='236' rx='28'/%3E%3Ccircle cx='512' cy='376' r='34'/%3E%3Cpath d='M444 488l92-92 66 66 42-42 64 68'/%3E%3C/g%3E%3Ctext x='576' y='602' fill='%23e9d5ff' font-family='Arial, sans-serif' font-size='38' font-weight='700' text-anchor='middle'%3E添加参考图%3C/text%3E%3Ctext x='576' y='654' fill='%2394a3b8' font-family='Arial, sans-serif' font-size='24' text-anchor='middle'%3E连接到文本节点后生成图片反推提示词%3C/text%3E%3C/svg%3E";
+const IMAGE_PROMPT_DEFAULT_TEXT =
+  "根据图片生成结构化中文提示词，包括主体描述、环境、光影、镜头语言与风格关键词。";
+const IMAGE_PROMPT_STARTER_IMAGE_OFFSET_X = 680;
+const IMAGE_PROMPT_STARTER_IMAGE_OFFSET_Y = 56;
+
+function getImagePromptStarterFocusBounds(textNode: GraphNode, imageNodeX: number, imageNodeY: number) {
+  return {
+    minX: imageNodeX - 18,
+    minY: Math.min(textNode.y - 18, imageNodeY - 24),
+    maxX: textNode.x + 428,
+    maxY: Math.max(textNode.y + 620, imageNodeY + 556),
+  };
+}
 
 function fitFrameImageSize(width: number, height: number) {
   const safeWidth = Math.max(1, width);
@@ -616,6 +633,11 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
   }, []);
 
   const removeLink = (linkId: string) => {
+    const link = links.find((l) => l.id === linkId);
+    if (link?.locked) {
+      appendLog("warning", "该连线由快捷模板创建，不可删除");
+      return;
+    }
     const nextLinks = links.filter((l) => l.id !== linkId);
     setLinks(nextLinks);
     syncCurrentWorkflowMeta((wf) => ({
@@ -626,6 +648,155 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     pushHistory({ nodes, links: nextLinks });
     appendLog("warning", `已移除连线:${linkId}`);
   };
+
+  const createImagePromptStarter = useCallback((textNodeId: string) => {
+    const textNode = nodes.find((n) => n.id === textNodeId && n.type === "text_node");
+    if (!textNode) return null;
+    const existingStarterLink = links.find((link) => link.toNodeId === textNodeId && link.locked);
+    const imageNodeX = textNode.x - IMAGE_PROMPT_STARTER_IMAGE_OFFSET_X;
+    const imageNodeY = textNode.y + IMAGE_PROMPT_STARTER_IMAGE_OFFSET_Y;
+    if (existingStarterLink) {
+      setSelectedNodeId(textNodeId);
+      const imageNode = nodes.find((node) => node.id === existingStarterLink.fromNodeId);
+      if (imageNode && (
+        imageNode.x !== imageNodeX ||
+        imageNode.y !== imageNodeY ||
+        imageNode.data?.imagePromptStarter !== true ||
+        imageNode.data?.starterTextNodeId !== textNodeId
+      )) {
+        const nextNodes = nodes.map((node) =>
+          node.id === imageNode.id
+            ? {
+                ...node,
+                x: imageNodeX,
+                y: imageNodeY,
+                data: {
+                  ...(node.data || {}),
+                  imagePromptStarter: true,
+                  starterTextNodeId: textNodeId,
+                  starterGapX: IMAGE_PROMPT_STARTER_GAP_X,
+                },
+              }
+            : node
+        );
+        setNodes(nextNodes);
+        syncCurrentWorkflowMeta((wf) => ({
+          ...wf,
+          summary: { ...wf.summary, updatedAt: Date.now() },
+          data: { ...wf.data, nodes: nextNodes, links },
+        }));
+        pushHistory({ nodes: nextNodes, links });
+        appendLog("info", "图片反推提示词模板已对齐到标准布局");
+      } else {
+        appendLog("info", "图片反推提示词模板已存在");
+      }
+      return {
+        imageNodeId: existingStarterLink.fromNodeId,
+        textNodeId,
+        bounds: getImagePromptStarterFocusBounds(textNode, imageNodeX, imageNodeY),
+      };
+    }
+    const imageId = makeId("node");
+    const linkId = makeId("link");
+    const imageNode = createNodeFromType("image_node", imageId, imageNodeX, imageNodeY);
+    imageNode.title = getNextNumberedNodeTitle(nodes, "image_node") || imageNode.title;
+    imageNode.properties = {
+      ...imageNode.properties,
+      imageUrl: IMAGE_PROMPT_PLACEHOLDER_URL,
+      text: "图片反推提示词参考图",
+    };
+    imageNode.data = {
+      ...(imageNode.data || {}),
+      imageUrl: IMAGE_PROMPT_PLACEHOLDER_URL,
+      imageUrls: [IMAGE_PROMPT_PLACEHOLDER_URL],
+      activeImageIndex: 0,
+      imageNaturalWidth: 1152,
+      imageNaturalHeight: 864,
+      isUploadPlaceholder: true,
+      imagePromptStarter: true,
+      starterTextNodeId: textNodeId,
+      starterGapX: IMAGE_PROMPT_STARTER_GAP_X,
+      status: "success",
+      loading: false,
+    };
+
+    const nextNodes = [
+      ...nodes,
+      imageNode,
+    ].map((node) =>
+      node.id === textNodeId
+        ? {
+            ...node,
+            properties: {
+              ...node.properties,
+              text: typeof node.properties.text === "string" && node.properties.text.trim()
+                ? node.properties.text
+                : IMAGE_PROMPT_DEFAULT_TEXT,
+              model: "MiniMax-M3",
+              status: node.properties.status || "idle",
+            },
+          }
+        : node
+    );
+    const nextLinks = [
+      ...links,
+      {
+        id: linkId,
+        fromNodeId: imageId,
+        fromOutputIndex: 0,
+        toNodeId: textNodeId,
+        toInputIndex: 1,
+        locked: true,
+      },
+    ];
+
+    setNodes(nextNodes);
+    setLinks(nextLinks);
+    setSelectedNodeId(textNodeId);
+    syncCurrentWorkflowMeta((wf) => ({
+      ...wf,
+      summary: { ...wf.summary, updatedAt: Date.now() },
+      data: { ...wf.data, nodes: nextNodes, links: nextLinks },
+    }));
+    pushHistory({ nodes: nextNodes, links: nextLinks });
+    appendLog("success", "已创建图片反推提示词模板");
+    return {
+      imageNodeId: imageId,
+      textNodeId,
+      bounds: getImagePromptStarterFocusBounds(textNode, imageNodeX, imageNodeY),
+    };
+  }, [appendLog, links, nodes, pushHistory, syncCurrentWorkflowMeta]);
+
+  const syncImagePromptStarterLayout = useCallback((imageNodeId: string, imageNodeWidth: number) => {
+    const imageNode = nodes.find((node) => node.id === imageNodeId && node.type === "image_node");
+    const textNodeId = typeof imageNode?.data?.starterTextNodeId === "string" ? imageNode.data.starterTextNodeId : "";
+    const textNode = nodes.find((node) => node.id === textNodeId && node.type === "text_node");
+    if (!imageNode || !textNode || !Number.isFinite(imageNodeWidth) || imageNodeWidth <= 0) return;
+
+    const nextTextNodeX = getImagePromptStarterTextNodeX(
+      imageNode.x,
+      imageNodeWidth,
+      typeof imageNode.data?.starterGapX === "number" ? imageNode.data.starterGapX : IMAGE_PROMPT_STARTER_GAP_X
+    );
+    if (Math.abs(textNode.x - nextTextNodeX) < 1) return;
+
+    const nextNodes = nodes.map((node) =>
+      node.id === textNode.id
+        ? {
+            ...node,
+            x: nextTextNodeX,
+          }
+        : node
+    );
+
+    setNodes(nextNodes);
+    syncCurrentWorkflowMeta((wf) => ({
+      ...wf,
+      summary: { ...wf.summary, updatedAt: Date.now() },
+      data: { ...wf.data, nodes: nextNodes, links },
+    }));
+    pushHistory({ nodes: nextNodes, links });
+  }, [links, nodes, pushHistory, syncCurrentWorkflowMeta]);
 
   const updateNodeProperty = (nodeId: string, key: string, value: unknown) => {
     setNodes((prev) => prev.map((n) => (n.id === nodeId ? { ...n, properties: { ...n.properties, [key]: value } } : n)));
@@ -1638,15 +1809,15 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
               },
             },
           };
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitizeWorkspaceForStorage(next)));
           return next;
         });
       } catch {
-        // quota exceeded or serialization error — silently ignore
+        appendLog("warning", "本地项目缓存空间不足，已跳过超大临时媒体的持久化");
       }
     }, PERSIST_DEBOUNCE_MS);
     return () => window.clearTimeout(timer);
-  }, [nodes, links, nodeOutputs]);
+  }, [appendLog, nodes, links, nodeOutputs]);
 
   useEffect(() => {
     purgeExpiredTrash();
@@ -1694,6 +1865,8 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     setLinkToInputIndex,
     clearLinkDraft,
     addNode,
+    createImagePromptStarter,
+    syncImagePromptStarterLayout,
     removeNode,
     duplicateNode,
     updateNodePosition,

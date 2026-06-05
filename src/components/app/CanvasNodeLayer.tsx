@@ -40,10 +40,12 @@ interface CanvasNodeLayerProps {
   onUpdateNodeData: (nodeId: string, data: any) => void;
   onUpdateNodeProperty: (nodeId: string, key: string, value: unknown) => void;
   onSetPrimaryImageResult?: (nodeId: string, imageUrl: string, imageIndex: number) => void;
+  onSyncImagePromptStarterLayout?: (nodeId: string, imageNodeWidth: number) => void;
   onSplitImageGrid?: (nodeId: string, imageUrl: string, gridRows: number, gridCols: number, cellIndices: number[]) => void;
   resolvedInputsMap?: Map<string, Record<string, unknown>>;
   textNodeReferenceImagesMap?: Map<string, string[]>;
   onRunNode?: (nodeId: string) => void;
+  onCreateImagePromptStarter?: (nodeId: string) => void;
 }
 
 export default function CanvasNodeLayer({
@@ -74,10 +76,12 @@ export default function CanvasNodeLayer({
   onUpdateNodeData,
   onUpdateNodeProperty,
   onSetPrimaryImageResult,
+  onSyncImagePromptStarterLayout,
   onSplitImageGrid,
   resolvedInputsMap,
   textNodeReferenceImagesMap,
   onRunNode,
+  onCreateImagePromptStarter,
 }: CanvasNodeLayerProps) {
   return (
     <div
@@ -120,6 +124,7 @@ export default function CanvasNodeLayer({
                 resolvedInputs={resolvedInputsMap?.get(node.id)}
                 referenceImageUrls={textNodeReferenceImagesMap?.get(node.id) ?? []}
                 onRun={onRunNode}
+                onCreateImagePromptStarter={onCreateImagePromptStarter}
                 // 连线相关
                 isLinkingOnCanvas={isLinkingOnCanvas}
                 linkFromNodeId={linkFromNodeId}
@@ -150,6 +155,7 @@ export default function CanvasNodeLayer({
                 onUpdateProperty={onUpdateNodeProperty}
                 onUpdateData={onUpdateNodeData}
                 onSetPrimaryImageResult={onSetPrimaryImageResult}
+                onSyncImagePromptStarterLayout={onSyncImagePromptStarterLayout}
                 onSplitImageGrid={onSplitImageGrid}
                 onPreview={onPreview}
                 resolvedInputs={resolvedInputsMap?.get(node.id)}

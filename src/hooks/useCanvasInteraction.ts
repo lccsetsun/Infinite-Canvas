@@ -115,6 +115,36 @@ export function useCanvasInteraction({ nodes, snapToGridEnabled = true, updateNo
     [zoom]
   );
 
+  const focusWorldRect = React.useCallback(
+    (
+      bounds: { minX: number; minY: number; maxX: number; maxY: number },
+      options?: { maxZoom?: number; padding?: number; offsetX?: number; offsetY?: number }
+    ) => {
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      const width = Math.max(1, bounds.maxX - bounds.minX);
+      const height = Math.max(1, bounds.maxY - bounds.minY);
+      const padding = options?.padding ?? 300;
+      const targetZoom = Math.max(
+        0.45,
+        Math.min(
+          options?.maxZoom ?? 0.72,
+          Math.min((rect.width - padding) / width, (rect.height - padding * 0.55) / height)
+        )
+      );
+      const centerX = bounds.minX + width / 2;
+      const centerY = bounds.minY + height / 2;
+
+      setZoom(targetZoom);
+      setPan({
+        x: rect.width / 2 - centerX * targetZoom + (options?.offsetX ?? 0),
+        y: rect.height / 2 - centerY * targetZoom + (options?.offsetY ?? 0),
+      });
+    },
+    []
+  );
+
   const autoLayout = React.useCallback(() => {
     const columns = 4;
     nodes.forEach((node, i) => {
@@ -277,6 +307,7 @@ export function useCanvasInteraction({ nodes, snapToGridEnabled = true, updateNo
     fitView,
     scrollToNode,
     jumpToWorldPos,
+    focusWorldRect,
     autoLayout,
     onNodeDragStart,
     onCanvasPointerDown,

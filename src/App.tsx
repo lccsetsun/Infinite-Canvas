@@ -71,6 +71,8 @@ export default function App() {
     runWorkflow,
     runNode,
     addNode,
+    createImagePromptStarter,
+    syncImagePromptStarterLayout,
     removeNode,
     removeLink,
     duplicateNode,
@@ -280,6 +282,7 @@ export default function App() {
     fitView,
     scrollToNode,
     jumpToWorldPos,
+    focusWorldRect,
     onNodeDragStart,
     onCanvasPointerDown,
     onPointerMove,
@@ -344,6 +347,28 @@ export default function App() {
     });
     addNode(type, snapped.x, snapped.y, initialProps, connectFromDraft);
   };
+
+  const handleCreateImagePromptStarter = React.useCallback(
+    (nodeId: string) => {
+      const result = createImagePromptStarter(nodeId);
+      if (!result) return;
+      setCurrentView("canvas");
+      setActiveQuickTool(null);
+      setSelectedLinkId(null);
+      setSelectedGroupId(null);
+      setSelectedNodeIds(new Set([result.textNodeId]));
+      setSelectedNodeId(result.textNodeId);
+      window.requestAnimationFrame(() => {
+        focusWorldRect(result.bounds, {
+          maxZoom: 0.84,
+          padding: 180,
+          offsetX: 28,
+          offsetY: -20,
+        });
+      });
+    },
+    [createImagePromptStarter, focusWorldRect, setActiveQuickTool, setCurrentView, setSelectedNodeId]
+  );
 
   const handleSplitImageGrid = React.useCallback(
     async (nodeId: string, imageUrl: string, gridRows: number, gridCols: number, cellIndices: number[]) => {
@@ -1032,10 +1057,12 @@ export default function App() {
           onUpdateNodeData={updateNodeData}
           onUpdateNodeProperty={updateNodeProperty}
           onSetPrimaryImageResult={setPrimaryImageResult}
+          onSyncImagePromptStarterLayout={syncImagePromptStarterLayout}
           onSplitImageGrid={handleSplitImageGrid}
           resolvedInputsMap={resolvedInputsMap}
           textNodeReferenceImagesMap={textNodeReferenceImagesMap}
           onRunNode={runNode}
+          onCreateImagePromptStarter={handleCreateImagePromptStarter}
         />
         {isLinkingOnCanvas && (
           <DraftLinkOverlay

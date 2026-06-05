@@ -258,7 +258,7 @@ export default function LinkInteractionOverlay({
         </g>
       </svg>
 
-      {selectedLink && (
+      {selectedLink && !selectedLink.locked && (
         <button
           type="button"
           data-node-action="true"
