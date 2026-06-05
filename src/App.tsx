@@ -15,7 +15,6 @@ import MiniMap from "./components/app/MiniMap";
 import PreviewModal, { PreviewContent } from "./components/app/PreviewModal";
 import SettingsPanels from "./components/app/SettingsPanels";
 import WorkflowManager from "./components/WorkflowManager";
-import LoginPage from "./pages/LoginPage";
 import { Copy, Eye, Trash2 } from "lucide-react";
 import { snapPointToGrid } from "./components/canvas/geometry";
 import { useCanvasInteraction } from "./hooks/useCanvasInteraction";
@@ -28,12 +27,21 @@ import { cropImageGridCell, getGridChildNodePosition } from "./utils/imageGridSp
 import { ConfigProvider, theme } from "antd";
 import { GraphNode, NodeClass, VideoFrameAnalysisOverview, VideoFrameAnalysisSegment, VideoSegmentTextAnalysis } from "./types";
 import { ApiSettings, getActiveProfile, getProviderProfile, loadApiSettings, saveApiSettings } from "./features/api/apiSettings";
-import { clearAuthSession, hasAuthSession, setAccessToken } from "./features/auth/authStorage";
+import { clearAuthSession } from "./features/auth/authStorage";
 import { logout } from "./features/auth/authApi";
 
 const SearchMenu = React.lazy(() => import("./components/SearchMenu"));
 
-export default function App() {
+interface AppProps {
+  onLoggedOut: () => void;
+}
+
+export default function App({ onLoggedOut }: AppProps) {
+  const requestedWorkflowId = React.useMemo(() => {
+    if (typeof window === "undefined") return "";
+    return new URLSearchParams(window.location.search).get("projectId")?.trim() || "";
+  }, []);
+
   const panelFallback = (
     <div className="absolute inset-0 z-40 flex items-center justify-center bg-[#0f1218]/55 backdrop-blur-sm">
       <div className="rounded-full border border-[#2b3142] bg-[#171b26] px-4 py-2 text-sm text-gray-300">加载中...</div>
@@ -48,14 +56,6 @@ export default function App() {
   const apiKey = activeApiProfile.apiKey;
   const apiModel = activeApiProfile.model;
   const [workflowManagerOpen, setWorkflowManagerOpen] = React.useState(false);
-  const [isLoggedIn, setIsLoggedIn] = React.useState(() => {
-    return hasAuthSession();
-  });
-
-  const handleLogin = (accessToken: string) => {
-    setAccessToken(accessToken);
-    setIsLoggedIn(true);
-  };
 
   const handleLogout = async () => {
     try {
@@ -65,7 +65,7 @@ export default function App() {
       showNotice(error instanceof Error ? `退出接口调用失败：${error.message}` : "退出接口调用失败，已清理本地登录态");
     } finally {
       clearAuthSession();
-      setIsLoggedIn(false);
+      onLoggedOut();
     }
   };
 
@@ -663,6 +663,13 @@ export default function App() {
   }, [currentWorkflowSummary?.id, fitView, nodes.length]);
 
   React.useEffect(() => {
+    if (!requestedWorkflowId) return;
+    if (currentWorkflowSummary?.id === requestedWorkflowId) return;
+    if (!workflowList.some((workflow) => workflow.id === requestedWorkflowId)) return;
+    switchWorkflow(requestedWorkflowId);
+  }, [currentWorkflowSummary?.id, requestedWorkflowId, switchWorkflow, workflowList]);
+
+  React.useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       const isEditingField =
@@ -717,10 +724,6 @@ export default function App() {
       // quota exceeded — ignore
     }
   }, [apiSettings]);
-
-  if (!isLoggedIn) {
-    return <LoginPage onLogin={handleLogin} />;
-  }
 
   return (
     <ConfigProvider
