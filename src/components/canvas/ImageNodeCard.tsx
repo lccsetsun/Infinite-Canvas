@@ -4,7 +4,7 @@ import { ArrowUp, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, E
 import { GraphNode } from "../../types";
 import { findResolvedStringInput } from "../../utils/resolvedInputs";
 import { shouldShowInlinePortHandles } from "../../utils/portHandleVisibility";
-import { getNodeWidth, IMAGE_NODE_WIDTH } from "./geometry";
+import { getNodeWidth } from "./geometry";
 import { Tooltip } from "../common/Tooltip";
 import { downloadMediaAsset, extensionFromAssetUrl } from "../../utils/mediaAssets";
 import { formatGridCellLabel } from "../../utils/imageGridSplit";
@@ -35,7 +35,10 @@ interface ImageNodeCardProps {
   getCanvasLinkTargetIssue?: (nodeId: string, inputIndex: number) => string | null;
 }
 
+const RESULT_IMAGE_MAX_WIDTH = 780;
 const RESULT_IMAGE_MAX_HEIGHT = 585;
+const SQUARE_RESULT_IMAGE_MAX_WIDTH = 520;
+const SQUARE_RESULT_IMAGE_MAX_HEIGHT = 390;
 const RATIO_OPTIONS = ["16:9", "9:16", "4:3", "3:4", "1:1", "21:9"];
 const QUANTITY_OPTIONS = ["1张", "2张", "3张", "4张"];
 const MINIMAX_IMAGE_MODEL = "MiniMax Image 01";
@@ -139,9 +142,13 @@ function ImageNodeCardImpl({
   const nodeBadgeTitle = node.title === "图片节点" || node.title === "图片" ? "图片节点 1" : node.title;
   const nodeBadgeMatch = nodeBadgeTitle.match(/^(.*?)(\s+\d+)$/);
   const nodeWidth = getNodeWidth(node);
+  const resultImageBounds =
+    aspectRatio === "1:1"
+      ? { maxWidth: SQUARE_RESULT_IMAGE_MAX_WIDTH, maxHeight: SQUARE_RESULT_IMAGE_MAX_HEIGHT }
+      : { maxWidth: RESULT_IMAGE_MAX_WIDTH, maxHeight: RESULT_IMAGE_MAX_HEIGHT };
   const resultImageSize = React.useMemo(
-    () => fitImageSize(naturalImageSize, aspectRatio, IMAGE_NODE_WIDTH, RESULT_IMAGE_MAX_HEIGHT),
-    [aspectRatio, naturalImageSize],
+    () => fitImageSize(naturalImageSize, aspectRatio, resultImageBounds.maxWidth, resultImageBounds.maxHeight),
+    [aspectRatio, naturalImageSize, resultImageBounds.maxHeight, resultImageBounds.maxWidth],
   );
   const imageSetKey = React.useMemo(() => resolvedImageUrls.join("||"), [resolvedImageUrls]);
   const naturalSizeLabel =
@@ -486,9 +493,9 @@ function ImageNodeCardImpl({
                       </button>
                     </Tooltip>
                     <div className="mx-1 h-7 w-px bg-slate-500/22" />
-                    <div className="flex h-9 items-center gap-2 rounded-[12px] px-1 text-[13px] font-medium text-slate-200/88">
+                    <div className="flex h-9 min-w-[208px] shrink-0 items-center gap-2 rounded-[12px] px-1 text-[13px] font-medium text-slate-200/88">
                       <Grid3X3 className="h-[18px] w-[18px] text-violet-300/88" />
-                      <span>
+                      <span className="block whitespace-nowrap leading-none">
                         {selectedGridCells.length > 0
                           ? `已选 ${selectedGridCells.length} 个宫格`
                           : "请选择宫格"}
@@ -672,7 +679,12 @@ function ImageNodeCardImpl({
                       width: img.naturalWidth || resultImageSize.width,
                       height: img.naturalHeight || resultImageSize.height,
                     };
-                    const displaySize = fitImageSize(naturalSize, aspectRatio, IMAGE_NODE_WIDTH, RESULT_IMAGE_MAX_HEIGHT);
+                    const displaySize = fitImageSize(
+                      naturalSize,
+                      aspectRatio,
+                      resultImageBounds.maxWidth,
+                      resultImageBounds.maxHeight
+                    );
                     setNaturalImageSize(naturalSize);
                     if (
                       node.data?.imageNaturalWidth !== naturalSize.width ||
