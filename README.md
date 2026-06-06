@@ -77,8 +77,14 @@ npm run dev
 启动成功后，终端会看到类似输出：
 
 ```bash
-Server running on http://localhost:3000
+VITE v6.x ready
+Local:   http://localhost:3000/
+Server running on http://localhost:3001
 ```
+
+- `http://localhost:3000` 鐢ㄤ簬 Vite 鍓嶇寮€鍙?
+- `http://localhost:3001` 鐢ㄤ簬 Express API
+- 娴忚鍣ㄤ腑鐨?`/api` 鍜?`/dev-api` 璇锋眰浼氬厛缁忚繃 `vite.config.ts` 浠ｇ悊
 
 然后在浏览器打开：
 

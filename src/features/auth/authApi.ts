@@ -3,17 +3,6 @@ import { parseDevApiEnvelope } from "./apiEnvelope";
 import { encryptBase64, encryptWithAes, encryptWithRsa, generateAesKey } from "./crypto";
 import { devApiFetch } from "./request";
 
-export type TenantInfo = {
-  tenantId: string;
-  companyName: string;
-  domain: string | null;
-};
-
-export type TenantListResponse = {
-  tenantEnabled: boolean;
-  voList: TenantInfo[];
-};
-
 export type CaptchaResponse = {
   captchaEnabled: boolean;
   uuid?: string;
@@ -44,15 +33,6 @@ function buildEncryptedRequestBody(payload: Record<string, unknown>) {
     encryptedHeader,
     encryptedBody: JSON.stringify(encryptedBody),
   };
-}
-
-export async function fetchTenantList() {
-  const response = await devApiFetch("/auth/tenant/list", {
-    method: "GET",
-    auth: false,
-  });
-  const parsed = await parseDevApiEnvelope<TenantListResponse>(response);
-  return parsed.data;
 }
 
 export async function fetchCaptcha() {

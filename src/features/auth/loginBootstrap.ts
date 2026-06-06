@@ -1,4 +1,6 @@
-import type { CaptchaResponse, TenantListResponse } from "./authApi";
+import type { CaptchaResponse } from "./authApi";
+
+const DEFAULT_TENANT_ID = "000000";
 
 export type LoginBootstrapState = {
   tenantId: string;
@@ -21,32 +23,18 @@ function toCaptchaState(captcha: CaptchaResponse) {
 }
 
 export async function resolveLoginBootstrapState(
-  loadTenantList: () => Promise<TenantListResponse>,
   loadCaptcha: () => Promise<CaptchaResponse>
 ): Promise<LoginBootstrapState> {
   try {
-    const tenantInfo = await loadTenantList();
-    const tenantId = tenantInfo.voList?.[0]?.tenantId || "";
-
-    if (!tenantInfo.tenantEnabled) {
-      return {
-        tenantId,
-        captchaEnabled: false,
-        captchaUuid: "",
-        captchaImage: "",
-        warningMessage: "",
-      };
-    }
-
     const captcha = await loadCaptcha();
     return {
-      tenantId,
+      tenantId: DEFAULT_TENANT_ID,
       ...toCaptchaState(captcha),
       warningMessage: "",
     };
   } catch (error) {
     return {
-      tenantId: "",
+      tenantId: DEFAULT_TENANT_ID,
       captchaEnabled: false,
       captchaUuid: "",
       captchaImage: "",

@@ -12,7 +12,7 @@ import {
   RefreshCcw,
 } from "lucide-react";
 import aiCanvasLockup from "../assets/brand/ai-canvas-lockup.svg";
-import { fetchCaptcha, fetchTenantList, loginWithPassword } from "../features/auth/authApi";
+import { fetchCaptcha, loginWithPassword } from "../features/auth/authApi";
 import { resolveCaptchaState, resolveLoginBootstrapState } from "../features/auth/loginBootstrap";
 
 interface LoginPageProps {
@@ -64,7 +64,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     setIsBootstrapping(true);
     setErrorMessage("");
     try {
-      const bootstrapState = await resolveLoginBootstrapState(fetchTenantList, loadCaptcha);
+      const bootstrapState = await resolveLoginBootstrapState(loadCaptcha);
       setTenantId((current) => current || bootstrapState.tenantId);
       applyCaptchaState(bootstrapState);
       setErrorMessage(bootstrapState.warningMessage);

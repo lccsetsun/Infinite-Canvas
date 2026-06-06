@@ -8,7 +8,8 @@ import { createProxyMiddleware } from "http-proxy-middleware";
 dotenv.config();
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT || 3000);
+const useEmbeddedViteMiddleware = process.env.EMBED_VITE_MIDDLEWARE !== "false";
 
 app.use(
   "/dev-api",
@@ -694,7 +695,7 @@ app.post("/api/minimax/audio-generation", async (req, res) => {
 
 async function startServer() {
   // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
+  if (process.env.NODE_ENV !== "production" && useEmbeddedViteMiddleware) {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
