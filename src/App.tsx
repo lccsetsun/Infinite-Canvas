@@ -17,6 +17,7 @@ import { snapPointToGrid } from "./components/canvas/geometry";
 import { useCanvasInteraction } from "./hooks/useCanvasInteraction";
 import { useCanvasLinking } from "./hooks/useCanvasLinking";
 import { useMiniMapConfig } from "./hooks/useMiniMapConfig";
+import { useRefreshOnPageVisible } from "./hooks/useRefreshOnPageVisible";
 import { useWorkflowState } from "./hooks/useWorkflowState";
 import { useAppUiState } from "./hooks/useAppUiState";
 import { shouldOpenCanvasContextMenu } from "./utils/canvasContextMenuPolicy";
@@ -60,22 +61,14 @@ export default function App({ onLoggedOut }: AppProps) {
   const [isProjectLoading, setIsProjectLoading] = React.useState(Boolean(requestedWorkflowId));
   const [projectLoadError, setProjectLoadError] = React.useState("");
 
-  const handleLogout = React.useCallback(() => {
-    performOptimisticLogout({
-      requestLogout: logout,
-      clearSession: clearAuthSession,
-      onLoggedOut,
-    });
-  }, [onLoggedOut]);
-
-  React.useEffect(() => {
+  const refreshRemoteProject = React.useCallback((showLoading = true) => {
     if (!requestedWorkflowId) {
       setIsProjectLoading(false);
       setProjectLoadError("Missing projectId, cannot load remote project.");
       return;
     }
 
-    setIsProjectLoading(true);
+    if (showLoading) setIsProjectLoading(true);
     setProjectLoadError("");
     void getRemoteProjectDetail(requestedWorkflowId)
       .then((project) => {
@@ -88,6 +81,20 @@ export default function App({ onLoggedOut }: AppProps) {
         setIsProjectLoading(false);
       });
   }, [requestedWorkflowId]);
+
+  const handleLogout = React.useCallback(() => {
+    performOptimisticLogout({
+      requestLogout: logout,
+      clearSession: clearAuthSession,
+      onLoggedOut,
+    });
+  }, [onLoggedOut]);
+
+  React.useEffect(() => {
+    refreshRemoteProject(true);
+  }, [refreshRemoteProject]);
+
+  useRefreshOnPageVisible(() => refreshRemoteProject(false));
 
   const {
     nodes,

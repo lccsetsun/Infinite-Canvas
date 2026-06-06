@@ -31,7 +31,7 @@ export default function AppHeader({
       initial={{ y: -64, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-      className="relative z-[120] flex h-[72px] items-center justify-between overflow-visible border-b border-white/[0.06] bg-[linear-gradient(180deg,rgba(16,20,31,0.96),rgba(19,24,36,0.9))] px-5 shadow-[0_10px_30px_-24px_rgba(0,0,0,0.9)] backdrop-blur-xl"
+      className="relative z-[120] flex h-14 items-center justify-between overflow-visible border-b border-white/[0.045] bg-[linear-gradient(180deg,rgba(14,18,28,0.94),rgba(13,17,27,0.88))] px-5 shadow-[0_10px_26px_-24px_rgba(0,0,0,0.88)] backdrop-blur-xl"
     >
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-cyan-300/12 to-transparent" />
       <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-white/12 to-transparent" />
@@ -41,10 +41,10 @@ export default function AppHeader({
           initial={{ x: -30, opacity: 0, filter: "blur(10px)" }}
           animate={{ x: 0, opacity: 1, filter: "blur(0px)" }}
           transition={{ duration: 1, ease: [0.23, 1, 0.32, 1] }}
-          className="group relative flex h-14 cursor-default items-center overflow-hidden rounded-[20px] border border-white/[0.07] bg-[linear-gradient(180deg,rgba(18,23,35,0.92),rgba(12,16,25,0.82))] px-5 backdrop-blur-2xl transition-all duration-700 hover:border-white/12"
+          className="group relative flex h-11 cursor-default items-center overflow-hidden rounded-2xl border border-white/[0.06] bg-[linear-gradient(180deg,rgba(18,23,35,0.82),rgba(10,14,22,0.74))] px-4 backdrop-blur-2xl transition-all duration-700 hover:border-white/12"
         >
           <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/10 via-transparent to-emerald-500/10 opacity-0 transition-opacity duration-1000 group-hover:opacity-100" />
-          <img src={aiCanvasLockup} alt="AI CANVAS" className="relative h-8 w-auto opacity-95" />
+          <img src={aiCanvasLockup} alt="AI CANVAS" className="relative h-6 w-auto opacity-95" />
 
           <motion.div
             animate={{ x: ["-100%", "250%"] }}

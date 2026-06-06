@@ -8,6 +8,7 @@ import {
   updateRemoteProjectCover,
 } from "../features/workspace/remoteCanvas";
 import type { HomeProjectCard } from "../features/workspace/projectTypes";
+import { useRefreshOnPageVisible } from "../hooks/useRefreshOnPageVisible";
 
 interface AllProjectsPageProps {
   onLogout: () => void;
@@ -39,6 +40,8 @@ export default function AllProjectsPage({ onLogout, onOpenCanvas, onBackHome }: 
   React.useEffect(() => {
     refreshProjects();
   }, [refreshProjects]);
+
+  useRefreshOnPageVisible(refreshProjects);
 
   return (
     <ProjectGalleryPage

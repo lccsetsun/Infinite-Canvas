@@ -39,11 +39,7 @@ function AccountMenuItem({
             : "text-slate-100 hover:bg-white/[0.06]"
       }`}
     >
-      <div
-        className={`grid h-8 w-8 shrink-0 place-items-center rounded-xl ${
-          danger ? "text-rose-200/80" : "text-slate-400"
-        }`}
-      >
+      <div className={`grid h-8 w-8 shrink-0 place-items-center rounded-xl ${danger ? "text-rose-200/80" : "text-slate-400"}`}>
         {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : icon}
       </div>
       <div className="min-w-0">
@@ -90,7 +86,7 @@ export default function HeaderRightPanel({
         },
       });
     },
-    [pendingAction]
+    [pendingAction],
   );
 
   const isBusy = pendingAction !== null;
@@ -103,15 +99,13 @@ export default function HeaderRightPanel({
     ? `inline-flex h-10 items-center gap-2 rounded-2xl bg-[#141923]/34 px-2.5 py-1.5 shadow-[0_10px_24px_-20px_rgba(0,0,0,0.92)] backdrop-blur-xl transition-all ${
         isBusy ? "cursor-wait" : "cursor-pointer hover:bg-[#141923]/48"
       }`
-    : `group flex items-center gap-3 rounded-[20px] border border-white/[0.06] bg-[linear-gradient(180deg,rgba(17,22,33,0.88),rgba(11,15,24,0.84))] px-3.5 py-2.5 shadow-[0_10px_30px_-24px_rgba(0,0,0,0.9)] transition-all duration-200 ${
-        isBusy
-          ? "cursor-wait opacity-80"
-          : "cursor-pointer hover:border-white/12 hover:bg-[#111827]"
+    : `group flex h-11 items-center gap-2.5 rounded-2xl border border-white/[0.055] bg-[linear-gradient(180deg,rgba(17,22,33,0.78),rgba(10,14,22,0.72))] px-3 shadow-[0_10px_26px_-24px_rgba(0,0,0,0.88)] backdrop-blur-xl transition-all duration-200 ${
+        isBusy ? "cursor-wait opacity-80" : "cursor-pointer hover:border-white/12 hover:bg-[#111827]/88"
       }`;
 
   const avatarClassName = isCompact
     ? "grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[linear-gradient(135deg,#7c5cff,#d24dff)] text-xs font-bold text-white shadow-[0_8px_18px_-10px_rgba(124,92,255,0.8)]"
-    : "flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-fuchsia-500 text-sm font-bold text-white shadow-[0_8px_24px_rgba(99,102,241,0.32)]";
+    : "flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-fuchsia-500 text-xs font-bold text-white shadow-[0_8px_20px_rgba(99,102,241,0.28)]";
 
   const menuClassName = isCompact
     ? "absolute right-0 top-[calc(100%+8px)] z-[120] w-[188px] rounded-2xl bg-[#141923]/88 p-2 shadow-[0_18px_36px_-24px_rgba(0,0,0,0.95)] backdrop-blur-xl"
@@ -130,23 +124,9 @@ export default function HeaderRightPanel({
           <div className={avatarClassName}>{avatarText || <User className="h-4 w-4" />}</div>
 
           <div className="hidden min-w-0 text-left sm:block">
-            <div
-              className={`truncate font-semibold tracking-[-0.02em] text-slate-100 ${
-                isCompact ? "max-w-[120px] text-[13px]" : "max-w-[140px] text-sm"
-              }`}
-            >
+            <div className={`truncate font-semibold tracking-[-0.02em] text-slate-100 ${isCompact ? "max-w-[120px] text-[13px]" : "max-w-[132px] text-[13px]"}`}>
               {displayName}
             </div>
-
-            {!isCompact ? (
-              <div className="text-[11px] text-slate-500">
-                {pendingAction === "logout"
-                  ? "正在退出..."
-                  : pendingAction === "api-settings"
-                    ? "正在打开设置..."
-                    : "账号菜单"}
-              </div>
-            ) : null}
           </div>
 
           {isBusy ? (

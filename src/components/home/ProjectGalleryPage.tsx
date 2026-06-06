@@ -328,7 +328,6 @@ function EditProjectDialog({
       <div className="w-full max-w-md overflow-hidden rounded-[22px] border border-white/[0.08] bg-[#111318] shadow-[0_28px_90px_rgba(0,0,0,0.42)]">
         <div className="border-b border-white/[0.06] px-6 py-5">
           <div className="text-[19px] font-semibold text-white">修改项目</div>
-          <div className="mt-1 text-sm text-slate-400">在一个稳定的弹窗里修改项目名称和封面图片。</div>
         </div>
 
         <div className="space-y-5 px-6 py-5">
@@ -351,7 +350,6 @@ function EditProjectDialog({
           <div>
             <div className="mb-2 flex items-center justify-between gap-3">
               <label className="block text-sm font-medium text-slate-300">封面图片</label>
-              <span className="text-xs text-slate-500">仅支持单张图片，重新上传会覆盖当前封面</span>
             </div>
 
             <input
@@ -369,7 +367,7 @@ function EditProjectDialog({
               className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-2xl border border-dashed border-white/[0.12] bg-[#16191f] px-4 py-3 text-sm font-medium text-slate-200 transition hover:border-white/[0.22] hover:bg-[#1a1e26] disabled:cursor-not-allowed disabled:opacity-70"
             >
               {isUploadingCover ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-              {isUploadingCover ? "正在上传到 OSS..." : state.coverUrl ? "重新上传封面" : "上传封面图片"}
+              {isUploadingCover ? "正在上传" : state.coverUrl ? "重新上传封面" : "上传封面图片"}
             </button>
 
             {uploadError ? <div className="mt-2 text-sm text-rose-300">{uploadError}</div> : null}
@@ -381,8 +379,6 @@ function EditProjectDialog({
                 <div className="flex h-48 items-center justify-center text-sm text-slate-500">还没有封面图片</div>
               )}
             </div>
-
-            {state.coverUrl ? <div className="mt-2 break-all text-xs text-slate-500">{state.coverUrl}</div> : null}
           </div>
         </div>
 
