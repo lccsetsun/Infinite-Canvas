@@ -1,29 +1,18 @@
 import React from "react";
-import { ChevronDown, FolderOpen, KeyRound, LogOut, User } from "lucide-react";
+import { ChevronDown, LogOut, KeyRound, User } from "lucide-react";
 import { motion } from "motion/react";
-import { Tooltip } from "../common/Tooltip";
 
-interface AppHeaderProps {
-  workflowName?: string;
-  workflowCount?: number;
+interface CanvasHeaderProps {
   username?: string;
-  onOpenWorkflowManager?: () => void;
   onOpenApiSettings?: () => void;
-  onRun: () => void;
   onLogout?: () => void;
-  showProjectSwitcher?: boolean;
 }
 
-export default function AppHeader({
-  workflowName,
-  workflowCount,
+export default function CanvasHeader({
   username = "lccsetsun",
-  onOpenWorkflowManager,
   onOpenApiSettings,
-  onRun: _onRun,
   onLogout,
-  showProjectSwitcher = true,
-}: AppHeaderProps) {
+}: CanvasHeaderProps) {
   const [menuOpen, setMenuOpen] = React.useState(false);
   const menuRef = React.useRef<HTMLDivElement | null>(null);
 
@@ -75,33 +64,6 @@ export default function AppHeader({
             className="absolute bottom-0 top-0 w-16 -skew-x-[30deg] bg-gradient-to-r from-transparent via-white/[0.08] to-transparent"
           />
         </motion.div>
-
-        {showProjectSwitcher ? (
-          <Tooltip content="切换 / 管理项目" position="bottom">
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                onOpenWorkflowManager?.();
-              }}
-              className="group flex min-w-[156px] max-w-[240px] cursor-pointer items-center gap-2.5 rounded-2xl border border-white/[0.06] bg-[linear-gradient(180deg,rgba(17,22,33,0.88),rgba(11,15,24,0.82))] py-2 pl-2.5 pr-3 shadow-[0_10px_30px_-24px_rgba(0,0,0,0.9)] transition-all duration-200 hover:border-indigo-500/35 hover:bg-[#0d1117]"
-              aria-label="项目列表"
-            >
-              <div className="flex h-8 w-8 items-center justify-center rounded-xl border border-indigo-500/24 bg-gradient-to-br from-indigo-500/18 to-cyan-500/16 transition-transform group-hover:scale-105">
-                <FolderOpen className="h-4 w-4 text-indigo-300" />
-              </div>
-              <div className="min-w-0 -space-y-0.5">
-                <span className="block max-w-[180px] truncate text-left text-[13px] font-bold text-gray-100">
-                  {workflowName ?? "未命名项目"}
-                </span>
-                <span className="block text-left font-mono text-[9px] uppercase tracking-wider text-gray-500">
-                  {workflowCount ?? 0} 个项目
-                </span>
-              </div>
-              <ChevronDown className="h-3.5 w-3.5 text-gray-500 transition-colors group-hover:text-indigo-300" />
-            </button>
-          </Tooltip>
-        ) : null}
       </div>
 
       <div className="flex items-center gap-3">

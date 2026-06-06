@@ -1,11 +1,13 @@
 import React from "react";
 import App from "./App";
+import AllProjectsPage from "./pages/AllProjectsPage";
 import HomePage from "./pages/HomePage";
 import LoginPage from "./pages/LoginPage";
 import { hasAuthSession, setAccessToken } from "./features/auth/authStorage";
 
 const LOGIN_PATH = "/login";
 const DEFAULT_PATH = "/";
+const PROJECTS_PATH = "/projects";
 const CANVAS_ALIAS_PATH = "/canvas";
 
 function getPathname() {
@@ -53,7 +55,7 @@ export default function RootApp() {
       return;
     }
 
-    if (pathname !== DEFAULT_PATH && pathname !== CANVAS_ALIAS_PATH) {
+    if (pathname !== DEFAULT_PATH && pathname !== PROJECTS_PATH && pathname !== CANVAS_ALIAS_PATH) {
       navigate(DEFAULT_PATH, true);
     }
   }, [isLoggedIn, pathname]);
@@ -79,7 +81,23 @@ export default function RootApp() {
   }
 
   if (pathname === DEFAULT_PATH) {
-    return <HomePage onLogout={handleLoggedOut} onOpenCanvas={handleOpenCanvas} />;
+    return (
+      <HomePage
+        onLogout={handleLoggedOut}
+        onOpenCanvas={handleOpenCanvas}
+        onOpenAllProjects={() => navigate(PROJECTS_PATH)}
+      />
+    );
+  }
+
+  if (pathname === PROJECTS_PATH) {
+    return (
+      <AllProjectsPage
+        onLogout={handleLoggedOut}
+        onOpenCanvas={handleOpenCanvas}
+        onBackHome={() => navigate(DEFAULT_PATH)}
+      />
+    );
   }
 
   if (pathname !== CANVAS_ALIAS_PATH) {

@@ -121,10 +121,12 @@ function getWorkflowPreviewUrl(workflow: HomeWorkflow) {
   if (typeof workflow.summary.coverUrl === "string" && workflow.summary.coverUrl.trim()) {
     return workflow.summary.coverUrl.trim();
   }
+
   for (const node of workflow.data.nodes ?? []) {
     const previewUrl = getNodePreviewUrl(node);
     if (previewUrl) return previewUrl;
   }
+
   return "";
 }
 
@@ -139,19 +141,27 @@ function getWorkflowTag(workflow: HomeWorkflow) {
   return "创作项目";
 }
 
-export function listRecentHomeProjects(limit = 4): HomeProjectCard[] {
-  const workspace = readWorkspace();
-  return Object.values(workspace.workflows)
+function mapWorkflowToProjectCard(workflow: HomeWorkflow): HomeProjectCard {
+  return {
+    id: workflow.summary.id,
+    name: workflow.summary.name || "未命名",
+    updatedAt: workflow.summary.updatedAt,
+    tagLabel: getWorkflowTag(workflow),
+    previewUrl: getWorkflowPreviewUrl(workflow),
+    nodeCount: workflow.data.nodes?.length ?? 0,
+  };
+}
+
+export function listHomeProjects(limit?: number): HomeProjectCard[] {
+  const workflows = Object.values(readWorkspace().workflows)
     .sort((a, b) => b.summary.updatedAt - a.summary.updatedAt)
-    .slice(0, limit)
-    .map((workflow) => ({
-      id: workflow.summary.id,
-      name: workflow.summary.name || "未命名",
-      updatedAt: workflow.summary.updatedAt,
-      tagLabel: getWorkflowTag(workflow),
-      previewUrl: getWorkflowPreviewUrl(workflow),
-      nodeCount: workflow.data.nodes?.length ?? 0,
-    }));
+    .map(mapWorkflowToProjectCard);
+
+  return typeof limit === "number" ? workflows.slice(0, limit) : workflows;
+}
+
+export function listRecentHomeProjects(limit = 4): HomeProjectCard[] {
+  return listHomeProjects(limit);
 }
 
 export function openHomeProject(projectId: string) {
@@ -197,6 +207,7 @@ export function duplicateHomeProject(projectId: string) {
   const workspace = readWorkspace();
   const source = workspace.workflows[projectId];
   if (!source) return "";
+
   const now = Date.now();
   const nextId = makeId("wf");
   const cloned = JSON.parse(JSON.stringify(source)) as HomeWorkflow;
@@ -207,6 +218,7 @@ export function duplicateHomeProject(projectId: string) {
     createdAt: now,
     updatedAt: now,
   };
+
   workspace.workflows[nextId] = cloned;
   workspace.currentId = nextId;
   writeWorkspace(workspace);
@@ -217,6 +229,7 @@ export function deleteHomeProject(projectId: string) {
   const workspace = readWorkspace();
   if (!workspace.workflows[projectId]) return false;
   delete workspace.workflows[projectId];
+
   const remainingIds = Object.keys(workspace.workflows);
   if (remainingIds.length === 0) {
     const fallback = makeEmptyWorkflow();
@@ -225,6 +238,7 @@ export function deleteHomeProject(projectId: string) {
   } else if (workspace.currentId === projectId) {
     workspace.currentId = remainingIds[0];
   }
+
   writeWorkspace(workspace);
   return true;
 }

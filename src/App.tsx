@@ -1,6 +1,6 @@
 import React from "react";
 import { AnimatePresence } from "motion/react";
-import AppHeader from "./components/app/AppHeader";
+import CanvasHeader from "./components/app/CanvasHeader";
 import CanvasControls from "./components/app/CanvasControls";
 import CanvasHistoryDock from "./components/app/CanvasHistoryDock";
 import CanvasNodeLayer from "./components/app/CanvasNodeLayer";
@@ -8,7 +8,6 @@ import CanvasStatusBar from "./components/app/CanvasStatusBar";
 import DraftLinkOverlay from "./components/app/DraftLinkOverlay";
 import GroupsLayer from "./components/app/GroupsLayer";
 import LinkInteractionOverlay from "./components/app/LinkInteractionOverlay";
-import FloatingToolbar from "./components/FloatingToolbar";
 import EmptyCanvasState from "./components/app/EmptyCanvasState";
 import LeaferCanvas from "./components/canvas/LeaferCanvas";
 import MiniMap from "./components/app/MiniMap";
@@ -736,11 +735,11 @@ export default function App({ onLoggedOut }: AppProps) {
       }}
     >
       <div className="relative w-full h-screen bg-[#202637] text-[#e2e8f0] overflow-hidden select-none font-sans">
-        <AppHeader
-          workflowName={currentWorkflowSummary?.name}
-          workflowCount={workflowList.length}
-          onOpenWorkflowManager={() => setWorkflowManagerOpen(true)}
-          onRun={runNow}
+        <CanvasHeader
+          onOpenApiSettings={() => {
+            setCurrentView("api");
+            setActiveQuickTool(null);
+          }}
           onLogout={handleLogout}
         />
 
@@ -968,42 +967,6 @@ export default function App({ onLoggedOut }: AppProps) {
             </button>
           </div>
         )}
-
-        <FloatingToolbar
-          menuOpen={isMenuFromToolbar}
-          activeTool={activeQuickTool}
-          onOpenQuickMenu={() => {
-            openQuickMenu();
-          }}
-          onCloseQuickMenu={() => {
-            clearMenuCloseTimer();
-            setMenuPos(null);
-            setIsMenuFromToolbar(false);
-          }}
-          onScheduleQuickMenuClose={scheduleMenuClose}
-          onOpenApi={() => {
-            if (currentView === "api") {
-              setCurrentView("canvas");
-              setActiveQuickTool(null);
-            } else {
-              setActiveQuickTool("api");
-              setCurrentView("api");
-            }
-            clearMenuCloseTimer();
-            setMenuPos(null);
-          }}
-          onOpenWorkflow={() => {
-            if (currentView === "workflow") {
-              setCurrentView("canvas");
-              setActiveQuickTool(null);
-            } else {
-              setActiveQuickTool("workflow");
-              setCurrentView("workflow");
-            }
-            clearMenuCloseTimer();
-            setMenuPos(null);
-          }}
-        />
 
         <SettingsPanels
           apiSettings={apiSettings}

@@ -48,6 +48,31 @@
     border: 2px solid #0d1017;
   }
 
+  .project-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(100, 116, 139, 0.32) transparent;
+  }
+
+  .project-scrollbar::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+
+  .project-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .project-scrollbar::-webkit-scrollbar-thumb {
+    background-color: rgba(100, 116, 139, 0.26);
+    border-radius: 9999px;
+    border: 1px solid transparent;
+    background-clip: content-box;
+  }
+
+  .project-scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(148, 163, 184, 0.38);
+  }
+
   /* Ant Design Select Overrides */
   .ant-select-filled.ant-select-status-success .ant-select-selector {
     background-color: #0d1117 !important;

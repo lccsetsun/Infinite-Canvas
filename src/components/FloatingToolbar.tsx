@@ -1,14 +1,13 @@
-import { KeyRound, Plus, SlidersHorizontal, X } from "lucide-react";
+import { Plus, SlidersHorizontal, X } from "lucide-react";
 import { Tooltip } from "./common/Tooltip";
-import { motion, AnimatePresence } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
 
 interface FloatingToolbarProps {
   menuOpen: boolean;
-  activeTool: "api" | "workflow" | null;
+  activeTool: "workflow" | null;
   onOpenQuickMenu: () => void;
   onCloseQuickMenu: () => void;
   onScheduleQuickMenuClose: () => void;
-  onOpenApi: () => void;
   onOpenWorkflow: () => void;
 }
 
@@ -18,36 +17,35 @@ export default function FloatingToolbar({
   onOpenQuickMenu,
   onCloseQuickMenu,
   onScheduleQuickMenuClose,
-  onOpenApi,
   onOpenWorkflow,
 }: FloatingToolbarProps) {
   return (
-    <motion.div 
+    <motion.div
       initial={{ x: -20, opacity: 0 }}
       animate={{ x: 0, opacity: 1 }}
-      className="absolute left-6 top-44 z-[110] w-[76px] rounded-[38px] border border-white/10 bg-[#0d1117]/80 backdrop-blur-xl shadow-[0_24px_50px_-12px_rgba(0,0,0,0.5),inset_0_1px_1px_rgba(255,255,255,0.05)] p-2.5 flex flex-col items-center gap-4"
+      className="absolute left-6 top-44 z-[110] flex w-[76px] flex-col items-center gap-4 rounded-[38px] border border-white/10 bg-[#0d1117]/80 p-2.5 shadow-[0_24px_50px_-12px_rgba(0,0,0,0.5),inset_0_1px_1px_rgba(255,255,255,0.05)] backdrop-blur-xl"
     >
       <motion.button
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
         data-no-canvas-drag="true"
-        onMouseEnter={(e) => {
-          e.stopPropagation();
+        onMouseEnter={(event) => {
+          event.stopPropagation();
           onOpenQuickMenu();
         }}
         onMouseLeave={onScheduleQuickMenuClose}
-        onPointerDown={(e) => {
-          e.stopPropagation();
-          e.preventDefault();
+        onPointerDown={(event) => {
+          event.stopPropagation();
+          event.preventDefault();
         }}
-        onClick={(e) => {
-          e.stopPropagation();
+        onClick={(event) => {
+          event.stopPropagation();
           if (menuOpen) onCloseQuickMenu();
           else onOpenQuickMenu();
         }}
-        className={`relative w-14 h-14 rounded-full flex items-center justify-center transition-all duration-300 shadow-lg cursor-pointer ${
-          menuOpen 
-            ? "bg-rose-500 text-white shadow-rose-500/20 rotate-45" 
+        className={`relative flex h-14 w-14 cursor-pointer items-center justify-center rounded-full shadow-lg transition-all duration-300 ${
+          menuOpen
+            ? "rotate-45 bg-rose-500 text-white shadow-rose-500/20"
             : "bg-gradient-to-tr from-indigo-600 to-violet-500 text-white shadow-indigo-500/30"
         }`}
       >
@@ -59,62 +57,36 @@ export default function FloatingToolbar({
             exit={{ rotate: 90, opacity: 0 }}
             transition={{ duration: 0.2 }}
           >
-            {menuOpen ? <X className="w-7 h-7 stroke-[2.5]" /> : <Plus className="w-7 h-7 stroke-[2.5]" />}
+            {menuOpen ? <X className="h-7 w-7 stroke-[2.5]" /> : <Plus className="h-7 w-7 stroke-[2.5]" />}
           </motion.div>
         </AnimatePresence>
-        
-        {/* Pulsing ring when closed */}
-        {!menuOpen && (
-          <div className="absolute inset-0 rounded-full bg-indigo-500/20 animate-ping -z-10" />
-        )}
+
+        {!menuOpen ? <div className="absolute inset-0 -z-10 animate-ping rounded-full bg-indigo-500/20" /> : null}
       </motion.button>
 
-      <div className="w-8 h-px bg-white/5" />
+      <div className="h-px w-8 bg-white/5" />
 
       <div className="flex flex-col gap-3">
-        <Tooltip content="API 设置" position="right">
-          <motion.button
-            whileHover={{ scale: 1.1, x: 2 }}
-            whileTap={{ scale: 0.9 }}
-            data-no-canvas-drag="true"
-            onPointerDown={(e) => {
-              e.stopPropagation();
-              e.preventDefault();
-            }}
-            onClick={(e) => {
-              e.stopPropagation();
-              onOpenApi();
-            }}
-            className={`w-12 h-12 rounded-2xl border flex items-center justify-center transition-all duration-300 cursor-pointer ${
-              activeTool === "api"
-                ? "border-indigo-400 bg-indigo-500/20 text-indigo-100 shadow-[0_0_20px_rgba(99,102,241,0.3)]"
-                : "border-white/5 bg-white/5 text-gray-400 hover:text-white hover:bg-white/10 hover:border-white/10"
-            }`}
-          >
-            <KeyRound className={`w-5 h-5 transition-transform duration-500 ${activeTool === "api" ? "rotate-[360deg]" : ""}`} />
-          </motion.button>
-        </Tooltip>
-
         <Tooltip content="项目设置" position="right">
           <motion.button
             whileHover={{ scale: 1.1, x: 2 }}
             whileTap={{ scale: 0.9 }}
             data-no-canvas-drag="true"
-            onPointerDown={(e) => {
-              e.stopPropagation();
-              e.preventDefault();
+            onPointerDown={(event) => {
+              event.stopPropagation();
+              event.preventDefault();
             }}
-            onClick={(e) => {
-              e.stopPropagation();
+            onClick={(event) => {
+              event.stopPropagation();
               onOpenWorkflow();
             }}
-            className={`w-12 h-12 rounded-2xl border flex items-center justify-center transition-all duration-300 cursor-pointer ${
+            className={`flex h-12 w-12 cursor-pointer items-center justify-center rounded-2xl border transition-all duration-300 ${
               activeTool === "workflow"
                 ? "border-emerald-400 bg-emerald-500/20 text-emerald-100 shadow-[0_0_20px_rgba(16,185,129,0.3)]"
-                : "border-white/5 bg-white/5 text-gray-400 hover:text-white hover:bg-white/10 hover:border-white/10"
+                : "border-white/5 bg-white/5 text-gray-400 hover:border-white/10 hover:bg-white/10 hover:text-white"
             }`}
           >
-            <SlidersHorizontal className="w-5 h-5" />
+            <SlidersHorizontal className="h-5 w-5" />
           </motion.button>
         </Tooltip>
       </div>
