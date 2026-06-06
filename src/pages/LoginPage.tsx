@@ -1,6 +1,7 @@
 import React from "react";
 import { motion } from "motion/react";
 import {
+  AlertCircle,
   ArrowRight,
   Eye,
   EyeOff,
@@ -15,6 +16,8 @@ import { fetchCaptcha, fetchTenantList, loginWithPassword } from "../features/au
 interface LoginPageProps {
   onLogin: (accessToken: string) => void;
 }
+
+type FieldKey = "username" | "password" | "captcha";
 
 const DEFAULT_USERNAME = "lccsetsun";
 const DEFAULT_PASSWORD = "lccsetsun";
@@ -32,6 +35,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
   const [isBootstrapping, setIsBootstrapping] = React.useState(true);
   const [errorMessage, setErrorMessage] = React.useState("");
   const [focusedField, setFocusedField] = React.useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = React.useState<Partial<Record<FieldKey, string>>>({});
   const hasBootstrappedRef = React.useRef(false);
 
   const loadCaptcha = React.useCallback(async () => {
@@ -70,9 +74,31 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     void bootstrapLogin();
   }, [bootstrapLogin]);
 
+  const clearFieldError = (field: FieldKey) => {
+    setFieldErrors((current) => {
+      if (!current[field]) return current;
+      const next = { ...current };
+      delete next[field];
+      return next;
+    });
+  };
+
+  const validateFields = React.useCallback(() => {
+    const nextErrors: Partial<Record<FieldKey, string>> = {};
+    if (!username.trim()) nextErrors.username = "请输入账号";
+    if (!password) nextErrors.password = "请输入密码";
+    if (captchaEnabled && !captchaCode.trim()) nextErrors.captcha = "请输入验证码";
+    return nextErrors;
+  }, [captchaCode, captchaEnabled, password, username]);
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setErrorMessage("");
+
+    const nextErrors = validateFields();
+    setFieldErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0) return;
+
     setIsLoading(true);
     try {
       const result = await loginWithPassword({
@@ -121,6 +147,18 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     </div>
   );
 
+  const renderFieldMessage = (field: FieldKey) => {
+    const message = fieldErrors[field];
+    if (!message) return null;
+
+    return (
+      <div className="flex items-center gap-2 rounded-2xl border border-amber-300/12 bg-[linear-gradient(180deg,rgba(39,27,12,0.28),rgba(21,16,13,0.58))] px-3 py-2 text-sm text-amber-100/88 shadow-[0_10px_30px_rgba(0,0,0,0.18)]">
+        <AlertCircle size={15} className="shrink-0 text-amber-300/85" />
+        <span>{message}</span>
+      </div>
+    );
+  };
+
   const shellClassName =
     "relative flex items-center overflow-hidden rounded-2xl border border-white/6 bg-white/[0.035] transition-all duration-300";
 
@@ -147,24 +185,29 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
         transition={{ duration: 0.7, ease: "easeOut" }}
         className="relative z-10 w-full max-w-[480px]"
       >
-        <div className="mb-8 text-center">
-          <h1 className="pointer-events-none bg-[linear-gradient(90deg,#dbeafe_0%,#a5b4fc_28%,#c084fc_58%,#f0abfc_100%)] bg-clip-text text-5xl font-black uppercase italic tracking-[0.18em] text-transparent sm:text-6xl">
+        <div className="mb-7 text-center">
+          <h1 className="pointer-events-none bg-[linear-gradient(90deg,#edf3ff_0%,#c8d5fb_38%,#a8a7f2_72%,#c7a1ec_100%)] bg-clip-text text-[clamp(2.45rem,6vw,3.6rem)] font-semibold uppercase tracking-[0.12em] text-transparent drop-shadow-[0_8px_24px_rgba(8,15,35,0.26)]">
             AI CANVAS
           </h1>
         </div>
 
         <div className="relative overflow-hidden rounded-[2rem] border border-white/8 bg-[#0b1125]/78 p-7 shadow-[0_24px_80px_rgba(15,23,42,0.65)] backdrop-blur-2xl sm:p-8">
-          <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-white/35 to-transparent" />
+          <div className="pointer-events-none absolute inset-x-8 top-0 h-px overflow-hidden bg-gradient-to-r from-transparent via-white/32 to-transparent">
+            <div className="card-top-light-flow absolute left-[-22%] top-1/2 h-[11px] w-[34%] -translate-y-1/2 rounded-full bg-[linear-gradient(90deg,rgba(255,255,255,0),rgba(196,210,255,0.42),rgba(183,144,255,0.72),rgba(255,255,255,0))] blur-[5px]" />
+            <div className="card-top-light-flow-secondary absolute left-[-30%] top-1/2 h-[6px] w-[22%] -translate-y-1/2 rounded-full bg-[linear-gradient(90deg,rgba(255,255,255,0),rgba(232,239,255,0.3),rgba(255,255,255,0))] blur-[4px]" />
+          </div>
           <div className="pointer-events-none absolute right-[-20%] top-[-12%] h-52 w-52 rounded-full bg-indigo-500/12 blur-[100px]" />
 
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form noValidate onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-2.5">
               {renderInputLabel("账号", "username", "ACCOUNT")}
               <div
                 className={`${shellClassName} ${
                   focusedField === "username"
                     ? "border-indigo-400/40 shadow-[0_0_30px_rgba(99,102,241,0.16)] ring-1 ring-indigo-400/20"
-                    : "hover:border-white/12"
+                    : fieldErrors.username
+                      ? "border-amber-300/20 ring-1 ring-amber-300/12"
+                      : "hover:border-white/12"
                 }`}
               >
                 <div
@@ -176,15 +219,18 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                 </div>
                 <input
                   type="text"
-                  required
                   value={username}
                   onFocus={() => setFocusedField("username")}
                   onBlur={() => setFocusedField(null)}
-                  onChange={(event) => setUsername(event.target.value)}
+                  onChange={(event) => {
+                    setUsername(event.target.value);
+                    clearFieldError("username");
+                  }}
                   className="w-full bg-transparent px-4 py-4 font-medium text-white placeholder:text-slate-600 focus:outline-none"
                   placeholder="请输入账号"
                 />
               </div>
+              {renderFieldMessage("username")}
             </div>
 
             <div className="space-y-2.5">
@@ -193,7 +239,9 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                 className={`${shellClassName} ${
                   focusedField === "password"
                     ? "border-indigo-400/40 shadow-[0_0_30px_rgba(99,102,241,0.16)] ring-1 ring-indigo-400/20"
-                    : "hover:border-white/12"
+                    : fieldErrors.password
+                      ? "border-amber-300/20 ring-1 ring-amber-300/12"
+                      : "hover:border-white/12"
                 }`}
               >
                 <div
@@ -205,33 +253,38 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                 </div>
                 <input
                   type={showPassword ? "text" : "password"}
-                  required
                   value={password}
                   onFocus={() => setFocusedField("password")}
                   onBlur={() => setFocusedField(null)}
-                  onChange={(event) => setPassword(event.target.value)}
+                  onChange={(event) => {
+                    setPassword(event.target.value);
+                    clearFieldError("password");
+                  }}
                   className="w-full bg-transparent px-4 py-4 pr-12 font-medium text-white placeholder:text-slate-600 focus:outline-none"
                   placeholder="请输入密码"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword((current) => !current)}
-                  className="absolute inset-y-0 right-0 flex items-center pr-4 text-slate-500 transition-colors hover:text-slate-200"
+                  className="absolute inset-y-0 right-0 flex cursor-pointer items-center pr-4 text-slate-500 transition-colors hover:text-slate-200"
                 >
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
+              {renderFieldMessage("password")}
             </div>
 
             {captchaEnabled ? (
               <div className="space-y-2.5">
                 {renderInputLabel("验证码", "captcha", "CAPTCHA")}
-                <div className="flex gap-3">
+                <div className="flex gap-2.5">
                   <div
-                    className={`${shellClassName} flex-1 ${
+                    className={`${shellClassName} h-[58px] flex-1 ${
                       focusedField === "captcha"
                         ? "border-indigo-400/40 shadow-[0_0_30px_rgba(99,102,241,0.16)] ring-1 ring-indigo-400/20"
-                        : "hover:border-white/12"
+                        : fieldErrors.captcha
+                          ? "border-amber-300/20 ring-1 ring-amber-300/12"
+                          : "hover:border-white/12"
                     }`}
                   >
                     <div
@@ -243,12 +296,14 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                     </div>
                     <input
                       type="text"
-                      required
                       value={captchaCode}
                       onFocus={() => setFocusedField("captcha")}
                       onBlur={() => setFocusedField(null)}
-                      onChange={(event) => setCaptchaCode(event.target.value)}
-                      className="w-full bg-transparent px-4 py-4 font-medium uppercase tracking-[0.2em] text-white placeholder:text-slate-600 focus:outline-none"
+                      onChange={(event) => {
+                        setCaptchaCode(event.target.value);
+                        clearFieldError("captcha");
+                      }}
+                      className="h-full w-full bg-transparent px-4 py-0 text-[0.95rem] font-medium uppercase tracking-[0.14em] text-white placeholder:text-slate-600 focus:outline-none"
                       placeholder="请输入验证码"
                     />
                   </div>
@@ -256,16 +311,20 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                   <button
                     type="button"
                     onClick={() => void loadCaptcha()}
-                    className="group/captcha flex w-[144px] shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-[#10182f] px-2 transition-colors hover:border-indigo-300/20"
+                    className="group/captcha relative flex h-[58px] w-[142px] shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-[1.05rem] border border-white/8 bg-[#10182f] transition-all duration-300 hover:border-indigo-300/18 hover:bg-[#121c37]"
                     title="刷新验证码"
                   >
                     {captchaImage ? (
-                      <img src={captchaImage} alt="验证码" className="h-[52px] w-full object-contain" />
+                      <img src={captchaImage} alt="验证码" className="h-[32px] w-[108px] rounded-[0.5rem] bg-white object-contain" />
                     ) : (
                       <RefreshCcw className="h-5 w-5 text-slate-400 transition-transform group-hover/captcha:rotate-180" />
                     )}
+                    <div className="pointer-events-none absolute bottom-1.5 right-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-[rgba(17,25,53,0.82)] text-slate-300/78 backdrop-blur-sm transition-colors duration-300 group-hover/captcha:text-indigo-200">
+                      <RefreshCcw className="h-3 w-3 transition-transform duration-300 group-hover/captcha:rotate-180" />
+                    </div>
                   </button>
                 </div>
+                {renderFieldMessage("captcha")}
               </div>
             ) : null}
 
@@ -280,20 +339,19 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
               whileTap={{ scale: 0.982, y: 0 }}
               disabled={isLoading || isBootstrapping || !tenantId}
               type="submit"
-              className="group/btn relative w-full cursor-pointer overflow-hidden rounded-2xl bg-[linear-gradient(90deg,#4f46e5_0%,#7c3aed_48%,#d946ef_100%)] shadow-[0_16px_40px_rgba(99,102,241,0.38)] transition-shadow duration-300 hover:shadow-[0_22px_55px_rgba(147,51,234,0.42)] focus:outline-none disabled:cursor-not-allowed disabled:opacity-70"
+              className="group/btn relative mt-1.5 w-full cursor-pointer overflow-hidden rounded-2xl bg-[linear-gradient(90deg,#4e5ed7_0%,#7060e8_52%,#a05be8_100%)] shadow-[0_16px_40px_rgba(76,86,198,0.34)] transition-shadow duration-300 hover:shadow-[0_22px_55px_rgba(104,88,220,0.4)] focus:outline-none disabled:cursor-not-allowed disabled:opacity-70"
             >
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.24),transparent_45%)]" />
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.14),transparent_45%)]" />
               <div className="absolute inset-0 opacity-0 transition-opacity duration-300 group-hover/btn:opacity-100">
-                <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(99,102,241,0.05),rgba(255,255,255,0.12),rgba(217,70,239,0.08))]" />
+                <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(201,214,255,0.04),rgba(255,255,255,0.1),rgba(188,142,255,0.08))]" />
                 <div className="absolute -left-1/3 top-0 h-full w-1/3 skew-x-[-24deg] bg-white/18 blur-xl group-hover/btn:animate-button-sweep" />
               </div>
-              <div className="absolute inset-x-6 top-[1px] h-px bg-white/40" />
               <div className="relative flex items-center justify-center gap-2 px-6 py-4">
                 {isLoading || isBootstrapping ? (
                   <Loader2 className="h-5 w-5 animate-spin text-white" />
                 ) : (
                   <>
-                    <span className="text-lg font-bold tracking-[0.12em] text-white">登录工作台</span>
+                    <span className="text-lg font-bold tracking-[0.12em] text-white">登录</span>
                     <ArrowRight
                       size={20}
                       className="text-white transition-all duration-300 group-hover/btn:translate-x-1.5 group-hover/btn:scale-110"
@@ -323,6 +381,33 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
         }
         .animate-button-sweep {
           animation: button-sweep 1.2s ease-out forwards;
+        }
+        @keyframes card-top-light-flow {
+          0% { transform: translate(-18%, -50%); opacity: 0; }
+          18% { opacity: 0.48; }
+          52% { opacity: 0.76; }
+          100% { transform: translate(430%, -50%); opacity: 0; }
+        }
+        @keyframes card-top-light-flow-secondary {
+          0% { transform: translate(-24%, -50%); opacity: 0; }
+          24% { opacity: 0.18; }
+          60% { opacity: 0.34; }
+          100% { transform: translate(520%, -50%); opacity: 0; }
+        }
+        .card-top-light-flow {
+          animation: card-top-light-flow 5.4s ease-in-out infinite;
+        }
+        .card-top-light-flow-secondary {
+          animation: card-top-light-flow-secondary 6.2s ease-in-out infinite;
+          animation-delay: 0.9s;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .card-top-light-flow,
+          .card-top-light-flow-secondary,
+          .animate-button-shimmer,
+          .animate-button-sweep {
+            animation: none !important;
+          }
         }
       `}</style>
     </div>
