@@ -1,19 +1,17 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createNodeFromType } from "../features/nodes/nodeFactory";
 import { getExecutor } from "../features/nodes/nodeExecutors";
 import { WORKFLOW_TEMPLATES } from "../features/templates/workflowTemplates";
-import { ExecutionLog, GraphLink, GraphNode, NodeClass, VideoFrameAnalysisOverview, VideoFrameAnalysisSegment, VideoSegmentTextAnalysis } from "../types";
+import { ExecutionLog, GraphLink, GraphNode, GroupBox, NodeClass, VideoFrameAnalysisOverview, VideoFrameAnalysisSegment, VideoSegmentTextAnalysis } from "../types";
 import { IMAGE_PROMPT_STARTER_GAP_X, getImagePromptStarterTextNodeX } from "../utils/imagePromptStarterLayout";
 import { findFirstCompatibleInputIndex, getLinkDraftIssue, isDataTypeCompatible } from "../utils/linking";
-import { sanitizeWorkspaceForStorage } from "../utils/workspaceStorage";
 import { NodeOutputMap, buildResolvedInputsMap, resolveNodeInputs, topologicalLevels } from "../runtime/dataflow";
+import type { RemoteCanvasProject, RemoteCanvasWorkflowData } from "../features/workspace/remoteCanvas";
 
-const STORAGE_KEY = "aicanvas_workspace_v2";
 const HISTORY_LIMIT = 50;
 const PERSIST_DEBOUNCE_MS = 800;
 const DEFAULT_WORKFLOW_NAME = "默认项目";
 const WORKSPACE_VERSION = 2 as const;
-const WORKSPACE_LEGACY_VERSIONS = [1] as const;
 const TRASH_RETENTION_DAYS = 30;
 const TRASH_RETENTION_MS = TRASH_RETENTION_DAYS * 86_400_000;
 const TRASH_PURGE_INTERVAL_MS = 60 * 60 * 1000;
@@ -23,10 +21,29 @@ const IMAGE_NODE_MODEL_FALLBACKS = new Set(["", "lib-navo-pro", "flux-1", "sdxl"
 const TEXT_NODE_MODEL_FALLBACKS = new Set(["", "deepseek-v4-flash"]);
 const FRAME_IMAGE_MAX_WIDTH = 520;
 const FRAME_IMAGE_MAX_HEIGHT = 390;
-const IMAGE_PROMPT_PLACEHOLDER_URL =
-  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1152' height='864' viewBox='0 0 1152 864'%3E%3Cdefs%3E%3ClinearGradient id='bg' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop stop-color='%23131d2a'/%3E%3Cstop offset='1' stop-color='%230c1018'/%3E%3C/linearGradient%3E%3CradialGradient id='glow' cx='50%25' cy='40%25' r='55%25'%3E%3Cstop stop-color='%238b5cf6' stop-opacity='.32'/%3E%3Cstop offset='1' stop-color='%238b5cf6' stop-opacity='0'/%3E%3C/radialGradient%3E%3C/defs%3E%3Crect width='1152' height='864' rx='44' fill='url(%23bg)'/%3E%3Crect width='1152' height='864' rx='44' fill='url(%23glow)'/%3E%3Cg fill='none' stroke='%23c4b5fd' stroke-width='24' stroke-linecap='round' stroke-linejoin='round' opacity='.72'%3E%3Crect x='420' y='284' width='312' height='236' rx='28'/%3E%3Ccircle cx='512' cy='376' r='34'/%3E%3Cpath d='M444 488l92-92 66 66 42-42 64 68'/%3E%3C/g%3E%3Ctext x='576' y='602' fill='%23e9d5ff' font-family='Arial, sans-serif' font-size='38' font-weight='700' text-anchor='middle'%3E添加参考图%3C/text%3E%3Ctext x='576' y='654' fill='%2394a3b8' font-family='Arial, sans-serif' font-size='24' text-anchor='middle'%3E连接到文本节点后生成图片反推提示词%3C/text%3E%3C/svg%3E";
+export const IMAGE_PROMPT_PLACEHOLDER_URL = `data:image/svg+xml,${encodeURIComponent(`
+<svg xmlns="http://www.w3.org/2000/svg" width="1152" height="864" viewBox="0 0 1152 864">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#111827"/>
+      <stop offset="1" stop-color="#070b12"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="42%" r="58%">
+      <stop stop-color="#8b5cf6" stop-opacity=".32"/>
+      <stop offset="1" stop-color="#8b5cf6" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1152" height="864" rx="44" fill="url(#bg)"/>
+  <rect width="1152" height="864" rx="44" fill="url(#glow)"/>
+  <g fill="none" stroke="#c4b5fd" stroke-width="24" stroke-linecap="round" stroke-linejoin="round" opacity=".76">
+    <rect x="420" y="284" width="312" height="236" rx="28"/>
+    <circle cx="512" cy="376" r="34"/>
+    <path d="M444 488l92-92 66 66 42-42 64 68"/>
+  </g>
+</svg>
+`)}`;
 const IMAGE_PROMPT_DEFAULT_TEXT =
-  "根据图片生成结构化中文提示词，包括主体描述、环境、光影、镜头语言与风格关键词。";
+  "Generate a structured Chinese prompt from the image, including subject, environment, lighting, camera language, and style keywords.";
 const IMAGE_PROMPT_STARTER_IMAGE_OFFSET_X = 680;
 const IMAGE_PROMPT_STARTER_IMAGE_OFFSET_Y = 56;
 
@@ -139,72 +156,102 @@ function makeWorkspace(initialName?: string): Workspace {
   };
 }
 
-function migrateProjectName(name: string): string {
-  if (name === "默认工作流") return "默认项目";
-  const generatedName = name.match(/^工作流\s+(\d+)$/);
-  if (generatedName) return `项目 ${generatedName[1]}`;
-  return name;
-}
-
-function migrateProjectWorkflow(wf: Workflow): Workflow {
-  return {
-    ...wf,
+function buildWorkspaceFromRemoteProject(project: RemoteCanvasProject): Workspace {
+  const workflow: Workflow = {
     summary: {
-      ...wf.summary,
-      name: migrateProjectName(wf.summary.name),
+      id: project.id,
+      name: project.name,
+      category: project.category,
+      tags: project.tags,
+      sortIndex: project.updatedAt,
+      createdAt: project.createdAt,
+      updatedAt: project.updatedAt,
     },
+    data: {
+      nodes: project.workflow.nodes,
+      links: project.workflow.links,
+      nodeOutputs: project.workflow.nodeOutputs,
+      groups: project.workflow.groups,
+    },
+  };
+
+  return {
+    version: WORKSPACE_VERSION,
+    currentId: project.id,
+    workflows: {
+      [project.id]: workflow,
+    },
+    trash: [],
   };
 }
 
-function loadWorkspace(): Workspace {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as Workspace;
-      if (parsed && parsed.workflows && parsed.currentId) {
-        if (parsed.version === WORKSPACE_VERSION && parsed.workflows[parsed.currentId]) {
-          const migrated: Workspace = {
-            ...parsed,
-            trash: Array.isArray(parsed.trash) ? parsed.trash.map(migrateProjectWorkflow) : [],
-            workflows: backfillSortIndex(parsed.workflows),
-          };
-          return migrated;
-        }
-        if (WORKSPACE_LEGACY_VERSIONS.includes(parsed.version as 1) && parsed.workflows[parsed.currentId]) {
-          return {
-            version: WORKSPACE_VERSION,
-            currentId: parsed.currentId,
-            workflows: backfillSortIndex(parsed.workflows),
-            trash: [],
-          };
-        }
-      }
-    }
-  } catch {
-    // fall through
-  }
-  return makeWorkspace();
+function buildRemoteProjectSnapshot(summary: WorkflowSummary, data: RemoteCanvasWorkflowData): RemoteCanvasProject {
+  return {
+    id: summary.id,
+    name: summary.name,
+    coverUrl: "",
+    category: summary.category,
+    tags: summary.tags ?? [],
+    createdAt: summary.createdAt,
+    updatedAt: summary.updatedAt,
+    nodeCount: data.nodes.length,
+    workflow: data,
+  };
 }
 
-function backfillSortIndex(workflows: Record<string, Workflow>): Record<string, Workflow> {
-  const out: Record<string, Workflow> = {};
-  let i = 0;
-  (Object.values(workflows) as Workflow[])
-    .sort((a, b) => b.summary.updatedAt - a.summary.updatedAt)
-    .forEach((wf) => {
-      const step = 1000;
-      i += 1;
-      out[wf.summary.id] = {
-        ...migrateProjectWorkflow(wf),
-        summary: {
-          ...wf.summary,
-          name: migrateProjectName(wf.summary.name),
-          tags: wf.summary.tags ?? [],
-          sortIndex: typeof wf.summary.sortIndex === "number" ? wf.summary.sortIndex : i * step,
-        },
-      };
-    });
-  return out;
+function serializeWorkflowDataForComparison(data: RemoteCanvasWorkflowData) {
+  return JSON.stringify({
+    nodes: data.nodes,
+    links: data.links,
+    nodeOutputs: data.nodeOutputs,
+    groups: data.groups ?? [],
+  });
+}
+
+export function serializeRemotePersistSnapshot(snapshot: {
+  workflowId: string;
+  name: string;
+  category?: string;
+  tags: string[];
+  nodes: GraphNode[];
+  links: GraphLink[];
+  nodeOutputs: NodeOutputMap;
+  groups: GroupBox[];
+}) {
+  return JSON.stringify({
+    workflowId: snapshot.workflowId,
+    name: snapshot.name,
+    category: snapshot.category || "",
+    tags: snapshot.tags,
+    workflow: {
+      nodes: snapshot.nodes,
+      links: snapshot.links,
+      nodeOutputs: mapToOutputs(snapshot.nodeOutputs),
+      groups: snapshot.groups,
+    },
+  });
+}
+
+export function isRemoteWorkflowEcho(
+  remoteProject: RemoteCanvasProject,
+  current: {
+    workflowId: string;
+    nodes: GraphNode[];
+    links: GraphLink[];
+    nodeOutputs: NodeOutputMap;
+    groups: import("../types").GroupBox[];
+  }
+) {
+  if (remoteProject.id !== current.workflowId) return false;
+  return (
+    serializeWorkflowDataForComparison(remoteProject.workflow) ===
+    serializeWorkflowDataForComparison({
+      nodes: current.nodes,
+      links: current.links,
+      nodeOutputs: mapToOutputs(current.nodeOutputs),
+      groups: current.groups,
+    })
+  );
 }
 
 function outputsToMap(arr: SerializedNodeOutput[]): NodeOutputMap {
@@ -260,7 +307,7 @@ function normalizeNodePorts(node: GraphNode): GraphNode {
         ...nextNode.properties,
         model: IMAGE_NODE_MODEL_FALLBACKS.has(model) ? "image-01" : model,
         aspect_ratio: MINIMAX_IMAGE_RATIOS.has(aspectRatio) ? aspectRatio : "16:9",
-        quantity: "1张",
+        quantity: "1",
         n: 1,
         prompt_optimizer: false,
       },
@@ -300,19 +347,25 @@ export interface UseWorkflowStateOptions {
     providerBaseUrls?: Partial<Record<string, string>>;
     providerModels?: Partial<Record<string, string>>;
   };
+  remoteProject?: RemoteCanvasProject | null;
+  onRemotePersist?: (project: RemoteCanvasProject) => void | Promise<void>;
 }
 
 export function useWorkflowState(options: UseWorkflowStateOptions) {
-  const { apiConfig } = options;
+  const { apiConfig, remoteProject, onRemotePersist } = options;
+  const isRemoteMode = Boolean(onRemotePersist);
 
-  const initial = useMemo<Workspace>(() => loadWorkspace(), []);
+  const initial = useMemo<Workspace>(() => {
+    if (remoteProject) return buildWorkspaceFromRemoteProject(remoteProject);
+    return makeWorkspace();
+  }, []);
 
   const [workspace, setWorkspace] = useState<Workspace>(initial);
   const initialWf = initial.workflows[initial.currentId];
   const initialNodes = normalizeNodes(initialWf?.data.nodes ?? []);
 
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [logs, setLogs] = useState<ExecutionLog[]>([makeLog("info", "初始化完成:项目画布已就绪。")]);
+  const [logs, setLogs] = useState<ExecutionLog[]>([makeLog("info", "Canvas initialized.")]);
   const [linkFromNodeId, setLinkFromNodeId] = useState("");
   const [linkToNodeId, setLinkToNodeId] = useState("");
   const [linkFromOutputIndex, setLinkFromOutputIndex] = useState(0);
@@ -330,6 +383,13 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     stack: [{ nodes: initialNodes, links: initialWf?.data.links ?? [] }],
     pointer: 0,
   }));
+  const skipNextRemotePersistRef = useRef(false);
+  const lastRemotePersistSignatureRef = useRef("");
+  const currentWorkflowIdRef = useRef(initial.currentId);
+  const currentNodesRef = useRef(initialNodes);
+  const currentLinksRef = useRef(initialWf?.data.links ?? []);
+  const currentGroupsRef = useRef<import("../types").GroupBox[]>(initialWf?.data.groups ?? []);
+  const currentNodeOutputsRef = useRef(outputsToMap(initialWf?.data.nodeOutputs ?? []));
   const canUndo = historyState.pointer > 0;
   const canRedo = historyState.pointer < historyState.stack.length - 1;
 
@@ -369,6 +429,12 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
   }, [workspace]);
 
   const selectedNode = useMemo(() => nodes.find((n) => n.id === selectedNodeId) ?? null, [nodes, selectedNodeId]);
+
+  currentWorkflowIdRef.current = workspace.currentId;
+  currentNodesRef.current = nodes;
+  currentLinksRef.current = links;
+  currentGroupsRef.current = groups;
+  currentNodeOutputsRef.current = nodeOutputs;
 
   const linkDraftIssue = useMemo(
     () =>
@@ -501,7 +567,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       data: { ...wf.data, nodes: nextNodes, links: nextLinks },
     }));
     pushHistory({ nodes: nextNodes, links: nextLinks });
-    appendLog("success", `已添加节点:${node.title}`);
+    appendLog("success", `宸叉坊鍔犺妭鐐?${node.title}`);
     return id;
   };
 
@@ -523,7 +589,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       data: { ...wf.data, nodes: nextNodes, links: nextLinks },
     }));
     pushHistory({ nodes: nextNodes, links: nextLinks });
-    appendLog("warning", `已删除节点:${node?.title ?? nodeId}`);
+    appendLog("warning", `宸插垹闄よ妭鐐?${node?.title ?? nodeId}`);
   };
 
   const duplicateNode = (nodeId: string) => {
@@ -550,7 +616,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       data: { ...wf.data, nodes: nextNodes },
     }));
     pushHistory({ nodes: nextNodes, links });
-    appendLog("info", `已复制节点:${src.title}`);
+    appendLog("info", `宸插鍒惰妭鐐?${src.title}`);
   };
 
   const updateNodePosition = (nodeId: string, x: number, y: number) => {
@@ -568,7 +634,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       data: { nodes: [], links: [], nodeOutputs: [] },
     }));
     pushHistory({ nodes: [], links: [] });
-    appendLog("warning", "画布已清空。");
+    appendLog("warning", "Canvas cleared.");
   };
 
   const addLinkFromDraft = (draft: { fromNodeId: string; toNodeId: string; fromOutputIndex: number; toInputIndex: number }) => {
@@ -607,7 +673,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     pushHistory({ nodes, links: nextLinks });
     appendLog(
       "success",
-      `已建立连线:${fromNode.title}[${fromNode.outputs[normalizedDraft.fromOutputIndex].name}] -> ${toNode.title}[${toNode.inputs[normalizedDraft.toInputIndex].name}]`
+      `宸插缓绔嬭繛绾?${fromNode.title}[${fromNode.outputs[normalizedDraft.fromOutputIndex].name}] -> ${toNode.title}[${toNode.inputs[normalizedDraft.toInputIndex].name}]`
     );
     return true;
   };
@@ -632,10 +698,52 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     setLinkToInputIndex(0);
   }, []);
 
+  useEffect(() => {
+    if (!remoteProject) return;
+    if (
+      isRemoteWorkflowEcho(remoteProject, {
+        workflowId: currentWorkflowIdRef.current,
+        nodes: currentNodesRef.current,
+        links: currentLinksRef.current,
+        nodeOutputs: currentNodeOutputsRef.current,
+        groups: currentGroupsRef.current,
+      })
+    ) {
+      return;
+    }
+
+    const nextWorkspace = buildWorkspaceFromRemoteProject(remoteProject);
+    const nextWorkflow = nextWorkspace.workflows[nextWorkspace.currentId];
+    const nextNodes = normalizeNodes(nextWorkflow.data.nodes);
+    const nextLinks = nextWorkflow.data.links;
+    const nextGroups = nextWorkflow.data.groups ?? [];
+    const nextNodeOutputs = outputsToMap(nextWorkflow.data.nodeOutputs);
+
+    skipNextRemotePersistRef.current = true;
+    lastRemotePersistSignatureRef.current = serializeRemotePersistSnapshot({
+      workflowId: remoteProject.id,
+      name: remoteProject.name,
+      category: remoteProject.category,
+      tags: remoteProject.tags,
+      nodes: nextNodes,
+      links: nextLinks,
+      nodeOutputs: nextNodeOutputs,
+      groups: nextGroups,
+    });
+    setWorkspace(nextWorkspace);
+    setNodes(nextNodes);
+    setLinks(nextLinks);
+    setGroups(nextGroups);
+    setNodeOutputs(nextNodeOutputs);
+    setSelectedNodeId(null);
+    clearLinkDraft();
+    resetHistory({ nodes: nextNodes, links: nextLinks });
+  }, [remoteProject, clearLinkDraft, resetHistory]);
+
   const removeLink = (linkId: string) => {
     const link = links.find((l) => l.id === linkId);
     if (link?.locked) {
-      appendLog("warning", "该连线由快捷模板创建，不可删除");
+      appendLog("warning", "This link was created by a quick template and cannot be removed.");
       return;
     }
     const nextLinks = links.filter((l) => l.id !== linkId);
@@ -646,7 +754,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       data: { ...wf.data, links: nextLinks },
     }));
     pushHistory({ nodes, links: nextLinks });
-    appendLog("warning", `已移除连线:${linkId}`);
+    appendLog("warning", `宸茬Щ闄よ繛绾?${linkId}`);
   };
 
   const createImagePromptStarter = useCallback((textNodeId: string) => {
@@ -686,9 +794,9 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
           data: { ...wf.data, nodes: nextNodes, links },
         }));
         pushHistory({ nodes: nextNodes, links });
-        appendLog("info", "图片反推提示词模板已对齐到标准布局");
+        appendLog("info", "鍥剧墖鍙嶆帹鎻愮ず璇嶆ā鏉垮凡瀵归綈鍒版爣鍑嗗竷灞€");
       } else {
-        appendLog("info", "图片反推提示词模板已存在");
+        appendLog("info", "鍥剧墖鍙嶆帹鎻愮ず璇嶆ā鏉垮凡瀛樺湪");
       }
       return {
         imageNodeId: existingStarterLink.fromNodeId,
@@ -703,7 +811,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     imageNode.properties = {
       ...imageNode.properties,
       imageUrl: IMAGE_PROMPT_PLACEHOLDER_URL,
-      text: "图片反推提示词参考图",
+      text: "鍥剧墖鍙嶆帹鎻愮ず璇嶅弬鑰冨浘",
     };
     imageNode.data = {
       ...(imageNode.data || {}),
@@ -759,7 +867,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       data: { ...wf.data, nodes: nextNodes, links: nextLinks },
     }));
     pushHistory({ nodes: nextNodes, links: nextLinks });
-    appendLog("success", "已创建图片反推提示词模板");
+    appendLog("success", "宸插垱寤哄浘鐗囧弽鎺ㄦ彁绀鸿瘝妯℃澘");
     return {
       imageNodeId: imageId,
       textNodeId,
@@ -843,7 +951,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     (videoNodeId: string, segments: VideoFrameAnalysisSegment[], overview: VideoFrameAnalysisOverview, analysisMarkdown: string) => {
       const sourceNode = nodes.find((n) => n.id === videoNodeId);
       if (!sourceNode || segments.length === 0 || !overview.imageUrl) {
-        appendLog("warning", "逐帧分析失败:未找到视频节点或没有可用分段");
+        appendLog("warning", "閫愬抚鍒嗘瀽澶辫触:鏈壘鍒拌棰戣妭鐐规垨娌℃湁鍙敤鍒嗘");
         return;
       }
 
@@ -888,19 +996,19 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         return node;
       };
 
-      const analysisPreview = makePreviewNode("完整视频分析", baseX, baseY);
-      const segmentPreview = makePreviewNode("分段逐帧拆解", baseX, baseY + 520);
+      const analysisPreview = makePreviewNode("瀹屾暣瑙嗛鍒嗘瀽", baseX, baseY);
+      const segmentPreview = makePreviewNode("鍒嗘閫愬抚鎷嗚В", baseX, baseY + 520);
 
       const textId = makeId("node");
       const textNode = createNodeFromType("text_node", textId, childX, baseY);
-      textNode.title = "完整视频分析文本";
+      textNode.title = "瀹屾暣瑙嗛鍒嗘瀽鏂囨湰";
       textNode.properties = {
         ...textNode.properties,
         frameAnalysisVideoUrl: videoUrl,
         frameAnalysisSegments: segments.map(({ title, start, end, frameCount, width, height }) => ({ title, start, end, frameCount, width, height })),
         isFullVideoAnalysisText: true,
         response: analysisMarkdown,
-        text: "完整视频分析结果",
+        text: "瀹屾暣瑙嗛鍒嗘瀽缁撴灉",
       };
       textNode.data = { response: analysisMarkdown, loading: false, status: "success" };
       nextNodes.push(textNode);
@@ -917,7 +1025,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       const overviewSize = fitFrameImageSize(overview.width, overview.height);
       const overviewId = makeId("node");
       const overviewNode = createNodeFromType("image_node", overviewId, childX, baseY + 300);
-      overviewNode.title = "完整视频逐帧总览";
+      overviewNode.title = "瀹屾暣瑙嗛閫愬抚鎬昏";
       overviewNode.properties = {
         ...overviewNode.properties,
         imageUrl: overview.imageUrl,
@@ -980,7 +1088,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         data: { ...wf.data, nodes: nextNodes, links: nextLinks, nodeOutputs: mapToOutputs(nextOutputs) },
       }));
       pushHistory({ nodes: nextNodes, links: nextLinks });
-      appendLog("success", `逐帧分析完成:生成 2 个视频预览节点、1 个分析文本节点、1 个总览图和 ${segments.length} 个分段图节点`);
+      appendLog("success", `閫愬抚鍒嗘瀽瀹屾垚:鐢熸垚 2 涓棰戦瑙堣妭鐐广€? 涓垎鏋愭枃鏈妭鐐广€? 涓€昏鍥惧拰 ${segments.length} 涓垎娈靛浘鑺傜偣`);
     },
     [appendLog, links, nodeOutputs, nodes, pushHistory, syncCurrentWorkflowMeta]
   );
@@ -989,7 +1097,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     (parentNodeId: string, analyses: VideoSegmentTextAnalysis[]) => {
       const parentNode = nodes.find((n) => n.id === parentNodeId);
       if (!parentNode || analyses.length === 0) {
-        appendLog("warning", "反推失败:未找到分析文本节点或没有分段结果");
+        appendLog("warning", "鍙嶆帹澶辫触:鏈壘鍒板垎鏋愭枃鏈妭鐐规垨娌℃湁鍒嗘缁撴灉");
         return;
       }
 
@@ -1003,11 +1111,11 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       analyses.forEach((analysis, index) => {
         const id = makeId("node");
         const node = createNodeFromType("text_node", id, baseX, baseY + index * 260);
-        node.title = `${analysis.title} 分析`;
+        node.title = `${analysis.title} 鍒嗘瀽`;
         node.properties = {
           ...node.properties,
           response: analysis.text,
-          text: `${analysis.title} 视频分析结果`,
+          text: `${analysis.title} 瑙嗛鍒嗘瀽缁撴灉`,
           sourceSegment: {
             title: analysis.title,
             start: analysis.start,
@@ -1037,7 +1145,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         data: { ...wf.data, nodes: nextNodes, links: nextLinks, nodeOutputs: mapToOutputs(nextOutputs) },
       }));
       pushHistory({ nodes: nextNodes, links: nextLinks });
-      appendLog("success", `反推完成:生成 ${analyses.length} 个分段视频分析文本节点`);
+      appendLog("success", `Reverse analysis completed: generated ${analyses.length} segment text nodes.`);
     },
     [appendLog, links, nodeOutputs, nodes, pushHistory, syncCurrentWorkflowMeta]
   );
@@ -1049,12 +1157,12 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
 
   const createGroup = useCallback((nodeIds: string[], title?: string): import("../types").GroupBox | null => {
     if (nodeIds.length < 2) {
-      appendLog("warning", "打组至少需要 2 个节点");
+      appendLog("warning", "Grouping requires at least 2 nodes.");
       return null;
     }
     const selectedNodes = nodes.filter((n) => nodeIds.includes(n.id));
     if (selectedNodes.length < 2) {
-      appendLog("warning", "打组至少需要 2 个节点");
+      appendLog("warning", "Grouping requires at least 2 nodes.");
       return null;
     }
     const minX = Math.min(...selectedNodes.map((n) => n.x)) - 24;
@@ -1066,7 +1174,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     const color = colors[groups.length % colors.length];
     const group: import("../types").GroupBox = {
       id,
-      title: title?.trim() || `节点分组 ${groups.length + 1}`,
+      title: title?.trim() || `鑺傜偣鍒嗙粍 ${groups.length + 1}`,
       x: minX,
       y: minY,
       width: maxX - minX,
@@ -1082,7 +1190,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       summary: { ...wf.summary, updatedAt: Date.now() },
       data: { ...wf.data, groups: nextGroups, nodes: nextNodes },
     }));
-    appendLog("success", `已打组 "${group.title}" (${nodeIds.length} 节点)`);
+    appendLog("success", `宸叉墦缁?"${group.title}" (${nodeIds.length} 鑺傜偣)`);
     return group;
   }, [nodes, groups, appendLog, syncCurrentWorkflowMeta]);
 
@@ -1098,7 +1206,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       summary: { ...wf.summary, updatedAt: Date.now() },
       data: { ...wf.data, groups: nextGroups, nodes: nextNodes },
     }));
-    appendLog("info", `已解组 "${group.title}"`);
+    appendLog("info", `宸茶В缁?"${group.title}"`);
     return true;
   }, [groups, nodes, appendLog, syncCurrentWorkflowMeta]);
 
@@ -1174,7 +1282,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       if (!node) return;
       const executor = getExecutor(node.type);
       if (!executor) {
-        appendLog("warning", `[${node.title}] 暂无执行器,跳过`);
+        appendLog("warning", `[${node.title}] 鏆傛棤鎵ц鍣?璺宠繃`);
         return;
       }
 
@@ -1186,7 +1294,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         if (audioUrls.length > 0) inputs.reference_audios = audioUrls;
       }
       updateNodeData(nodeId, { loading: true, error: undefined, response: undefined, status: "loading" });
-      appendLog("info", `开始执行 [${node.title}]`);
+      appendLog("info", `寮€濮嬫墽琛?[${node.title}]`);
 
       try {
         const result = await executor({ inputs, properties: node.properties, apiConfig });
@@ -1194,11 +1302,11 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         const patch: Record<string, unknown> = { loading: false, error: undefined, ...(result.patch || {}) };
         if (typeof result.outputs[0] === "string") patch.response = result.outputs[0];
         updateNodeData(nodeId, patch);
-        appendLog("success", `[${node.title}] 完成`);
+        appendLog("success", `[${node.title}] 瀹屾垚`);
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
         updateNodeData(nodeId, { loading: false, error: message, status: "error" });
-        appendLog("error", `[${node.title}] 失败:${message}`);
+        appendLog("error", `[${node.title}] 澶辫触:${message}`);
       }
     },
     [nodes, links, nodeOutputs, apiConfig, appendLog, updateNodeData, writeNodeOutput, collectTextNodeMediaReferences]
@@ -1209,16 +1317,16 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     if (!group) return;
     const memberIds = new Set(nodes.filter((n) => n.groupId === groupId).map((n) => n.id));
     if (memberIds.size === 0) {
-      appendLog("warning", `组 "${group.title}" 内没有节点`);
+      appendLog("warning", `Group "${group.title}" has no nodes.`);
       return;
     }
-    appendLog("info", `开始一键重跑组 "${group.title}" (${memberIds.size} 节点)`);
+    appendLog("info", `寮€濮嬩竴閿噸璺戠粍 "${group.title}" (${memberIds.size} 鑺傜偣)`);
     setIsRunning(true);
     try {
       for (const id of memberIds) {
         await runNode(id);
       }
-      appendLog("success", `组 "${group.title}" 一键重跑完成`);
+      appendLog("success", `Group "${group.title}" rerun completed.`);
     } finally {
       setIsRunning(false);
     }
@@ -1227,27 +1335,27 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
   const runWorkflow = useCallback(async () => {
     if (isRunning) return;
     if (!nodes.length) {
-      appendLog("warning", "当前没有可执行节点。");
+      appendLog("warning", "There are no runnable nodes.");
       return;
     }
 
     const { levels, hasCycle, cyclePath } = topologicalLevels(nodes, links);
     if (hasCycle) {
-      appendLog("error", `项目存在循环依赖,无法执行。涉及节点:${cyclePath.join(", ")}`);
+      appendLog("error", `椤圭洰瀛樺湪寰幆渚濊禆,鏃犳硶鎵ц銆傛秹鍙婅妭鐐?${cyclePath.join(", ")}`);
       return;
     }
 
     setIsRunning(true);
     setNodeOutputs(new Map());
-    appendLog("info", `开始执行项目 "${currentWorkflowSummary?.name ?? ""}",共 ${nodes.length} 个节点,分 ${levels.length} 层并发`);
+    appendLog("info", `Running project "${currentWorkflowSummary?.name ?? ""}" with ${nodes.length} nodes across ${levels.length} levels.`);
 
     for (let i = 0; i < levels.length; i++) {
       const level = levels[i];
-      appendLog("info", `第 ${i + 1}/${levels.length} 层 (${level.length} 个节点并发) — [${level.map((n) => n.title).join(", ")}]`);
+      appendLog("info", `绗?${i + 1}/${levels.length} 灞?(${level.length} 涓妭鐐瑰苟鍙? 鈥?[${level.map((n) => n.title).join(", ")}]`);
       await Promise.all(level.map((node) => runNode(node.id)));
     }
 
-    appendLog("success", "项目执行完成。");
+    appendLog("success", "Project run completed.");
     setIsRunning(false);
   }, [nodes, links, isRunning, runNode, appendLog, currentWorkflowSummary]);
 
@@ -1268,7 +1376,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         summary: { ...wf.summary, updatedAt: Date.now() },
         data: { ...wf.data, nodes: nextNodes, links: target.links },
       }));
-      appendLog("info", `已撤销 (${prev.pointer} → ${prev.pointer - 1})`);
+      appendLog("info", `宸叉挙閿€ (${prev.pointer} 鈫?${prev.pointer - 1})`);
       return { ...prev, pointer: prev.pointer - 1 };
     });
   }, [appendLog, syncCurrentWorkflowMeta]);
@@ -1285,18 +1393,18 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         summary: { ...wf.summary, updatedAt: Date.now() },
         data: { ...wf.data, nodes: nextNodes, links: target.links },
       }));
-      appendLog("info", `已重做 (${prev.pointer} → ${prev.pointer + 1})`);
+      appendLog("info", `宸查噸鍋?(${prev.pointer} 鈫?${prev.pointer + 1})`);
       return { ...prev, pointer: prev.pointer + 1 };
     });
   }, [appendLog, syncCurrentWorkflowMeta]);
 
   const createWorkflow = useCallback((name?: string): WorkflowSummary => {
-    const wf = makeEmptyWorkflow(name?.trim() || `项目 ${Object.keys(workspace.workflows).length + 1}`);
+    const wf = makeEmptyWorkflow(name?.trim() || `椤圭洰 ${Object.keys(workspace.workflows).length + 1}`);
     setWorkspace((prev) => ({
       ...prev,
       workflows: { ...prev.workflows, [wf.summary.id]: wf },
     }));
-    appendLog("success", `已新建项目 "${wf.summary.name}"`);
+    appendLog("success", `宸叉柊寤洪」鐩?"${wf.summary.name}"`);
     return wf.summary;
   }, [appendLog, workspace.workflows]);
 
@@ -1304,7 +1412,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     (templateId: string, customName?: string): WorkflowSummary | null => {
       const tmpl = WORKFLOW_TEMPLATES.find((t) => t.id === templateId);
       if (!tmpl) {
-        appendLog("warning", `模板 "${templateId}" 不存在`);
+        appendLog("warning", `Template "${templateId}" was not found.`);
         return null;
       }
       const wfId = makeId("wf");
@@ -1349,9 +1457,9 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       const wf: Workflow = {
         summary: {
           id: wfId,
-          name: customName?.trim() || `${tmpl.name} (模板)`,
+          name: customName?.trim() || `${tmpl.name} (妯℃澘)`,
           category: tmpl.category,
-          tags: ["模板", tmpl.category],
+          tags: ["妯℃澘", tmpl.category],
           sortIndex: now,
           createdAt: now,
           updatedAt: now,
@@ -1371,7 +1479,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       resetHistory({ nodes, links });
       appendLog(
         "success",
-        `已从模板 "${tmpl.name}" 创建项目 (${nodes.length} 节点, ${links.length} 连线, 分类 "${tmpl.category}", 预填 ${outputsMap.size} 个占位结果)`
+        `宸蹭粠妯℃澘 "${tmpl.name}" 鍒涘缓椤圭洰 (${nodes.length} 鑺傜偣, ${links.length} 杩炵嚎, 鍒嗙被 "${tmpl.category}", 棰勫～ ${outputsMap.size} 涓崰浣嶇粨鏋?`
       );
       return wf.summary;
     },
@@ -1382,11 +1490,11 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     (templateId: string): boolean => {
       const tmpl = WORKFLOW_TEMPLATES.find((t) => t.id === templateId);
       if (!tmpl) {
-        appendLog("warning", `模板 "${templateId}" 不存在`);
+        appendLog("warning", `Template "${templateId}" was not found.`);
         return false;
       }
       if (!workspace.workflows[workspace.currentId]) {
-        appendLog("warning", "当前没有可重置的项目");
+        appendLog("warning", "褰撳墠娌℃湁鍙噸缃殑椤圭洰");
         return false;
       }
       const now = Date.now();
@@ -1432,7 +1540,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         if (!cur) return prev;
         const updated: Workflow = {
           ...cur,
-          summary: { ...cur.summary, category: tmpl.category, tags: ["模板", tmpl.category], updatedAt: now },
+          summary: { ...cur.summary, category: tmpl.category, tags: ["妯℃澘", tmpl.category], updatedAt: now },
           data: {
             nodes: nodes.map((n) => ({ ...n })),
             links: links.map((l) => ({ ...l })),
@@ -1449,7 +1557,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       resetHistory({ nodes, links });
       appendLog(
         "success",
-        `已重置当前画布为 demo "${tmpl.name}" (${nodes.length} 节点, ${links.length} 连线, 预填 ${outputsMap.size} 个占位结果)`
+        `宸查噸缃綋鍓嶇敾甯冧负 demo "${tmpl.name}" (${nodes.length} 鑺傜偣, ${links.length} 杩炵嚎, 棰勫～ ${outputsMap.size} 涓崰浣嶇粨鏋?`
       );
       return true;
     },
@@ -1458,11 +1566,11 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
 
   const switchWorkflow = useCallback((id: string): boolean => {
     if (!workspace.workflows[id]) {
-      appendLog("warning", `项目 ${id} 不存在`);
+      appendLog("warning", `Project ${id} was not found.`);
       return false;
     }
     if (id === workspace.currentId) {
-      appendLog("info", `已在项目 "${workspace.workflows[id].summary.name}"`);
+      appendLog("info", `宸插湪椤圭洰 "${workspace.workflows[id].summary.name}"`);
       return true;
     }
     setWorkspace((prev) => {
@@ -1475,7 +1583,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       setSelectedNodeId(null);
       clearLinkDraft();
       resetHistory({ nodes: nextNodes, links: target.data.links });
-      appendLog("info", `已切换到项目 "${target.summary.name}" (${nextNodes.length} 节点, ${target.data.links.length} 连线)`);
+      appendLog("info", `宸插垏鎹㈠埌椤圭洰 "${target.summary.name}" (${nextNodes.length} 鑺傜偣, ${target.data.links.length} 杩炵嚎)`);
       return { ...prev, currentId: id };
     });
     return true;
@@ -1484,7 +1592,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
   const renameWorkflow = useCallback((id: string, name: string): boolean => {
     const trimmed = name.trim();
     if (!trimmed) {
-      appendLog("warning", "项目名称不能为空");
+      appendLog("warning", "椤圭洰鍚嶇О涓嶈兘涓虹┖");
       return false;
     }
     if (!workspace.workflows[id]) return false;
@@ -1493,7 +1601,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       const updated: Workflow = { ...wf, summary: { ...wf.summary, name: trimmed, updatedAt: Date.now() } };
       return { ...prev, workflows: { ...prev.workflows, [id]: updated } };
     });
-    appendLog("success", `已重命名为 "${trimmed}"`);
+    appendLog("success", `宸查噸鍛藉悕涓?"${trimmed}"`);
     return true;
   }, [workspace, appendLog]);
 
@@ -1518,7 +1626,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
   const addTagToWorkflow = useCallback((id: string, tag: string): boolean => {
     const trimmed = tag.trim();
     if (!trimmed) {
-      appendLog("warning", "标签不能为空");
+      appendLog("warning", "鏍囩涓嶈兘涓虹┖");
       return false;
     }
     if (!workspace.workflows[id]) return false;
@@ -1596,7 +1704,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     const removed = workspace.workflows[id];
     const remaining = (Object.values(workspace.workflows) as Workflow[]).filter((w) => w.summary.id !== id);
     if (remaining.length === 0) {
-      appendLog("warning", "至少需要保留一个项目");
+      appendLog("warning", "At least one project must remain.");
       return false;
     }
     const wasCurrent = id === workspace.currentId;
@@ -1628,7 +1736,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       clearLinkDraft();
       resetHistory({ nodes: nextNodes, links: nextWf.data.links });
     }
-    appendLog("warning", `已移至回收站 "${removed.summary.name}"`);
+    appendLog("warning", `宸茬Щ鑷冲洖鏀剁珯 "${removed.summary.name}"`);
     return true;
   }, [workspace, appendLog, clearLinkDraft, resetHistory]);
 
@@ -1636,7 +1744,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     const src = workspace.trash.find((w) => w.summary.id === id);
     if (!src) return false;
     if (workspace.workflows[id]) {
-      appendLog("warning", `项目 "${src.summary.name}" 已存在,无法还原`);
+      appendLog("warning", `椤圭洰 "${src.summary.name}" 宸插瓨鍦?鏃犳硶杩樺師`);
       return false;
     }
     const now = Date.now();
@@ -1649,7 +1757,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       workflows: { ...prev.workflows, [id]: restored },
       trash: prev.trash.filter((w) => w.summary.id !== id),
     }));
-    appendLog("success", `已还原 "${src.summary.name}"`);
+    appendLog("success", `宸茶繕鍘?"${src.summary.name}"`);
     return true;
   }, [workspace, appendLog]);
 
@@ -1660,7 +1768,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       ...prev,
       trash: prev.trash.filter((w) => w.summary.id !== id),
     }));
-    appendLog("warning", `已永久删除 "${src.summary.name}"`);
+    appendLog("warning", `宸叉案涔呭垹闄?"${src.summary.name}"`);
     return true;
   }, [workspace, appendLog]);
 
@@ -1668,7 +1776,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     const count = workspace.trash.length;
     if (count === 0) return 0;
     setWorkspace((prev) => ({ ...prev, trash: [] }));
-    appendLog("warning", `已清空回收站 (${count} 个项目被永久删除)`);
+    appendLog("warning", `宸叉竻绌哄洖鏀剁珯 (${count} 涓」鐩姘镐箙鍒犻櫎)`);
     return count;
   }, [workspace, appendLog]);
 
@@ -1680,7 +1788,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     setWorkspace((prev) => ({ ...prev, trash: prev.trash.filter((w) => !expiredIds.has(w.summary.id)) }));
     appendLog(
       "warning",
-      `自动清理回收站:已永久删除 ${expired.length} 个超过 ${TRASH_RETENTION_DAYS} 天的过期项目${expired.length > 0 ? ` ("${expired.slice(0, 3).map((w) => w.summary.name).join('", "')}${expired.length > 3 ? '" 等' : '"'})` : ""}`
+      `Trash cleanup removed ${expired.length} expired projects older than ${TRASH_RETENTION_DAYS} days${expired.length > 0 ? ` ("${expired.slice(0, 3).map((w) => w.summary.name).join('", "')}${expired.length > 3 ? '" etc.' : '"'})` : ""}`
     );
     return expired.length;
   }, [workspace, appendLog]);
@@ -1692,7 +1800,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     const wf: Workflow = {
       summary: {
         id: makeId("wf"),
-        name: `${src.summary.name} - 副本`,
+        name: `${src.summary.name} - 鍓湰`,
         category: src.summary.category,
         tags: [...(src.summary.tags ?? [])],
         sortIndex: now,
@@ -1719,7 +1827,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       ...prev,
       workflows: { ...prev.workflows, [wf.summary.id]: wf },
     }));
-    appendLog("success", `已复制为新项目 "${wf.summary.name}" (${wf.data.nodes.length} 节点)`);
+    appendLog("success", `宸插鍒朵负鏂伴」鐩?"${wf.summary.name}" (${wf.data.nodes.length} 鑺傜偣)`);
     return wf.summary;
   }, [workspace, appendLog]);
 
@@ -1735,11 +1843,11 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       try {
         parsed = JSON.parse(json);
       } catch (err) {
-        result.errors.push(`JSON 解析失败:${err instanceof Error ? err.message : String(err)}`);
+        result.errors.push(`JSON 瑙ｆ瀽澶辫触:${err instanceof Error ? err.message : String(err)}`);
         return result;
       }
       if (!parsed || typeof parsed !== "object" || !parsed.workflows || typeof parsed.workflows !== "object") {
-        result.errors.push("文件格式无效:缺少 workflows 字段");
+        result.errors.push("鏂囦欢鏍煎紡鏃犳晥:缂哄皯 workflows 瀛楁");
         return result;
       }
       const incoming = parsed.workflows as Record<string, Workflow>;
@@ -1774,7 +1882,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
               }));
             merged[newId] = {
               ...wf,
-              summary: { ...wf.summary, id: newId, name: `${wf.summary.name} (导入)`, updatedAt: Date.now() },
+              summary: { ...wf.summary, id: newId, name: `${wf.summary.name} (瀵煎叆)`, updatedAt: Date.now() },
               data: { ...wf.data, nodes: remappedNodes, links: remappedLinks, nodeOutputs: [] },
             };
             result.renamed++;
@@ -1798,51 +1906,68 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      try {
-        setWorkspace((prev) => {
-          const cur = prev.workflows[prev.currentId];
-          if (!cur) return prev;
-          const next: Workspace = {
-            ...prev,
-            workflows: {
-              ...prev.workflows,
-              [prev.currentId]: {
-                ...cur,
-                data: {
-                  ...cur.data,
-                  nodes,
-                  links,
-                  nodeOutputs: mapToOutputs(nodeOutputs),
-                },
-                summary: { ...cur.summary, updatedAt: Date.now() },
-              },
+      const nextData = {
+        nodes,
+        links,
+        nodeOutputs: mapToOutputs(nodeOutputs),
+        groups,
+      };
+
+      setWorkspace((prev) => {
+        const cur = prev.workflows[prev.currentId];
+        if (!cur) return prev;
+        return {
+          ...prev,
+          workflows: {
+            ...prev.workflows,
+            [prev.currentId]: {
+              ...cur,
+              data: nextData,
+              summary: { ...cur.summary, updatedAt: Date.now() },
             },
-          };
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitizeWorkspaceForStorage(next)));
-          return next;
+          },
+        };
+      });
+
+      if (isRemoteMode) {
+        if (!onRemotePersist) return;
+        if (skipNextRemotePersistRef.current) {
+          skipNextRemotePersistRef.current = false;
+          return;
+        }
+        if (!currentWorkflowSummary?.id) return;
+
+        const persistSignature = serializeRemotePersistSnapshot({
+          workflowId: currentWorkflowSummary.id,
+          name: currentWorkflowSummary.name,
+          category: currentWorkflowSummary.category,
+          tags: currentWorkflowSummary.tags ?? [],
+          nodes,
+          links,
+          nodeOutputs,
+          groups,
         });
-      } catch {
-        appendLog("warning", "本地项目缓存空间不足，已跳过超大临时媒体的持久化");
+        if (persistSignature === lastRemotePersistSignatureRef.current) return;
+
+        lastRemotePersistSignatureRef.current = persistSignature;
+
+        void onRemotePersist(
+          buildRemoteProjectSnapshot(currentWorkflowSummary, {
+            ...nextData,
+          })
+        );
+        return;
       }
     }, PERSIST_DEBOUNCE_MS);
     return () => window.clearTimeout(timer);
-  }, [appendLog, nodes, links, nodeOutputs]);
+  }, [currentWorkflowSummary, groups, isRemoteMode, links, nodeOutputs, nodes, onRemotePersist]);
 
   useEffect(() => {
+    if (isRemoteMode) return;
     purgeExpiredTrash();
     const intervalId = window.setInterval(purgeExpiredTrash, TRASH_PURGE_INTERVAL_MS);
     return () => window.clearInterval(intervalId);
-  }, [purgeExpiredTrash]);
-
-  useEffect(() => {
-    if (initial && Object.keys(initial.workflows).length > 0) {
-      const totalNodes = (Object.values(initial.workflows) as Workflow[]).reduce(
-        (sum, w) => sum + w.data.nodes.length,
-        0
-      );
-      appendLog("info", `已从本地恢复 ${Object.keys(initial.workflows).length} 个项目 (合计 ${totalNodes} 节点)`);
-    }
-  }, [appendLog, initial]);
+  }, [isRemoteMode, purgeExpiredTrash]);
 
   return {
     nodes,
@@ -1918,3 +2043,4 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     getWorkspaceSnapshot,
   };
 }
+

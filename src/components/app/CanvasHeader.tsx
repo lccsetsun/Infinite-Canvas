@@ -1,6 +1,13 @@
 import React from "react";
 import { motion } from "motion/react";
+import { ChevronDown, FolderPlus, Home, Layers3, Loader2, Trash2 } from "lucide-react";
 import HeaderRightPanel from "./HeaderRightPanel";
+import aiCanvasMark from "../../assets/brand/ai-canvas-mark.svg";
+import {
+  createRemoteProject,
+  deleteRemoteProject,
+  getRemoteProjectDetail,
+} from "../../features/workspace/remoteCanvas";
 
 interface CanvasHeaderProps {
   username?: string;
@@ -8,49 +15,217 @@ interface CanvasHeaderProps {
   onLogout?: () => void;
 }
 
+type ProjectMenuAction = "create" | "delete" | null;
+
+function buildCanvasUrl(projectId?: string) {
+  if (!projectId) return "/canvas";
+  const params = new URLSearchParams({ projectId });
+  return `/canvas?${params.toString()}`;
+}
+
+function BrandGlyph() {
+  return <img src={aiCanvasMark} alt="AI Canvas" className="h-5 w-5 shrink-0 object-contain opacity-95" />;
+}
+
+function MenuItem({
+  icon,
+  label,
+  onClick,
+  disabled = false,
+  danger = false,
+  busy = false,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  danger?: boolean;
+  busy?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={`flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-[13px] font-medium transition ${
+        disabled
+          ? "cursor-not-allowed text-slate-500"
+          : danger
+            ? "text-rose-100/92 hover:bg-rose-400/[0.08]"
+            : "text-slate-100 hover:bg-white/[0.04]"
+      }`}
+    >
+      <div
+        className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg ${
+          danger ? "text-rose-200/80" : "text-slate-400"
+        }`}
+      >
+        {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : icon}
+      </div>
+      <span className="truncate">{label}</span>
+    </button>
+  );
+}
+
 export default function CanvasHeader({
   username = "lccsetsun",
   onOpenApiSettings,
   onLogout,
 }: CanvasHeaderProps) {
+  const [menuOpen, setMenuOpen] = React.useState(false);
+  const [pendingAction, setPendingAction] = React.useState<ProjectMenuAction>(null);
+  const [projectName, setProjectName] = React.useState("未命名");
+  const menuRef = React.useRef<HTMLDivElement | null>(null);
+
+  const projectId = React.useMemo(() => {
+    if (typeof window === "undefined") return "";
+    return new URLSearchParams(window.location.search).get("projectId")?.trim() || "";
+  }, []);
+
+  React.useEffect(() => {
+    if (!projectId) {
+      setProjectName("未命名");
+      return;
+    }
+
+    void getRemoteProjectDetail(projectId)
+      .then((project) => {
+        setProjectName(project.name.trim() || "未命名");
+      })
+      .catch(() => {
+        setProjectName("未命名");
+      });
+  }, [projectId]);
+
+  React.useEffect(() => {
+    if (!menuOpen) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [menuOpen]);
+
+  const navigateTo = React.useCallback((path: string) => {
+    if (typeof window === "undefined") return;
+    window.location.href = path;
+  }, []);
+
+  const handleCreateProject = React.useCallback(async () => {
+    setPendingAction("create");
+    try {
+      const createdId = await createRemoteProject({ name: "新建项目" });
+      navigateTo(buildCanvasUrl(createdId || undefined));
+    } finally {
+      setPendingAction(null);
+      setMenuOpen(false);
+    }
+  }, [navigateTo]);
+
+  const handleDeleteProject = React.useCallback(async () => {
+    if (!projectId) return;
+    if (!window.confirm(`确认删除项目「${projectName}」吗？`)) return;
+
+    setPendingAction("delete");
+    try {
+      await deleteRemoteProject(projectId);
+      navigateTo("/");
+    } finally {
+      setPendingAction(null);
+      setMenuOpen(false);
+    }
+  }, [navigateTo, projectId, projectName]);
+
+  const isBusy = pendingAction !== null;
+  const isVisible = menuOpen || isBusy;
+
   return (
     <motion.header
-      initial={{ y: -64, opacity: 0 }}
+      initial={{ y: -24, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
-      transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-      className="relative z-[120] flex h-[72px] items-center justify-between overflow-visible border-b border-white/[0.06] bg-[linear-gradient(180deg,rgba(16,20,31,0.96),rgba(19,24,36,0.9))] px-5 shadow-[0_10px_30px_-24px_rgba(0,0,0,0.9)] backdrop-blur-xl"
+      transition={{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }}
+      className="relative z-[120] flex h-16 items-center justify-between overflow-visible px-5"
     >
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-cyan-300/12 to-transparent" />
-      <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-white/12 to-transparent" />
-
-      <div className="flex min-w-0 items-center gap-3">
-        <motion.div
-          initial={{ x: -30, opacity: 0, filter: "blur(10px)" }}
-          animate={{ x: 0, opacity: 1, filter: "blur(0px)" }}
-          transition={{ duration: 1, ease: [0.23, 1, 0.32, 1] }}
-          className="group relative flex h-14 cursor-default items-center overflow-hidden rounded-[20px] border border-white/[0.07] bg-[linear-gradient(180deg,rgba(18,23,35,0.92),rgba(12,16,25,0.82))] px-6 backdrop-blur-2xl transition-all duration-700 hover:border-white/12"
+      <motion.div
+        ref={menuRef}
+        data-no-canvas-context-menu="true"
+        initial={{ x: -14, opacity: 0 }}
+        animate={{ x: 0, opacity: isVisible ? 1 : 0.64 }}
+        whileHover={{ opacity: 1 }}
+        transition={{ duration: 0.24 }}
+        className="relative flex min-w-0 items-center"
+      >
+        <button
+          type="button"
+          disabled={isBusy}
+          onClick={() => setMenuOpen((current) => !current)}
+          className={`inline-flex h-10 max-w-[188px] items-center gap-2.5 rounded-2xl bg-[#141923]/34 px-3 py-1.5 text-left shadow-[0_10px_24px_-20px_rgba(0,0,0,0.92)] backdrop-blur-xl transition-all ${
+            isBusy ? "cursor-wait" : "cursor-pointer hover:bg-[#141923]/48"
+          }`}
         >
-          <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/10 via-transparent to-emerald-500/10 opacity-0 transition-opacity duration-1000 group-hover:opacity-100" />
+          <BrandGlyph />
 
-          <div className="relative flex items-center gap-1.5 leading-none">
-            <span className="text-xl font-black tracking-tighter text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.2)]">AI</span>
-            <span className="bg-gradient-to-r from-emerald-400 via-cyan-400 to-indigo-400 bg-clip-text text-xl font-black tracking-tighter text-transparent">
-              CANVAS
-            </span>
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-[14px] font-semibold tracking-[-0.02em] text-slate-100">
+              {projectName}
+            </div>
           </div>
 
+          {isBusy ? (
+            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-slate-300" />
+          ) : (
+            <ChevronDown
+              className={`h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform ${
+                menuOpen ? "rotate-180 text-slate-300" : ""
+              }`}
+            />
+          )}
+        </button>
+
+        {menuOpen ? (
           <motion.div
-            animate={{ x: ["-100%", "250%"] }}
-            transition={{ duration: 3.5, repeat: Infinity, ease: "easeInOut", repeatDelay: 1.5 }}
-            className="absolute bottom-0 top-0 w-16 -skew-x-[30deg] bg-gradient-to-r from-transparent via-white/[0.08] to-transparent"
-          />
-        </motion.div>
-      </div>
+            initial={{ opacity: 0, y: -6, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ duration: 0.18, ease: "easeOut" }}
+            className="absolute left-0 top-[calc(100%+8px)] z-[130] w-[196px] rounded-2xl bg-[#141923]/88 p-2 shadow-[0_18px_36px_-24px_rgba(0,0,0,0.95)] backdrop-blur-xl"
+          >
+            <MenuItem icon={<Home className="h-4 w-4" />} label="回到主页" onClick={() => navigateTo("/")} />
+            <MenuItem
+              icon={<Layers3 className="h-4 w-4" />}
+              label="全部项目"
+              onClick={() => navigateTo("/projects")}
+            />
+
+            <div className="my-1.5 h-px bg-white/[0.06]" />
+
+            <MenuItem
+              icon={<FolderPlus className="h-4 w-4" />}
+              label="创建项目"
+              disabled={isBusy}
+              busy={pendingAction === "create"}
+              onClick={() => void handleCreateProject()}
+            />
+            <MenuItem
+              icon={<Trash2 className="h-4 w-4" />}
+              label="删除项目"
+              disabled={isBusy || !projectId}
+              danger
+              busy={pendingAction === "delete"}
+              onClick={() => void handleDeleteProject()}
+            />
+          </motion.div>
+        ) : null}
+      </motion.div>
 
       <HeaderRightPanel
         username={username}
         onOpenApiSettings={onOpenApiSettings}
         onLogout={onLogout}
+        variant="compact"
       />
     </motion.header>
   );

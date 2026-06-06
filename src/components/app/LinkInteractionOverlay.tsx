@@ -11,7 +11,8 @@ interface LinkInteractionOverlayProps {
   zoom: number;
   selectedNodeId: string | null;
   selectedLinkId: string | null;
-  onSelectLink: (linkId: string | null) => void;
+  selectedLinkAnchor?: { x: number; y: number } | null;
+  onSelectLink: (linkId: string | null, anchor?: { x: number; y: number } | null) => void;
   onDeleteLink: (linkId: string) => void;
 }
 
@@ -37,6 +38,7 @@ export default function LinkInteractionOverlay({
   zoom,
   selectedNodeId,
   selectedLinkId,
+  selectedLinkAnchor,
   onSelectLink,
   onDeleteLink,
 }: LinkInteractionOverlayProps) {
@@ -63,12 +65,20 @@ export default function LinkInteractionOverlay({
     .filter((link): link is NonNullable<typeof link> => Boolean(link));
 
   const selectedLink = renderedLinks.find((link) => link.id === selectedLinkId) ?? null;
-  const buttonLeft = selectedLink ? pan.x + selectedLink.midpoint.x * zoom : 0;
-  const buttonTop = selectedLink ? pan.y + selectedLink.midpoint.y * zoom : 0;
+  const buttonLeft = selectedLink
+    ? selectedLinkAnchor
+      ? pan.x + selectedLinkAnchor.x * zoom
+      : pan.x + selectedLink.midpoint.x * zoom
+    : 0;
+  const buttonTop = selectedLink
+    ? selectedLinkAnchor
+      ? pan.y + selectedLinkAnchor.y * zoom
+      : pan.y + selectedLink.midpoint.y * zoom
+    : 0;
 
   return (
     <div className="pointer-events-none absolute inset-0 z-[18] overflow-visible" aria-hidden={links.length === 0}>
-      <svg className="absolute inset-0 h-full w-full overflow-visible" aria-hidden="true">
+      <svg className="pointer-events-auto absolute inset-0 h-full w-full overflow-visible" aria-hidden="true">
         <defs>
           <filter id="active-link-energy-glow" x="-35%" y="-80%" width="170%" height="260%">
             <feGaussianBlur stdDeviation="4.5" result="blur" />
@@ -243,14 +253,14 @@ export default function LinkInteractionOverlay({
                   stroke="transparent"
                   strokeLinecap="round"
                   strokeWidth={24}
-                  style={{ pointerEvents: "stroke" }}
-                  className="cursor-pointer"
+                  pointerEvents="stroke"
+                  className="pointer-events-auto cursor-pointer"
                   onPointerDown={(event) => event.stopPropagation()}
                   onPointerEnter={() => setHoveredLinkId(link.id)}
                   onPointerLeave={() => setHoveredLinkId((current) => (current === link.id ? null : current))}
                   onClick={(event) => {
                     event.stopPropagation();
-                    onSelectLink(link.id);
+                    onSelectLink(link.id, { x: event.clientX, y: event.clientY });
                   }}
                 />
               </React.Fragment>
@@ -265,13 +275,13 @@ export default function LinkInteractionOverlay({
           data-node-action="true"
           aria-label="删除连线"
           title="删除连线"
-          className="absolute flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-violet-200/18 bg-[#121923]/96 text-violet-100 shadow-[0_10px_28px_rgba(0,0,0,0.42),0_0_18px_rgba(129,140,248,0.18)] transition hover:border-fuchsia-200/38 hover:bg-[linear-gradient(135deg,rgba(99,102,241,0.22),rgba(168,85,247,0.22))] hover:text-white"
+          className="pointer-events-auto absolute flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-violet-200/18 bg-[#121923]/96 text-violet-100 shadow-[0_10px_28px_rgba(0,0,0,0.42),0_0_18px_rgba(129,140,248,0.18)] transition hover:border-fuchsia-200/38 hover:bg-[linear-gradient(135deg,rgba(99,102,241,0.22),rgba(168,85,247,0.22))] hover:text-white"
           style={{ left: buttonLeft, pointerEvents: "auto", top: buttonTop }}
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => {
             event.stopPropagation();
             onDeleteLink(selectedLink.id);
-            onSelectLink(null);
+            onSelectLink(null, null);
           }}
         >
           <Trash2 className="h-4 w-4" aria-hidden="true" />

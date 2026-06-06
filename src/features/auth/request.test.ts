@@ -38,4 +38,23 @@ describe("devApiFetch", () => {
     expect(headers.get("Authorization")).toBeNull();
     expect(headers.get("clientid")).toBeTruthy();
   });
+
+  it("deduplicates concurrent GET requests in development mode", async () => {
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const [first, second] = await Promise.all([
+      devApiFetch("/system/canvas/list?pageNum=1&pageSize=7", { method: "GET" }),
+      devApiFetch("/system/canvas/list?pageNum=1&pageSize=7", { method: "GET" }),
+    ]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await expect(first.json()).resolves.toEqual({ ok: true });
+    await expect(second.json()).resolves.toEqual({ ok: true });
+  });
 });

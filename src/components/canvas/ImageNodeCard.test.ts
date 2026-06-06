@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getResultImageBounds } from "./ImageNodeCard";
+import { getResultImageBounds, resolveResultImageSize } from "./ImageNodeCard";
 
 describe("getResultImageBounds", () => {
   it("uses compact bounds for image prompt starter placeholders", () => {
@@ -13,6 +13,21 @@ describe("getResultImageBounds", () => {
     expect(getResultImageBounds("16:9")).toEqual({
       maxWidth: 780,
       maxHeight: 585,
+    });
+  });
+
+  it("reuses saved display dimensions when natural size is missing", () => {
+    expect(
+      resolveResultImageSize(
+        {
+          imageDisplayWidth: 260,
+          imageDisplayHeight: 469,
+        },
+        "16:9",
+      ),
+    ).toEqual({
+      width: 260,
+      height: 469,
     });
   });
 });

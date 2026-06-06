@@ -534,7 +534,6 @@ function VideoNodeCardImpl({
               ref={videoRef}
               src={videoUrl}
               className="block h-full w-full object-contain"
-              crossOrigin="anonymous"
               muted={muted || !audioEnabled}
               playsInline
               onLoadedMetadata={(e) => {

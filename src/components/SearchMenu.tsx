@@ -1,8 +1,9 @@
 import React, { useEffect, useRef } from "react";
-import { FileText, Sparkles, Video, ChevronRight, Image as ImageIcon, Film, Music2, Loader2 } from "lucide-react";
-import { NodeClass } from "../types";
+import { ChevronRight, FileText, Film, Image as ImageIcon, Loader2, Music2, Sparkles, Video } from "lucide-react";
 import { motion } from "motion/react";
 import { uploadFileToOss } from "../features/resource/ossApi";
+import { NodeClass } from "../types";
+import { getSearchMenuPosition } from "../utils/searchMenuPosition";
 
 interface SearchMenuProps {
   x: number;
@@ -64,9 +65,11 @@ export default function SearchMenu({
   onNotice,
 }: SearchMenuProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const [uploadingType, setUploadingType] = React.useState<"upload_image" | "upload_video" | null>(null);
+  const [menuSize, setMenuSize] = React.useState({ width: 280, height: 520 });
 
   useEffect(() => {
     const handlePointerDownOutside = (event: PointerEvent) => {
@@ -77,6 +80,25 @@ export default function SearchMenu({
     document.addEventListener("pointerdown", handlePointerDownOutside);
     return () => document.removeEventListener("pointerdown", handlePointerDownOutside);
   }, [onClose]);
+
+  useEffect(() => {
+    const panel = panelRef.current;
+    if (!panel) return;
+
+    const syncMenuSize = () => {
+      setMenuSize({
+        width: panel.offsetWidth || 280,
+        height: panel.offsetHeight || 520,
+      });
+    };
+
+    syncMenuSize();
+
+    const resizeObserver = new ResizeObserver(syncMenuSize);
+    resizeObserver.observe(panel);
+
+    return () => resizeObserver.disconnect();
+  }, []);
 
   const handleSelect = (type: SearchMenuAction) => {
     if (uploadingType) return;
@@ -106,9 +128,9 @@ export default function SearchMenu({
       const asset = await uploadFileToOss(file);
       onAddNode(nodeType, x, y, {
         [propKey]: asset.url,
-        __uploadedAssetUrl: asset.url,
         __uploadedAssetKind: isImage ? "image" : "video",
         __uploadedAssetName: file.name,
+        __uploadedAssetUrl: asset.url,
       });
       onNotice?.(`${isImage ? "图片" : "视频"}已上传到 OSS`);
       onClose();
@@ -119,15 +141,27 @@ export default function SearchMenu({
     }
   };
 
-  const style: React.CSSProperties = isContextMenu ? { left: x, top: y } : { left: 96, top: 24 };
+  const style: React.CSSProperties = isContextMenu
+    ? getSearchMenuPosition(
+        { x, y },
+        menuSize,
+        {
+          width: typeof window === "undefined" ? 0 : window.innerWidth,
+          height: typeof window === "undefined" ? 0 : window.innerHeight,
+        },
+        { bottomMargin: 120 }
+      )
+    : { left: 96, top: 24 };
 
   return (
     <motion.div
       ref={containerRef}
+      data-no-canvas-context-menu="true"
       initial={{ opacity: 0, scale: 0.9, y: 10 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
       className="pointer-events-auto absolute z-[110] select-none"
       style={style}
+      onContextMenu={(event) => event.stopPropagation()}
       onMouseEnter={onHoverStart}
       onMouseLeave={isContextMenu ? undefined : onHoverEnd}
     >
@@ -135,9 +169,10 @@ export default function SearchMenu({
       <input type="file" ref={videoInputRef} className="hidden" accept="video/*" onChange={(event) => void handleFileChange(event, "upload_video")} />
 
       <div
+        ref={panelRef}
         onPointerDown={(event) => event.stopPropagation()}
         onClick={(event) => event.stopPropagation()}
-        className={`${isContextMenu ? "" : "ml-[12px]"} flex w-[280px] flex-col gap-4 rounded-[24px] border border-white/10 bg-[#0d1117]/90 p-5 shadow-[0_30px_60px_-12px_rgba(0,0,0,0.6),inset_0_1px_1px_rgba(255,255,255,0.05)] backdrop-blur-2xl`}
+        className={`${isContextMenu ? "" : "ml-[12px]"} flex max-h-[calc(100vh-144px)] w-[280px] flex-col gap-4 overflow-y-auto rounded-[24px] border border-white/10 bg-[#0d1117]/90 p-5 shadow-[0_30px_60px_-12px_rgba(0,0,0,0.6),inset_0_1px_1px_rgba(255,255,255,0.05)] backdrop-blur-2xl`}
       >
         <div className="space-y-4">
           <section>

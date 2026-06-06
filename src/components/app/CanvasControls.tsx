@@ -1,4 +1,5 @@
-import { Eye, Grid3X3, LocateFixed, Magnet, Box } from "lucide-react";
+import React from "react";
+import { Box, Eye, Grid3X3, LocateFixed, Magnet } from "lucide-react";
 import { motion } from "motion/react";
 import { Tooltip } from "../common/Tooltip";
 
@@ -7,6 +8,7 @@ interface CanvasControlsProps {
   showMiniMap: boolean;
   snapToGridEnabled: boolean;
   selectedCount: number;
+  zoom: number;
   onFitView: () => void;
   onToggleGrid: () => void;
   onToggleMiniMap: () => void;
@@ -14,11 +16,41 @@ interface CanvasControlsProps {
   onCreateGroup: () => void;
 }
 
+function ControlButton({
+  active = false,
+  label,
+  onClick,
+  children,
+}: {
+  active?: boolean;
+  label: string;
+  onClick: (event: React.MouseEvent) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <Tooltip content={label}>
+      <button
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={onClick}
+        aria-label={label}
+        className={`grid h-8 w-8 cursor-pointer place-items-center rounded-xl transition-all ${
+          active
+            ? "bg-white/[0.08] text-slate-100"
+            : "text-slate-500/80 hover:bg-white/[0.04] hover:text-slate-200"
+        }`}
+      >
+        {children}
+      </button>
+    </Tooltip>
+  );
+}
+
 export default function CanvasControls({
   showGrid,
   showMiniMap,
   snapToGridEnabled,
   selectedCount,
+  zoom,
   onFitView,
   onToggleGrid,
   onToggleMiniMap,
@@ -27,93 +59,85 @@ export default function CanvasControls({
 }: CanvasControlsProps) {
   return (
     <motion.div
-      initial={{ y: 50, opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      transition={{ delay: 0.3, duration: 0.5 }}
-      className="absolute left-4 bottom-1 z-30 flex gap-2"
+      data-no-canvas-context-menu="true"
+      initial={{ y: 20, opacity: 0 }}
+      animate={{ y: 0, opacity: 0.58 }}
+      whileHover={{ opacity: 1 }}
+      transition={{ delay: 0.18, duration: 0.28 }}
+      className="absolute bottom-4 left-4 z-30 inline-flex items-center gap-1 rounded-2xl bg-[#141923]/32 px-2 py-1.5 shadow-[0_10px_24px_-20px_rgba(0,0,0,0.92)] backdrop-blur-xl"
     >
-      <Tooltip content={showGrid ? "隐藏网格" : "显示网格"}>
-        <button
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleGrid();
-          }}
-          className={`w-10 h-10 rounded-[10px] border grid place-items-center transition-colors cursor-pointer ${
-            showGrid ? "border-indigo-500 bg-[#212b57] text-indigo-100 shadow-[0_0_10px_rgba(91,107,255,0.35)]" : "border-indigo-500/50 bg-[#1a2030] text-gray-300"
-          }`}
-        >
-          <Grid3X3 className="w-4 h-4" />
-        </button>
-      </Tooltip>
+      <ControlButton
+        active={showGrid}
+        label={showGrid ? "隐藏网格" : "显示网格"}
+        onClick={(event) => {
+          event.stopPropagation();
+          onToggleGrid();
+        }}
+      >
+        <Grid3X3 className="h-4 w-4" />
+      </ControlButton>
 
-      <Tooltip content={snapToGridEnabled ? "关闭网格吸附" : "开启网格吸附"}>
-        <button
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleSnapToGrid();
-          }}
-          className={`w-10 h-10 rounded-[10px] border grid place-items-center transition-colors cursor-pointer ${
-            snapToGridEnabled
-              ? "border-emerald-500 bg-[#17382f] text-emerald-100 shadow-[0_0_10px_rgba(16,185,129,0.32)]"
-              : "border-indigo-500/50 bg-[#1a2030] text-gray-300"
-          }`}
-          aria-label={snapToGridEnabled ? "关闭网格吸附" : "开启网格吸附"}
-        >
-          <Magnet className="w-4 h-4" />
-        </button>
-      </Tooltip>
+      <ControlButton
+        active={snapToGridEnabled}
+        label={snapToGridEnabled ? "关闭网格吸附" : "开启网格吸附"}
+        onClick={(event) => {
+          event.stopPropagation();
+          onToggleSnapToGrid();
+        }}
+      >
+        <Magnet className="h-4 w-4" />
+      </ControlButton>
 
-      <Tooltip content="自适应居中">
-        <button
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => {
-            e.stopPropagation();
-            onFitView();
-          }}
-          className="w-10 h-10 rounded-[10px] border border-indigo-500/50 bg-[#1a2030] text-gray-300 grid place-items-center transition-colors hover:border-cyan-400/70 hover:text-cyan-100 cursor-pointer"
-          aria-label="自适应居中"
-        >
-          <LocateFixed className="w-4 h-4" />
-        </button>
-      </Tooltip>
+      <ControlButton
+        label="自适应居中"
+        onClick={(event) => {
+          event.stopPropagation();
+          onFitView();
+        }}
+      >
+        <LocateFixed className="h-4 w-4" />
+      </ControlButton>
 
-      <Tooltip content={showMiniMap ? "隐藏小地图" : "显示小地图"}>
-        <button
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleMiniMap();
-          }}
-          className={`w-10 h-10 rounded-[10px] border grid place-items-center transition-colors cursor-pointer ${
-            showMiniMap ? "border-indigo-500 bg-[#212b57] text-indigo-100 shadow-[0_0_10px_rgba(91,107,255,0.35)]" : "border-indigo-500/50 bg-[#1a2030] text-gray-300"
-          }`}
-        >
-          <Eye className="w-4 h-4" />
-        </button>
-      </Tooltip>
+      <ControlButton
+        active={showMiniMap}
+        label={showMiniMap ? "隐藏小地图" : "显示小地图"}
+        onClick={(event) => {
+          event.stopPropagation();
+          onToggleMiniMap();
+        }}
+      >
+        <Eye className="h-4 w-4" />
+      </ControlButton>
 
-      {selectedCount >= 2 && (
-        <Tooltip content={`将 ${selectedCount} 个节点打组 (Shift+点击 多选)`}>
-          <motion.button
-            initial={{ scale: 0.8, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-              onCreateGroup();
-            }}
-            className="h-10 px-3 rounded-[10px] border border-violet-500/50 bg-gradient-to-r from-violet-500/20 to-fuchsia-500/20 hover:from-violet-500/30 hover:to-fuchsia-500/30 text-violet-100 flex items-center gap-1.5 transition-colors cursor-pointer"
-          >
-            <Box className="w-4 h-4" />
-            <span className="text-[11px] font-black uppercase tracking-wider">打组</span>
-            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-500/30 text-violet-100 font-mono">
-              {selectedCount}
-            </span>
-          </motion.button>
-        </Tooltip>
-      )}
+      {selectedCount >= 2 ? (
+        <>
+          <div className="h-4 w-px bg-white/[0.06]" />
+          <Tooltip content={`将 ${selectedCount} 个节点打组`}>
+            <motion.button
+              initial={{ scale: 0.94, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation();
+                onCreateGroup();
+              }}
+              className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-xl px-2 text-[11px] font-medium text-slate-200 transition hover:bg-white/[0.04]"
+            >
+              <Box className="h-3.5 w-3.5" />
+              <span>打组</span>
+              <span className="rounded-full bg-white/[0.06] px-1.5 py-0.5 text-[10px] text-slate-300">
+                {selectedCount}
+              </span>
+            </motion.button>
+          </Tooltip>
+        </>
+      ) : null}
+
+      <div className="h-4 w-px bg-white/[0.06]" />
+
+      <div className="inline-flex select-none items-center px-1 py-1 text-[11px] text-slate-400">
+        <span className="font-semibold text-slate-200">{Math.round(zoom * 100)}%</span>
+      </div>
     </motion.div>
   );
 }

@@ -1,10 +1,9 @@
-import React from "react";
+﻿import React from "react";
 import { AnimatePresence } from "motion/react";
 import CanvasHeader from "./components/app/CanvasHeader";
 import CanvasControls from "./components/app/CanvasControls";
 import CanvasHistoryDock from "./components/app/CanvasHistoryDock";
 import CanvasNodeLayer from "./components/app/CanvasNodeLayer";
-import CanvasStatusBar from "./components/app/CanvasStatusBar";
 import DraftLinkOverlay from "./components/app/DraftLinkOverlay";
 import GroupsLayer from "./components/app/GroupsLayer";
 import LinkInteractionOverlay from "./components/app/LinkInteractionOverlay";
@@ -13,7 +12,6 @@ import LeaferCanvas from "./components/canvas/LeaferCanvas";
 import MiniMap from "./components/app/MiniMap";
 import PreviewModal, { PreviewContent } from "./components/app/PreviewModal";
 import SettingsPanels from "./components/app/SettingsPanels";
-import WorkflowManager from "./components/WorkflowManager";
 import { Copy, Eye, Trash2 } from "lucide-react";
 import { snapPointToGrid } from "./components/canvas/geometry";
 import { useCanvasInteraction } from "./hooks/useCanvasInteraction";
@@ -21,14 +19,17 @@ import { useCanvasLinking } from "./hooks/useCanvasLinking";
 import { useMiniMapConfig } from "./hooks/useMiniMapConfig";
 import { useWorkflowState } from "./hooks/useWorkflowState";
 import { useAppUiState } from "./hooks/useAppUiState";
+import { shouldOpenCanvasContextMenu } from "./utils/canvasContextMenuPolicy";
 import { shouldFinishCanvasLinkOnCanvasPointerUp } from "./utils/canvasPointerPolicy";
 import { cropImageGridCell, getGridChildNodePosition } from "./utils/imageGridSplit";
+import { getCanvasViewportClassName } from "./utils/canvasViewportLayout";
 import { ConfigProvider, theme } from "antd";
 import { GraphNode, NodeClass, VideoFrameAnalysisOverview, VideoFrameAnalysisSegment, VideoSegmentTextAnalysis } from "./types";
 import { ApiSettings, getActiveProfile, getProviderProfile, loadApiSettings, saveApiSettings } from "./features/api/apiSettings";
 import { clearAuthSession } from "./features/auth/authStorage";
 import { logout } from "./features/auth/authApi";
 import { performOptimisticLogout } from "./features/auth/logoutFlow";
+import { getRemoteProjectDetail, updateRemoteProject, type RemoteCanvasProject } from "./features/workspace/remoteCanvas";
 
 const SearchMenu = React.lazy(() => import("./components/SearchMenu"));
 
@@ -44,7 +45,7 @@ export default function App({ onLoggedOut }: AppProps) {
 
   const panelFallback = (
     <div className="absolute inset-0 z-40 flex items-center justify-center bg-[#0f1218]/55 backdrop-blur-sm">
-      <div className="rounded-full border border-[#2b3142] bg-[#171b26] px-4 py-2 text-sm text-gray-300">加载中...</div>
+      <div className="rounded-full border border-[#2b3142] bg-[#171b26] px-4 py-2 text-sm text-gray-300">鍔犺浇涓?..</div>
     </div>
   );
 
@@ -55,7 +56,9 @@ export default function App({ onLoggedOut }: AppProps) {
   const apiBaseUrl = activeApiProfile.baseUrl;
   const apiKey = activeApiProfile.apiKey;
   const apiModel = activeApiProfile.model;
-  const [workflowManagerOpen, setWorkflowManagerOpen] = React.useState(false);
+  const [remoteProject, setRemoteProject] = React.useState<RemoteCanvasProject | null>(null);
+  const [isProjectLoading, setIsProjectLoading] = React.useState(Boolean(requestedWorkflowId));
+  const [projectLoadError, setProjectLoadError] = React.useState("");
 
   const handleLogout = React.useCallback(() => {
     performOptimisticLogout({
@@ -64,6 +67,27 @@ export default function App({ onLoggedOut }: AppProps) {
       onLoggedOut,
     });
   }, [onLoggedOut]);
+
+  React.useEffect(() => {
+    if (!requestedWorkflowId) {
+      setIsProjectLoading(false);
+      setProjectLoadError("Missing projectId, cannot load remote project.");
+      return;
+    }
+
+    setIsProjectLoading(true);
+    setProjectLoadError("");
+    void getRemoteProjectDetail(requestedWorkflowId)
+      .then((project) => {
+        setRemoteProject(project);
+      })
+      .catch((error) => {
+        setProjectLoadError(error instanceof Error ? error.message : "鍔犺浇椤圭洰璇︽儏澶辫触");
+      })
+      .finally(() => {
+        setIsProjectLoading(false);
+      });
+  }, [requestedWorkflowId]);
 
   const {
     nodes,
@@ -96,24 +120,8 @@ export default function App({ onLoggedOut }: AppProps) {
     canRedo,
     undo,
     redo,
-    workflowList,
-    trashList,
     currentWorkflowSummary,
-    allCategories,
-    allTags,
-    createWorkflow,
-    switchWorkflow,
     renameWorkflow,
-    setWorkflowCategory,
-    addTagToWorkflow,
-    removeTagFromWorkflow,
-    moveWorkflow,
-    deleteWorkflow,
-    duplicateWorkflow,
-    restoreWorkflow,
-    purgeWorkflow,
-    emptyTrash,
-    purgeExpiredTrash,
     setLinkFromNodeId,
     setLinkToNodeId,
     setLinkFromOutputIndex,
@@ -153,6 +161,18 @@ export default function App({ onLoggedOut }: AppProps) {
         deepseek: deepseekApiProfile?.model || "",
         minimax: minimaxApiProfile?.model || "",
       },
+    },
+    remoteProject,
+    onRemotePersist: async (project) => {
+      await updateRemoteProject({
+        id: project.id,
+        name: project.name,
+        coverUrl: project.coverUrl,
+        category: project.category,
+        tags: project.tags,
+        workflow: project.workflow,
+      });
+      setRemoteProject(project);
     },
   });
 
@@ -202,7 +222,7 @@ export default function App({ onLoggedOut }: AppProps) {
     showNotice,
   } = useAppUiState();
 
-  const [workflowName, setWorkflowName] = React.useState("默认项目");
+  const [workflowName, setWorkflowName] = React.useState("榛樿椤圭洰");
   const [autoSaveWorkflow, setAutoSaveWorkflow] = React.useState(true);
   const [menuPos, setMenuPos] = React.useState<{ x: number; y: number } | null>(null);
   const [pendingLinkMenuDraft, setPendingLinkMenuDraft] = React.useState<{
@@ -215,6 +235,7 @@ export default function App({ onLoggedOut }: AppProps) {
   const [canvasSize, setCanvasSize] = React.useState({ width: 0, height: 0 });
   const [selectedGroupId, setSelectedGroupId] = React.useState<string | null>(null);
   const [selectedLinkId, setSelectedLinkId] = React.useState<string | null>(null);
+  const [selectedLinkAnchor, setSelectedLinkAnchor] = React.useState<{ x: number; y: number } | null>(null);
   const [selectedNodeIds, setSelectedNodeIds] = React.useState<Set<string>>(new Set());
   const [nodeContextMenu, setNodeContextMenu] = React.useState<{ nodeId: string; x: number; y: number } | null>(null);
   const nodeContextMenuNode = React.useMemo(
@@ -228,6 +249,11 @@ export default function App({ onLoggedOut }: AppProps) {
   const menuCloseTimerRef = React.useRef<number | null>(null);
   const autoFitStateRef = React.useRef<{ workflowId: string | null; nodeCount: number } | null>(null);
 
+  React.useEffect(() => {
+    if (!currentWorkflowSummary?.name) return;
+    setWorkflowName(currentWorkflowSummary.name);
+  }, [currentWorkflowSummary?.name]);
+
   const memberCountByGroup = React.useMemo(() => {
     const m = new Map<string, number>();
     for (const n of nodes) {
@@ -240,37 +266,10 @@ export default function App({ onLoggedOut }: AppProps) {
     setIsWelcomeDismissed(true);
     setCurrentView("canvas");
     setActiveQuickTool(null);
-
-    if (
-      workflowList.length === 1 &&
-      nodes.length === 0 &&
-      links.length === 0 &&
-      currentWorkflowSummary?.id &&
-      currentWorkflowSummary.name === "默认项目"
-    ) {
-      renameWorkflow(currentWorkflowSummary.id, "项目 1");
-      showNotice('已进入空白项目 "项目 1"');
-      return;
-    }
-
-    const project = createWorkflow();
-    if (project) {
-      switchWorkflow(project.id);
-      showNotice(`已创建并切换到 "${project.name}"`);
-    }
   }, [
-    createWorkflow,
-    currentWorkflowSummary?.id,
-    currentWorkflowSummary?.name,
-    links.length,
-    nodes.length,
-    renameWorkflow,
     setActiveQuickTool,
     setCurrentView,
     setIsWelcomeDismissed,
-    showNotice,
-    switchWorkflow,
-    workflowList.length,
   ]);
 
   const {
@@ -373,7 +372,7 @@ export default function App({ onLoggedOut }: AppProps) {
     async (nodeId: string, imageUrl: string, gridRows: number, gridCols: number, cellIndices: number[]) => {
       const sourceNode = nodes.find((n) => n.id === nodeId);
       if (!sourceNode) {
-        showNotice("来源节点不存在，无法切分");
+        showNotice("Source node was not found.");
         return;
       }
       try {
@@ -386,11 +385,11 @@ export default function App({ onLoggedOut }: AppProps) {
             position.x,
             position.y,
             {
-              __nodeTitle: `宫格切分 ${gridRows}x${gridCols} #${cellIndex + 1}`,
+              __nodeTitle: `瀹牸鍒囧垎 ${gridRows}x${gridCols} #${cellIndex + 1}`,
               __uploadedAssetUrl: dataUrl,
               __uploadedAssetKind: "image",
               imageUrl: dataUrl,
-              text: `来自 ${sourceNode.title} 的 ${gridRows}x${gridCols} 第 ${cellIndex + 1} 格 (${crop.sw}x${crop.sh})`,
+              text: `鏉ヨ嚜 ${sourceNode.title} 鐨?${gridRows}x${gridCols} 绗?${cellIndex + 1} 鏍?(${crop.sw}x${crop.sh})`,
               status: "success",
             },
             { fromNodeId: nodeId, fromOutputIndex: 0, toInputIndex: 0 }
@@ -398,12 +397,12 @@ export default function App({ onLoggedOut }: AppProps) {
         }
         showNotice(
           normalizedCellIndices.length > 1
-            ? `已生成 ${normalizedCellIndices.length} 个格子节点并自动连线`
-            : `已生成第 ${normalizedCellIndices[0] + 1} 格子节点并自动连线`
+            ? `Created ${normalizedCellIndices.length} grid child nodes and linked them automatically.`
+            : `Created grid child node #${normalizedCellIndices[0] + 1} and linked it automatically.`
         );
         setPreviewContent(null);
       } catch (error) {
-        const message = error instanceof Error ? error.message : "图片切分失败";
+        const message = error instanceof Error ? error.message : "鍥剧墖鍒囧垎澶辫触";
         showNotice(message);
       }
     },
@@ -442,11 +441,12 @@ export default function App({ onLoggedOut }: AppProps) {
     setSelectedNodeId(nodeId);
   }, [setSelectedNodeId]);
 
-  const handleSelectLink = React.useCallback((linkId: string | null) => {
+  const handleSelectLink = React.useCallback((linkId: string | null, anchor?: { x: number; y: number } | null) => {
     setSelectedNodeId(null);
     setSelectedNodeIds(new Set());
     setSelectedGroupId(null);
     setSelectedLinkId(linkId);
+    setSelectedLinkAnchor(linkId ? (anchor ?? null) : null);
   }, [setSelectedNodeId]);
 
   const handleNodeContextMenu = React.useCallback((nodeId: string, event: React.MouseEvent) => {
@@ -455,6 +455,7 @@ export default function App({ onLoggedOut }: AppProps) {
     const rect = canvasRef.current?.getBoundingClientRect();
     setSelectedGroupId(null);
     setSelectedLinkId(null);
+    setSelectedLinkAnchor(null);
     setSelectedNodeIds(new Set([nodeId]));
     setSelectedNodeId(nodeId);
     setMenuPos(null);
@@ -473,7 +474,7 @@ export default function App({ onLoggedOut }: AppProps) {
   const handleCreateGroup = () => {
     const ids = Array.from(selectedNodeIds);
     if (ids.length < 2) {
-      showNotice("请按住 Shift 多选至少 2 个节点,再点击「打组」");
+      showNotice("Hold Shift and select at least 2 nodes before grouping.");
       return;
     }
     const group = createGroup(ids);
@@ -487,11 +488,11 @@ export default function App({ onLoggedOut }: AppProps) {
     async (node: GraphNode, segments: VideoFrameAnalysisSegment[], overview: VideoFrameAnalysisOverview) => {
       const videoUrl = (node.data?.videoUrl as string) || (node.properties.videoUrl as string) || "";
       if (!videoUrl || segments.length === 0) {
-        showNotice("没有可分析的视频或关键帧");
+        showNotice("No video or keyframe data available for analysis.");
         return;
       }
 
-      showNotice("正在分析完整视频");
+      showNotice("Analyzing full video.");
       let analysisMarkdown = "";
       try {
         const response = await fetch("/api/video/frame-analysis", {
@@ -509,16 +510,16 @@ export default function App({ onLoggedOut }: AppProps) {
           }),
         });
         const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data?.error || "视频分析失败");
+        if (!response.ok) throw new Error(data?.error || "Video analysis failed.");
         analysisMarkdown = typeof data?.text === "string" ? data.text : "";
       } catch (error) {
-        const message = error instanceof Error ? error.message : "视频分析失败";
-        analysisMarkdown = `## 完整视频分析\n\n后端分析失败: ${message}\n\n已生成完整逐帧总览图和分段关键帧节点。`;
+        const message = error instanceof Error ? error.message : "Video analysis failed.";
+        analysisMarkdown = `## Full Video Analysis\n\nBackend analysis failed: ${message}\n\nGenerated the overview and segment keyframe nodes.`;
         showNotice(message);
       }
 
       addVideoFrameAnalysis(node.id, segments, overview, analysisMarkdown);
-      showNotice("逐帧分析结构已生成");
+      showNotice("Video analysis structure generated.");
     },
     [addVideoFrameAnalysis, deepseekApiProfile, showNotice]
   );
@@ -539,11 +540,11 @@ export default function App({ onLoggedOut }: AppProps) {
         .filter((segment) => segment.title && segment.end >= segment.start);
 
       if (!videoUrl || segments.length === 0) {
-        showNotice("没有可反推的分段信息");
+        showNotice("No segment data available for reverse analysis.");
         return;
       }
 
-      showNotice(`正在反推 ${segments.length} 个分段视频分析`);
+      showNotice(`Reverse-analyzing ${segments.length} video segments.`);
       const analyses: VideoSegmentTextAnalysis[] = await Promise.all(
         segments.map(async (segment) => {
           try {
@@ -560,34 +561,37 @@ export default function App({ onLoggedOut }: AppProps) {
                 video_url: videoUrl,
                 segments: [segment],
                 prompt: [
-                  `请只分析视频的这个时间分段: ${segment.title} (${segment.start.toFixed(1)}s-${segment.end.toFixed(1)}s)。`,
-                  "输出 Markdown，包含：画面内容、主体运动、镜头运动、节奏变化、可用于后续生成/剪辑的提示。",
-                  "不要分析其他时间段。",
+                  `Analyze only this time range of the video: ${segment.title} (${segment.start.toFixed(1)}s-${segment.end.toFixed(1)}s).`,
+                  "Return Markdown including visual content, subject motion, camera motion, pacing changes, and useful follow-up generation or editing prompts.",
+                  "Do not analyze other time ranges.",
                 ].join("\n"),
               }),
             });
             const data = await response.json().catch(() => ({}));
-            if (!response.ok) throw new Error(data?.error || "分段反推失败");
+            if (!response.ok) throw new Error(data?.error || "Segment reverse analysis failed.");
             return {
               title: segment.title,
               start: segment.start,
               end: segment.end,
-              text: typeof data?.text === "string" && data.text.trim() ? data.text : `## ${segment.title}\n\n暂无分析结果。`,
+              text:
+                typeof data?.text === "string" && data.text.trim()
+                  ? data.text
+                  : `## ${segment.title}\n\nNo analysis result was returned.`,
             };
           } catch (error) {
-            const message = error instanceof Error ? error.message : "分段反推失败";
+            const message = error instanceof Error ? error.message : "Segment reverse analysis failed.";
             return {
               title: segment.title,
               start: segment.start,
               end: segment.end,
-              text: `## ${segment.title}\n\n反推失败: ${message}`,
+              text: `## ${segment.title}\n\nReverse analysis failed: ${message}`,
             };
           }
         })
       );
 
       addSegmentVideoAnalyses(node.id, analyses);
-      showNotice("分段反推完成");
+      showNotice("Segment reverse analysis completed.");
     },
     [addSegmentVideoAnalyses, deepseekApiProfile, showNotice]
   );
@@ -599,7 +603,7 @@ export default function App({ onLoggedOut }: AppProps) {
 
   const runNow = () => {
     runWorkflow();
-    showNotice(`已触发运行（${new Date().toLocaleTimeString()}）`);
+    showNotice(`Run triggered at ${new Date().toLocaleTimeString()}.`);
   };
 
   const clearMenuCloseTimer = React.useCallback(() => {
@@ -659,13 +663,6 @@ export default function App({ onLoggedOut }: AppProps) {
   }, [currentWorkflowSummary?.id, fitView, nodes.length]);
 
   React.useEffect(() => {
-    if (!requestedWorkflowId) return;
-    if (currentWorkflowSummary?.id === requestedWorkflowId) return;
-    if (!workflowList.some((workflow) => workflow.id === requestedWorkflowId)) return;
-    switchWorkflow(requestedWorkflowId);
-  }, [currentWorkflowSummary?.id, requestedWorkflowId, switchWorkflow, workflowList]);
-
-  React.useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       const isEditingField =
@@ -717,9 +714,72 @@ export default function App({ onLoggedOut }: AppProps) {
     try {
       saveApiSettings(apiSettings);
     } catch {
-      // quota exceeded — ignore
+      // quota exceeded 鈥?ignore
     }
   }, [apiSettings]);
+
+  const handleCanvasContextMenu = React.useCallback(
+    (e: React.MouseEvent) => {
+      if (currentView !== "canvas") return;
+      if (!shouldOpenCanvasContextMenu(e.target)) return;
+
+      if (isLinkingOnCanvas) {
+        e.preventDefault();
+        resetCanvasLinkDraft();
+        return;
+      }
+
+      onContextMenu(e);
+      setPendingLinkMenuDraft(null);
+      closeNodeContextMenu();
+      setMenuPos({ x: e.clientX, y: e.clientY });
+      setIsMenuFromToolbar(false);
+      clearMenuCloseTimer();
+    },
+    [
+      clearMenuCloseTimer,
+      closeNodeContextMenu,
+      currentView,
+      isLinkingOnCanvas,
+      onContextMenu,
+      resetCanvasLinkDraft,
+      setIsMenuFromToolbar,
+    ]
+  );
+
+  const handleCanvasDoubleClick = React.useCallback(
+    (e: React.MouseEvent) => {
+      if (currentView !== "canvas") return;
+      if (isLinkingOnCanvas) return;
+
+      const target = e.target as HTMLElement;
+      if (target.closest("[data-node-action='true'], .node-card, button, input, select, textarea")) {
+        return;
+      }
+
+      e.preventDefault();
+      closeNodeContextMenu();
+      setPendingLinkMenuDraft(null);
+      setIsMenuFromToolbar(false);
+      clearMenuCloseTimer();
+      setMenuPos({ x: e.clientX, y: e.clientY });
+    },
+    [clearMenuCloseTimer, closeNodeContextMenu, currentView, isLinkingOnCanvas, setIsMenuFromToolbar]
+  );
+
+  if (isProjectLoading) {
+    return panelFallback;
+  }
+
+  if (projectLoadError) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#0d0f13] px-6 text-slate-100">
+        <div className="max-w-lg rounded-3xl border border-rose-500/20 bg-rose-500/10 px-6 py-5 text-sm text-rose-100">
+          {projectLoadError}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <ConfigProvider
@@ -731,7 +791,10 @@ export default function App({ onLoggedOut }: AppProps) {
         },
       }}
     >
-      <div className="relative w-full h-screen bg-[#202637] text-[#e2e8f0] overflow-hidden select-none font-sans">
+      <div
+        className="relative w-full h-screen bg-[#202637] text-[#e2e8f0] overflow-hidden select-none font-sans"
+        onContextMenu={handleCanvasContextMenu}
+      >
         <CanvasHeader
           onOpenApiSettings={() => {
             setCurrentView("api");
@@ -742,7 +805,8 @@ export default function App({ onLoggedOut }: AppProps) {
 
       <main
         ref={canvasRef}
-        className="relative h-[calc(100vh-4rem)] cursor-grab active:cursor-grabbing select-none"
+        className={getCanvasViewportClassName()}
+        onDoubleClick={handleCanvasDoubleClick}
         onPointerDown={(e) => {
           if (isLinkingOnCanvas) {
             e.preventDefault();
@@ -750,13 +814,14 @@ export default function App({ onLoggedOut }: AppProps) {
             return;
           }
           
-          // 点击背景时取消所有选择 (如果没有点击到节点或动作按钮)
+          // 鐐瑰嚮鑳屾櫙鏃跺彇娑堟墍鏈夐€夋嫨 (濡傛灉娌℃湁鐐瑰嚮鍒拌妭鐐规垨鍔ㄤ綔鎸夐挳)
           const target = e.target as HTMLElement;
           if (!target.closest("[data-node-action='true'], .node-card, button, input, select, textarea")) {
             setSelectedNodeId(null);
             setSelectedNodeIds(new Set());
             setSelectedGroupId(null);
             setSelectedLinkId(null);
+            setSelectedLinkAnchor(null);
             closeNodeContextMenu();
           }
           
@@ -775,19 +840,6 @@ export default function App({ onLoggedOut }: AppProps) {
         onPointerLeave={(e) => {
           onPointerUp(e);
           if (isLinkingOnCanvas) resetCanvasLinkDraft();
-        }}
-        onContextMenu={(e) => {
-          if (isLinkingOnCanvas) {
-            e.preventDefault();
-            resetCanvasLinkDraft();
-            return;
-          }
-          onContextMenu(e);
-          setPendingLinkMenuDraft(null);
-          closeNodeContextMenu();
-          setMenuPos({ x: e.clientX, y: e.clientY - 64 });
-          setIsMenuFromToolbar(false);
-          clearMenuCloseTimer();
         }}
       >
         <LeaferCanvas
@@ -814,7 +866,14 @@ export default function App({ onLoggedOut }: AppProps) {
             zoom={zoom}
             selectedNodeId={selectedNodeId}
             selectedLinkId={selectedLinkId}
-            onSelectLink={handleSelectLink}
+            selectedLinkAnchor={selectedLinkAnchor}
+            onSelectLink={(linkId, anchor) => {
+              if (!linkId || !anchor) {
+                handleSelectLink(linkId, null);
+                return;
+              }
+              handleSelectLink(linkId, toWorld(anchor.x, anchor.y));
+            }}
             onDeleteLink={removeLink}
           />
         )}
@@ -903,12 +962,12 @@ export default function App({ onLoggedOut }: AppProps) {
                   className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left font-semibold text-slate-200 transition hover:bg-cyan-300/10 hover:text-cyan-100"
                   onClick={() => {
                     if (!nodeContextMenuText) {
-                      showNotice("当前文本节点暂无内容可复制");
+                      showNotice("This text node has no content to copy.");
                       closeNodeContextMenu();
                       return;
                     }
                     void navigator.clipboard.writeText(nodeContextMenuText);
-                    showNotice("文本内容已复制");
+                    showNotice("Text content copied.");
                     closeNodeContextMenu();
                   }}
                 >
@@ -920,7 +979,7 @@ export default function App({ onLoggedOut }: AppProps) {
                   className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left font-semibold text-slate-200 transition hover:bg-cyan-300/10 hover:text-cyan-100"
                   onClick={() => {
                     if (!nodeContextMenuText) {
-                      showNotice("当前文本节点暂无内容可查看");
+                      showNotice("This text node has no content to preview.");
                       closeNodeContextMenu();
                       return;
                     }
@@ -973,10 +1032,14 @@ export default function App({ onLoggedOut }: AppProps) {
           workflowName={workflowName}
           onSaveApiSettings={(s) => {
             setApiSettings(s);
-            showNotice("API 设置已保存");
+            showNotice("API settings saved.");
           }}
           onSaveWorkflow={() => {
-            showNotice("项目设置已保存");
+            const trimmedName = workflowName.trim();
+            if (currentWorkflowSummary?.id && trimmedName && trimmedName !== currentWorkflowSummary.name) {
+              renameWorkflow(currentWorkflowSummary.id, trimmedName);
+            }
+            showNotice("Project settings saved.");
             setCurrentView("canvas");
             setActiveQuickTool(null);
           }}
@@ -1014,7 +1077,7 @@ export default function App({ onLoggedOut }: AppProps) {
           onNodeContextMenu={handleNodeContextMenu}
           onNodeDragStart={onNodeDragStart}
           onPreview={(content, title, nodeId, items, currentIndex) =>
-            setPreviewContent({ title: title || "预览内容", content, nodeId, items, currentIndex })
+            setPreviewContent({ title: title || "棰勮鍐呭", content, nodeId, items, currentIndex })
           }
           onAnalyzeVideo={handleAnalyzeVideo}
           onReverseSegmentAnalysis={handleReverseSegmentAnalysis}
@@ -1058,6 +1121,7 @@ export default function App({ onLoggedOut }: AppProps) {
             showMiniMap={showMiniMap}
             snapToGridEnabled={snapToGridEnabled}
             selectedCount={selectedNodeIds.size}
+            zoom={zoom}
             onFitView={() => {
               fitView();
               showNotice("已自适应居中");
@@ -1086,9 +1150,6 @@ export default function App({ onLoggedOut }: AppProps) {
             onClearCanvas={clearCanvas}
           />
         )}
-        {currentView === "canvas" && (
-          <CanvasStatusBar nodeCount={nodes.length} linkCount={links.length} zoom={zoom} />
-        )}
         {runNotice && <div className="absolute right-6 top-20 z-50 px-3 py-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-emerald-200 text-xs">{runNotice}</div>}
       </main>
 
@@ -1102,32 +1163,8 @@ export default function App({ onLoggedOut }: AppProps) {
           showNotice={showNotice}
         />
       )}
-
-      <WorkflowManager
-        open={workflowManagerOpen}
-        list={workflowList}
-        trash={trashList}
-        allCategories={allCategories}
-        allTags={allTags}
-        currentId={currentWorkflowSummary?.id ?? null}
-        workflowName={currentWorkflowSummary?.name ?? "默认项目"}
-        onClose={() => setWorkflowManagerOpen(false)}
-        onSwitch={switchWorkflow}
-        onCreate={createWorkflow}
-        onRename={renameWorkflow}
-        onSetCategory={setWorkflowCategory}
-        onAddTag={addTagToWorkflow}
-        onRemoveTag={removeTagFromWorkflow}
-        onMove={moveWorkflow}
-        onDelete={deleteWorkflow}
-        onDuplicate={duplicateWorkflow}
-        onRestore={restoreWorkflow}
-        onPurge={purgeWorkflow}
-        onEmptyTrash={emptyTrash}
-        onPurgeExpired={purgeExpiredTrash}
-        showNotice={showNotice}
-      />
     </div>
     </ConfigProvider>
   );
 }
+

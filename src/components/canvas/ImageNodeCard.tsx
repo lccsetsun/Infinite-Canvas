@@ -85,6 +85,10 @@ function fitImageSize(naturalSize: { width: number; height: number } | null, asp
   return { width: Math.round(maxHeight * ratio), height: maxHeight };
 }
 
+function isFinitePositiveNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
 export function getResultImageBounds(aspectRatio: string, isUploadPlaceholder = false) {
   if (isUploadPlaceholder) {
     return {
@@ -104,6 +108,39 @@ export function getResultImageBounds(aspectRatio: string, isUploadPlaceholder = 
     maxWidth: RESULT_IMAGE_MAX_WIDTH,
     maxHeight: RESULT_IMAGE_MAX_HEIGHT,
   };
+}
+
+export function resolveResultImageSize(
+  dimensions: {
+    imageNaturalWidth?: number;
+    imageNaturalHeight?: number;
+    imageDisplayWidth?: number;
+    imageDisplayHeight?: number;
+  },
+  aspectRatio: string,
+  isUploadPlaceholder = false,
+) {
+  const bounds = getResultImageBounds(aspectRatio, isUploadPlaceholder);
+  if (isFinitePositiveNumber(dimensions.imageNaturalWidth) && isFinitePositiveNumber(dimensions.imageNaturalHeight)) {
+    return fitImageSize(
+      {
+        width: dimensions.imageNaturalWidth,
+        height: dimensions.imageNaturalHeight,
+      },
+      aspectRatio,
+      bounds.maxWidth,
+      bounds.maxHeight,
+    );
+  }
+
+  if (isFinitePositiveNumber(dimensions.imageDisplayWidth) && isFinitePositiveNumber(dimensions.imageDisplayHeight)) {
+    return {
+      width: Math.min(Math.round(dimensions.imageDisplayWidth), bounds.maxWidth),
+      height: Math.min(Math.round(dimensions.imageDisplayHeight), bounds.maxHeight),
+    };
+  }
+
+  return fitImageSize(null, aspectRatio, bounds.maxWidth, bounds.maxHeight);
 }
 
 function ImageNodeCardImpl({
@@ -175,8 +212,25 @@ function ImageNodeCardImpl({
   const nodeWidth = getNodeWidth(node);
   const resultImageBounds = getResultImageBounds(aspectRatio, node.data?.isUploadPlaceholder === true);
   const resultImageSize = React.useMemo(
-    () => fitImageSize(naturalImageSize, aspectRatio, resultImageBounds.maxWidth, resultImageBounds.maxHeight),
-    [aspectRatio, naturalImageSize, resultImageBounds.maxHeight, resultImageBounds.maxWidth],
+    () =>
+      resolveResultImageSize(
+        {
+          imageNaturalWidth: naturalImageSize?.width,
+          imageNaturalHeight: naturalImageSize?.height,
+          imageDisplayWidth: node.data?.imageDisplayWidth,
+          imageDisplayHeight: node.data?.imageDisplayHeight,
+        },
+        aspectRatio,
+        node.data?.isUploadPlaceholder === true,
+      ),
+    [
+      aspectRatio,
+      naturalImageSize?.height,
+      naturalImageSize?.width,
+      node.data?.imageDisplayHeight,
+      node.data?.imageDisplayWidth,
+      node.data?.isUploadPlaceholder,
+    ],
   );
   const imageSetKey = React.useMemo(() => resolvedImageUrls.join("||"), [resolvedImageUrls]);
   const naturalSizeLabel =
