@@ -11,7 +11,9 @@ import {
   Mail,
   RefreshCcw,
 } from "lucide-react";
+import aiCanvasLockup from "../assets/brand/ai-canvas-lockup.svg";
 import { fetchCaptcha, fetchTenantList, loginWithPassword } from "../features/auth/authApi";
+import { resolveCaptchaState, resolveLoginBootstrapState } from "../features/auth/loginBootstrap";
 
 interface LoginPageProps {
   onLogin: (accessToken: string) => void;
@@ -38,35 +40,38 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
   const [fieldErrors, setFieldErrors] = React.useState<Partial<Record<FieldKey, string>>>({});
   const hasBootstrappedRef = React.useRef(false);
 
-  const loadCaptcha = React.useCallback(async () => {
-    const captcha = await fetchCaptcha();
-    setCaptchaEnabled(captcha.captchaEnabled !== false);
-    setCaptchaUuid(captcha.uuid || "");
-    setCaptchaCode("");
-    setCaptchaImage(captcha.img ? `data:image/gif;base64,${captcha.img}` : "");
-  }, []);
+  const loadCaptcha = React.useCallback(async () => fetchCaptcha(), []);
+
+  const applyCaptchaState = React.useCallback(
+    (captchaState: {
+      captchaEnabled: boolean;
+      captchaUuid: string;
+      captchaImage: string;
+    }) => {
+      setCaptchaEnabled(captchaState.captchaEnabled);
+      setCaptchaUuid(captchaState.captchaUuid);
+      setCaptchaCode("");
+      setCaptchaImage(captchaState.captchaImage);
+    },
+    []
+  );
+
+  const refreshCaptcha = React.useCallback(async () => {
+    applyCaptchaState(await resolveCaptchaState(loadCaptcha));
+  }, [applyCaptchaState, loadCaptcha]);
 
   const bootstrapLogin = React.useCallback(async () => {
     setIsBootstrapping(true);
     setErrorMessage("");
     try {
-      const tenantInfo = await fetchTenantList();
-      const tenants = tenantInfo.voList || [];
-      const nextTenantId = tenants[0]?.tenantId || "";
-      setTenantId((current) => current || nextTenantId);
-      if (tenantInfo.tenantEnabled) {
-        await loadCaptcha();
-      } else {
-        setCaptchaEnabled(false);
-        setCaptchaUuid("");
-        setCaptchaImage("");
-      }
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "初始化登录配置失败");
+      const bootstrapState = await resolveLoginBootstrapState(fetchTenantList, loadCaptcha);
+      setTenantId((current) => current || bootstrapState.tenantId);
+      applyCaptchaState(bootstrapState);
+      setErrorMessage(bootstrapState.warningMessage);
     } finally {
       setIsBootstrapping(false);
     }
-  }, [loadCaptcha]);
+  }, [applyCaptchaState, loadCaptcha]);
 
   React.useEffect(() => {
     if (hasBootstrappedRef.current) return;
@@ -113,7 +118,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
       setErrorMessage(error instanceof Error ? error.message : "登录失败");
       if (captchaEnabled) {
         try {
-          await loadCaptcha();
+          await refreshCaptcha();
         } catch {
           // Preserve the original login error if captcha refresh also fails.
         }
@@ -185,10 +190,12 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
         transition={{ duration: 0.7, ease: "easeOut" }}
         className="relative z-10 w-full max-w-[480px]"
       >
-        <div className="mb-7 text-center">
-          <h1 className="pointer-events-none bg-[linear-gradient(90deg,#edf3ff_0%,#c8d5fb_38%,#a8a7f2_72%,#c7a1ec_100%)] bg-clip-text text-[clamp(2.45rem,6vw,3.6rem)] font-semibold uppercase tracking-[0.12em] text-transparent drop-shadow-[0_8px_24px_rgba(8,15,35,0.26)]">
-            AI CANVAS
-          </h1>
+        <div className="mb-7 flex justify-center">
+          <img
+            src={aiCanvasLockup}
+            alt="AI CANVAS"
+            className="pointer-events-none h-auto w-[min(100%,28rem)] drop-shadow-[0_12px_28px_rgba(8,15,35,0.26)]"
+          />
         </div>
 
         <div className="relative overflow-hidden rounded-[2rem] border border-white/8 bg-[#0b1125]/78 p-7 shadow-[0_24px_80px_rgba(15,23,42,0.65)] backdrop-blur-2xl sm:p-8">
@@ -310,7 +317,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
 
                   <button
                     type="button"
-                    onClick={() => void loadCaptcha()}
+                    onClick={() => void refreshCaptcha()}
                     className="group/captcha relative flex h-[58px] w-[142px] shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-[1.05rem] border border-white/8 bg-[#10182f] transition-all duration-300 hover:border-indigo-300/18 hover:bg-[#121c37]"
                     title="刷新验证码"
                   >
@@ -337,7 +344,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
             <motion.button
               whileHover={{ scale: 1.018, y: -2 }}
               whileTap={{ scale: 0.982, y: 0 }}
-              disabled={isLoading || isBootstrapping || !tenantId}
+              disabled={isLoading || isBootstrapping}
               type="submit"
               className="group/btn relative mt-1.5 w-full cursor-pointer overflow-hidden rounded-2xl bg-[linear-gradient(90deg,#4e5ed7_0%,#7060e8_52%,#a05be8_100%)] shadow-[0_16px_40px_rgba(76,86,198,0.34)] transition-shadow duration-300 hover:shadow-[0_22px_55px_rgba(104,88,220,0.4)] focus:outline-none disabled:cursor-not-allowed disabled:opacity-70"
             >

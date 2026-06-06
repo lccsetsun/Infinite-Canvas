@@ -1,0 +1,33 @@
+<svg width="760" height="220" viewBox="0 0 760 220" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="lockup-mark-gradient" x1="30" y1="32" x2="168" y2="168" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ECF3FF"/>
+      <stop offset="0.38" stop-color="#C6D5FB"/>
+      <stop offset="0.74" stop-color="#9C9EF0"/>
+      <stop offset="1" stop-color="#B38CE7"/>
+    </linearGradient>
+    <linearGradient id="lockup-accent" x1="96" y1="36" x2="176" y2="86" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#D8E4FF" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#C098FF" stop-opacity="0.98"/>
+    </linearGradient>
+    <linearGradient id="wordmark-gradient" x1="196" y1="74" x2="620" y2="142" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#EDF3FF"/>
+      <stop offset="0.4" stop-color="#CAD6FB"/>
+      <stop offset="0.78" stop-color="#A8A7F2"/>
+      <stop offset="1" stop-color="#C7A1EC"/>
+    </linearGradient>
+  </defs>
+
+  <g transform="translate(16 22) scale(0.78)">
+    <g fill="url(#lockup-mark-gradient)">
+      <path d="M30 32C30 26.477 34.477 22 40 22H92V40H48V92H30V32Z"/>
+      <path d="M22 140C22 134.477 26.477 130 32 130H84V148H40V158H22V140Z"/>
+      <path d="M130 78H148V140C148 149.941 139.941 158 130 158H68V140H130V78Z"/>
+    </g>
+    <path d="M98 32H130C139.941 32 148 40.059 148 50V82H130V58C130 54.686 127.314 52 124 52H98V32Z" fill="url(#lockup-accent)"/>
+    <path d="M130 32H156C160.418 32 164 35.582 164 40V66H148V50H130V32Z" fill="url(#lockup-accent)"/>
+    <path d="M136 28L158 50" stroke="url(#lockup-accent)" stroke-width="10" stroke-linecap="round"/>
+  </g>
+
+  <text x="182" y="124" fill="url(#wordmark-gradient)" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="74" font-weight="700" letter-spacing="8">AI CANVAS</text>
+</svg>

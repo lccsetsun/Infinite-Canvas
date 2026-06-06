@@ -28,6 +28,7 @@ import { GraphNode, NodeClass, VideoFrameAnalysisOverview, VideoFrameAnalysisSeg
 import { ApiSettings, getActiveProfile, getProviderProfile, loadApiSettings, saveApiSettings } from "./features/api/apiSettings";
 import { clearAuthSession } from "./features/auth/authStorage";
 import { logout } from "./features/auth/authApi";
+import { performOptimisticLogout } from "./features/auth/logoutFlow";
 
 const SearchMenu = React.lazy(() => import("./components/SearchMenu"));
 
@@ -56,17 +57,13 @@ export default function App({ onLoggedOut }: AppProps) {
   const apiModel = activeApiProfile.model;
   const [workflowManagerOpen, setWorkflowManagerOpen] = React.useState(false);
 
-  const handleLogout = async () => {
-    try {
-      await logout();
-      showNotice("已退出登录");
-    } catch (error) {
-      showNotice(error instanceof Error ? `退出接口调用失败：${error.message}` : "退出接口调用失败，已清理本地登录态");
-    } finally {
-      clearAuthSession();
-      onLoggedOut();
-    }
-  };
+  const handleLogout = React.useCallback(() => {
+    performOptimisticLogout({
+      requestLogout: logout,
+      clearSession: clearAuthSession,
+      onLoggedOut,
+    });
+  }, [onLoggedOut]);
 
   const {
     nodes,

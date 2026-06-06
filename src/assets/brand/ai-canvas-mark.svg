@@ -1,0 +1,25 @@
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="mark-gradient" x1="48" y1="48" x2="212" y2="208" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ECF3FF"/>
+      <stop offset="0.38" stop-color="#C6D5FB"/>
+      <stop offset="0.74" stop-color="#9C9EF0"/>
+      <stop offset="1" stop-color="#B38CE7"/>
+    </linearGradient>
+    <linearGradient id="mark-accent" x1="132" y1="58" x2="214" y2="116" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#D8E4FF" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#C098FF" stop-opacity="0.98"/>
+    </linearGradient>
+  </defs>
+
+  <g fill="url(#mark-gradient)">
+    <path d="M58 58C58 52.477 62.477 48 68 48H142V68H78V132H58V58Z"/>
+    <path d="M48 188C48 182.477 52.477 178 58 178H132V198H68V208H48V188Z"/>
+    <path d="M178 114H198V188C198 199.046 189.046 208 178 208H104V188H178V114Z"/>
+  </g>
+
+  <path d="M150 58H188C199.046 58 208 66.954 208 78V116H188V86C188 81.582 184.418 78 180 78H150V58Z" fill="url(#mark-accent)"/>
+  <path d="M188 58H218C223.523 58 228 62.477 228 68V98H208V78H188V58Z" fill="url(#mark-accent)"/>
+  <path d="M194 54L220 80" stroke="url(#mark-accent)" stroke-width="12" stroke-linecap="round"/>
+</svg>
+

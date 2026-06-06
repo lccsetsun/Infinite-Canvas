@@ -1,6 +1,6 @@
 import React from "react";
-import { ChevronDown, LogOut, KeyRound, User } from "lucide-react";
 import { motion } from "motion/react";
+import HeaderRightPanel from "./HeaderRightPanel";
 
 interface CanvasHeaderProps {
   username?: string;
@@ -13,25 +13,6 @@ export default function CanvasHeader({
   onOpenApiSettings,
   onLogout,
 }: CanvasHeaderProps) {
-  const [menuOpen, setMenuOpen] = React.useState(false);
-  const menuRef = React.useRef<HTMLDivElement | null>(null);
-
-  React.useEffect(() => {
-    if (!menuOpen) return;
-
-    const handlePointerDown = (event: PointerEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setMenuOpen(false);
-      }
-    };
-
-    document.addEventListener("pointerdown", handlePointerDown);
-    return () => document.removeEventListener("pointerdown", handlePointerDown);
-  }, [menuOpen]);
-
-  const displayName = username.trim() || "用户";
-  const avatarText = displayName.slice(0, 1).toUpperCase();
-
   return (
     <motion.header
       initial={{ y: -64, opacity: 0 }}
@@ -66,50 +47,11 @@ export default function CanvasHeader({
         </motion.div>
       </div>
 
-      <div className="flex items-center gap-3">
-        <div ref={menuRef} className="relative">
-          <button
-            type="button"
-            onClick={() => setMenuOpen((current) => !current)}
-            className="group flex cursor-pointer items-center gap-3 rounded-[20px] border border-white/[0.06] bg-[linear-gradient(180deg,rgba(17,22,33,0.88),rgba(11,15,24,0.84))] px-3.5 py-2.5 shadow-[0_10px_30px_-24px_rgba(0,0,0,0.9)] transition-all duration-200 hover:border-white/12 hover:bg-[#111827]"
-          >
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-fuchsia-500 text-sm font-bold text-white shadow-[0_8px_24px_rgba(99,102,241,0.32)]">
-              {avatarText || <User className="h-4 w-4" />}
-            </div>
-            <div className="hidden min-w-0 text-left sm:block">
-              <div className="max-w-[140px] truncate text-sm font-semibold text-slate-100">{displayName}</div>
-            </div>
-            <ChevronDown className={`h-4 w-4 text-slate-500 transition-transform ${menuOpen ? "rotate-180" : ""}`} />
-          </button>
-
-          {menuOpen ? (
-            <div className="absolute right-0 top-[calc(100%+10px)] z-[120] w-44 overflow-hidden rounded-2xl border border-white/10 bg-[#0d1117]/96 p-2 shadow-[0_24px_60px_-28px_rgba(0,0,0,0.9)] backdrop-blur-2xl">
-              <button
-                type="button"
-                onClick={() => {
-                  setMenuOpen(false);
-                  onOpenApiSettings?.();
-                }}
-                className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-100 transition hover:bg-white/[0.06] hover:text-white"
-              >
-                <KeyRound className="h-4 w-4" />
-                API 设置
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setMenuOpen(false);
-                  onLogout?.();
-                }}
-                className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-100 transition hover:bg-white/[0.06] hover:text-white"
-              >
-                <LogOut className="h-4 w-4" />
-                退出登录
-              </button>
-            </div>
-          ) : null}
-        </div>
-      </div>
+      <HeaderRightPanel
+        username={username}
+        onOpenApiSettings={onOpenApiSettings}
+        onLogout={onLogout}
+      />
     </motion.header>
   );
 }

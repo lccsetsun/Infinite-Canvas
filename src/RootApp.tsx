@@ -3,7 +3,8 @@ import App from "./App";
 import AllProjectsPage from "./pages/AllProjectsPage";
 import HomePage from "./pages/HomePage";
 import LoginPage from "./pages/LoginPage";
-import { hasAuthSession, setAccessToken } from "./features/auth/authStorage";
+import { AUTH_SESSION_CHANGED_EVENT, clearAuthSession, hasAuthSession, setAccessToken } from "./features/auth/authStorage";
+import { performLocalLogout } from "./features/auth/logoutFlow";
 
 const LOGIN_PATH = "/login";
 const DEFAULT_PATH = "/";
@@ -39,7 +40,11 @@ export default function RootApp() {
     };
 
     window.addEventListener("popstate", handleLocationChange);
-    return () => window.removeEventListener("popstate", handleLocationChange);
+    window.addEventListener(AUTH_SESSION_CHANGED_EVENT, handleLocationChange);
+    return () => {
+      window.removeEventListener("popstate", handleLocationChange);
+      window.removeEventListener(AUTH_SESSION_CHANGED_EVENT, handleLocationChange);
+    };
   }, []);
 
   React.useEffect(() => {
@@ -67,8 +72,13 @@ export default function RootApp() {
   }, []);
 
   const handleLoggedOut = React.useCallback(() => {
-    setIsLoggedIn(false);
-    navigate(LOGIN_PATH, true);
+    performLocalLogout({
+      clearSession: clearAuthSession,
+      onLoggedOut: () => {
+        setIsLoggedIn(false);
+        navigate(LOGIN_PATH, true);
+      },
+    });
   }, []);
 
   const handleOpenCanvas = React.useCallback((projectId?: string) => {

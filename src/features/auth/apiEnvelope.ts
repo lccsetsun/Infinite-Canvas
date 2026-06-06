@@ -1,4 +1,5 @@
 import { AUTH_ENCRYPT_RESPONSE_HEADER } from "./authConfig";
+import { clearAuthSession } from "./authStorage";
 import { decryptBase64, decryptWithAes, decryptWithRsa } from "./crypto";
 
 type ApiEnvelope<T> = {
@@ -31,6 +32,9 @@ export async function parseDevApiEnvelope<T>(response: Response): Promise<ApiEnv
     throw new Error(parsed?.msg || `请求失败 (${response.status})`);
   }
   if (parsed.code !== 200) {
+    if (parsed.code === 401) {
+      clearAuthSession();
+    }
     throw new Error(parsed.msg || "请求失败");
   }
   return parsed;
