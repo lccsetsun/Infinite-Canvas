@@ -11,6 +11,7 @@ import {
   Play,
   Plus,
   ScanSearch,
+  Upload,
   Video,
   Volume2,
   VolumeX,
@@ -25,6 +26,7 @@ import {
   extensionFromAssetUrl,
   isLocalBrowserAsset,
 } from "../../utils/mediaAssets";
+import { uploadFileToOss } from "../../features/resource/ossApi";
 
 interface VideoNodeCardProps {
   node: GraphNode;
@@ -152,7 +154,7 @@ function VideoNodeCardImpl({
   getCanvasLinkTargetIssue,
 }: VideoNodeCardProps) {
   const isRunning = node.data?.loading === true;
-  const isUploadingAsset = node.data?.uploadingAsset === true;
+  const isNodeUploadingAsset = node.data?.uploadingAsset === true;
   const [isHovered, setIsHovered] = React.useState(false);
   const [isPlaying, setIsPlaying] = React.useState(false);
   const [currentTime, setCurrentTime] = React.useState(0);
@@ -160,8 +162,11 @@ function VideoNodeCardImpl({
   const [muted, setMuted] = React.useState(false);
   const [frameMenuOpen, setFrameMenuOpen] = React.useState(false);
   const [isAnalyzingFrames, setIsAnalyzingFrames] = React.useState(false);
+  const [isUploadingVideo, setIsUploadingVideo] = React.useState(false);
+  const isUploadingAsset = isNodeUploadingAsset || isUploadingVideo;
   const previewNodeRef = React.useRef<HTMLDivElement | null>(null);
   const mediaFrameRef = React.useRef<HTMLDivElement | null>(null);
+  const uploadInputRef = React.useRef<HTMLInputElement | null>(null);
   const [naturalVideoSize, setNaturalVideoSize] = React.useState<{
     width: number;
     height: number;
@@ -308,6 +313,120 @@ function VideoNodeCardImpl({
     const filename = `${nodeBadgeTitle.replace(/\s+/g, "-") || "video-node"}-${Date.now()}.${extension}`;
     void downloadMediaAsset(videoUrl, filename);
   };
+
+  const readLocalVideoMetadata = React.useCallback(
+    (file: File) =>
+      new Promise<{ width: number; height: number; duration: number }>((resolve, reject) => {
+        const objectUrl = URL.createObjectURL(file);
+        const video = document.createElement("video");
+        const cleanup = () => URL.revokeObjectURL(objectUrl);
+        video.preload = "metadata";
+        video.onloadedmetadata = () => {
+          const width = video.videoWidth;
+          const height = video.videoHeight;
+          const durationSeconds = Number.isFinite(video.duration) ? video.duration : 0;
+          cleanup();
+          if (width > 0 && height > 0) {
+            resolve({ width, height, duration: durationSeconds });
+          } else {
+            reject(new Error("无法读取视频尺寸"));
+          }
+        };
+        video.onerror = () => {
+          cleanup();
+          reject(new Error("无法读取视频尺寸"));
+        };
+        video.src = objectUrl;
+      }),
+    []
+  );
+
+  const handleUploadClick = React.useCallback((event: React.MouseEvent) => {
+    event.stopPropagation();
+    uploadInputRef.current?.click();
+  }, []);
+
+  const handleVideoUpload = React.useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      event.target.value = "";
+      if (!file || !file.type.startsWith("video/")) return;
+
+      setIsUploadingVideo(true);
+      onUpdateData?.(node.id, {
+        uploadingAsset: true,
+        uploadedAssetName: file.name,
+        status: "uploading",
+        error: undefined,
+      });
+
+      try {
+        const metadata = await readLocalVideoMetadata(file);
+        const naturalSize = { width: metadata.width, height: metadata.height };
+        const displaySize = fitVideoSize(
+          naturalSize,
+          aspectRatio,
+          VIDEO_NODE_WIDTH,
+          RESULT_VIDEO_MAX_HEIGHT
+        );
+        const asset = await uploadFileToOss(file);
+
+        setNaturalVideoSize(naturalSize);
+        setCurrentTime(0);
+        setMediaDuration(metadata.duration);
+        onUpdateProperty?.(node.id, "videoUrl", asset.url);
+        onUpdateData?.(node.id, {
+          videoUrl: asset.url,
+          videoNaturalWidth: naturalSize.width,
+          videoNaturalHeight: naturalSize.height,
+          videoDisplayWidth: displaySize.width,
+          videoDisplayHeight: displaySize.height,
+          videoDuration: metadata.duration,
+          uploadingAsset: false,
+          status: "success",
+          loading: false,
+          error: undefined,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "视频上传失败";
+        onUpdateData?.(node.id, {
+          uploadingAsset: false,
+          status: "error",
+          error: message,
+        });
+      } finally {
+        setIsUploadingVideo(false);
+      }
+    },
+    [aspectRatio, node.id, onUpdateData, onUpdateProperty, readLocalVideoMetadata]
+  );
+
+  const uploadControl = (
+    <>
+      <input
+        ref={uploadInputRef}
+        type="file"
+        accept="video/*"
+        className="hidden"
+        onChange={handleVideoUpload}
+      />
+      <Tooltip content={videoUrl ? "上传替换视频" : "上传视频"} position="top">
+        <button
+          type="button"
+          data-node-action="true"
+          onClick={handleUploadClick}
+          disabled={isUploadingAsset || isUploadingVideo}
+          className="flex h-9 w-9 items-center justify-center rounded-[12px] border border-slate-300/14 bg-[#101827]/72 text-slate-300/78 shadow-[0_14px_34px_-24px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.055)] backdrop-blur-xl transition-all hover:-translate-y-0.5 hover:border-violet-300/36 hover:bg-violet-500/[0.16] hover:text-violet-50 hover:shadow-[0_16px_34px_-22px_rgba(139,92,246,0.85),0_0_18px_rgba(139,92,246,0.2)] disabled:cursor-wait"
+        >
+          {isUploadingAsset || isUploadingVideo ? (
+            <Loader2 className="h-[18px] w-[18px] animate-spin" />
+          ) : (
+            <Upload className="h-[18px] w-[18px]" />
+          )}
+        </button>
+      </Tooltip>
+    </>
+  );
 
   const seekVideo = (video: HTMLVideoElement, time: number) =>
     new Promise<void>((resolve, reject) => {
@@ -546,6 +665,14 @@ function VideoNodeCardImpl({
           style={{ width: resultVideoSize.width }}
         >
           {portHandles}
+          <div
+            data-node-action="true"
+            className="absolute right-2 top-8 z-30"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {uploadControl}
+          </div>
           <AnimatePresence>
             {selected && (
               <motion.div
@@ -798,6 +925,14 @@ function VideoNodeCardImpl({
           </div>
         )}
         {portHandles}
+        <div
+          data-node-action="true"
+          className="absolute right-3 top-3 z-30"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {uploadControl}
+        </div>
         <div className="absolute -top-8 left-0 z-30 flex items-center gap-1.5 text-slate-300/82 drop-shadow-[0_1px_10px_rgba(15,23,42,0.9)]">
           <Video className="h-4 w-4 text-cyan-100/58" />
           <span className="text-[15px] font-medium tracking-tight">
@@ -812,7 +947,7 @@ function VideoNodeCardImpl({
           </span>
         </div>
         <div className="relative px-5 pb-5 pt-8">
-          {isRunning ? (
+          {isRunning || isUploadingAsset ? (
             <div className="flex min-h-[250px] flex-col items-center justify-center gap-5 text-slate-300/60">
               <Loader2 className="h-10 w-10 animate-spin" />
               <div className="text-center">

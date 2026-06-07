@@ -8,6 +8,7 @@ import {
   Loader2,
   Music2,
   Plus,
+  Upload,
   Wand2,
 } from "lucide-react";
 import { GraphNode } from "../../types";
@@ -16,6 +17,7 @@ import { findResolvedStringInput } from "../../utils/resolvedInputs";
 import { shouldShowInlinePortHandles } from "../../utils/portHandleVisibility";
 import { Tooltip } from "../common/Tooltip";
 import { downloadMediaAsset, extensionFromAssetUrl } from "../../utils/mediaAssets";
+import { uploadFileToOss } from "../../features/resource/ossApi";
 
 interface AudioNodeCardProps {
   node: GraphNode;
@@ -104,9 +106,11 @@ function AudioNodeCardImpl({
   getCanvasLinkTargetIssue,
 }: AudioNodeCardProps) {
   const isRunning = node.data?.loading === true;
-  const isUploadingAsset = node.data?.uploadingAsset === true;
+  const [isUploadingAudio, setIsUploadingAudio] = React.useState(false);
+  const isUploadingAsset = node.data?.uploadingAsset === true || isUploadingAudio;
   const [isHovered, setIsHovered] = React.useState(false);
   const [optionMenuOpen, setOptionMenuOpen] = React.useState<AudioOptionMenu>(null);
+  const uploadInputRef = React.useRef<HTMLInputElement | null>(null);
   const upstreamPrompt = findResolvedStringInput(resolvedInputs, [
     "prompt",
     "text",
@@ -135,6 +139,99 @@ function AudioNodeCardImpl({
     const filename = `${nodeBadgeTitle.replace(/\s+/g, "-") || "audio-node"}-${Date.now()}.${extensionFromAssetUrl(audioUrl, "mp3")}`;
     await downloadMediaAsset(audioUrl, filename);
   };
+
+  const readLocalAudioMetadata = React.useCallback(
+    (file: File) =>
+      new Promise<{ duration: number }>((resolve) => {
+        const objectUrl = URL.createObjectURL(file);
+        const audio = document.createElement("audio");
+        const cleanup = () => URL.revokeObjectURL(objectUrl);
+        audio.preload = "metadata";
+        audio.onloadedmetadata = () => {
+          const durationSeconds = Number.isFinite(audio.duration) ? audio.duration : 0;
+          cleanup();
+          resolve({ duration: durationSeconds });
+        };
+        audio.onerror = () => {
+          cleanup();
+          resolve({ duration: 0 });
+        };
+        audio.src = objectUrl;
+      }),
+    []
+  );
+
+  const handleUploadClick = React.useCallback((event: React.MouseEvent) => {
+    event.stopPropagation();
+    uploadInputRef.current?.click();
+  }, []);
+
+  const handleAudioUpload = React.useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      event.target.value = "";
+      if (!file || !file.type.startsWith("audio/")) return;
+
+      setIsUploadingAudio(true);
+      onUpdateData?.(node.id, {
+        uploadingAsset: true,
+        uploadedAssetName: file.name,
+        status: "uploading",
+        error: undefined,
+      });
+
+      try {
+        const metadata = await readLocalAudioMetadata(file);
+        const asset = await uploadFileToOss(file);
+        onUpdateProperty?.(node.id, "audioUrl", asset.url);
+        onUpdateData?.(node.id, {
+          audioUrl: asset.url,
+          audioDuration: metadata.duration,
+          uploadingAsset: false,
+          status: "success",
+          loading: false,
+          error: undefined,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "音频上传失败";
+        onUpdateData?.(node.id, {
+          uploadingAsset: false,
+          status: "error",
+          error: message,
+        });
+      } finally {
+        setIsUploadingAudio(false);
+      }
+    },
+    [node.id, onUpdateData, onUpdateProperty, readLocalAudioMetadata]
+  );
+
+  const uploadControl = (
+    <>
+      <input
+        ref={uploadInputRef}
+        type="file"
+        accept="audio/*"
+        className="hidden"
+        onChange={handleAudioUpload}
+      />
+      <Tooltip content={audioUrl ? "上传替换音频" : "上传音频"} position="top">
+        <button
+          type="button"
+          data-node-action="true"
+          onClick={handleUploadClick}
+          disabled={isUploadingAsset}
+          className="flex h-9 w-9 items-center justify-center rounded-[12px] border border-slate-300/14 bg-[#101827]/72 text-slate-300/78 shadow-[0_14px_34px_-24px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.055)] backdrop-blur-xl transition-all hover:-translate-y-0.5 hover:border-violet-300/36 hover:bg-violet-500/[0.16] hover:text-violet-50 hover:shadow-[0_16px_34px_-22px_rgba(139,92,246,0.85),0_0_18px_rgba(139,92,246,0.2)] disabled:cursor-wait"
+        >
+          {isUploadingAsset ? (
+            <Loader2 className="h-[18px] w-[18px] animate-spin" />
+          ) : (
+            <Upload className="h-[18px] w-[18px]" />
+          )}
+        </button>
+      </Tooltip>
+    </>
+  );
 
   const hasInputPorts = node.inputs.length > 0;
   const portHandles = (
@@ -245,6 +342,14 @@ function AudioNodeCardImpl({
           style={{ width: nodeWidth }}
         >
           {portHandles}
+          <div
+            data-node-action="true"
+            className="absolute right-2 top-8 z-30"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {uploadControl}
+          </div>
           <AnimatePresence>
             {selected && (
               <motion.div
@@ -380,6 +485,14 @@ function AudioNodeCardImpl({
           </div>
         )}
         {portHandles}
+        <div
+          data-node-action="true"
+          className="absolute right-3 top-3 z-30"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {uploadControl}
+        </div>
         <div className="absolute -top-8 left-0 z-30 flex items-center gap-1.5 text-slate-300/82 drop-shadow-[0_1px_10px_rgba(15,23,42,0.9)]">
           <Music2 className="h-4 w-4 text-cyan-100/58" />
           <span className="text-[15px] font-medium tracking-tight">
@@ -394,7 +507,7 @@ function AudioNodeCardImpl({
           </span>
         </div>
         <div className="relative px-5 pb-5 pt-8">
-          {isRunning ? (
+          {isRunning || isUploadingAsset ? (
             <div className="flex min-h-[250px] flex-col items-center justify-center gap-5 text-slate-300/60">
               <Loader2 className="h-10 w-10 animate-spin" />
               <div className="text-center">

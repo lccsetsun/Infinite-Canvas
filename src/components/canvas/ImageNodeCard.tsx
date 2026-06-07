@@ -215,7 +215,6 @@ function ImageNodeCardImpl({
   getCanvasLinkTargetIssue,
 }: ImageNodeCardProps) {
   const isRunning = node.data?.loading === true;
-  const isUploadingNodeAsset = node.data?.uploadingAsset === true;
   const [isHovered, setIsHovered] = React.useState(false);
   const [openSelect, setOpenSelect] = React.useState<"ratio" | "quantity" | null>(null);
   const [gridMenuOpen, setGridMenuOpen] = React.useState(false);
@@ -248,6 +247,7 @@ function ImageNodeCardImpl({
   const mediaFrameRef = React.useRef<HTMLDivElement | null>(null);
   const uploadInputRef = React.useRef<HTMLInputElement | null>(null);
   const [isUploadingAsset, setIsUploadingAsset] = React.useState(false);
+  const isUploadingNodeAsset = node.data?.uploadingAsset === true || isUploadingAsset;
 
   const upstreamPrompt = findResolvedStringInput(resolvedInputs, [
     "prompt",
@@ -305,8 +305,7 @@ function ImageNodeCardImpl({
     naturalImageSize && naturalImageSize.width > 0 && naturalImageSize.height > 0
       ? `${naturalImageSize.width} × ${naturalImageSize.height}`
       : `${resultImageSize.width} × ${resultImageSize.height}`;
-  const shouldShowUploadButton =
-    !imageUrl || node.data?.uploadedImage === true || node.data?.isUploadPlaceholder === true;
+  const shouldShowUploadButton = true;
 
   React.useEffect(() => {
     const width = node.data?.imageNaturalWidth;
@@ -470,6 +469,12 @@ function ImageNodeCardImpl({
       if (!file || !file.type.startsWith("image/")) return;
 
       setIsUploadingAsset(true);
+      onUpdateData?.(node.id, {
+        uploadingAsset: true,
+        uploadedAssetName: file.name,
+        status: "uploading",
+        error: undefined,
+      });
       try {
         const asset = await uploadFileToOss(file);
         const uploadedUrl = asset.url;
@@ -498,8 +503,10 @@ function ImageNodeCardImpl({
             imageDisplayHeight: displaySize.height,
             uploadedImage: true,
             isUploadPlaceholder: false,
+            uploadingAsset: false,
             status: "success",
             loading: false,
+            error: undefined,
           });
           if (node.data?.imagePromptStarter) {
             onSyncImagePromptStarterLayout?.(node.id, displaySize.width);
@@ -508,10 +515,21 @@ function ImageNodeCardImpl({
           onNotice?.("图片已上传到 OSS");
         };
         uploadedImage.onerror = () => {
+          onUpdateData?.(node.id, {
+            uploadingAsset: false,
+            status: "error",
+            error: "Image uploaded, but preview failed to load.",
+          });
           onNotice?.("图片上传成功，但预览加载失败");
         };
         uploadedImage.src = uploadedUrl;
       } catch (error) {
+        const message = error instanceof Error ? error.message : "Image upload failed.";
+        onUpdateData?.(node.id, {
+          uploadingAsset: false,
+          status: "error",
+          error: message,
+        });
         onNotice?.(error instanceof Error ? error.message : "图片上传失败");
       } finally {
         setIsUploadingAsset(false);
@@ -575,10 +593,10 @@ function ImageNodeCardImpl({
           type="button"
           data-node-action="true"
           onClick={handleUploadClick}
-          disabled={isUploadingAsset}
+          disabled={isUploadingNodeAsset}
           className="flex h-9 w-9 items-center justify-center rounded-[12px] border border-slate-300/14 bg-[#101827]/72 text-slate-300/78 shadow-[0_14px_34px_-24px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.055)] backdrop-blur-xl transition-all hover:-translate-y-0.5 hover:border-violet-300/36 hover:bg-violet-500/[0.16] hover:text-violet-50 hover:shadow-[0_16px_34px_-22px_rgba(139,92,246,0.85),0_0_18px_rgba(139,92,246,0.2)]"
         >
-          {isUploadingAsset ? (
+          {isUploadingNodeAsset ? (
             <Loader2 className="h-[18px] w-[18px] animate-spin" />
           ) : (
             <Upload className="h-[18px] w-[18px]" />
@@ -1244,7 +1262,7 @@ function ImageNodeCardImpl({
           </span>
         </div>
         <div className="relative px-5 pb-5 pt-8">
-          {isRunning ? (
+          {isRunning || isUploadingNodeAsset ? (
             <div className="flex min-h-[250px] flex-col items-center justify-center gap-5 text-slate-300/60">
               <Loader2 className="h-10 w-10 animate-spin" />
               <div className="text-center">
