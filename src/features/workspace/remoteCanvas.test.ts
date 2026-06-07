@@ -155,9 +155,12 @@ describe("remote canvas api", () => {
     });
     const [, updateInit] = mockedDevApiFetch.mock.calls[1] as unknown as [string, RequestInit];
     const body = JSON.parse(String(updateInit.body));
-    expect(body.canvasName).toBe("New Name");
-    expect(body.projectName).toBe("New Name");
-    expect(body.previewImage).toBe("https://example.com/1.png");
+    expect(body).toEqual({
+      id: "canvas-1",
+      canvasName: "New Name",
+      previewImage: "https://example.com/1.png",
+      metadata: JSON.stringify({ nodes: [], links: [], nodeOutputs: [], groups: [] }),
+    });
   });
 
   it("uses the expected methods for create update delete and copy", async () => {
@@ -198,5 +201,28 @@ describe("remote canvas api", () => {
     const [, updateInit] = mockedDevApiFetch.mock.calls[1] as unknown as [string, RequestInit];
     const updateBody = JSON.parse(String(updateInit.body));
     expect(updateBody.metadata).toBe(JSON.stringify({ nodes: [], links: [], nodeOutputs: [], groups: [] }));
+  });
+
+  it("omits previewImage when includeCover is false on the canvas page", async () => {
+    mockedDevApiFetch.mockResolvedValueOnce(makeResponse({ code: 200, msg: "success", data: null }));
+
+    await expect(
+      updateRemoteProject({
+        id: "canvas-1",
+        name: "Project 1",
+        coverUrl: "https://example.com/cover.png",
+        workflow: { nodes: [], links: [], nodeOutputs: [], groups: [] },
+        includeCover: false,
+      })
+    ).resolves.toBeUndefined();
+
+    const [, updateInit] = mockedDevApiFetch.mock.calls[0] as unknown as [string, RequestInit];
+    const updateBody = JSON.parse(String(updateInit.body));
+    expect(updateBody).toEqual({
+      id: "canvas-1",
+      canvasName: "Project 1",
+      metadata: JSON.stringify({ nodes: [], links: [], nodeOutputs: [], groups: [] }),
+    });
+    expect(updateBody).not.toHaveProperty("previewImage");
   });
 });

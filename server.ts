@@ -151,6 +151,35 @@ app.post("/api/gemini/enhance", async (req, res) => {
   }
 });
 
+app.post("/api/deepseek/chat-completions", async (req, res) => {
+  try {
+    const apiKey = String(req.header("X-DeepSeek-Api-Key") || process.env.DEEPSEEK_API_KEY || "").trim();
+    const baseUrl = String(req.header("X-DeepSeek-Base-Url") || process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com").replace(/\/+$/, "");
+
+    if (!apiKey) {
+      res.status(400).json({ error: "DeepSeek API key 未填写，请先到 API 设置里保存访问密钥" });
+      return;
+    }
+
+    const response = await fetch(`${baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(req.body || {}),
+    });
+
+    const text = await response.text();
+    res.status(response.status);
+    res.type(response.headers.get("content-type") || "application/json");
+    res.send(text);
+  } catch (error: any) {
+    console.error("DeepSeek Proxy Error:", error);
+    res.status(502).json({ error: error.message || "DeepSeek 请求失败" });
+  }
+});
+
 app.post("/api/video/frame-analysis", async (req, res) => {
   try {
     const { video_url, segments = [], prompt } = req.body || {};

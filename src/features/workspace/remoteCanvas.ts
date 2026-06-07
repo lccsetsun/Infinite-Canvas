@@ -202,25 +202,15 @@ function buildProjectPayload(project: {
   category?: string;
   tags?: string[];
   workflow: RemoteCanvasWorkflowData;
+  includeCover?: boolean;
 }) {
   const serializedWorkflow = JSON.stringify(project.workflow);
+  const shouldIncludeCover = project.includeCover !== false;
   return {
     ...(project.id ? { id: project.id } : {}),
     canvasName: project.name,
-    projectName: project.name,
-    name: project.name,
-    previewImage: project.coverUrl || "",
-    previewImageUrl: project.coverUrl || "",
-    coverUrl: project.coverUrl || "",
-    category: project.category || "",
-    tags: project.tags || [],
+    ...(shouldIncludeCover ? { previewImage: project.coverUrl || "" } : {}),
     metadata: serializedWorkflow,
-    data: project.workflow,
-    canvasData: serializedWorkflow,
-    nodes: project.workflow.nodes,
-    links: project.workflow.links,
-    nodeOutputs: project.workflow.nodeOutputs,
-    groups: project.workflow.groups || [],
   };
 }
 
@@ -230,6 +220,7 @@ export async function createRemoteProject(project: {
   category?: string;
   tags?: string[];
   workflow?: RemoteCanvasWorkflowData;
+  includeCover?: boolean;
 }) {
   const workflow = project.workflow || { nodes: [], links: [], nodeOutputs: [], groups: [] };
   const response = await devApiFetch("/system/canvas", {
@@ -253,6 +244,7 @@ export async function updateRemoteProject(project: {
   category?: string;
   tags?: string[];
   workflow: RemoteCanvasWorkflowData;
+  includeCover?: boolean;
 }) {
   const response = await devApiFetch("/system/canvas", {
     method: "PUT",

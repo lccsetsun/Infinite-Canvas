@@ -79,9 +79,12 @@ export interface GraphNode {
     videoPortCenterY?: number;
     videoNaturalWidth?: number;
     videoNaturalHeight?: number;
+    videoDuration?: number;
     videoFrameUrl?: string;
     audioUrl?: string;
     audioDuration?: number;
+    uploadingAsset?: boolean;
+    uploadedAssetName?: string;
     loading?: boolean;
     progress?: number;
     status?: string;

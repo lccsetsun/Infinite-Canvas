@@ -25,6 +25,11 @@ import { shouldOpenCanvasContextMenu } from "./utils/canvasContextMenuPolicy";
 import { shouldFinishCanvasLinkOnCanvasPointerUp } from "./utils/canvasPointerPolicy";
 import { cropImageGridCell, getGridChildNodePosition } from "./utils/imageGridSplit";
 import { getCanvasViewportClassName } from "./utils/canvasViewportLayout";
+import {
+  getFilesFromTransfer,
+  transferHasFiles,
+  uploadCanvasFileAsNode,
+} from "./utils/canvasFileUpload";
 import { collectTextNodeReferences } from "./utils/textNodeReferences";
 import { ConfigProvider, theme } from "antd";
 import {
@@ -54,6 +59,11 @@ const SearchMenu = React.lazy(() => import("./components/SearchMenu"));
 
 interface AppProps {
   onLoggedOut: () => void;
+}
+
+function isEditableEventTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return Boolean(target.closest("input, textarea, select, [contenteditable='true']"));
 }
 
 export default function App({ onLoggedOut }: AppProps) {
@@ -210,6 +220,7 @@ export default function App({ onLoggedOut }: AppProps) {
         category: project.category,
         tags: project.tags,
         workflow: project.workflow,
+        includeCover: false,
       });
       setRemoteProject(project);
     },
@@ -283,6 +294,7 @@ export default function App({ onLoggedOut }: AppProps) {
   const autoFitStateRef = React.useRef<{ workflowId: string | null; nodeCount: number } | null>(
     null
   );
+  const lastCanvasPointerRef = React.useRef<{ clientX: number; clientY: number } | null>(null);
 
   React.useEffect(() => {
     if (!currentWorkflowSummary?.name) return;
@@ -361,21 +373,38 @@ export default function App({ onLoggedOut }: AppProps) {
     },
   });
 
-  const addNodeAtPosition = (
-    type: NodeClass,
-    x: number,
-    y: number,
-    initialProps?: Record<string, any>,
-    connectFromDraft?: { fromNodeId: string; fromOutputIndex: number; toInputIndex?: number }
-  ) => {
-    const world = toWorld(x, y);
-    // Center the node (approx 280x300) around the click point
-    const snapped = snapPointToGrid({
-      x: world.x - 140,
-      y: world.y - 120,
-    });
-    addNode(type, snapped.x, snapped.y, initialProps, connectFromDraft);
-  };
+  const addNodeAtPosition = React.useCallback(
+    (
+      type: NodeClass,
+      x: number,
+      y: number,
+      initialProps?: Record<string, unknown>,
+      connectFromDraft?: { fromNodeId: string; fromOutputIndex: number; toInputIndex?: number }
+    ) => {
+      const world = toWorld(x, y);
+      // Center the node (approx 280x300) around the click point.
+      const snapped = snapPointToGrid({
+        x: world.x - 140,
+        y: world.y - 120,
+      });
+      return addNode(type, snapped.x, snapped.y, initialProps, connectFromDraft);
+    },
+    [addNode, toWorld]
+  );
+
+  const getCanvasCenterClientPosition = React.useCallback(() => {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (rect) {
+      return {
+        clientX: rect.left + rect.width / 2,
+        clientY: rect.top + rect.height / 2,
+      };
+    }
+    return {
+      clientX: typeof window === "undefined" ? 0 : window.innerWidth / 2,
+      clientY: typeof window === "undefined" ? 0 : window.innerHeight / 2,
+    };
+  }, [canvasRef]);
 
   const handleCreateImagePromptStarter = React.useCallback(
     (nodeId: string) => {
@@ -770,6 +799,42 @@ export default function App({ onLoggedOut }: AppProps) {
     }, 180);
   }, [clearMenuCloseTimer, setIsMenuFromToolbar]);
 
+  const uploadFilesToCanvas = React.useCallback(
+    (files: File[], position: { clientX: number; clientY: number }) => {
+      if (files.length === 0) return;
+
+      clearMenuCloseTimer();
+      setMenuPos(null);
+      setIsMenuFromToolbar(false);
+      setPendingLinkMenuDraft(null);
+      closeNodeContextMenu();
+
+      files.forEach((file, index) => {
+        const offset = index * 36;
+        void uploadCanvasFileAsNode({
+          file,
+          position: {
+            clientX: position.clientX + offset,
+            clientY: position.clientY + offset,
+          },
+          addNode: addNodeAtPosition,
+          onUpdateNodeData: updateNodeData,
+          onUpdateNodeProperty: updateNodeProperty,
+          onNotice: showNotice,
+        });
+      });
+    },
+    [
+      addNodeAtPosition,
+      clearMenuCloseTimer,
+      closeNodeContextMenu,
+      setIsMenuFromToolbar,
+      showNotice,
+      updateNodeData,
+      updateNodeProperty,
+    ]
+  );
+
   const miniMapConfig = useMiniMapConfig(nodes, canvasSize, pan, zoom);
 
   React.useEffect(() => {
@@ -790,6 +855,23 @@ export default function App({ onLoggedOut }: AppProps) {
 
     return () => resizeObserver.disconnect();
   }, [canvasRef]);
+
+  React.useEffect(() => {
+    if (currentView !== "canvas") return;
+
+    const handlePaste = (event: ClipboardEvent) => {
+      if (isEditableEventTarget(event.target)) return;
+
+      const files = getFilesFromTransfer(event.clipboardData);
+      if (files.length === 0) return;
+
+      event.preventDefault();
+      uploadFilesToCanvas(files, lastCanvasPointerRef.current ?? getCanvasCenterClientPosition());
+    };
+
+    document.addEventListener("paste", handlePaste);
+    return () => document.removeEventListener("paste", handlePaste);
+  }, [currentView, getCanvasCenterClientPosition, uploadFilesToCanvas]);
 
   React.useEffect(() => {
     const workflowId = currentWorkflowSummary?.id ?? null;
@@ -965,7 +1047,22 @@ export default function App({ onLoggedOut }: AppProps) {
           ref={canvasRef}
           className={getCanvasViewportClassName()}
           onDoubleClick={handleCanvasDoubleClick}
+          onDragOver={(e) => {
+            if (currentView !== "canvas") return;
+            if (!transferHasFiles(e.dataTransfer)) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "copy";
+          }}
+          onDrop={(e) => {
+            if (currentView !== "canvas") return;
+            const files = getFilesFromTransfer(e.dataTransfer);
+            if (files.length === 0) return;
+            e.preventDefault();
+            e.stopPropagation();
+            uploadFilesToCanvas(files, { clientX: e.clientX, clientY: e.clientY });
+          }}
           onPointerDown={(e) => {
+            lastCanvasPointerRef.current = { clientX: e.clientX, clientY: e.clientY };
             if (isLinkingOnCanvas) {
               e.preventDefault();
               resetCanvasLinkDraft();
@@ -989,7 +1086,10 @@ export default function App({ onLoggedOut }: AppProps) {
 
             onCanvasPointerDown(e);
           }}
-          onPointerMove={onPointerMove}
+          onPointerMove={(e) => {
+            lastCanvasPointerRef.current = { clientX: e.clientX, clientY: e.clientY };
+            onPointerMove(e);
+          }}
           onPointerMoveCapture={(e) => {
             if (isLinkingOnCanvas) {
               setDraftCursor(toWorld(e.clientX, e.clientY));
@@ -1076,8 +1176,9 @@ export default function App({ onLoggedOut }: AppProps) {
                     closeNodeContextMenu();
                   }}
                   onAddNode={(type, x, y, initialProps) => {
+                    let nodeId: string | undefined;
                     if (pendingLinkMenuDraft) {
-                      addNodeAtPosition(
+                      nodeId = addNodeAtPosition(
                         type,
                         pendingLinkMenuDraft.clientX,
                         pendingLinkMenuDraft.clientY,
@@ -1088,14 +1189,17 @@ export default function App({ onLoggedOut }: AppProps) {
                         }
                       );
                     } else {
-                      addNodeAtPosition(type, x, y, initialProps);
+                      nodeId = addNodeAtPosition(type, x, y, initialProps);
                     }
                     setCurrentView("canvas");
                     setActiveQuickTool(null);
                     setPendingLinkMenuDraft(null);
                     closeNodeContextMenu();
+                    return nodeId;
                   }}
                   onNotice={showNotice}
+                  onUpdateNodeData={updateNodeData}
+                  onUpdateNodeProperty={updateNodeProperty}
                   onHoverStart={clearMenuCloseTimer}
                   onHoverEnd={scheduleMenuClose}
                 />

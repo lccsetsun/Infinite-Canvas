@@ -215,6 +215,7 @@ function ImageNodeCardImpl({
   getCanvasLinkTargetIssue,
 }: ImageNodeCardProps) {
   const isRunning = node.data?.loading === true;
+  const isUploadingNodeAsset = node.data?.uploadingAsset === true;
   const [isHovered, setIsHovered] = React.useState(false);
   const [openSelect, setOpenSelect] = React.useState<"ratio" | "quantity" | null>(null);
   const [gridMenuOpen, setGridMenuOpen] = React.useState(false);
@@ -648,6 +649,9 @@ function ImageNodeCardImpl({
   };
 
   const hasInputPorts = node.inputs.length > 0;
+  const portTopStyle = imageUrl
+    ? node.data?.imagePortCenterY ?? "50%"
+    : "50%";
   const portHandles = (
     <AnimatePresence>
       {shouldShowInlinePortHandles({ isHovered, isLinkingOnCanvas, selected }) && (
@@ -658,7 +662,7 @@ function ImageNodeCardImpl({
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 10 }}
               className="absolute -left-11 z-10 -translate-y-1/2"
-              style={{ top: node.data?.imagePortCenterY ?? "50%" }}
+              style={{ top: portTopStyle }}
             >
               <div
                 role="button"
@@ -694,7 +698,7 @@ function ImageNodeCardImpl({
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -10 }}
             className="absolute -right-11 z-10 -translate-y-1/2"
-            style={{ top: node.data?.imagePortCenterY ?? "50%" }}
+            style={{ top: portTopStyle }}
           >
             <div
               role="button"
@@ -1101,6 +1105,14 @@ function ImageNodeCardImpl({
                     })}
                   </div>
                 )}
+                {isUploadingNodeAsset && (
+                  <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-[#070b12]/42 backdrop-blur-[1px]">
+                    <div className="flex items-center gap-2 rounded-full border border-cyan-100/18 bg-[#0b1220]/82 px-3 py-1.5 text-[12px] font-semibold text-cyan-50/86 shadow-[0_16px_42px_-22px_rgba(34,211,238,0.48),inset_0_1px_0_rgba(255,255,255,0.08)]">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      <span>上传中</span>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
             {resolvedImageUrls.length > 1 && (
@@ -1242,7 +1254,7 @@ function ImageNodeCardImpl({
             </div>
           ) : (
             <div className="flex min-h-[250px] flex-col items-center justify-center">
-              <div className="mb-8 flex h-[96px] w-[96px] items-center justify-center rounded-[28px] bg-slate-950/[0.12] text-cyan-50/[0.2] shadow-[inset_0_1px_0_rgba(255,255,255,0.035),0_22px_55px_-40px_rgba(34,211,238,0.55)] backdrop-blur-sm">
+              <div className="mb-8 flex h-[96px] w-[96px] items-center justify-center text-cyan-100/58">
                 <ImageIcon className="h-14 w-14" strokeWidth={1.55} />
               </div>
             </div>

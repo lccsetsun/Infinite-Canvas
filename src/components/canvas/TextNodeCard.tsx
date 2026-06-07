@@ -107,33 +107,18 @@ function stripReasoningBlocks(text: string) {
 }
 
 function TextSkeleton({ active }: { active: boolean }) {
-  const rows = [
-    { width: "w-[70%]", height: "h-3" },
-    { width: "w-[88%]", height: "h-[13px]" },
-    { width: "w-[76%]", height: "h-3" },
-  ];
-
   return (
-    <div className="flex w-full flex-col items-center gap-4">
-      {rows.map(({ width, height }, index) => (
-        <div
-          key={`${width}-${index}`}
-          className={`relative origin-center overflow-hidden rounded-full bg-[linear-gradient(180deg,rgba(80,92,114,0.34),rgba(50,60,78,0.24))] shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] ${width} ${height} ${
-            active
-              ? "animate-[text-node-skeleton-width_2.4s_ease-in-out_infinite,text-node-skeleton-glow_2.8s_ease-in-out_infinite]"
-              : ""
-          }`}
-          style={{ animationDelay: `${index * 140}ms` }}
-        >
-          <span className="absolute inset-0 rounded-full bg-[radial-gradient(circle_at_50%_35%,rgba(255,255,255,0.08),transparent_68%)] opacity-70" />
-          {active && (
-            <>
-              <span className="absolute inset-y-0 left-[-40%] w-[52%] skew-x-[-20deg] animate-[text-node-shimmer_1.7s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-violet-100/18 to-transparent blur-[1px]" />
-              <span className="absolute inset-y-0 left-[-55%] w-[28%] skew-x-[-16deg] animate-[text-node-shimmer_2.1s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-            </>
-          )}
-        </div>
-      ))}
+    <div className="flex w-full items-center justify-center">
+      <div
+        className={`relative flex h-[96px] w-[96px] items-center justify-center overflow-hidden text-cyan-100/58 ${
+          active ? "animate-[text-node-skeleton-glow_2.8s_ease-in-out_infinite]" : ""
+        }`}
+      >
+        <FileText className="h-14 w-14" strokeWidth={1.55} />
+        {active && (
+          <span className="absolute inset-0 -translate-x-full animate-[text-node-shimmer_1.7s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-amber-100/16 to-transparent" />
+        )}
+      </div>
     </div>
   );
 }
@@ -746,7 +731,7 @@ function TextNodeCardImpl({
           )}
 
         <div
-          className={`relative flex min-h-[290px] flex-col ${hasCompactContent ? "px-5 py-5" : "px-5 pb-5 pt-5"}`}
+          className={`relative flex min-h-[250px] flex-col ${hasCompactContent ? "px-5 py-5" : "px-5 pb-5 pt-8"}`}
         >
           <AnimatePresence mode="wait">
             <motion.div
@@ -822,7 +807,7 @@ function TextNodeCardImpl({
                   ) : showStarterGuide ? (
                     <div className="flex min-h-[166px] w-full flex-col justify-between px-0.5 py-0.5">
                       <div className="flex justify-center pt-3">
-                        <div className="w-[88px]">
+                        <div className="w-[96px]">
                           <TextSkeleton active={isRunning} />
                         </div>
                       </div>
@@ -861,13 +846,13 @@ function TextNodeCardImpl({
                     </div>
                   ) : showSkeleton && isMultimodalMode ? (
                     <div className="flex min-h-[166px] w-full flex-1 items-center justify-center">
-                      <div className="w-[112px]">
+                      <div className="w-[96px]">
                         <TextSkeleton active={isRunning} />
                       </div>
                     </div>
                   ) : showSkeleton ? (
                     <div className="flex w-full justify-center">
-                      <div className="w-[112px]">
+                      <div className="w-[96px]">
                         <TextSkeleton active={isRunning} />
                       </div>
                     </div>

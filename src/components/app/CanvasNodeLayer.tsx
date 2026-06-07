@@ -254,6 +254,7 @@ export default function CanvasNodeLayer({
                     onNodeDragStart(e, currentNode);
                   }}
                   onUpdateProperty={onUpdateNodeProperty}
+                  onUpdateData={onUpdateNodeData}
                   resolvedInputs={resolvedInputsMap?.get(node.id)}
                   onRun={onRunNode}
                   // 连线相关

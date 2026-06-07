@@ -8,7 +8,6 @@ import {
   Loader2,
   Music2,
   Plus,
-  Volume2,
   Wand2,
 } from "lucide-react";
 import { GraphNode } from "../../types";
@@ -105,6 +104,7 @@ function AudioNodeCardImpl({
   getCanvasLinkTargetIssue,
 }: AudioNodeCardProps) {
   const isRunning = node.data?.loading === true;
+  const isUploadingAsset = node.data?.uploadingAsset === true;
   const [isHovered, setIsHovered] = React.useState(false);
   const [optionMenuOpen, setOptionMenuOpen] = React.useState<AudioOptionMenu>(null);
   const upstreamPrompt = findResolvedStringInput(resolvedInputs, [
@@ -304,7 +304,7 @@ function AudioNodeCardImpl({
           >
             <div className="mb-4 flex items-center gap-3">
               <div className="flex h-12 w-12 items-center justify-center rounded-[16px] bg-cyan-100/8 text-cyan-100/62">
-                <Volume2 className="h-6 w-6" />
+                <Music2 className="h-6 w-6" />
               </div>
               <div className="min-w-0">
                 <div className="text-[13px] font-semibold text-slate-100/86">MiniMax 音频结果</div>
@@ -313,6 +313,12 @@ function AudioNodeCardImpl({
                 </div>
               </div>
             </div>
+            {isUploadingAsset && (
+              <div className="mb-3 flex items-center gap-2 rounded-[10px] border border-cyan-100/14 bg-cyan-100/[0.06] px-3 py-2 text-[12px] font-semibold text-cyan-50/82">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <span>上传中</span>
+              </div>
+            )}
             <audio
               src={audioUrl}
               controls
@@ -399,7 +405,7 @@ function AudioNodeCardImpl({
           ) : (
             <div className="flex min-h-[250px] flex-col items-center justify-center">
               <div className="mb-8 flex h-[96px] w-[96px] items-center justify-center rounded-[28px] bg-slate-950/[0.12] text-cyan-50/[0.2] shadow-[inset_0_1px_0_rgba(255,255,255,0.035),0_22px_55px_-40px_rgba(34,211,238,0.55)] backdrop-blur-sm">
-                <Volume2 className="h-14 w-14" strokeWidth={1.55} />
+                <Music2 className="h-14 w-14" strokeWidth={1.55} />
               </div>
             </div>
           )}

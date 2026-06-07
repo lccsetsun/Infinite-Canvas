@@ -675,6 +675,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     if (initialProps) {
       const {
         __nodeTitle,
+        __nodeData,
         __uploadedAssetUrl,
         __uploadedAssetKind,
         __uploadedAssetName,
@@ -695,6 +696,15 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         if (typeof __uploadedAssetName === "string" && __uploadedAssetName.trim()) {
           node.title = getNextNumberedNodeTitle(nodes, "video_node") || node.title;
         }
+      }
+      if (__uploadedAssetKind === "audio" && typeof __uploadedAssetUrl === "string") {
+        Object.assign(node, markUploadedAssetNodeAsSource(node, "audio", __uploadedAssetUrl));
+        if (typeof __uploadedAssetName === "string" && __uploadedAssetName.trim()) {
+          node.title = getNextNumberedNodeTitle(nodes, "audio_node") || node.title;
+        }
+      }
+      if (__nodeData && typeof __nodeData === "object" && !Array.isArray(__nodeData)) {
+        node.data = { ...(node.data || {}), ...(__nodeData as GraphNode["data"]) };
       }
     }
     const nextNodes = [...nodes, node];

@@ -229,7 +229,12 @@ describe("text_node executor", () => {
       },
     });
 
-    const [, init] = fetchMock.mock.calls[0];
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("/api/deepseek/chat-completions");
+    expect((init as RequestInit).headers).toMatchObject({
+      "X-DeepSeek-Api-Key": "sk-test",
+      "X-DeepSeek-Base-Url": "https://api.deepseek.com",
+    });
     expect(JSON.parse(String((init as RequestInit).body))).toMatchObject({
       model: "deepseek-chat",
     });
@@ -288,9 +293,10 @@ describe("text_node executor", () => {
     });
 
     const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe("https://api.deepseek.com/chat/completions");
+    expect(url).toBe("/api/deepseek/chat-completions");
     expect((init as RequestInit).headers).toMatchObject({
-      Authorization: "Bearer sk-deepseek",
+      "X-DeepSeek-Api-Key": "sk-deepseek",
+      "X-DeepSeek-Base-Url": "https://api.deepseek.com",
     });
     expect(JSON.parse(String((init as RequestInit).body))).toMatchObject({
       model: "deepseek-chat",

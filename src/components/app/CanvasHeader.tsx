@@ -118,7 +118,7 @@ export default function CanvasHeader({
   const handleCreateProject = React.useCallback(async () => {
     setPendingAction("create");
     try {
-      const createdId = await createRemoteProject({ name: "新建项目" });
+      const createdId = await createRemoteProject({ name: "新建项目", includeCover: false });
       navigateTo(buildCanvasUrl(createdId || undefined));
     } finally {
       setPendingAction(null);

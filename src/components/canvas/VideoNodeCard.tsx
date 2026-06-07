@@ -6,12 +6,12 @@ import {
   ChevronUp,
   Download,
   Eye,
-  Film,
   Loader2,
   Pause,
   Play,
   Plus,
   ScanSearch,
+  Video,
   Volume2,
   VolumeX,
 } from "lucide-react";
@@ -152,6 +152,7 @@ function VideoNodeCardImpl({
   getCanvasLinkTargetIssue,
 }: VideoNodeCardProps) {
   const isRunning = node.data?.loading === true;
+  const isUploadingAsset = node.data?.uploadingAsset === true;
   const [isHovered, setIsHovered] = React.useState(false);
   const [isPlaying, setIsPlaying] = React.useState(false);
   const [currentTime, setCurrentTime] = React.useState(0);
@@ -596,7 +597,7 @@ function VideoNodeCardImpl({
           </AnimatePresence>
           <div className="mb-2 flex items-center justify-between gap-4 text-slate-300/82 drop-shadow-[0_1px_10px_rgba(15,23,42,0.9)]">
             <div className="flex min-w-0 items-center gap-1.5">
-              <Film className="h-4 w-4 shrink-0 text-slate-300/72" />
+              <Video className="h-4 w-4 shrink-0 text-slate-300/72" />
               <span className="truncate text-[15px] font-medium tracking-tight">
                 {nodeBadgeMatch ? (
                   <>
@@ -658,6 +659,14 @@ function VideoNodeCardImpl({
               onEnded={() => setIsPlaying(false)}
               draggable={false}
             />
+            {isUploadingAsset && (
+              <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-[#070b12]/42 backdrop-blur-[1px]">
+                <div className="flex items-center gap-2 rounded-full border border-cyan-100/18 bg-[#0b1220]/82 px-3 py-1.5 text-[12px] font-semibold text-cyan-50/86 shadow-[0_16px_42px_-22px_rgba(34,211,238,0.48),inset_0_1px_0_rgba(255,255,255,0.08)]">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <span>上传中</span>
+                </div>
+              </div>
+            )}
             <div
               data-node-action="true"
               className="absolute inset-x-0 bottom-0 flex h-11 items-center gap-3 rounded-b-[8px] bg-black/92 px-4 text-white shadow-[0_-14px_32px_-26px_rgba(0,0,0,0.95)]"
@@ -790,7 +799,7 @@ function VideoNodeCardImpl({
         )}
         {portHandles}
         <div className="absolute -top-8 left-0 z-30 flex items-center gap-1.5 text-slate-300/82 drop-shadow-[0_1px_10px_rgba(15,23,42,0.9)]">
-          <Film className="h-4 w-4 text-cyan-100/58" />
+          <Video className="h-4 w-4 text-cyan-100/58" />
           <span className="text-[15px] font-medium tracking-tight">
             {nodeBadgeMatch ? (
               <>
@@ -813,8 +822,8 @@ function VideoNodeCardImpl({
             </div>
           ) : (
             <div className="flex min-h-[250px] flex-col items-center justify-center">
-              <div className="mb-8 flex h-[96px] w-[96px] items-center justify-center rounded-[28px] bg-slate-950/[0.12] text-cyan-50/[0.2] shadow-[inset_0_1px_0_rgba(255,255,255,0.035),0_22px_55px_-40px_rgba(129,140,248,0.55)] backdrop-blur-sm">
-                <Play className="ml-1.5 h-14 w-14" strokeWidth={1.55} />
+              <div className="mb-8 flex h-[96px] w-[96px] items-center justify-center text-cyan-100/58">
+                <Video className="h-14 w-14" strokeWidth={1.55} />
               </div>
             </div>
           )}
@@ -849,7 +858,7 @@ function VideoNodeCardImpl({
             />
             <div className="mt-3 flex items-center gap-2 border-t border-cyan-100/8 pt-3">
               <div className="flex h-10 min-w-[172px] items-center gap-2 rounded-[14px] border border-cyan-100/8 bg-slate-950/18 px-3 text-[13px] font-medium text-cyan-50/78 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]">
-                <Film className="h-3.5 w-3.5 text-cyan-100/50" />
+                <Video className="h-3.5 w-3.5 text-cyan-100/50" />
                 <span>{MINIMAX_VIDEO_MODEL}</span>
               </div>
               <button

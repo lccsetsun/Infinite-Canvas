@@ -155,7 +155,8 @@ async function callOpenAICompatible(
       >
 ): Promise<{ text: string }> {
   const base = cfg.baseUrl.replace(/\/+$/, "");
-  const url = `${base}/chat/completions`;
+  const usesDeepSeekProxy = (cfg.providerLabel || "DeepSeek") === "DeepSeek";
+  const url = usesDeepSeekProxy ? "/api/deepseek/chat-completions" : `${base}/chat/completions`;
   const normalizedApiKey = assertApiKey(cfg.apiKey, cfg.providerLabel || "DeepSeek");
   const messages: {
     role: "system" | "user";
@@ -178,9 +179,17 @@ async function callOpenAICompatible(
   try {
     const resp = await fetch(url, {
       method: "POST",
+      credentials: usesDeepSeekProxy ? "include" : undefined,
       headers: {
         "Content-Type": "application/json",
-        ...(normalizedApiKey ? { Authorization: `Bearer ${normalizedApiKey}` } : {}),
+        ...(usesDeepSeekProxy
+          ? {
+              "X-DeepSeek-Api-Key": normalizedApiKey,
+              "X-DeepSeek-Base-Url": base,
+            }
+          : normalizedApiKey
+            ? { Authorization: `Bearer ${normalizedApiKey}` }
+            : {}),
       },
       body: JSON.stringify({
         model: cfg.model,
