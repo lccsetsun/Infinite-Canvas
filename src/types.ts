@@ -65,6 +65,7 @@ export interface GraphNode {
     imageDisplayHeight?: number;
     uploadedImage?: boolean;
     isUploadPlaceholder?: boolean;
+    isSourceNode?: boolean;
     imagePromptStarter?: boolean;
     starterTextNodeId?: string;
     starterGapX?: number;

@@ -1,12 +1,30 @@
 import React from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowUp, Camera, ChevronUp, Download, Eye, Film, Loader2, Pause, Play, Plus, ScanSearch, Volume2, VolumeX } from "lucide-react";
+import {
+  ArrowUp,
+  Camera,
+  ChevronUp,
+  Download,
+  Eye,
+  Film,
+  Loader2,
+  Pause,
+  Play,
+  Plus,
+  ScanSearch,
+  Volume2,
+  VolumeX,
+} from "lucide-react";
 import { GraphNode, VideoFrameAnalysisOverview, VideoFrameAnalysisSegment } from "../../types";
 import { findResolvedStringInput } from "../../utils/resolvedInputs";
 import { shouldShowInlinePortHandles } from "../../utils/portHandleVisibility";
 import { getNodeWidth, VIDEO_NODE_WIDTH } from "./geometry";
 import { Tooltip } from "../common/Tooltip";
-import { downloadMediaAsset, extensionFromAssetUrl, isLocalBrowserAsset } from "../../utils/mediaAssets";
+import {
+  downloadMediaAsset,
+  extensionFromAssetUrl,
+  isLocalBrowserAsset,
+} from "../../utils/mediaAssets";
 
 interface VideoNodeCardProps {
   node: GraphNode;
@@ -17,8 +35,18 @@ interface VideoNodeCardProps {
   onDragStart: (event: React.PointerEvent, node: GraphNode) => void;
   onUpdateProperty?: (nodeId: string, key: string, value: unknown) => void;
   onUpdateData?: (nodeId: string, data: Partial<GraphNode["data"]>) => void;
-  onPreview?: (content: string, title?: string, nodeId?: string, items?: string[], currentIndex?: number) => void;
-  onAnalyzeVideo?: (node: GraphNode, segments: VideoFrameAnalysisSegment[], overview: VideoFrameAnalysisOverview) => Promise<void> | void;
+  onPreview?: (
+    content: string,
+    title?: string,
+    nodeId?: string,
+    items?: string[],
+    currentIndex?: number
+  ) => void;
+  onAnalyzeVideo?: (
+    node: GraphNode,
+    segments: VideoFrameAnalysisSegment[],
+    overview: VideoFrameAnalysisOverview
+  ) => Promise<void> | void;
   resolvedInputs?: Record<string, unknown>;
   onRun?: (nodeId: string) => void;
   isLinkingOnCanvas?: boolean;
@@ -26,7 +54,12 @@ interface VideoNodeCardProps {
   linkFromOutputIndex?: number | null;
   linkToNodeId?: string | null;
   linkToInputIndex?: number | null;
-  onBeginCanvasLink?: (nodeId: string, outputIndex: number, clientX: number, clientY: number) => void;
+  onBeginCanvasLink?: (
+    nodeId: string,
+    outputIndex: number,
+    clientX: number,
+    clientY: number
+  ) => void;
   onFinishCanvasLink?: (nodeId?: string, inputIndex?: number) => void;
   onHoverCanvasLinkTarget?: (nodeId: string, inputIndex: number) => void;
   onLeaveCanvasLinkTarget?: (nodeId: string, inputIndex: number) => void;
@@ -45,7 +78,12 @@ function parseAspectRatio(ratio: string): number {
   return w / h;
 }
 
-function fitVideoSize(naturalSize: { width: number; height: number } | null, aspectRatio: string, maxWidth: number, maxHeight: number) {
+function fitVideoSize(
+  naturalSize: { width: number; height: number } | null,
+  aspectRatio: string,
+  maxWidth: number,
+  maxHeight: number
+) {
   if (naturalSize && naturalSize.width > 0 && naturalSize.height > 0) {
     const scale = Math.min(maxWidth / naturalSize.width, maxHeight / naturalSize.height, 1);
     return {
@@ -55,7 +93,8 @@ function fitVideoSize(naturalSize: { width: number; height: number } | null, asp
   }
 
   const ratio = parseAspectRatio(aspectRatio);
-  if (ratio >= maxWidth / maxHeight) return { width: maxWidth, height: Math.round(maxWidth / ratio) };
+  if (ratio >= maxWidth / maxHeight)
+    return { width: maxWidth, height: Math.round(maxWidth / ratio) };
   return { width: Math.round(maxHeight * ratio), height: maxHeight };
 }
 
@@ -122,26 +161,35 @@ function VideoNodeCardImpl({
   const [isAnalyzingFrames, setIsAnalyzingFrames] = React.useState(false);
   const previewNodeRef = React.useRef<HTMLDivElement | null>(null);
   const mediaFrameRef = React.useRef<HTMLDivElement | null>(null);
-  const [naturalVideoSize, setNaturalVideoSize] = React.useState<{ width: number; height: number } | null>(() => {
+  const [naturalVideoSize, setNaturalVideoSize] = React.useState<{
+    width: number;
+    height: number;
+  } | null>(() => {
     const width = node.data?.videoNaturalWidth;
     const height = node.data?.videoNaturalHeight;
     return typeof width === "number" && typeof height === "number" ? { width, height } : null;
   });
   const videoRef = React.useRef<HTMLVideoElement | null>(null);
 
-  const upstreamPrompt = findResolvedStringInput(resolvedInputs, ["prompt", "text", "视频提示词", "用户提示词"]);
+  const upstreamPrompt = findResolvedStringInput(resolvedInputs, [
+    "prompt",
+    "text",
+    "视频提示词",
+    "用户提示词",
+  ]);
   const promptText = upstreamPrompt?.value || (node.properties.text as string) || "";
   const videoUrl = (node.data?.videoUrl as string) || (node.properties.videoUrl as string) || "";
   const aspectRatio = (node.properties.aspect_ratio as string) || "16:9";
   const resolution = (node.properties.resolution as string) || "768P";
   const duration = (node.properties.duration as string) || "6s";
   const audioEnabled = node.properties.audio !== false;
-  const nodeBadgeTitle = node.title === "视频节点" || node.title === "视频" ? "视频节点 1" : node.title;
+  const nodeBadgeTitle =
+    node.title === "视频节点" || node.title === "视频" ? "视频节点 1" : node.title;
   const nodeBadgeMatch = nodeBadgeTitle.match(/^(.*?)(\s+\d+)$/);
   const nodeWidth = getNodeWidth(node);
   const resultVideoSize = React.useMemo(
     () => fitVideoSize(naturalVideoSize, aspectRatio, VIDEO_NODE_WIDTH, RESULT_VIDEO_MAX_HEIGHT),
-    [aspectRatio, naturalVideoSize],
+    [aspectRatio, naturalVideoSize]
   );
   const naturalSizeLabel =
     naturalVideoSize && naturalVideoSize.width > 0 && naturalVideoSize.height > 0
@@ -151,7 +199,9 @@ function VideoNodeCardImpl({
   React.useEffect(() => {
     const width = node.data?.videoNaturalWidth;
     const height = node.data?.videoNaturalHeight;
-    setNaturalVideoSize(typeof width === "number" && typeof height === "number" ? { width, height } : null);
+    setNaturalVideoSize(
+      typeof width === "number" && typeof height === "number" ? { width, height } : null
+    );
   }, [node.data?.videoNaturalHeight, node.data?.videoNaturalWidth, videoUrl]);
 
   React.useEffect(() => {
@@ -160,11 +210,15 @@ function VideoNodeCardImpl({
     const syncNodeBounds = () => {
       const nextWidth = Math.round(previewNodeRef.current?.offsetWidth ?? 0);
       const nextHeight = Math.round(previewNodeRef.current?.offsetHeight ?? 0);
-      const nextPortCenterY = Math.round((mediaFrameRef.current?.offsetTop ?? 0) + (mediaFrameRef.current?.offsetHeight ?? 0) / 2);
+      const nextPortCenterY = Math.round(
+        (mediaFrameRef.current?.offsetTop ?? 0) + (mediaFrameRef.current?.offsetHeight ?? 0) / 2
+      );
       if (
         nextWidth > 0 &&
         nextHeight > 0 &&
-        (node.data?.videoNodeWidth !== nextWidth || node.data?.videoNodeHeight !== nextHeight || node.data?.videoPortCenterY !== nextPortCenterY)
+        (node.data?.videoNodeWidth !== nextWidth ||
+          node.data?.videoNodeHeight !== nextHeight ||
+          node.data?.videoPortCenterY !== nextPortCenterY)
       ) {
         onUpdateData?.(node.id, {
           videoNodeWidth: nextWidth,
@@ -177,7 +231,15 @@ function VideoNodeCardImpl({
     syncNodeBounds();
     const frame = window.requestAnimationFrame(syncNodeBounds);
     return () => window.cancelAnimationFrame(frame);
-  }, [node.data?.videoNodeHeight, node.data?.videoNodeWidth, node.id, onUpdateData, resultVideoSize.height, resultVideoSize.width, videoUrl]);
+  }, [
+    node.data?.videoNodeHeight,
+    node.data?.videoNodeWidth,
+    node.id,
+    onUpdateData,
+    resultVideoSize.height,
+    resultVideoSize.width,
+    videoUrl,
+  ]);
 
   const handleRun = () => {
     if (isRunning) return;
@@ -205,7 +267,12 @@ function VideoNodeCardImpl({
     const video = videoRef.current;
     if (!video || video.readyState < 1) return;
 
-    const targetTime = mode === "first" ? 0 : mode === "last" ? Math.max(0, video.duration - 0.05) : video.currentTime;
+    const targetTime =
+      mode === "first"
+        ? 0
+        : mode === "last"
+          ? Math.max(0, video.duration - 0.05)
+          : video.currentTime;
     const draw = () => {
       const canvas = document.createElement("canvas");
       canvas.width = video.videoWidth || resultVideoSize.width;
@@ -271,7 +338,9 @@ function VideoNodeCardImpl({
     let objectUrl = "";
     try {
       if (!isLocalBrowserAsset(videoUrl)) {
-        const assetResponse = await fetch(`/api/download-asset?url=${encodeURIComponent(videoUrl)}&filename=frame-analysis.mp4`);
+        const assetResponse = await fetch(
+          `/api/download-asset?url=${encodeURIComponent(videoUrl)}&filename=frame-analysis.mp4`
+        );
         if (!assetResponse.ok) throw new Error("无法读取视频文件");
         const blob = await assetResponse.blob();
         objectUrl = URL.createObjectURL(blob);
@@ -338,7 +407,8 @@ function VideoNodeCardImpl({
 
       const overviewCanvas = document.createElement("canvas");
       overviewCanvas.width = segmentCanvases[0]?.width || columns * tileWidth;
-      overviewCanvas.height = segmentCanvases.reduce((sum, canvas) => sum + canvas.height, 0) || rows * tileHeight;
+      overviewCanvas.height =
+        segmentCanvases.reduce((sum, canvas) => sum + canvas.height, 0) || rows * tileHeight;
       const overviewCtx = overviewCanvas.getContext("2d");
       if (!overviewCtx) throw new Error("无法创建完整逐帧总览画布");
       overviewCtx.fillStyle = "#000000";
@@ -363,43 +433,48 @@ function VideoNodeCardImpl({
     }
   };
 
+  const hasInputPorts = node.inputs.length > 0;
   const portHandles = (
     <AnimatePresence>
       {shouldShowInlinePortHandles({ isHovered, isLinkingOnCanvas, selected }) && (
         <>
-          <motion.div
-            initial={{ opacity: 0, x: 10 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 10 }}
-            className="absolute -left-11 z-10 -translate-y-1/2"
-            style={{ top: node.data?.videoPortCenterY ?? "50%" }}
-          >
-            <div
-              role="button"
-              tabIndex={-1}
-              data-node-action="true"
-              data-port-role="input"
-              data-node-id={node.id}
-              data-port-index={0}
-              className={`canvas-port-handle flex h-9 w-9 items-center justify-center rounded-full border transition-all duration-200 hover:scale-110 ${
-                isLinkingOnCanvas && linkToNodeId === node.id && linkToInputIndex === 0 ? "canvas-port-input canvas-port-hot scale-110" : "canvas-port-input"
-              }`}
-              onPointerEnter={() => onHoverCanvasLinkTarget?.(node.id, 0)}
-              onPointerLeave={() => onLeaveCanvasLinkTarget?.(node.id, 0)}
-              onPointerUp={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                onFinishCanvasLink?.(node.id, 0);
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-              }}
-              title={getCanvasLinkTargetIssue?.(node.id, 0) || "输入端口: 点击此处完成连线"}
+          {hasInputPorts && (
+            <motion.div
+              initial={{ opacity: 0, x: 10 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 10 }}
+              className="absolute -left-11 z-10 -translate-y-1/2"
+              style={{ top: node.data?.videoPortCenterY ?? "50%" }}
             >
-              <Plus className="h-4 w-4 pointer-events-none" />
-            </div>
-          </motion.div>
+              <div
+                role="button"
+                tabIndex={-1}
+                data-node-action="true"
+                data-port-role="input"
+                data-node-id={node.id}
+                data-port-index={0}
+                className={`canvas-port-handle flex h-9 w-9 items-center justify-center rounded-full border transition-all duration-200 hover:scale-110 ${
+                  isLinkingOnCanvas && linkToNodeId === node.id && linkToInputIndex === 0
+                    ? "canvas-port-input canvas-port-hot scale-110"
+                    : "canvas-port-input"
+                }`}
+                onPointerEnter={() => onHoverCanvasLinkTarget?.(node.id, 0)}
+                onPointerLeave={() => onLeaveCanvasLinkTarget?.(node.id, 0)}
+                onPointerUp={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  onFinishCanvasLink?.(node.id, 0);
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                }}
+                title={getCanvasLinkTargetIssue?.(node.id, 0) || "输入端口: 点击此处完成连线"}
+              >
+                <Plus className="h-4 w-4 pointer-events-none" />
+              </div>
+            </motion.div>
+          )}
           <motion.div
             initial={{ opacity: 0, x: -10 }}
             animate={{ opacity: 1, x: 0 }}
@@ -415,7 +490,9 @@ function VideoNodeCardImpl({
               data-node-id={node.id}
               data-port-index={0}
               className={`canvas-port-handle flex h-9 w-9 items-center justify-center rounded-full border transition-all duration-200 hover:scale-110 ${
-                isLinkingOnCanvas && linkFromNodeId === node.id && linkFromOutputIndex === 0 ? "canvas-port-output canvas-port-active scale-110" : "canvas-port-output"
+                isLinkingOnCanvas && linkFromNodeId === node.id && linkFromOutputIndex === 0
+                  ? "canvas-port-output canvas-port-active scale-110"
+                  : "canvas-port-output"
               }`}
               onPointerDown={(e) => {
                 e.stopPropagation();
@@ -497,7 +574,11 @@ function VideoNodeCardImpl({
                     disabled={isAnalyzingFrames}
                     className="flex h-9 w-9 items-center justify-center rounded-[12px] text-slate-400 transition-colors hover:bg-white/[0.06] hover:text-slate-100 disabled:cursor-wait disabled:text-cyan-200"
                   >
-                    {isAnalyzingFrames ? <Loader2 className="h-5 w-5 animate-spin" /> : <ScanSearch className="h-5 w-5" />}
+                    {isAnalyzingFrames ? (
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                    ) : (
+                      <ScanSearch className="h-5 w-5" />
+                    )}
                   </button>
                 </Tooltip>
                 <div className="mx-1 h-7 w-px bg-slate-500/22" />
@@ -527,9 +608,15 @@ function VideoNodeCardImpl({
                 )}
               </span>
             </div>
-            <span className="shrink-0 text-[12px] font-medium tabular-nums text-slate-400/72">{naturalSizeLabel}</span>
+            <span className="shrink-0 text-[12px] font-medium tabular-nums text-slate-400/72">
+              {naturalSizeLabel}
+            </span>
           </div>
-          <div ref={mediaFrameRef} className={`relative overflow-hidden rounded-[8px] bg-black ${selected ? "shadow-[0_0_0_1.5px_rgba(192,132,252,0.58),0_0_0_6px_rgba(139,92,246,0.14),0_0_38px_rgba(109,40,217,0.18)]" : ""}`} style={{ width: resultVideoSize.width, height: resultVideoSize.height }}>
+          <div
+            ref={mediaFrameRef}
+            className={`relative overflow-hidden rounded-[8px] bg-black ${selected ? "shadow-[0_0_0_1.5px_rgba(192,132,252,0.58),0_0_0_6px_rgba(139,92,246,0.14),0_0_38px_rgba(109,40,217,0.18)]" : ""}`}
+            style={{ width: resultVideoSize.width, height: resultVideoSize.height }}
+          >
             <video
               ref={videoRef}
               src={videoUrl}
@@ -538,8 +625,16 @@ function VideoNodeCardImpl({
               playsInline
               onLoadedMetadata={(e) => {
                 const video = e.currentTarget;
-                const naturalSize = { width: video.videoWidth || resultVideoSize.width, height: video.videoHeight || resultVideoSize.height };
-                const displaySize = fitVideoSize(naturalSize, aspectRatio, VIDEO_NODE_WIDTH, RESULT_VIDEO_MAX_HEIGHT);
+                const naturalSize = {
+                  width: video.videoWidth || resultVideoSize.width,
+                  height: video.videoHeight || resultVideoSize.height,
+                };
+                const displaySize = fitVideoSize(
+                  naturalSize,
+                  aspectRatio,
+                  VIDEO_NODE_WIDTH,
+                  RESULT_VIDEO_MAX_HEIGHT
+                );
                 setNaturalVideoSize(naturalSize);
                 setMediaDuration(video.duration || 0);
                 if (
@@ -569,10 +664,21 @@ function VideoNodeCardImpl({
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}
             >
-              <button type="button" onClick={togglePlay} className="flex h-8 w-8 items-center justify-center text-white" title={isPlaying ? "暂停" : "播放"}>
-                {isPlaying ? <Pause className="h-6 w-6 fill-white" /> : <Play className="h-5 w-5 fill-white" />}
+              <button
+                type="button"
+                onClick={togglePlay}
+                className="flex h-8 w-8 items-center justify-center text-white"
+                title={isPlaying ? "暂停" : "播放"}
+              >
+                {isPlaying ? (
+                  <Pause className="h-6 w-6 fill-white" />
+                ) : (
+                  <Play className="h-5 w-5 fill-white" />
+                )}
               </button>
-              <span className="w-10 text-[13px] font-medium tabular-nums">{formatTime(currentTime)}</span>
+              <span className="w-10 text-[13px] font-medium tabular-nums">
+                {formatTime(currentTime)}
+              </span>
               <input
                 type="range"
                 min={0}
@@ -582,14 +688,20 @@ function VideoNodeCardImpl({
                 onChange={(e) => seekTo(Number(e.target.value))}
                 className="h-1 flex-1 cursor-pointer accent-white"
               />
-              <span className="w-10 text-right text-[13px] font-medium tabular-nums">{formatTime(mediaDuration)}</span>
+              <span className="w-10 text-right text-[13px] font-medium tabular-nums">
+                {formatTime(mediaDuration)}
+              </span>
               <button
                 type="button"
                 onClick={() => setMuted((value) => !value)}
                 className="flex h-8 w-8 items-center justify-center text-white"
                 title={muted || !audioEnabled ? "打开声音" : "静音"}
               >
-                {muted || !audioEnabled ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
+                {muted || !audioEnabled ? (
+                  <VolumeX className="h-5 w-5" />
+                ) : (
+                  <Volume2 className="h-5 w-5" />
+                )}
               </button>
               <div className="relative">
                 <button
@@ -608,10 +720,18 @@ function VideoNodeCardImpl({
                       exit={{ opacity: 0, y: 8, scale: 0.98 }}
                       className="absolute bottom-11 right-0 w-[132px] overflow-hidden rounded-[8px] bg-[#1f1d1a]/96 py-2 text-[13px] text-white shadow-[0_18px_40px_-16px_rgba(0,0,0,0.9)]"
                     >
-                      <button type="button" className="block w-full px-4 py-2 text-left hover:bg-white/10" onClick={() => captureFrame("first")}>
+                      <button
+                        type="button"
+                        className="block w-full px-4 py-2 text-left hover:bg-white/10"
+                        onClick={() => captureFrame("first")}
+                      >
                         截取首帧
                       </button>
-                      <button type="button" className="block w-full px-4 py-2 text-left hover:bg-white/10" onClick={() => captureFrame("last")}>
+                      <button
+                        type="button"
+                        className="block w-full px-4 py-2 text-left hover:bg-white/10"
+                        onClick={() => captureFrame("last")}
+                      >
                         截取尾帧
                       </button>
                     </motion.div>
@@ -643,7 +763,11 @@ function VideoNodeCardImpl({
             return;
           }
           const target = e.target as HTMLElement;
-          if (!target.closest("[data-node-action='true']") && !target.closest("textarea,button,input")) onDragStart(e, node);
+          if (
+            !target.closest("[data-node-action='true']") &&
+            !target.closest("textarea,button,input")
+          )
+            onDragStart(e, node);
           else e.stopPropagation();
         }}
         onClick={(e) => {
@@ -716,7 +840,11 @@ function VideoNodeCardImpl({
               value={upstreamPrompt ? "" : promptText}
               onChange={(e) => onUpdateProperty?.(node.id, "text", e.target.value)}
               disabled={!!upstreamPrompt}
-              placeholder={upstreamPrompt ? `已由上游节点 (${upstreamPrompt.key}) 提供提示词` : "描述你想要生成的视频内容"}
+              placeholder={
+                upstreamPrompt
+                  ? `已由上游节点 (${upstreamPrompt.key}) 提供提示词`
+                  : "描述你想要生成的视频内容"
+              }
               className="h-[92px] w-full resize-none bg-transparent px-1 text-[15px] leading-7 text-slate-100/88 outline-none placeholder:text-slate-400/42 disabled:cursor-not-allowed disabled:text-slate-400/45 custom-scrollbar"
             />
             <div className="mt-3 flex items-center gap-2 border-t border-cyan-100/8 pt-3">
@@ -728,7 +856,11 @@ function VideoNodeCardImpl({
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  onUpdateProperty?.(node.id, "aspect_ratio", cycleValue(RATIO_OPTIONS, aspectRatio));
+                  onUpdateProperty?.(
+                    node.id,
+                    "aspect_ratio",
+                    cycleValue(RATIO_OPTIONS, aspectRatio)
+                  );
                 }}
                 className="inline-flex h-10 min-w-[108px] items-center justify-center gap-2 rounded-[14px] border border-cyan-100/8 bg-slate-950/18 px-3 text-[13px] font-medium text-cyan-50/76 transition-colors hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
               >
@@ -749,7 +881,11 @@ function VideoNodeCardImpl({
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  onUpdateProperty?.(node.id, "resolution", cycleValue(RESOLUTION_OPTIONS, resolution));
+                  onUpdateProperty?.(
+                    node.id,
+                    "resolution",
+                    cycleValue(RESOLUTION_OPTIONS, resolution)
+                  );
                 }}
                 className="inline-flex h-10 min-w-[88px] items-center justify-center rounded-[14px] border border-cyan-100/8 bg-slate-950/18 px-3 text-[13px] font-medium text-cyan-50/68 transition-colors hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
               >
@@ -778,7 +914,11 @@ function VideoNodeCardImpl({
                     : "bg-cyan-50 text-[#0f172a] shadow-[0_14px_30px_-18px_rgba(103,232,249,0.9)] hover:bg-white"
                 }`}
               >
-                {isRunning ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}
+                {isRunning ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <ArrowUp className="h-4 w-4" />
+                )}
               </button>
             </div>
           </motion.div>
@@ -788,6 +928,9 @@ function VideoNodeCardImpl({
   );
 }
 
-const VideoNodeCard = React.memo(VideoNodeCardImpl, (prev, next) => prev.node === next.node && prev.selected === next.selected);
+const VideoNodeCard = React.memo(
+  VideoNodeCardImpl,
+  (prev, next) => prev.node === next.node && prev.selected === next.selected
+);
 
 export default VideoNodeCard;

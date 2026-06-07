@@ -323,22 +323,85 @@ function readMiniMaxVideoUrl(data: any): string {
   return candidates.find((value) => typeof value === "string" && value.length > 0) || "";
 }
 
-function readMiniMaxAudioUrl(data: any): string {
-  const candidates = [
-    data?.audio_file,
-    data?.audioFile,
+function isHttpUrl(value: string): boolean {
+  return /^https?:\/\//i.test(value.trim());
+}
+
+function isHexAudioPayload(value: string): boolean {
+  const normalized = value.trim();
+  return normalized.length > 0 && normalized.length % 2 === 0 && /^(?:[0-9a-f]{2})+$/i.test(normalized);
+}
+
+function readMiniMaxAudioAsset(data: any): { url: string; hex: string } {
+  const directUrlCandidates = [
     data?.audio_url,
     data?.audioUrl,
     data?.url,
-    data?.data?.audio_file,
-    data?.data?.audioFile,
+    data?.download_url,
+    data?.downloadUrl,
+    data?.file?.url,
+    data?.file?.download_url,
+    data?.file?.downloadUrl,
     data?.data?.audio_url,
     data?.data?.audioUrl,
     data?.data?.url,
-    data?.data?.extra_info?.audio_file,
+    data?.data?.download_url,
+    data?.data?.downloadUrl,
+    data?.data?.file?.url,
+    data?.data?.file?.download_url,
+    data?.data?.file?.downloadUrl,
+    data?.extra_info?.audio_url,
+    data?.extra_info?.download_url,
     data?.data?.extra_info?.audio_url,
+    data?.data?.extra_info?.download_url,
   ];
-  return candidates.find((value) => typeof value === "string" && value.length > 0) || "";
+  const payloadCandidates = [
+    data?.audio,
+    data?.audio_file,
+    data?.audioFile,
+    data?.data?.audio,
+    data?.data?.audio_file,
+    data?.data?.audioFile,
+    data?.extra_info?.audio,
+    data?.extra_info?.audio_file,
+    data?.data?.extra_info?.audio,
+    data?.data?.extra_info?.audio_file,
+  ];
+
+  const normalizedUrls = [...directUrlCandidates, ...payloadCandidates]
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    .map((value) => value.trim());
+  const url = normalizedUrls.find(isHttpUrl) || "";
+  if (url) return { url, hex: "" };
+
+  const hex =
+    payloadCandidates
+      .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+      .map((value) => value.trim())
+      .find(isHexAudioPayload) || "";
+
+  return { url: "", hex };
+}
+
+function resolveAudioContentType(format: unknown): string {
+  switch (String(format || "").trim().toLowerCase()) {
+    case "wav":
+      return "audio/wav";
+    case "flac":
+      return "audio/flac";
+    case "aac":
+      return "audio/aac";
+    case "pcm":
+      return "audio/pcm";
+    case "mp3":
+    default:
+      return "audio/mpeg";
+  }
+}
+
+function toDevDebugPayload(data: any) {
+  if (process.env.NODE_ENV === "production") return undefined;
+  return data;
 }
 
 app.post("/api/minimax/image-generation", async (req, res) => {
@@ -634,7 +697,7 @@ app.post("/api/minimax/audio-generation", async (req, res) => {
         format,
         channel: 1,
       },
-      output_format: "url",
+      output_format: "hex",
     };
 
     const response = await fetch(resolveMiniMaxEndpoint(base_url, "t2a_v2"), {
@@ -656,37 +719,70 @@ app.post("/api/minimax/audio-generation", async (req, res) => {
 
     if (!response.ok) {
       const message = data?.base_resp?.status_msg || data?.message || data?.error || textBody || response.statusText;
-      res.status(response.status).json({ error: `MiniMax 音频生成失败: ${message}` });
+      res.status(response.status).json({
+        error: `MiniMax 音频生成失败: ${message}`,
+        raw: toDevDebugPayload(data),
+      });
       return;
     }
 
     const statusCode = data?.base_resp?.status_code;
     if (typeof statusCode === "number" && statusCode !== 0) {
-      res.status(502).json({ error: `MiniMax 音频生成失败: ${data?.base_resp?.status_msg || statusCode}` });
+      res.status(502).json({
+        error: `MiniMax 音频生成失败: ${data?.base_resp?.status_msg || statusCode}`,
+        raw: toDevDebugPayload(data),
+      });
       return;
     }
 
-    const audioUrl = readMiniMaxAudioUrl(data);
-    if (!audioUrl) {
-      res.status(502).json({ error: "MiniMax 未返回音频链接" });
+    const audioAsset = readMiniMaxAudioAsset(data);
+    if (audioAsset.url) {
+      res.json({
+        audioUrl: audioAsset.url,
+        metadata: {
+          model,
+          voice_id,
+          speed,
+          vol,
+          pitch,
+          emotion,
+          audio_sample_rate,
+          bitrate,
+          format,
+        },
+        raw: process.env.NODE_ENV === "production" ? undefined : data,
+      });
       return;
     }
 
-    res.json({
-      audioUrl,
-      metadata: {
-        model,
-        voice_id,
-        speed,
-        vol,
-        pitch,
-        emotion,
-        audio_sample_rate,
-        bitrate,
-        format,
-      },
-      raw: process.env.NODE_ENV === "production" ? undefined : data,
-    });
+    if (audioAsset.hex) {
+      res.json({
+        audioHex: audioAsset.hex,
+        contentType: resolveAudioContentType(format),
+        fileName: `minimax-audio-${Date.now()}.${String(format || "mp3").trim().toLowerCase() || "mp3"}`,
+        metadata: {
+          model,
+          voice_id,
+          speed,
+          vol,
+          pitch,
+          emotion,
+          audio_sample_rate,
+          bitrate,
+          format,
+        },
+        raw: process.env.NODE_ENV === "production" ? undefined : data,
+      });
+      return;
+    }
+
+    {
+      res.status(502).json({
+        error: "MiniMax 未返回音频链接",
+        raw: toDevDebugPayload(data),
+      });
+      return;
+    }
   } catch (error: any) {
     console.error("MiniMax Audio Generation Error:", error);
     res.status(500).json({ error: error.message || "Failed to generate audio using MiniMax" });

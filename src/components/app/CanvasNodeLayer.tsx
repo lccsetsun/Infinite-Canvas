@@ -6,7 +6,8 @@ import ImageNodeCard from "../canvas/ImageNodeCard";
 import VideoNodeCard from "../canvas/VideoNodeCard";
 import AudioNodeCard from "../canvas/AudioNodeCard";
 import { getInputAnchor, getOutputAnchor } from "../canvas/geometry";
-import { GraphNode, VideoFrameAnalysisOverview, VideoFrameAnalysisSegment } from "../../types";
+import { GraphLink, GraphNode, VideoFrameAnalysisOverview, VideoFrameAnalysisSegment } from "../../types";
+import type { TextNodeReferenceItem } from "../../utils/textNodeReferences";
 
 interface CanvasNodeLayerProps {
   apiConfig: {
@@ -19,12 +20,18 @@ interface CanvasNodeLayerProps {
   linkFromOutputIndex: number;
   linkToInputIndex: number;
   linkToNodeId: string;
+  links: GraphLink[];
   nodes: GraphNode[];
   pan: { x: number; y: number };
   selectedNodeId: string | null;
   zoom: number;
   getCanvasLinkTargetIssue: (nodeId: string, inputIndex: number) => string | null;
-  onBeginCanvasLink: (nodeId: string, outputIndex: number, clientX: number, clientY: number) => void;
+  onBeginCanvasLink: (
+    nodeId: string,
+    outputIndex: number,
+    clientX: number,
+    clientY: number
+  ) => void;
   onCanvasPointerDown: (event: React.PointerEvent) => void;
   onDeleteNode: (nodeId: string) => void;
   onDuplicateNode: (nodeId: string) => void;
@@ -33,19 +40,36 @@ interface CanvasNodeLayerProps {
   onLeaveCanvasLinkTarget: (nodeId: string, inputIndex: number) => void;
   onNodeContextMenu: (nodeId: string, event: React.MouseEvent) => void;
   onNodeDragStart: (event: React.PointerEvent, node: GraphNode) => void;
-  onPreview: (content: string, title?: string, nodeId?: string, items?: string[], currentIndex?: number) => void;
-  onAnalyzeVideo?: (node: GraphNode, segments: VideoFrameAnalysisSegment[], overview: VideoFrameAnalysisOverview) => Promise<void> | void;
+  onPreview: (
+    content: string,
+    title?: string,
+    nodeId?: string,
+    items?: string[],
+    currentIndex?: number
+  ) => void;
+  onAnalyzeVideo?: (
+    node: GraphNode,
+    segments: VideoFrameAnalysisSegment[],
+    overview: VideoFrameAnalysisOverview
+  ) => Promise<void> | void;
   onReverseSegmentAnalysis?: (node: GraphNode) => Promise<void> | void;
   onSelectNode: (nodeId: string, e?: React.MouseEvent) => void;
   onUpdateNodeData: (nodeId: string, data: any) => void;
   onUpdateNodeProperty: (nodeId: string, key: string, value: unknown) => void;
   onSetPrimaryImageResult?: (nodeId: string, imageUrl: string, imageIndex: number) => void;
   onSyncImagePromptStarterLayout?: (nodeId: string, imageNodeWidth: number) => void;
-  onSplitImageGrid?: (nodeId: string, imageUrl: string, gridRows: number, gridCols: number, cellIndices: number[]) => void;
+  onSplitImageGrid?: (
+    nodeId: string,
+    imageUrl: string,
+    gridRows: number,
+    gridCols: number,
+    cellIndices: number[]
+  ) => void;
   resolvedInputsMap?: Map<string, Record<string, unknown>>;
-  textNodeReferenceImagesMap?: Map<string, string[]>;
+  textNodeReferencesMap?: Map<string, TextNodeReferenceItem[]>;
   onRunNode?: (nodeId: string) => void;
   onCreateImagePromptStarter?: (nodeId: string) => void;
+  onCreateTextStarterFlow?: (nodeId: string, action: "video" | "music") => void;
   onNotice?: (message: string) => void;
 }
 
@@ -56,6 +80,7 @@ export default function CanvasNodeLayer({
   linkFromOutputIndex,
   linkToInputIndex,
   linkToNodeId,
+  links,
   nodes,
   pan,
   selectedNodeId,
@@ -80,9 +105,10 @@ export default function CanvasNodeLayer({
   onSyncImagePromptStarterLayout,
   onSplitImageGrid,
   resolvedInputsMap,
-  textNodeReferenceImagesMap,
+  textNodeReferencesMap,
   onRunNode,
   onCreateImagePromptStarter,
+  onCreateTextStarterFlow,
   onNotice,
 }: CanvasNodeLayerProps) {
   return (
@@ -95,184 +121,190 @@ export default function CanvasNodeLayer({
       <AnimatePresence>
         {nodes.map((node) => {
           return (
-          <div
-            key={node.id}
-            className="absolute left-0 top-0"
-            data-canvas-node-id={node.id}
-            style={{ transform: `translate3d(${node.x}px, ${node.y}px, 0)` }}
-            onContextMenu={(event) => onNodeContextMenu(node.id, event)}
-          >
-            {node.type === "text_node" ? (
-              <TextNodeCard
-                node={node}
-                selected={selectedNodeId === node.id}
-                apiConfig={apiConfig}
-                onSelect={(e) => onSelectNode(node.id, e)}
-                onDelete={() => onDeleteNode(node.id)}
-                onDuplicate={() => onDuplicateNode(node.id)}
-                onDragStart={(e, currentNode) => {
-                  if (isLinkingOnCanvas) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    return;
-                  }
-                  onNodeDragStart(e, currentNode);
-                }}
-                onUpdateProperty={onUpdateNodeProperty}
-                onUpdateData={onUpdateNodeData}
-                onSetPrimaryImageResult={onSetPrimaryImageResult}
-                onPreview={onPreview}
-                onReverseSegmentAnalysis={onReverseSegmentAnalysis}
-                resolvedInputs={resolvedInputsMap?.get(node.id)}
-                referenceImageUrls={textNodeReferenceImagesMap?.get(node.id) ?? []}
-                onRun={onRunNode}
-                onCreateImagePromptStarter={onCreateImagePromptStarter}
-                // 连线相关
-                isLinkingOnCanvas={isLinkingOnCanvas}
-                linkFromNodeId={linkFromNodeId}
-                linkFromOutputIndex={linkFromOutputIndex}
-                linkToNodeId={linkToNodeId}
-                linkToInputIndex={linkToInputIndex}
-                onBeginCanvasLink={onBeginCanvasLink}
-                onFinishCanvasLink={onFinishCanvasLink}
-                onHoverCanvasLinkTarget={onHoverCanvasLinkTarget}
-                onLeaveCanvasLinkTarget={onLeaveCanvasLinkTarget}
-                getCanvasLinkTargetIssue={getCanvasLinkTargetIssue}
-              />
-            ) : node.type === "image_node" ? (
-              <ImageNodeCard
-                node={node}
-                selected={selectedNodeId === node.id}
-                onSelect={(e) => onSelectNode(node.id, e)}
-                onDelete={() => onDeleteNode(node.id)}
-                onDuplicate={() => onDuplicateNode(node.id)}
-                onDragStart={(e, currentNode) => {
-                  if (isLinkingOnCanvas) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    return;
-                  }
-                  onNodeDragStart(e, currentNode);
-                }}
-                onUpdateProperty={onUpdateNodeProperty}
-                onUpdateData={onUpdateNodeData}
-                onSetPrimaryImageResult={onSetPrimaryImageResult}
-                onSyncImagePromptStarterLayout={onSyncImagePromptStarterLayout}
-                onSplitImageGrid={onSplitImageGrid}
-                onPreview={onPreview}
-                resolvedInputs={resolvedInputsMap?.get(node.id)}
-                onRun={onRunNode}
-                onNotice={onNotice}
-                // 连线相关
-                isLinkingOnCanvas={isLinkingOnCanvas}
-                linkFromNodeId={linkFromNodeId}
-                linkFromOutputIndex={linkFromOutputIndex}
-                linkToNodeId={linkToNodeId}
-                linkToInputIndex={linkToInputIndex}
-                onBeginCanvasLink={onBeginCanvasLink}
-                onFinishCanvasLink={onFinishCanvasLink}
-                onHoverCanvasLinkTarget={onHoverCanvasLinkTarget}
-                onLeaveCanvasLinkTarget={onLeaveCanvasLinkTarget}
-                getCanvasLinkTargetIssue={getCanvasLinkTargetIssue}
-              />
-            ) : node.type === "video_node" ? (
-              <VideoNodeCard
-                node={node}
-                selected={selectedNodeId === node.id}
-                onSelect={(e) => onSelectNode(node.id, e)}
-                onDelete={() => onDeleteNode(node.id)}
-                onDuplicate={() => onDuplicateNode(node.id)}
-                onDragStart={(e, currentNode) => {
-                  if (isLinkingOnCanvas) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    return;
-                  }
-                  onNodeDragStart(e, currentNode);
-                }}
-                onUpdateProperty={onUpdateNodeProperty}
-                onUpdateData={onUpdateNodeData}
-                onPreview={onPreview}
-                onAnalyzeVideo={onAnalyzeVideo}
-                resolvedInputs={resolvedInputsMap?.get(node.id)}
-                onRun={onRunNode}
-                // 连线相关
-                isLinkingOnCanvas={isLinkingOnCanvas}
-                linkFromNodeId={linkFromNodeId}
-                linkFromOutputIndex={linkFromOutputIndex}
-                linkToNodeId={linkToNodeId}
-                linkToInputIndex={linkToInputIndex}
-                onBeginCanvasLink={onBeginCanvasLink}
-                onFinishCanvasLink={onFinishCanvasLink}
-                onHoverCanvasLinkTarget={onHoverCanvasLinkTarget}
-                onLeaveCanvasLinkTarget={onLeaveCanvasLinkTarget}
-                getCanvasLinkTargetIssue={getCanvasLinkTargetIssue}
-              />
-            ) : node.type === "audio_node" ? (
-              <AudioNodeCard
-                node={node}
-                selected={selectedNodeId === node.id}
-                onSelect={(e) => onSelectNode(node.id, e)}
-                onDelete={() => onDeleteNode(node.id)}
-                onDuplicate={() => onDuplicateNode(node.id)}
-                onDragStart={(e, currentNode) => {
-                  if (isLinkingOnCanvas) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    return;
-                  }
-                  onNodeDragStart(e, currentNode);
-                }}
-                onUpdateProperty={onUpdateNodeProperty}
-                resolvedInputs={resolvedInputsMap?.get(node.id)}
-                onRun={onRunNode}
-                // 连线相关
-                isLinkingOnCanvas={isLinkingOnCanvas}
-                linkFromNodeId={linkFromNodeId}
-                linkFromOutputIndex={linkFromOutputIndex}
-                linkToNodeId={linkToNodeId}
-                linkToInputIndex={linkToInputIndex}
-                onBeginCanvasLink={onBeginCanvasLink}
-                onFinishCanvasLink={onFinishCanvasLink}
-                onHoverCanvasLinkTarget={onHoverCanvasLinkTarget}
-                onLeaveCanvasLinkTarget={onLeaveCanvasLinkTarget}
-                getCanvasLinkTargetIssue={getCanvasLinkTargetIssue}
-              />
-            ) : (
-              <NodeCard
-                node={node}
-                selected={selectedNodeId === node.id}
-                onSelect={(e) => onSelectNode(node.id, e)}
-                onDelete={() => onDeleteNode(node.id)}
-                onDuplicate={() => onDuplicateNode(node.id)}
-                onDragStart={(e, currentNode) => {
-                  if (isLinkingOnCanvas) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    return;
-                  }
-                  onNodeDragStart(e, currentNode);
-                }}
-                onUpdateProperty={onUpdateNodeProperty}
-                onUpdateData={onUpdateNodeData}
-                apiConfig={apiConfig}
-                onPreview={onPreview}
-                resolvedInputs={resolvedInputsMap?.get(node.id)}
-                onRun={onRunNode}
-              />
-            )}
-          </div>
+            <div
+              key={node.id}
+              className="absolute left-0 top-0"
+              data-canvas-node-id={node.id}
+              style={{ transform: `translate3d(${node.x}px, ${node.y}px, 0)` }}
+              onContextMenu={(event) => onNodeContextMenu(node.id, event)}
+            >
+              {node.type === "text_node" ? (
+                <TextNodeCard
+                  node={node}
+                  selected={selectedNodeId === node.id}
+                  apiConfig={apiConfig}
+                  onSelect={(e) => onSelectNode(node.id, e)}
+                  onDelete={() => onDeleteNode(node.id)}
+                  onDuplicate={() => onDuplicateNode(node.id)}
+                  onDragStart={(e, currentNode) => {
+                    if (isLinkingOnCanvas) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      return;
+                    }
+                    onNodeDragStart(e, currentNode);
+                  }}
+                  onUpdateProperty={onUpdateNodeProperty}
+                  onUpdateData={onUpdateNodeData}
+                  onSetPrimaryImageResult={onSetPrimaryImageResult}
+                  onPreview={onPreview}
+                  onReverseSegmentAnalysis={onReverseSegmentAnalysis}
+                  resolvedInputs={resolvedInputsMap?.get(node.id)}
+                  references={textNodeReferencesMap?.get(node.id) ?? []}
+                  hasConnectedLinks={links.some(
+                    (link) => link.fromNodeId === node.id || link.toNodeId === node.id
+                  )}
+                  onRun={onRunNode}
+                  onCreateImagePromptStarter={onCreateImagePromptStarter}
+                  onCreateTextStarterFlow={onCreateTextStarterFlow}
+                  // 连线相关
+                  isLinkingOnCanvas={isLinkingOnCanvas}
+                  linkFromNodeId={linkFromNodeId}
+                  linkFromOutputIndex={linkFromOutputIndex}
+                  linkToNodeId={linkToNodeId}
+                  linkToInputIndex={linkToInputIndex}
+                  onBeginCanvasLink={onBeginCanvasLink}
+                  onFinishCanvasLink={onFinishCanvasLink}
+                  onHoverCanvasLinkTarget={onHoverCanvasLinkTarget}
+                  onLeaveCanvasLinkTarget={onLeaveCanvasLinkTarget}
+                  getCanvasLinkTargetIssue={getCanvasLinkTargetIssue}
+                />
+              ) : node.type === "image_node" ? (
+                <ImageNodeCard
+                  node={node}
+                  selected={selectedNodeId === node.id}
+                  onSelect={(e) => onSelectNode(node.id, e)}
+                  onDelete={() => onDeleteNode(node.id)}
+                  onDuplicate={() => onDuplicateNode(node.id)}
+                  onDragStart={(e, currentNode) => {
+                    if (isLinkingOnCanvas) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      return;
+                    }
+                    onNodeDragStart(e, currentNode);
+                  }}
+                  onUpdateProperty={onUpdateNodeProperty}
+                  onUpdateData={onUpdateNodeData}
+                  onSetPrimaryImageResult={onSetPrimaryImageResult}
+                  onSyncImagePromptStarterLayout={onSyncImagePromptStarterLayout}
+                  onSplitImageGrid={onSplitImageGrid}
+                  onPreview={onPreview}
+                  resolvedInputs={resolvedInputsMap?.get(node.id)}
+                  onRun={onRunNode}
+                  onNotice={onNotice}
+                  // 连线相关
+                  isLinkingOnCanvas={isLinkingOnCanvas}
+                  linkFromNodeId={linkFromNodeId}
+                  linkFromOutputIndex={linkFromOutputIndex}
+                  linkToNodeId={linkToNodeId}
+                  linkToInputIndex={linkToInputIndex}
+                  onBeginCanvasLink={onBeginCanvasLink}
+                  onFinishCanvasLink={onFinishCanvasLink}
+                  onHoverCanvasLinkTarget={onHoverCanvasLinkTarget}
+                  onLeaveCanvasLinkTarget={onLeaveCanvasLinkTarget}
+                  getCanvasLinkTargetIssue={getCanvasLinkTargetIssue}
+                />
+              ) : node.type === "video_node" ? (
+                <VideoNodeCard
+                  node={node}
+                  selected={selectedNodeId === node.id}
+                  onSelect={(e) => onSelectNode(node.id, e)}
+                  onDelete={() => onDeleteNode(node.id)}
+                  onDuplicate={() => onDuplicateNode(node.id)}
+                  onDragStart={(e, currentNode) => {
+                    if (isLinkingOnCanvas) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      return;
+                    }
+                    onNodeDragStart(e, currentNode);
+                  }}
+                  onUpdateProperty={onUpdateNodeProperty}
+                  onUpdateData={onUpdateNodeData}
+                  onPreview={onPreview}
+                  onAnalyzeVideo={onAnalyzeVideo}
+                  resolvedInputs={resolvedInputsMap?.get(node.id)}
+                  onRun={onRunNode}
+                  // 连线相关
+                  isLinkingOnCanvas={isLinkingOnCanvas}
+                  linkFromNodeId={linkFromNodeId}
+                  linkFromOutputIndex={linkFromOutputIndex}
+                  linkToNodeId={linkToNodeId}
+                  linkToInputIndex={linkToInputIndex}
+                  onBeginCanvasLink={onBeginCanvasLink}
+                  onFinishCanvasLink={onFinishCanvasLink}
+                  onHoverCanvasLinkTarget={onHoverCanvasLinkTarget}
+                  onLeaveCanvasLinkTarget={onLeaveCanvasLinkTarget}
+                  getCanvasLinkTargetIssue={getCanvasLinkTargetIssue}
+                />
+              ) : node.type === "audio_node" ? (
+                <AudioNodeCard
+                  node={node}
+                  selected={selectedNodeId === node.id}
+                  onSelect={(e) => onSelectNode(node.id, e)}
+                  onDelete={() => onDeleteNode(node.id)}
+                  onDuplicate={() => onDuplicateNode(node.id)}
+                  onDragStart={(e, currentNode) => {
+                    if (isLinkingOnCanvas) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      return;
+                    }
+                    onNodeDragStart(e, currentNode);
+                  }}
+                  onUpdateProperty={onUpdateNodeProperty}
+                  resolvedInputs={resolvedInputsMap?.get(node.id)}
+                  onRun={onRunNode}
+                  // 连线相关
+                  isLinkingOnCanvas={isLinkingOnCanvas}
+                  linkFromNodeId={linkFromNodeId}
+                  linkFromOutputIndex={linkFromOutputIndex}
+                  linkToNodeId={linkToNodeId}
+                  linkToInputIndex={linkToInputIndex}
+                  onBeginCanvasLink={onBeginCanvasLink}
+                  onFinishCanvasLink={onFinishCanvasLink}
+                  onHoverCanvasLinkTarget={onHoverCanvasLinkTarget}
+                  onLeaveCanvasLinkTarget={onLeaveCanvasLinkTarget}
+                  getCanvasLinkTargetIssue={getCanvasLinkTargetIssue}
+                />
+              ) : (
+                <NodeCard
+                  node={node}
+                  selected={selectedNodeId === node.id}
+                  onSelect={(e) => onSelectNode(node.id, e)}
+                  onDelete={() => onDeleteNode(node.id)}
+                  onDuplicate={() => onDuplicateNode(node.id)}
+                  onDragStart={(e, currentNode) => {
+                    if (isLinkingOnCanvas) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      return;
+                    }
+                    onNodeDragStart(e, currentNode);
+                  }}
+                  onUpdateProperty={onUpdateNodeProperty}
+                  onUpdateData={onUpdateNodeData}
+                  apiConfig={apiConfig}
+                  onPreview={onPreview}
+                  resolvedInputs={resolvedInputsMap?.get(node.id)}
+                  onRun={onRunNode}
+                />
+              )}
+            </div>
           );
         })}
       </AnimatePresence>
 
       {nodes.map((node) => {
         // LibTV 风格节点不再重复渲染外部端口按钮
-        if (["text_node", "image_node", "video_node", "audio_node"].includes(node.type)) return null;
-        
+        if (["text_node", "image_node", "video_node", "audio_node"].includes(node.type))
+          return null;
+
         return node.outputs.map((output, idx) => {
           const anchor = getOutputAnchor(node, idx);
-          const isSource = isLinkingOnCanvas && linkFromNodeId === node.id && linkFromOutputIndex === idx;
+          const isSource =
+            isLinkingOnCanvas && linkFromNodeId === node.id && linkFromOutputIndex === idx;
           return (
             <button
               key={`hit_out_${node.id}_${output.name}_${idx}`}
@@ -283,9 +315,7 @@ export default function CanvasNodeLayer({
               data-node-id={node.id}
               data-port-index={idx}
               className={`canvas-port-handle canvas-port-output absolute z-30 block h-9 w-9 rounded-full transition-all duration-200 cursor-crosshair group/out ${
-                isSource
-                  ? "canvas-port-active scale-125"
-                  : "hover:scale-125 port-attention"
+                isSource ? "canvas-port-active scale-125" : "hover:scale-125 port-attention"
               }`}
               style={{ left: anchor.x - 18, top: anchor.y - 18 }}
               onPointerDown={(e) => {
@@ -304,8 +334,9 @@ export default function CanvasNodeLayer({
 
       {nodes.map((node) => {
         // LibTV 风格节点不再重复渲染外部端口按钮
-        if (["text_node", "image_node", "video_node", "audio_node"].includes(node.type)) return null;
-        
+        if (["text_node", "image_node", "video_node", "audio_node"].includes(node.type))
+          return null;
+
         return node.inputs.map((input, idx) => {
           const anchor = getInputAnchor(node, idx);
           const targetIssue = getCanvasLinkTargetIssue(node.id, idx);
@@ -314,7 +345,10 @@ export default function CanvasNodeLayer({
             <button
               key={`hit_in_${node.id}_${input.name}_${idx}`}
               type="button"
-              title={targetIssue ?? `输入端口: ${input.name} (${input.type}) — 拖拽其他节点的输出到这里完成连接`}
+              title={
+                targetIssue ??
+                `输入端口: ${input.name} (${input.type}) — 拖拽其他节点的输出到这里完成连接`
+              }
               aria-label={`输入端口 ${input.name}`}
               data-port-role="input"
               data-node-id={node.id}
@@ -346,10 +380,10 @@ export default function CanvasNodeLayer({
               <span className="absolute right-full top-1/2 -translate-y-1/2 mr-2 px-2 py-1 rounded-md bg-[#0a0d14]/95 border border-emerald-400/40 text-[10px] font-bold text-emerald-200 whitespace-nowrap opacity-0 group-hover/in:opacity-100 pointer-events-none transition-opacity shadow-lg">
                 {input.name} · {input.type}
               </span>
-          </button>
-        );
-      });
-    })}
-  </div>
-);
+            </button>
+          );
+        });
+      })}
+    </div>
+  );
 }

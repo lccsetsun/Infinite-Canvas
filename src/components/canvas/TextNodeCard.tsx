@@ -1,13 +1,32 @@
 import React from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "motion/react";
-import { AlertTriangle, ArrowUp, Check, ChevronDown, Clapperboard, Copy, Cpu, Eye, FileText, Image, Loader2, MessageSquareText, Music4, Plus, SquarePen, Wand2 } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowUp,
+  Check,
+  ChevronDown,
+  Clapperboard,
+  Copy,
+  Cpu,
+  Eye,
+  FileText,
+  Image,
+  Loader2,
+  MessageSquareText,
+  Music4,
+  Plus,
+  SquarePen,
+  Wand2,
+} from "lucide-react";
 import { GraphNode } from "../../types";
 import { getNodeWidth } from "./geometry";
 import { findResolvedStringInput } from "../../utils/resolvedInputs";
 import { shouldShowInlinePortHandles } from "../../utils/portHandleVisibility";
 import { TEXT_NODE_MODEL } from "../../features/nodes/nodeExecutors";
 import { getTextNodeViewState } from "../../utils/textNodeViewState";
+import { getTextNodeInteractionState } from "../../utils/textNodeInteractionState";
+import type { TextNodeReferenceItem } from "../../utils/textNodeReferences";
 import { PROVIDER_PRESETS } from "../../features/api/apiSettings";
 
 interface TextNodeCardProps {
@@ -22,24 +41,39 @@ interface TextNodeCardProps {
   onDragStart: (event: React.PointerEvent, node: GraphNode) => void;
   onUpdateProperty?: (nodeId: string, key: string, value: unknown) => void;
   onUpdateData?: (nodeId: string, data: Partial<NonNullable<GraphNode["data"]>>) => void;
-  onPreview?: (content: string, title?: string, nodeId?: string, items?: string[], currentIndex?: number) => void;
+  onPreview?: (
+    content: string,
+    title?: string,
+    nodeId?: string,
+    items?: string[],
+    currentIndex?: number
+  ) => void;
   onReverseSegmentAnalysis?: (node: GraphNode) => Promise<void> | void;
   resolvedInputs?: Record<string, unknown>;
-  referenceImageUrls?: string[];
+  references?: TextNodeReferenceItem[];
+  hasConnectedLinks?: boolean;
   onRun?: (nodeId: string) => void;
   onCreateImagePromptStarter?: (nodeId: string) => void;
+  onCreateTextStarterFlow?: (nodeId: string, action: "video" | "music") => void;
   // 连线相关
   isLinkingOnCanvas?: boolean;
   linkFromNodeId?: string | null;
   linkFromOutputIndex?: number | null;
   linkToNodeId?: string | null;
   linkToInputIndex?: number | null;
-  onBeginCanvasLink?: (nodeId: string, outputIndex: number, clientX: number, clientY: number) => void;
+  onBeginCanvasLink?: (
+    nodeId: string,
+    outputIndex: number,
+    clientX: number,
+    clientY: number
+  ) => void;
   onFinishCanvasLink?: (nodeId?: string, inputIndex?: number) => void;
   onHoverCanvasLinkTarget?: (nodeId: string, inputIndex: number) => void;
   onLeaveCanvasLinkTarget?: (nodeId: string, inputIndex: number) => void;
   getCanvasLinkTargetIssue?: (nodeId: string, inputIndex: number) => string | null;
 }
+
+type StarterAction = "write" | "video" | "image-prompt" | "music";
 
 function renderMarkdown(text: string) {
   if (!text) return null;
@@ -85,7 +119,9 @@ function TextSkeleton({ active }: { active: boolean }) {
         <div
           key={`${width}-${index}`}
           className={`relative origin-center overflow-hidden rounded-full bg-[linear-gradient(180deg,rgba(80,92,114,0.34),rgba(50,60,78,0.24))] shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] ${width} ${height} ${
-            active ? "animate-[text-node-skeleton-width_2.4s_ease-in-out_infinite,text-node-skeleton-glow_2.8s_ease-in-out_infinite]" : ""
+            active
+              ? "animate-[text-node-skeleton-width_2.4s_ease-in-out_infinite,text-node-skeleton-glow_2.8s_ease-in-out_infinite]"
+              : ""
           }`}
           style={{ animationDelay: `${index * 140}ms` }}
         >
@@ -110,6 +146,56 @@ function isPointerOnVerticalScrollbar(event: React.PointerEvent<HTMLElement>) {
   return event.clientX >= rect.right - scrollbarWidth - 2;
 }
 
+function ReferencePreviewCard({
+  index,
+  reference,
+}: {
+  index: number;
+  reference: TextNodeReferenceItem;
+}) {
+  const isImageReference = reference.kind === "image";
+  return (
+    <div
+      className={`relative shrink-0 overflow-hidden rounded-[14px] border border-white/8 bg-white/[0.03] ${
+        isImageReference ? "h-14 w-14" : "h-14 min-w-[128px] max-w-[180px] px-3 py-2"
+      }`}
+    >
+      {isImageReference ? (
+        <img
+          src={reference.value}
+          alt={`reference ${index + 1}`}
+          className="h-full w-full object-cover"
+          draggable={false}
+        />
+      ) : (
+        <div className="flex h-full min-w-0 items-center gap-2">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] border border-white/8 bg-white/[0.04] text-violet-100/70">
+            {reference.kind === "video" ? (
+              <Clapperboard className="h-4 w-4" />
+            ) : reference.kind === "audio" ? (
+              <Music4 className="h-4 w-4" />
+            ) : (
+              <FileText className="h-4 w-4" />
+            )}
+          </div>
+          <div className="min-w-0">
+            <div className="truncate text-[12px] font-semibold text-slate-100/82">
+              {reference.title}
+            </div>
+            <div className="mt-0.5 line-clamp-1 text-[11px] text-slate-400/62">
+              {reference.value}
+            </div>
+          </div>
+        </div>
+      )}
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.08),transparent_38%)]" />
+      <div className="pointer-events-none absolute right-1 top-1 flex h-5 min-w-[20px] items-center justify-center rounded-full border border-black/18 bg-[#0b1018]/82 px-1.5 text-[10px] font-semibold tracking-tight text-white shadow-[0_6px_16px_-10px_rgba(0,0,0,0.9)]">
+        {index + 1}
+      </div>
+    </div>
+  );
+}
+
 function TextNodeCardImpl({
   node,
   selected,
@@ -119,13 +205,15 @@ function TextNodeCardImpl({
   onDuplicate: _onDuplicate,
   onDragStart,
   onUpdateProperty,
-  onUpdateData,
+  onUpdateData: _onUpdateData,
   onPreview,
   onReverseSegmentAnalysis,
   resolvedInputs,
-  referenceImageUrls = [],
+  references = [],
+  hasConnectedLinks = false,
   onRun,
   onCreateImagePromptStarter,
+  onCreateTextStarterFlow,
   isLinkingOnCanvas,
   linkFromNodeId,
   linkFromOutputIndex,
@@ -139,7 +227,9 @@ function TextNodeCardImpl({
 }: TextNodeCardProps) {
   const deepseekTextModels = PROVIDER_PRESETS.deepseek.models;
   const minimaxMultimodalModels = ["MiniMax-M3"];
-  const starterActions = React.useMemo(
+  const starterActions = React.useMemo<
+    Array<{ icon: typeof SquarePen; label: string; action: StarterAction }>
+  >(
     () => [
       { icon: SquarePen, label: "自己编写内容", action: "write" },
       { icon: Clapperboard, label: "文生视频", action: "video" },
@@ -154,48 +244,98 @@ function TextNodeCardImpl({
   const [isReversingSegments, setIsReversingSegments] = React.useState(false);
   const [outputMenuPos, setOutputMenuPos] = React.useState<{ x: number; y: number } | null>(null);
   const [modelMenuOpen, setModelMenuOpen] = React.useState(false);
+  const [forceComposerOpen, setForceComposerOpen] = React.useState(false);
+  const textareaRef = React.useRef<HTMLTextAreaElement | null>(null);
+  const inlineTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
   const inputPortRef = React.useRef<HTMLDivElement | null>(null);
   const outputPortRef = React.useRef<HTMLDivElement | null>(null);
   const modelMenuRef = React.useRef<HTMLDivElement | null>(null);
+  const [inlineEditing, setInlineEditing] = React.useState(false);
   const [portMagnet, setPortMagnet] = React.useState({
     input: { x: 0, y: 0 },
     output: { x: 0, y: 0 },
   });
 
-  const upstreamPrompt = findResolvedStringInput(resolvedInputs, ["prompt", "user_prompt", "text", "原始提示词", "用户提示词"]);
+  const upstreamPrompt = findResolvedStringInput(resolvedInputs, [
+    "prompt",
+    "user_prompt",
+    "text",
+    "原始提示词",
+    "用户提示词",
+  ]);
   const upstreamImageInput =
     upstreamPrompt && looksLikeImageAsset(upstreamPrompt.value) ? upstreamPrompt : null;
-  const composerReferenceImages = React.useMemo(() => {
-    const merged = [...referenceImageUrls];
-    if (upstreamImageInput?.value && !merged.includes(upstreamImageInput.value)) {
-      merged.unshift(upstreamImageInput.value);
+  const composerReferences = React.useMemo<TextNodeReferenceItem[]>(() => {
+    const merged = [...references];
+    if (
+      upstreamImageInput?.value &&
+      !merged.some((reference) => reference.value === upstreamImageInput.value)
+    ) {
+      merged.unshift({
+        id: `${node.id}-inline-image-reference`,
+        kind: "image",
+        label: "Image",
+        title: "上游图片",
+        value: upstreamImageInput.value,
+      });
     }
     return merged;
-  }, [referenceImageUrls, upstreamImageInput]);
+  }, [node.id, references, upstreamImageInput]);
   const upstreamTextPrompt = upstreamImageInput ? null : upstreamPrompt;
 
-  const promptText = upstreamTextPrompt?.value || (node.properties.text as string) || "";
-  const rawResponseText = (node.data?.response as string) || (node.properties.response as string) || "";
+  const promptText = (node.properties.text as string) || "";
+  const displayPromptText = promptText || upstreamTextPrompt?.value || "";
+  const canRunPrompt = Boolean(
+    promptText.trim() || upstreamTextPrompt?.value.trim() || upstreamImageInput?.value.trim()
+  );
+  const rawResponseText =
+    (node.data?.response as string) || (node.properties.response as string) || "";
   const responseText = stripReasoningBlocks(rawResponseText);
   const errorText = typeof node.data?.error === "string" ? node.data.error : "";
+  const composerReferenceImages = composerReferences.filter((reference) => reference.kind === "image");
   const isMultimodalMode = composerReferenceImages.length > 0;
-  const showStarterGuide = !isMultimodalMode && !Boolean(responseText) && !Boolean(errorText);
+  const interactionState = getTextNodeInteractionState({
+    errorText,
+    forceComposerOpen,
+    hasConnectedLinks,
+    hasReferences: composerReferences.length > 0,
+    inlineEditing,
+    isHovered,
+    isMultimodalMode,
+    responseText,
+    selected,
+    textMode: node.properties.textMode,
+  });
+  const { isPlainMode, showInlineEditor, showPromptComposer, showSkeleton, showStarterGuide } =
+    interactionState;
+  const hasInputPorts = node.inputs.length > 0;
+  const inputPortIndex = Math.max(
+    0,
+    node.inputs.findIndex((input) => input.name === "user_prompt")
+  );
   const modelOptions = isMultimodalMode ? minimaxMultimodalModels : deepseekTextModels;
   const providerLabel = isMultimodalMode ? "MiniMax" : "DeepSeek";
   const rawPreferredProviderModel = isMultimodalMode
     ? apiConfig?.providerModels?.minimax || minimaxMultimodalModels[0]
     : apiConfig?.providerModels?.deepseek || deepseekTextModels[0];
-  const preferredProviderModel = modelOptions.includes(rawPreferredProviderModel) ? rawPreferredProviderModel : modelOptions[0];
+  const preferredProviderModel = modelOptions.includes(rawPreferredProviderModel)
+    ? rawPreferredProviderModel
+    : modelOptions[0];
   const currentModel =
     typeof node.properties.model === "string" && modelOptions.includes(node.properties.model)
       ? node.properties.model
       : preferredProviderModel;
-  const viewState = getTextNodeViewState({ errorText, isRunning, promptText, responseText });
+  const viewState = getTextNodeViewState({
+    errorText,
+    isRunning,
+    promptText: displayPromptText,
+    responseText,
+  });
+  const contentViewKey = interactionState.contentViewKey || viewState.kind;
   const nodeBadgeTitle = node.title === "文本" ? "文本节点 1" : node.title;
   const nodeBadgeMatch = nodeBadgeTitle.match(/^(.*?)(\s+\d+)$/);
   const showPortHandles = shouldShowInlinePortHandles({ isHovered, isLinkingOnCanvas, selected });
-  const hasCompactContent = Boolean(responseText || errorText);
-  const showPromptComposer = isHovered || selected;
+  const hasCompactContent = Boolean(responseText || errorText || isPlainMode);
   const canReverseSegments =
     node.properties.isFullVideoAnalysisText === true &&
     typeof node.properties.frameAnalysisVideoUrl === "string" &&
@@ -205,6 +345,34 @@ function TextNodeCardImpl({
   const handleRun = () => {
     if (isRunning) return;
     onRun?.(node.id);
+  };
+
+  const focusComposer = () => {
+    setForceComposerOpen(true);
+    window.requestAnimationFrame(() => textareaRef.current?.focus());
+  };
+
+  const handleStarterAction = (action: StarterAction) => {
+    if (action === "write") {
+      onUpdateProperty?.(node.id, "textMode", "plain");
+      setForceComposerOpen(false);
+      setInlineEditing(true);
+      window.requestAnimationFrame(() => inlineTextareaRef.current?.focus());
+      return;
+    }
+    if (action === "image-prompt") {
+      onCreateImagePromptStarter?.(node.id);
+      focusComposer();
+      return;
+    }
+    onCreateTextStarterFlow?.(node.id, action);
+    focusComposer();
+  };
+
+  const enterInlineEditMode = () => {
+    if (!isPlainMode || upstreamTextPrompt) return;
+    setInlineEditing(true);
+    window.requestAnimationFrame(() => inlineTextareaRef.current?.focus());
   };
 
   const handleCopy = (e: React.MouseEvent) => {
@@ -268,6 +436,17 @@ function TextNodeCardImpl({
   }, [currentModel, node.id, node.properties.model, onUpdateProperty]);
 
   React.useEffect(() => {
+    if (!selected) {
+      setForceComposerOpen(false);
+      setInlineEditing(false);
+    }
+  }, [selected]);
+
+  React.useEffect(() => {
+    if (showInlineEditor) inlineTextareaRef.current?.focus();
+  }, [showInlineEditor]);
+
+  React.useEffect(() => {
     if (!modelMenuOpen) return;
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target as Node | null;
@@ -298,7 +477,8 @@ function TextNodeCardImpl({
       const dy = event.clientY - centerY;
       const sideZoneX = Math.abs(dx) <= 112;
       const sideZoneY = Math.abs(dy) <= 92;
-      const distance = sideZoneX && sideZoneY ? Math.abs(dx) * 0.45 + Math.abs(dy) * 0.25 : Math.hypot(dx, dy);
+      const distance =
+        sideZoneX && sideZoneY ? Math.abs(dx) * 0.45 + Math.abs(dy) * 0.25 : Math.hypot(dx, dy);
       if (distance > radius) return { x: 0, y: 0 };
       const strength = 1 - distance / radius;
       return {
@@ -337,7 +517,10 @@ function TextNodeCardImpl({
           }
 
           const target = e.target as HTMLElement;
-          if (!target.closest("[data-node-action='true']") && !target.closest("textarea,button,input,.ant-select")) {
+          if (
+            !target.closest("[data-node-action='true']") &&
+            !target.closest("textarea,button,input,.ant-select")
+          ) {
             onDragStart(e, node);
           } else {
             e.stopPropagation();
@@ -346,6 +529,17 @@ function TextNodeCardImpl({
         onClick={(e) => {
           e.stopPropagation();
           onSelect(e);
+        }}
+        onDoubleClick={(e) => {
+          const target = e.target as HTMLElement;
+          if (
+            target.closest("[data-node-action='true']") ||
+            target.closest("textarea,button,input,.ant-select")
+          )
+            return;
+          e.stopPropagation();
+          onSelect(e);
+          enterInlineEditMode();
         }}
         onContextMenu={handleOutputContextMenu}
         className={`group node-card relative rounded-[18px] border bg-[#121723]/88 shadow-[0_28px_80px_-26px_rgba(0,0,0,0.92),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl transition-all duration-300 cursor-grab active:cursor-grabbing ${
@@ -393,7 +587,11 @@ function TextNodeCardImpl({
                     }`}
                     title="反推分段分析"
                   >
-                    {isReversingSegments ? <Loader2 className="h-5 w-5 animate-spin" /> : <Wand2 className="h-5 w-5" />}
+                    {isReversingSegments ? (
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                    ) : (
+                      <Wand2 className="h-5 w-5" />
+                    )}
                   </button>
                 </>
               )}
@@ -408,46 +606,51 @@ function TextNodeCardImpl({
           </div>
         )}
         {/* Hover side icons */}
-        <div
-          className="absolute -left-11 top-1/2 z-10 -translate-y-1/2"
-          onMouseEnter={() => setIsHovered(true)}
-        >
-          <motion.div
-            ref={inputPortRef}
-            role="button"
-            tabIndex={-1}
-            data-node-action="true"
-            data-port-role="input"
-            data-node-id={node.id}
-            data-port-index={0}
-            animate={{
-              opacity: showPortHandles ? 1 : 0,
-              scale: showPortHandles ? 1 : 0.72,
-              x: portMagnet.input.x,
-              y: portMagnet.input.y,
-            }}
-            transition={{ duration: 0.18, ease: "easeOut" }}
-            className={`canvas-port-handle flex h-9 w-9 items-center justify-center rounded-full border transition-all duration-200 hover:scale-110 will-change-transform ${
-              isLinkingOnCanvas && linkToNodeId === node.id && linkToInputIndex === 0
-                ? "canvas-port-input canvas-port-hot scale-110"
-                : "canvas-port-input"
-            }`}
-            onPointerEnter={() => onHoverCanvasLinkTarget?.(node.id, 0)}
-            onPointerLeave={() => onLeaveCanvasLinkTarget?.(node.id, 0)}
-            onPointerUp={(e) => {
-              e.stopPropagation();
-              e.preventDefault();
-              onFinishCanvasLink?.(node.id, 0);
-            }}
-            onClick={(e) => {
-              e.stopPropagation();
-              e.preventDefault();
-            }}
-            title={getCanvasLinkTargetIssue?.(node.id, 0) || "输入端口: 点击此处完成连线"}
+        {hasInputPorts && (
+          <div
+            className="absolute -left-11 top-1/2 z-10 -translate-y-1/2"
+            onMouseEnter={() => setIsHovered(true)}
           >
-            <Plus className="h-4 w-4 pointer-events-none" />
-          </motion.div>
-        </div>
+            <motion.div
+              ref={inputPortRef}
+              role="button"
+              tabIndex={-1}
+              data-node-action="true"
+              data-port-role="input"
+              data-node-id={node.id}
+              data-port-index={inputPortIndex}
+              animate={{
+                opacity: showPortHandles ? 1 : 0,
+                scale: showPortHandles ? 1 : 0.72,
+                x: portMagnet.input.x,
+                y: portMagnet.input.y,
+              }}
+              transition={{ duration: 0.18, ease: "easeOut" }}
+              className={`canvas-port-handle flex h-9 w-9 items-center justify-center rounded-full border transition-all duration-200 hover:scale-110 will-change-transform ${
+                isLinkingOnCanvas && linkToNodeId === node.id && linkToInputIndex === inputPortIndex
+                  ? "canvas-port-input canvas-port-hot scale-110"
+                  : "canvas-port-input"
+              }`}
+              onPointerEnter={() => onHoverCanvasLinkTarget?.(node.id, inputPortIndex)}
+              onPointerLeave={() => onLeaveCanvasLinkTarget?.(node.id, inputPortIndex)}
+              onPointerUp={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                onFinishCanvasLink?.(node.id, inputPortIndex);
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+              }}
+              title={
+                getCanvasLinkTargetIssue?.(node.id, inputPortIndex) ||
+                "输入端口: 点击此处完成连线"
+              }
+            >
+              <Plus className="h-4 w-4 pointer-events-none" />
+            </motion.div>
+          </div>
+        )}
         <div
           className="absolute -right-11 top-1/2 z-10 -translate-y-1/2"
           onMouseEnter={() => setIsHovered(true)}
@@ -521,7 +724,11 @@ function TextNodeCardImpl({
                     onClick={handleCopy}
                     className="flex h-9 w-full items-center gap-2.5 rounded-xl px-3 text-left text-[13px] font-medium text-slate-200/82 transition-colors hover:bg-cyan-100/8 hover:text-cyan-50"
                   >
-                    {copied ? <Check className="h-4 w-4 text-emerald-300" /> : <Copy className="h-4 w-4 text-cyan-100/58" />}
+                    {copied ? (
+                      <Check className="h-4 w-4 text-emerald-300" />
+                    ) : (
+                      <Copy className="h-4 w-4 text-cyan-100/58" />
+                    )}
                     <span>{copied ? "已复制" : "复制内容"}</span>
                   </button>
                   <button
@@ -538,10 +745,12 @@ function TextNodeCardImpl({
             document.body
           )}
 
-        <div className={`relative flex min-h-[290px] flex-col ${hasCompactContent ? "px-5 py-5" : "px-5 pb-5 pt-5"}`}>
+        <div
+          className={`relative flex min-h-[290px] flex-col ${hasCompactContent ? "px-5 py-5" : "px-5 pb-5 pt-5"}`}
+        >
           <AnimatePresence mode="wait">
             <motion.div
-              key={viewState.kind}
+              key={contentViewKey}
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
@@ -552,7 +761,9 @@ function TextNodeCardImpl({
                   hasCompactContent ? "justify-start" : "justify-center rounded-[14px] px-4 py-3"
                 }`}
               >
-                <div className={`relative flex flex-1 ${hasCompactContent ? "items-start" : "items-center"}`}>
+                <div
+                  className={`relative flex flex-1 ${hasCompactContent ? "items-start" : "items-center"}`}
+                >
                   {viewState.kind === "error" ? (
                     <div className="flex items-start gap-3 text-[13px] leading-6 text-amber-100/86">
                       <AlertTriangle className="mt-1 h-4 w-4 shrink-0 text-amber-200" />
@@ -569,6 +780,45 @@ function TextNodeCardImpl({
                     >
                       <div className="whitespace-pre-wrap">{renderMarkdown(responseText)}</div>
                     </div>
+                  ) : showInlineEditor ? (
+                    <textarea
+                      ref={inlineTextareaRef}
+                      data-node-action="true"
+                      value={promptText}
+                      onChange={(e) => onUpdateProperty?.(node.id, "text", e.target.value)}
+                      onBlur={() => setInlineEditing(false)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Escape") {
+                          event.preventDefault();
+                          setInlineEditing(false);
+                        }
+                      }}
+                      placeholder="直接写下文本内容，完成后点击空白处退出编辑。"
+                      className="custom-scrollbar min-h-[210px] w-full resize-none bg-transparent text-[15px] leading-7 text-slate-100/88 outline-none placeholder:text-slate-400/38"
+                    />
+                  ) : isPlainMode ? (
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onDoubleClick={(event) => {
+                        event.stopPropagation();
+                        enterInlineEditMode();
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key !== "Enter") return;
+                        event.preventDefault();
+                        enterInlineEditMode();
+                      }}
+                      className="custom-scrollbar min-h-[210px] w-full overflow-y-auto pr-2 text-[15px] leading-7 text-slate-100/82 outline-none"
+                    >
+                      {displayPromptText.trim() ? (
+                        <div className="whitespace-pre-wrap">{displayPromptText}</div>
+                      ) : (
+                        <div className="flex h-full min-h-[210px] items-center justify-center text-[14px] text-slate-400/38">
+                          双击输入文本内容
+                        </div>
+                      )}
+                    </div>
                   ) : showStarterGuide ? (
                     <div className="flex min-h-[166px] w-full flex-col justify-between px-0.5 py-0.5">
                       <div className="flex justify-center pt-3">
@@ -577,7 +827,9 @@ function TextNodeCardImpl({
                         </div>
                       </div>
                       <div className="pb-0.5">
-                        <div className="mb-1.5 text-[12px] font-medium tracking-tight text-slate-300/42">尝试：</div>
+                        <div className="mb-1.5 text-[12px] font-medium tracking-tight text-slate-300/42">
+                          尝试：
+                        </div>
                         <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
                           {starterActions.map(({ icon: Icon, label, action }) => (
                             <div
@@ -587,13 +839,13 @@ function TextNodeCardImpl({
                               onPointerDown={(event) => event.stopPropagation()}
                               onClick={(event) => {
                                 event.stopPropagation();
-                                if (action === "image-prompt") onCreateImagePromptStarter?.(node.id);
+                                handleStarterAction(action);
                               }}
                               onKeyDown={(event) => {
                                 if (event.key !== "Enter" && event.key !== " ") return;
                                 event.preventDefault();
                                 event.stopPropagation();
-                                if (action === "image-prompt") onCreateImagePromptStarter?.(node.id);
+                                handleStarterAction(action);
                               }}
                               className="group relative flex min-w-0 cursor-pointer items-center gap-1.5 rounded-[10px] border border-transparent px-2 py-1.5 text-slate-100/82 transition-all duration-200 hover:-translate-y-0.5 hover:border-violet-300/18 hover:bg-violet-400/[0.075] hover:shadow-[0_12px_28px_-22px_rgba(139,92,246,0.8),inset_0_1px_0_rgba(255,255,255,0.05)]"
                             >
@@ -607,19 +859,19 @@ function TextNodeCardImpl({
                         </div>
                       </div>
                     </div>
-                  ) : isMultimodalMode ? (
+                  ) : showSkeleton && isMultimodalMode ? (
                     <div className="flex min-h-[166px] w-full flex-1 items-center justify-center">
                       <div className="w-[112px]">
                         <TextSkeleton active={isRunning} />
                       </div>
                     </div>
-                  ) : (
+                  ) : showSkeleton ? (
                     <div className="flex w-full justify-center">
                       <div className="w-[112px]">
-                      <TextSkeleton active={isRunning} />
+                        <TextSkeleton active={isRunning} />
                       </div>
                     </div>
-                  )}
+                  ) : null}
                 </div>
               </div>
             </motion.div>
@@ -628,11 +880,11 @@ function TextNodeCardImpl({
       </motion.div>
 
       <AnimatePresence>
-         {showPromptComposer && (
-           <motion.div
-             initial={{ opacity: 0, y: -10 }}
-             animate={{ opacity: 1, y: 0 }}
-             exit={{ opacity: 0, y: -10 }}
+        {showPromptComposer && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
             data-node-action="true"
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => {
@@ -642,47 +894,37 @@ function TextNodeCardImpl({
             className="relative node-card left-1/2 mt-5 w-[430px] -translate-x-1/2 overflow-hidden rounded-[18px] border border-[#2b3142]/90 bg-[#121723]/88 px-5 pb-3 pt-4 shadow-[0_28px_70px_-26px_rgba(0,0,0,0.92),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl"
           >
             <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-slate-100/22 to-transparent" />
-            {composerReferenceImages.length > 0 && (
+            {composerReferences.length > 0 && (
               <div className="mb-3 rounded-2xl border border-white/6 bg-[#0d1117]/46 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
                 <div className="mb-2 flex items-center justify-between">
-                  <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-violet-200/54">Reference Images</div>
+                  <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-violet-200/54">
+                    References
+                  </div>
                   <div className="rounded-full border border-white/8 bg-white/[0.04] px-2 py-0.5 text-[11px] font-medium text-slate-200/68">
-                    {composerReferenceImages.length} 张
+                    {composerReferences.length}
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                {composerReferenceImages.map((imageUrl, index) => (
-                  <div
-                    key={`${imageUrl}-${index}`}
-                    className="relative h-14 w-14 shrink-0 overflow-hidden rounded-[14px] border border-white/8 bg-white/[0.03]"
-                  >
-                    <img
-                      src={imageUrl}
-                      alt={`参考图 ${index + 1}`}
-                      className="h-full w-full object-cover"
-                      draggable={false}
-                    />
-                    <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.08),transparent_38%)]" />
-                    <div className="pointer-events-none absolute right-1 top-1 flex h-5 min-w-[20px] items-center justify-center rounded-full border border-black/18 bg-[#0b1018]/82 px-1.5 text-[10px] font-semibold tracking-tight text-white shadow-[0_6px_16px_-10px_rgba(0,0,0,0.9)]">
-                      {index + 1}
-                    </div>
-                  </div>
-                ))}
+                  {composerReferences.map((reference, index) => (
+                    <React.Fragment key={`${reference.id}-${reference.value}-${index}`}>
+                      <ReferencePreviewCard reference={reference} index={index} />
+                    </React.Fragment>
+                  ))}
                 </div>
               </div>
             )}
             <textarea
-              value={upstreamTextPrompt ? "" : promptText}
+              ref={textareaRef}
+              value={promptText}
               onChange={(e) => onUpdateProperty?.(node.id, "text", e.target.value)}
-              disabled={!!upstreamTextPrompt}
               placeholder={
                 upstreamTextPrompt
-                  ? `已由上游节点 (${upstreamTextPrompt.key}) 提供输入`
+                  ? "输入你想如何处理上游内容，例如：总结、改写或回答它。"
                   : upstreamImageInput
                     ? "根据图片生成结构化中文提示词，包括主体描述、环境、光影、镜头语言与风格关键词。"
-                  : "写下你想讲的故事、场景或角色设定。例如：一个来自未来的机器人，在城市屋顶看着星星。"
+                    : "写下你想讲的故事、场景或角色设定。例如：一个来自未来的机器人，在城市屋顶看着星星。"
               }
-              className="relative h-[88px] w-full resize-none bg-transparent text-[15px] leading-7 text-slate-100/88 outline-none placeholder:text-slate-400/42 disabled:cursor-not-allowed disabled:text-slate-400/45 custom-scrollbar"
+              className="relative h-[88px] w-full resize-none bg-transparent text-[15px] leading-7 text-slate-100/88 outline-none placeholder:text-slate-400/42 custom-scrollbar"
             />
             <div className="relative mt-3 flex items-center gap-3 border-t border-slate-200/8 pt-3">
               <div className="min-w-0 flex-1">
@@ -697,7 +939,9 @@ function TextNodeCardImpl({
                     }}
                     className="flex h-9 w-full items-center gap-2 rounded-xl border border-slate-200/10 bg-[#0d1117]/42 px-3 text-[13px] font-medium text-slate-100/76 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] transition-colors hover:border-slate-200/16 hover:bg-[#101723]/64"
                   >
-                    <Cpu className={`h-3.5 w-3.5 ${isMultimodalMode ? "text-violet-200/56" : "text-slate-200/42"}`} />
+                    <Cpu
+                      className={`h-3.5 w-3.5 ${isMultimodalMode ? "text-violet-200/56" : "text-slate-200/42"}`}
+                    />
                     <span>{providerLabel}</span>
                     <span className="truncate text-slate-300/54">{currentModel}</span>
                     <span
@@ -709,7 +953,9 @@ function TextNodeCardImpl({
                     >
                       {isMultimodalMode ? "multi" : "text"}
                     </span>
-                    <ChevronDown className={`h-3.5 w-3.5 text-slate-300/56 transition-transform ${modelMenuOpen ? "rotate-180" : ""}`} />
+                    <ChevronDown
+                      className={`h-3.5 w-3.5 text-slate-300/56 transition-transform ${modelMenuOpen ? "rotate-180" : ""}`}
+                    />
                   </button>
                   <AnimatePresence>
                     {modelMenuOpen && (
@@ -757,14 +1003,18 @@ function TextNodeCardImpl({
                   e.stopPropagation();
                   handleRun();
                 }}
-                disabled={isRunning || (!upstreamTextPrompt && !promptText.trim())}
+                disabled={isRunning || !canRunPrompt}
                 className={`flex h-10 w-10 items-center justify-center rounded-[12px] transition-all ${
-                  isRunning || (!upstreamTextPrompt && !promptText.trim())
+                  isRunning || !canRunPrompt
                     ? "bg-slate-200/8 text-slate-200/28 cursor-not-allowed"
                     : "bg-slate-100 text-[#111827] shadow-[0_12px_28px_-16px_rgba(226,232,240,0.8)] hover:bg-white"
                 }`}
               >
-                {isRunning ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}
+                {isRunning ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <ArrowUp className="h-4 w-4" />
+                )}
               </button>
             </div>
           </motion.div>
@@ -774,6 +1024,9 @@ function TextNodeCardImpl({
   );
 }
 
-const TextNodeCard = React.memo(TextNodeCardImpl, (prev, next) => prev.node === next.node && prev.selected === next.selected);
+const TextNodeCard = React.memo(
+  TextNodeCardImpl,
+  (prev, next) => prev.node === next.node && prev.selected === next.selected
+);
 
 export default TextNodeCard;

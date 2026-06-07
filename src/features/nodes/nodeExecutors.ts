@@ -1,4 +1,5 @@
 import { NodeClass } from "../../types";
+import { uploadFileToOss } from "../resource/ossApi";
 
 export interface ExecutorContext {
   inputs: Record<string, unknown>;
@@ -57,6 +58,53 @@ export function normalizeApiKey(apiKey: string): string {
   return apiKey.trim();
 }
 
+function hexToUint8Array(hex: string): Uint8Array {
+  const normalized = hex.trim();
+  if (!normalized || normalized.length % 2 !== 0 || !/^(?:[0-9a-f]{2})+$/i.test(normalized)) {
+    throw new Error("音频数据格式异常，无法解析为可播放文件");
+  }
+
+  const bytes = new Uint8Array(normalized.length / 2);
+  for (let index = 0; index < normalized.length; index += 2) {
+    bytes[index / 2] = Number.parseInt(normalized.slice(index, index + 2), 16);
+  }
+  return bytes;
+}
+
+function guessAudioExtension(contentType: string, fallback = "mp3"): string {
+  const normalized = contentType.trim().toLowerCase();
+  if (normalized.includes("wav")) return "wav";
+  if (normalized.includes("flac")) return "flac";
+  if (normalized.includes("aac")) return "aac";
+  if (normalized.includes("pcm")) return "pcm";
+  if (normalized.includes("mpeg") || normalized.includes("mp3")) return "mp3";
+  return fallback;
+}
+
+async function resolveMiniMaxAudioUrlFromResponse(data: any): Promise<string> {
+  const directUrl = typeof data?.audioUrl === "string" ? data.audioUrl.trim() : "";
+  if (directUrl) return directUrl;
+
+  const audioHex = typeof data?.audioHex === "string" ? data.audioHex.trim() : "";
+  if (!audioHex) return "";
+
+  const contentType =
+    typeof data?.contentType === "string" && data.contentType.trim()
+      ? data.contentType.trim()
+      : "audio/mpeg";
+  const fallbackExtension =
+    typeof data?.metadata?.format === "string" && data.metadata.format.trim()
+      ? data.metadata.format.trim().toLowerCase()
+      : "mp3";
+  const fileName =
+    typeof data?.fileName === "string" && data.fileName.trim()
+      ? data.fileName.trim()
+      : `minimax-audio-${Date.now()}.${guessAudioExtension(contentType, fallbackExtension)}`;
+  const audioFile = new File([hexToUint8Array(audioHex)], fileName, { type: contentType });
+  const uploaded = await uploadFileToOss(audioFile);
+  return uploaded.url;
+}
+
 export function assertApiKey(apiKey: string, providerLabel: string): string {
   const normalizedApiKey = normalizeApiKey(apiKey);
   if (!normalizedApiKey) {
@@ -75,9 +123,9 @@ async function callGeminiProxy(
     credentials: "include",
     headers: {
       "Content-Type": "application/json",
-      ...(normalizedApiKey ? { "X-Api-Key": normalizedApiKey } : {})
+      ...(normalizedApiKey ? { "X-Api-Key": normalizedApiKey } : {}),
     },
-    body: JSON.stringify(body)
+    body: JSON.stringify(body),
   });
   if (!r.ok) {
     const errText = await r.text().catch(() => "");
@@ -124,7 +172,9 @@ async function callOpenAICompatible(
   }
   messages.push({ role: "user", content: contents });
   const controller = new AbortController();
-  const timer = cfg.timeout ? window.setTimeout(() => controller.abort(), cfg.timeout * 1000) : null;
+  const timer = cfg.timeout
+    ? window.setTimeout(() => controller.abort(), cfg.timeout * 1000)
+    : null;
   try {
     const resp = await fetch(url, {
       method: "POST",
@@ -155,13 +205,34 @@ async function callOpenAICompatible(
   }
 }
 
-function pickString(inputs: Record<string, unknown>, properties: Record<string, unknown>, ...keys: string[]): string {
+function pickString(
+  inputs: Record<string, unknown>,
+  properties: Record<string, unknown>,
+  ...keys: string[]
+): string {
   for (const k of keys) {
     if (typeof inputs[k] === "string" && (inputs[k] as string).trim()) return inputs[k] as string;
-    if (typeof properties[k] === "string" && (properties[k] as string).trim()) return properties[k] as string;
+    if (typeof properties[k] === "string" && (properties[k] as string).trim())
+      return properties[k] as string;
   }
   const fallback = (properties.text as string) ?? "";
   return fallback;
+}
+
+function pickOptionalString(
+  inputs: Record<string, unknown>,
+  properties: Record<string, unknown>,
+  ...keys: string[]
+): string {
+  for (const key of keys) {
+    if (typeof inputs[key] === "string" && (inputs[key] as string).trim()) {
+      return inputs[key] as string;
+    }
+    if (typeof properties[key] === "string" && (properties[key] as string).trim()) {
+      return properties[key] as string;
+    }
+  }
+  return "";
 }
 
 function normalizeStringArray(value: unknown): string[] {
@@ -173,31 +244,8 @@ function isHttpMediaUrl(value: string) {
   return /^https?:\/\//i.test(value.trim());
 }
 
-function isBase64DataUrl(value: string) {
-  return /^data:[^;,]+;base64,/i.test(value.trim());
-}
-
 function isSvgDataUrl(value: string) {
   return /^data:image\/svg\+xml/i.test(value.trim());
-}
-
-function encodeBase64(binary: string): string {
-  if (typeof btoa === "function") return btoa(binary);
-  if (typeof Buffer !== "undefined") return Buffer.from(binary, "binary").toString("base64");
-  throw new Error("Base64 encoding is not supported in this environment");
-}
-
-async function blobToDataUrl(blob: Blob): Promise<string> {
-  const buffer = await blob.arrayBuffer();
-  let binary = "";
-  const bytes = new Uint8Array(buffer);
-  const chunkSize = 0x8000;
-  for (let index = 0; index < bytes.length; index += chunkSize) {
-    const chunk = bytes.subarray(index, index + chunkSize);
-    binary += String.fromCharCode(...chunk);
-  }
-  const mime = blob.type || "application/octet-stream";
-  return `data:${mime};base64,${encodeBase64(binary)}`;
 }
 
 async function normalizeVisionReferenceUrl(url: string): Promise<string> {
@@ -206,15 +254,9 @@ async function normalizeVisionReferenceUrl(url: string): Promise<string> {
   if (isSvgDataUrl(normalized)) {
     return "";
   }
-  if (isHttpMediaUrl(normalized) || isBase64DataUrl(normalized)) return normalized;
-  if (!normalized.startsWith("blob:") && !normalized.startsWith("data:")) return normalized;
+  if (isHttpMediaUrl(normalized)) return normalized;
 
-  const response = await fetch(normalized);
-  if (!response.ok) {
-    throw new Error(`Failed to prepare reference media (${response.status})`);
-  }
-  const blob = await response.blob();
-  return blobToDataUrl(blob);
+  throw new Error("请先上传到 OSS 后再用于节点生成或分析");
 }
 
 function stringifyPromptValue(value: unknown): string {
@@ -246,20 +288,43 @@ function looksLikeImagePromptValue(value: string): boolean {
   );
 }
 
-function pickPromptLike(inputs: Record<string, unknown>, properties: Record<string, unknown>, ...keys: string[]): string {
-  for (const k of keys) {
-    const inputValue = stringifyPromptValue(inputs[k]);
+function pickInputPromptLike(inputs: Record<string, unknown>, ...keys: string[]): string {
+  for (const key of keys) {
+    const inputValue = stringifyPromptValue(inputs[key]);
     if (inputValue.trim() && !looksLikeImagePromptValue(inputValue)) return inputValue;
+  }
+  return "";
+}
 
-    const propertyValue = stringifyPromptValue(properties[k]);
+function pickPropertyPromptLike(properties: Record<string, unknown>, ...keys: string[]): string {
+  for (const key of keys) {
+    const propertyValue = stringifyPromptValue(properties[key]);
     if (propertyValue.trim()) return propertyValue;
   }
-
   return stringifyPromptValue(properties.text);
 }
 
-function pickNumber(inputs: Record<string, unknown>, properties: Record<string, unknown>, key: string): number | undefined {
-  if (typeof inputs[key] === "number" && Number.isFinite(inputs[key] as number)) return inputs[key] as number;
+function composePromptLike(
+  inputs: Record<string, unknown>,
+  properties: Record<string, unknown>,
+  ...keys: string[]
+): string {
+  const inputPrompt = pickInputPromptLike(inputs, ...keys).trim();
+  const propertyPrompt = pickPropertyPromptLike(properties, ...keys).trim();
+
+  if (inputPrompt && propertyPrompt && inputPrompt !== propertyPrompt) {
+    return `${propertyPrompt}\n\nUpstream input content:\n${inputPrompt}`;
+  }
+  return inputPrompt || propertyPrompt;
+}
+
+function pickNumber(
+  inputs: Record<string, unknown>,
+  properties: Record<string, unknown>,
+  key: string
+): number | undefined {
+  if (typeof inputs[key] === "number" && Number.isFinite(inputs[key] as number))
+    return inputs[key] as number;
   const raw = (properties as any)[key];
   if (typeof raw === "number" && Number.isFinite(raw)) return raw;
   return undefined;
@@ -281,7 +346,7 @@ function buildTextToImageUrl(prompt: string, aspect: string): string {
     "4:3": "landscape_4_3",
     "3:2": "landscape_4_3",
     "5:4": "landscape_4_3",
-    "21:9": "landscape_16_9"
+    "21:9": "landscape_16_9",
   };
   const size = map[aspect] || "square_hd";
   return `https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=${encodeURIComponent(prompt)}&image_size=${size}`;
@@ -357,7 +422,10 @@ async function callMiniMaxTextToImage(
       n,
       prompt_optimizer: properties.prompt_optimizer === true,
       base_url: minimaxBaseUrl,
-      seed: typeof properties.seed === "number" && Number.isFinite(properties.seed) ? properties.seed : undefined,
+      seed:
+        typeof properties.seed === "number" && Number.isFinite(properties.seed)
+          ? properties.seed
+          : undefined,
     }),
   });
 
@@ -366,7 +434,9 @@ async function callMiniMaxTextToImage(
     throw new Error(data?.error || `MiniMax 生图失败 (${response.status})`);
   }
 
-  const imageUrls = Array.isArray(data?.imageUrls) ? data.imageUrls.filter((url: unknown) => typeof url === "string" && url) : [];
+  const imageUrls = Array.isArray(data?.imageUrls)
+    ? data.imageUrls.filter((url: unknown) => typeof url === "string" && url)
+    : [];
   if (imageUrls.length === 0) {
     throw new Error("MiniMax 未返回图片链接");
   }
@@ -465,7 +535,10 @@ async function callMiniMaxTextToAudio(
     body: JSON.stringify({
       model,
       text,
-      voice_id: typeof properties.voice_id === "string" ? properties.voice_id : properties.voice || "male-qn-qingse",
+      voice_id:
+        typeof properties.voice_id === "string"
+          ? properties.voice_id
+          : properties.voice || "male-qn-qingse",
       speed: clampNumber(properties.speed, 1, 0.5, 2),
       vol: clampNumber(properties.vol, 1, 0.1, 10),
       pitch: clampNumber(properties.pitch, 0, -12, 12),
@@ -482,7 +555,7 @@ async function callMiniMaxTextToAudio(
     throw new Error(data?.error || `MiniMax 音频生成失败 (${response.status})`);
   }
 
-  const audioUrl = typeof data?.audioUrl === "string" ? data.audioUrl : "";
+  const audioUrl = await resolveMiniMaxAudioUrlFromResponse(data);
   if (!audioUrl) {
     throw new Error("MiniMax 未返回音频链接");
   }
@@ -495,13 +568,23 @@ async function callMiniMaxTextToAudio(
 
 export const executors: Partial<Record<NodeClass, NodeExecutor>> = {
   text_node: async ({ inputs, properties, apiConfig }) => {
-    const userPrompt = pickPromptLike(inputs, properties, "user_prompt", "prompt");
-    const nodeSystemPrompt = pickString(inputs, properties, "system_prompt");
-    const deepseekBaseUrl = apiConfig.providerBaseUrls?.deepseek || apiConfig.deepseekBaseUrl || apiConfig.baseUrl;
-    const deepseekApiKey = apiConfig.providerApiKeys?.deepseek || apiConfig.deepseekApiKey || apiConfig.apiKey;
-    const deepseekModel = apiConfig.providerModels?.deepseek || apiConfig.deepseekModel || apiConfig.model;
-    const minimaxBaseUrl = apiConfig.providerBaseUrls?.minimax || apiConfig.minimaxBaseUrl || apiConfig.baseUrl;
-    const minimaxApiKey = apiConfig.providerApiKeys?.minimax || apiConfig.minimaxApiKey || apiConfig.apiKey;
+    if (properties.textMode === "plain") {
+      const text = stringifyPromptValue(properties.text);
+      return { outputs: { 0: text }, patch: { response: text, status: "success" } };
+    }
+
+    const userPrompt = composePromptLike(inputs, properties, "user_prompt", "prompt");
+    const nodeSystemPrompt = pickOptionalString(inputs, properties, "system_prompt");
+    const deepseekBaseUrl =
+      apiConfig.providerBaseUrls?.deepseek || apiConfig.deepseekBaseUrl || apiConfig.baseUrl;
+    const deepseekApiKey =
+      apiConfig.providerApiKeys?.deepseek || apiConfig.deepseekApiKey || apiConfig.apiKey;
+    const deepseekModel =
+      apiConfig.providerModels?.deepseek || apiConfig.deepseekModel || apiConfig.model;
+    const minimaxBaseUrl =
+      apiConfig.providerBaseUrls?.minimax || apiConfig.minimaxBaseUrl || apiConfig.baseUrl;
+    const minimaxApiKey =
+      apiConfig.providerApiKeys?.minimax || apiConfig.minimaxApiKey || apiConfig.apiKey;
     const model = normalizeTextModel(properties.model || deepseekModel);
     const referenceImages = normalizeStringArray(inputs.reference_images);
     const referenceVideos = normalizeStringArray(inputs.reference_videos);
@@ -510,7 +593,10 @@ export const executors: Partial<Record<NodeClass, NodeExecutor>> = {
 
     let text = "";
     if (hasVisualReferences) {
-      const rawMultimodalModel = typeof properties.model === "string" && properties.model.trim() ? properties.model.trim() : "";
+      const rawMultimodalModel =
+        typeof properties.model === "string" && properties.model.trim()
+          ? properties.model.trim()
+          : "";
       const multimodalModel = MINIMAX_MULTIMODAL_MODELS.has(rawMultimodalModel)
         ? rawMultimodalModel
         : MINIMAX_MULTIMODAL_MODEL;
@@ -539,8 +625,12 @@ export const executors: Partial<Record<NodeClass, NodeExecutor>> = {
         });
       }
 
-      const normalizedReferenceImages = await Promise.all(referenceImages.map((url) => normalizeVisionReferenceUrl(url)));
-      const normalizedReferenceVideos = await Promise.all(referenceVideos.map((url) => normalizeVisionReferenceUrl(url)));
+      const normalizedReferenceImages = await Promise.all(
+        referenceImages.map((url) => normalizeVisionReferenceUrl(url))
+      );
+      const normalizedReferenceVideos = await Promise.all(
+        referenceVideos.map((url) => normalizeVisionReferenceUrl(url))
+      );
       const usableReferenceImages = normalizedReferenceImages.filter(Boolean);
       const usableReferenceVideos = normalizedReferenceVideos.filter(Boolean);
 
@@ -611,7 +701,14 @@ export const executors: Partial<Record<NodeClass, NodeExecutor>> = {
       const aspect = pickString(inputs, properties, "aspect_ratio") || "16:9";
       const minimaxApiKey = apiConfig.providerApiKeys?.minimax || apiConfig.minimaxApiKey;
       const minimaxBaseUrl = apiConfig.providerBaseUrls?.minimax || apiConfig.minimaxBaseUrl;
-      const result = await callMiniMaxTextToImage(properties, prompt, model, minimaxApiKey, minimaxBaseUrl, aspect);
+      const result = await callMiniMaxTextToImage(
+        properties,
+        prompt,
+        model,
+        minimaxApiKey,
+        minimaxBaseUrl,
+        aspect
+      );
       return {
         outputs: { 0: result.imageUrls[0] },
         patch: {
@@ -637,7 +734,14 @@ export const executors: Partial<Record<NodeClass, NodeExecutor>> = {
     if (MINIMAX_VIDEO_MODELS.has(model)) {
       const minimaxApiKey = apiConfig.providerApiKeys?.minimax || apiConfig.minimaxApiKey;
       const minimaxBaseUrl = apiConfig.providerBaseUrls?.minimax || apiConfig.minimaxBaseUrl;
-      const result = await callMiniMaxTextToVideo(properties, prompt, model, minimaxApiKey, minimaxBaseUrl, imageUrl);
+      const result = await callMiniMaxTextToVideo(
+        properties,
+        prompt,
+        model,
+        minimaxApiKey,
+        minimaxBaseUrl,
+        imageUrl
+      );
       return {
         outputs: { 0: result.videoUrl },
         patch: {
@@ -677,7 +781,18 @@ export const executors: Partial<Record<NodeClass, NodeExecutor>> = {
     const a = pickNumber(inputs, properties, "数值 A") ?? 0;
     const b = pickNumber(inputs, properties, "数值 B") ?? 0;
     const op = (properties.op as string) || "+";
-    const result = op === "+" ? a + b : op === "-" ? a - b : op === "*" ? a * b : op === "/" ? (b === 0 ? 0 : a / b) : 0;
+    const result =
+      op === "+"
+        ? a + b
+        : op === "-"
+          ? a - b
+          : op === "*"
+            ? a * b
+            : op === "/"
+              ? b === 0
+                ? 0
+                : a / b
+              : 0;
     return { outputs: { 0: result } };
   },
 
@@ -737,10 +852,17 @@ export const executors: Partial<Record<NodeClass, NodeExecutor>> = {
 
   audio_node: async ({ inputs, properties, apiConfig }) => {
     const prompt = pickString(inputs, properties, "prompt", "提示词");
-    const minimaxApiKey = apiConfig.providerApiKeys?.minimax || apiConfig.minimaxApiKey || apiConfig.apiKey;
+    const minimaxApiKey =
+      apiConfig.providerApiKeys?.minimax || apiConfig.minimaxApiKey || apiConfig.apiKey;
     const minimaxBaseUrl = apiConfig.providerBaseUrls?.minimax || apiConfig.minimaxBaseUrl;
     const model = normalizeMiniMaxAudioModel(properties.model || apiConfig.providerModels?.minimax);
-    const result = await callMiniMaxTextToAudio(properties, prompt, model, minimaxApiKey, minimaxBaseUrl);
+    const result = await callMiniMaxTextToAudio(
+      properties,
+      prompt,
+      model,
+      minimaxApiKey,
+      minimaxBaseUrl
+    );
     return {
       outputs: { 0: result.audioUrl },
       patch: {

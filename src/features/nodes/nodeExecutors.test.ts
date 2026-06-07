@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { uploadFileToOss } from "../resource/ossApi";
 import { assertApiKey, getExecutor, normalizeApiKey } from "./nodeExecutors";
+
+vi.mock("../resource/ossApi", () => ({
+  uploadFileToOss: vi.fn(),
+}));
 
 describe("normalizeApiKey", () => {
   it("trims copied API keys before sending request headers", () => {
@@ -155,6 +160,53 @@ describe("video_node MiniMax executor", () => {
   });
 });
 
+describe("audio_node MiniMax executor", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.mocked(uploadFileToOss).mockReset();
+  });
+
+  it("uploads MiniMax hex audio to OSS when the proxy does not return a direct URL", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        audioHex: "494433",
+        contentType: "audio/mpeg",
+        fileName: "speech.mp3",
+        metadata: { format: "mp3" },
+      }),
+    } as Response);
+    vi.mocked(uploadFileToOss).mockResolvedValue({
+      url: "https://oss.example.com/generated-audio.mp3",
+      raw: { url: "https://oss.example.com/generated-audio.mp3" },
+    });
+
+    const executor = getExecutor("audio_node");
+    const result = await executor?.({
+      inputs: { prompt: "生成一段黄鹂鸟的音频" },
+      properties: {
+        model: "speech-2.8-hd",
+      },
+      apiConfig: {
+        baseUrl: "",
+        apiKey: "",
+        minimaxApiKey: "mini-test-key",
+        minimaxBaseUrl: "https://api.minimaxi.com/v1",
+      },
+    });
+
+    expect(uploadFileToOss).toHaveBeenCalledTimes(1);
+    const uploadedFile = vi.mocked(uploadFileToOss).mock.calls[0]?.[0];
+    expect(uploadedFile).toBeInstanceOf(File);
+    expect(uploadedFile?.name).toBe("speech.mp3");
+    expect(result?.outputs[0]).toBe("https://oss.example.com/generated-audio.mp3");
+    expect(result?.patch).toMatchObject({
+      audioUrl: "https://oss.example.com/generated-audio.mp3",
+      status: "success",
+    });
+  });
+});
+
 describe("text_node executor", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -268,6 +320,53 @@ describe("text_node executor", () => {
     });
   });
 
+  it("combines the node instruction with upstream text input", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: "ok" } }] }),
+    } as Response);
+
+    const executor = getExecutor("text_node");
+    await executor?.({
+      inputs: { user_prompt: "Cats, dogs, and pigs" },
+      properties: { text: "Answer based on text one", model: "deepseek-chat" },
+      apiConfig: {
+        baseUrl: "https://api.deepseek.com",
+        apiKey: "sk-test",
+        model: "deepseek-chat",
+      },
+    });
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect(JSON.parse(String((init as RequestInit).body))).toMatchObject({
+      messages: [
+        {
+          role: "user",
+          content: "Answer based on text one\n\nUpstream input content:\nCats, dogs, and pigs",
+        },
+      ],
+    });
+  });
+
+  it("outputs plain text nodes directly without calling a model", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    const executor = getExecutor("text_node");
+
+    const result = await executor?.({
+      inputs: {},
+      properties: { textMode: "plain", text: "Plain source text", model: "deepseek-chat" },
+      apiConfig: {
+        baseUrl: "https://api.deepseek.com",
+        apiKey: "sk-test",
+        model: "deepseek-chat",
+      },
+    });
+
+    expect(result?.outputs[0]).toBe("Plain source text");
+    expect(result?.patch?.response).toBe("Plain source text");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("routes multimodal text requests to MiniMax with ordered reference images", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,
@@ -317,43 +416,34 @@ describe("text_node executor", () => {
     ]);
   });
 
-  it("converts blob reference images to base64 data URLs before sending to MiniMax", async () => {
-    const apiResponse = {
-      ok: true,
-      json: async () => ({ choices: [{ message: { content: "multimodal ok" } }] }),
-    } as Response;
-    const blobResponse = new Response(new Blob(["mini-image"], { type: "image/png" }));
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url.startsWith("blob:")) return blobResponse;
-      return apiResponse;
-    });
+  it("rejects non-OSS blob references instead of converting them to base64", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch");
 
     const executor = getExecutor("text_node");
-    await executor?.({
-      inputs: {
-        user_prompt: "分析这张上传图片",
-        reference_images: ["blob:http://127.0.0.1/demo"],
-      },
-      properties: { model: "MiniMax-M3" },
-      apiConfig: {
-        baseUrl: "https://api.deepseek.com",
-        apiKey: "sk-test",
-        providerApiKeys: {
-          deepseek: "sk-deepseek",
-          minimax: "mini-key",
-        },
-        providerBaseUrls: {
-          deepseek: "https://api.deepseek.com",
-          minimax: "https://api.minimaxi.com/v1",
-        },
-      },
-    });
 
-    const [, init] = fetchMock.mock.calls.at(-1)!;
-    const body = JSON.parse(String((init as RequestInit).body));
-    expect(body.messages[1].content[2].type).toBe("image_url");
-    expect(body.messages[1].content[2].image_url.url).toMatch(/^data:image\/png;base64,/);
+    await expect(
+      executor?.({
+        inputs: {
+          user_prompt: "分析这张上传图片",
+          reference_images: ["blob:http://127.0.0.1/demo"],
+        },
+        properties: { model: "MiniMax-M3" },
+        apiConfig: {
+          baseUrl: "https://api.deepseek.com",
+          apiKey: "sk-test",
+          providerApiKeys: {
+            deepseek: "sk-deepseek",
+            minimax: "mini-key",
+          },
+          providerBaseUrls: {
+            deepseek: "https://api.deepseek.com",
+            minimax: "https://api.minimaxi.com/v1",
+          },
+        },
+      })
+    ).rejects.toThrow("请先上传到 OSS");
+
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("rejects placeholder SVG references before calling MiniMax", async () => {

@@ -61,16 +61,24 @@ export function topologicalSort(nodes: GraphNode[], links: GraphLink[]): TopoSor
 export function resolveNodeInputs(
   target: GraphNode,
   links: GraphLink[],
-  nodeOutputs: NodeOutputMap
+  nodeOutputs: NodeOutputMap,
+  nodes: GraphNode[] = []
 ): Record<string, unknown> {
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
   const inputs: Record<string, unknown> = {};
   target.inputs.forEach((input, idx) => {
     const link = links.find((l) => l.toNodeId === target.id && l.toInputIndex === idx);
     if (!link) return;
+    const inputName = getResolvedInputName(target, input.name);
     const sourceOutputs = nodeOutputs.get(link.fromNodeId);
-    if (!sourceOutputs) return;
-    if (sourceOutputs.has(link.fromOutputIndex)) {
-      inputs[input.name] = sourceOutputs.get(link.fromOutputIndex);
+    if (sourceOutputs?.has(link.fromOutputIndex)) {
+      inputs[inputName] = sourceOutputs.get(link.fromOutputIndex);
+      return;
+    }
+    const sourceNode = nodeById.get(link.fromNodeId);
+    const fallbackOutput = sourceNode ? getNodePropertyOutputFallback(sourceNode) : undefined;
+    if (fallbackOutput !== undefined) {
+      inputs[inputName] = fallbackOutput;
     }
   });
   return inputs;
@@ -83,9 +91,64 @@ export function buildResolvedInputsMap(
 ): Map<string, Record<string, unknown>> {
   const result = new Map<string, Record<string, unknown>>();
   nodes.forEach((node) => {
-    result.set(node.id, resolveNodeInputs(node, links, nodeOutputs));
+    result.set(node.id, resolveNodeInputs(node, links, nodeOutputs, nodes));
   });
   return result;
+}
+
+function pickFirstValue(...values: unknown[]): unknown {
+  for (const value of values) {
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (trimmed) return trimmed;
+      continue;
+    }
+    if (value !== null && value !== undefined) return value;
+  }
+  return undefined;
+}
+
+function getNodePropertyOutputFallback(node: GraphNode): unknown {
+  if (node.type === "text_node") {
+    return pickFirstValue(
+      node.data?.response,
+      node.properties.response,
+      node.properties.text,
+      node.data?.text
+    );
+  }
+
+  if (node.type === "image_node" || node.type === "load_image") {
+    return pickFirstValue(
+      node.data?.imageUrl,
+      node.properties.imageUrl,
+      node.data?.image,
+      node.properties.image
+    );
+  }
+
+  if (node.type === "video_node" || node.type === "video_viewer") {
+    return pickFirstValue(node.data?.videoUrl, node.properties.videoUrl);
+  }
+
+  if (node.type === "audio_node") {
+    return pickFirstValue(node.data?.audioUrl, node.properties.audioUrl);
+  }
+
+  return pickFirstValue(
+    node.data?.response,
+    node.properties.response,
+    node.properties.value,
+    node.properties.text,
+    node.data?.text
+  );
+}
+
+function getResolvedInputName(target: GraphNode, inputName: string): string {
+  if (target.type === "text_node" && inputName === "system_prompt") {
+    return "user_prompt";
+  }
+  return inputName;
 }
 
 export interface LeveledTopoResult {

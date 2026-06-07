@@ -2,11 +2,35 @@
 import { createNodeFromType } from "../features/nodes/nodeFactory";
 import { getExecutor } from "../features/nodes/nodeExecutors";
 import { WORKFLOW_TEMPLATES } from "../features/templates/workflowTemplates";
-import { ExecutionLog, GraphLink, GraphNode, GroupBox, NodeClass, VideoFrameAnalysisOverview, VideoFrameAnalysisSegment, VideoSegmentTextAnalysis } from "../types";
-import { IMAGE_PROMPT_STARTER_GAP_X, getImagePromptStarterTextNodeX } from "../utils/imagePromptStarterLayout";
-import { findFirstCompatibleInputIndex, getLinkDraftIssue, isDataTypeCompatible } from "../utils/linking";
-import { NodeOutputMap, buildResolvedInputsMap, resolveNodeInputs, topologicalLevels } from "../runtime/dataflow";
-import type { RemoteCanvasProject, RemoteCanvasWorkflowData } from "../features/workspace/remoteCanvas";
+import {
+  ExecutionLog,
+  GraphLink,
+  GraphNode,
+  GroupBox,
+  NodeClass,
+  VideoFrameAnalysisOverview,
+  VideoFrameAnalysisSegment,
+  VideoSegmentTextAnalysis,
+} from "../types";
+import {
+  IMAGE_PROMPT_STARTER_GAP_X,
+  getImagePromptStarterTextNodeX,
+} from "../utils/imagePromptStarterLayout";
+import {
+  findFirstCompatibleInputIndex,
+  getLinkDraftIssue,
+  isDataTypeCompatible,
+} from "../utils/linking";
+import {
+  NodeOutputMap,
+  buildResolvedInputsMap,
+  resolveNodeInputs,
+  topologicalLevels,
+} from "../runtime/dataflow";
+import type {
+  RemoteCanvasProject,
+  RemoteCanvasWorkflowData,
+} from "../features/workspace/remoteCanvas";
 
 const HISTORY_LIMIT = 50;
 const PERSIST_DEBOUNCE_MS = 800;
@@ -46,8 +70,38 @@ const IMAGE_PROMPT_DEFAULT_TEXT =
   "Generate a structured Chinese prompt from the image, including subject, environment, lighting, camera language, and style keywords.";
 const IMAGE_PROMPT_STARTER_IMAGE_OFFSET_X = 680;
 const IMAGE_PROMPT_STARTER_IMAGE_OFFSET_Y = 56;
+export type TextNodeStarterFlowAction = "video" | "music";
 
-function getImagePromptStarterFocusBounds(textNode: GraphNode, imageNodeX: number, imageNodeY: number) {
+const TEXT_NODE_STARTER_FLOW_CONFIG: Record<
+  TextNodeStarterFlowAction,
+  {
+    nodeType: "video_node" | "audio_node";
+    offsetX: number;
+    offsetY: number;
+    systemPrompt: string;
+  }
+> = {
+  video: {
+    nodeType: "video_node",
+    offsetX: 560,
+    offsetY: 0,
+    systemPrompt:
+      "你是视频生成提示词专家。请把用户的想法改写成适合视频生成的中文提示词，包含主体、场景、镜头运动、光线、节奏、画面风格和情绪氛围。",
+  },
+  music: {
+    nodeType: "audio_node",
+    offsetX: 560,
+    offsetY: 320,
+    systemPrompt:
+      "你是音乐与音效提示词专家。请把用户的想法改写成适合音频生成的中文提示词，包含情绪、节奏、乐器、声场、氛围、时长和使用场景。",
+  },
+};
+
+function getImagePromptStarterFocusBounds(
+  textNode: GraphNode,
+  imageNodeX: number,
+  imageNodeY: number
+) {
   return {
     minX: imageNodeX - 18,
     minY: Math.min(textNode.y - 18, imageNodeY - 24),
@@ -90,6 +144,114 @@ function getNextNumberedNodeTitle(nodes: GraphNode[], type: NodeClass): string |
     return Number.isFinite(value) ? Math.max(currentMax, value) : currentMax;
   }, 0);
   return `${prefix} ${max + 1}`;
+}
+
+export function createTextNodeStarterFlowSnapshot({
+  nodes,
+  links,
+  textNodeId,
+  action,
+  makeId: createId,
+}: {
+  nodes: GraphNode[];
+  links: GraphLink[];
+  textNodeId: string;
+  action: TextNodeStarterFlowAction;
+  makeId: (prefix: string) => string;
+}) {
+  const textNode = nodes.find((node) => node.id === textNodeId && node.type === "text_node");
+  const config = TEXT_NODE_STARTER_FLOW_CONFIG[action];
+  if (!textNode || !config) return null;
+
+  const createdNodeId = createId("node");
+  const createdNode = createNodeFromType(
+    config.nodeType,
+    createdNodeId,
+    textNode.x + config.offsetX,
+    textNode.y + config.offsetY
+  );
+  createdNode.title = getNextNumberedNodeTitle(nodes, config.nodeType) || createdNode.title;
+
+  const nextNodes = [
+    ...nodes.map((node) =>
+      node.id === textNodeId
+        ? {
+            ...node,
+            properties: {
+              ...node.properties,
+              system_prompt:
+                typeof node.properties.system_prompt === "string" &&
+                node.properties.system_prompt.trim()
+                  ? node.properties.system_prompt
+                  : config.systemPrompt,
+            },
+          }
+        : node
+    ),
+    createdNode,
+  ];
+
+  const nextLinks = [
+    ...links,
+    {
+      id: createId("link"),
+      fromNodeId: textNodeId,
+      fromOutputIndex: 0,
+      toNodeId: createdNodeId,
+      toInputIndex: 0,
+    },
+  ];
+
+  return { nodes: nextNodes, links: nextLinks, createdNodeId, textNodeId };
+}
+
+export type UploadedAssetKind = "image" | "video" | "audio";
+
+export function markUploadedAssetNodeAsSource(
+  node: GraphNode,
+  assetKind: UploadedAssetKind,
+  assetUrl: string
+): GraphNode {
+  const propertyKey =
+    assetKind === "image" ? "imageUrl" : assetKind === "video" ? "videoUrl" : "audioUrl";
+  return {
+    ...node,
+    inputs: [],
+    properties: {
+      ...node.properties,
+      [propertyKey]: assetUrl,
+      isSourceNode: true,
+    },
+    data: {
+      ...(node.data || {}),
+      [propertyKey]: assetUrl,
+      isSourceNode: true,
+      status: "success",
+      loading: false,
+    },
+  };
+}
+
+export function updateNodePropertySnapshot(
+  nodes: GraphNode[],
+  nodeId: string,
+  key: string,
+  value: unknown
+): GraphNode[] {
+  return nodes.map((node) => {
+    if (node.id !== nodeId) return node;
+    const nextNode = {
+      ...node,
+      properties: { ...node.properties, [key]: value },
+    };
+    if (node.type === "text_node" && key === "textMode" && value === "plain") {
+      return {
+        ...nextNode,
+        inputs: [],
+      };
+    }
+    return nextNode;
+  });
 }
 
 export interface WorkflowSummary {
@@ -185,7 +347,10 @@ function buildWorkspaceFromRemoteProject(project: RemoteCanvasProject): Workspac
   };
 }
 
-function buildRemoteProjectSnapshot(summary: WorkflowSummary, data: RemoteCanvasWorkflowData): RemoteCanvasProject {
+function buildRemoteProjectSnapshot(
+  summary: WorkflowSummary,
+  data: RemoteCanvasWorkflowData
+): RemoteCanvasProject {
   return {
     id: summary.id,
     name: summary.name,
@@ -314,12 +479,17 @@ function normalizeNodePorts(node: GraphNode): GraphNode {
     };
   }
 
-  if (nextNode.type !== "video_node" || nextNode.inputs.some((input) => input.type === "IMAGE")) return nextNode;
+  if (nextNode.type !== "video_node" || nextNode.inputs.some((input) => input.type === "IMAGE"))
+    return nextNode;
   const promptIndex = nextNode.inputs.findIndex((input) => input.name === "prompt");
   const insertAt = promptIndex >= 0 ? promptIndex + 1 : 0;
   return {
     ...nextNode,
-    inputs: [...nextNode.inputs.slice(0, insertAt), VIDEO_IMAGE_INPUT, ...nextNode.inputs.slice(insertAt)],
+    inputs: [
+      ...nextNode.inputs.slice(0, insertAt),
+      VIDEO_IMAGE_INPUT,
+      ...nextNode.inputs.slice(insertAt),
+    ],
   };
 }
 
@@ -358,6 +528,8 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
   const initial = useMemo<Workspace>(() => {
     if (remoteProject) return buildWorkspaceFromRemoteProject(remoteProject);
     return makeWorkspace();
+    // The initial workspace is captured once; later remote refreshes are reconciled by dedicated effects.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const [workspace, setWorkspace] = useState<Workspace>(initial);
@@ -379,10 +551,12 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
   );
   const [isRunning, setIsRunning] = useState(false);
 
-  const [historyState, setHistoryState] = useState<{ stack: HistorySnapshot[]; pointer: number }>(() => ({
-    stack: [{ nodes: initialNodes, links: initialWf?.data.links ?? [] }],
-    pointer: 0,
-  }));
+  const [historyState, setHistoryState] = useState<{ stack: HistorySnapshot[]; pointer: number }>(
+    () => ({
+      stack: [{ nodes: initialNodes, links: initialWf?.data.links ?? [] }],
+      pointer: 0,
+    })
+  );
   const skipNextRemotePersistRef = useRef(false);
   const lastRemotePersistSignatureRef = useRef("");
   const currentWorkflowIdRef = useRef(initial.currentId);
@@ -428,13 +602,18 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     return wf.summary;
   }, [workspace]);
 
-  const selectedNode = useMemo(() => nodes.find((n) => n.id === selectedNodeId) ?? null, [nodes, selectedNodeId]);
+  const selectedNode = useMemo(
+    () => nodes.find((n) => n.id === selectedNodeId) ?? null,
+    [nodes, selectedNodeId]
+  );
 
-  currentWorkflowIdRef.current = workspace.currentId;
-  currentNodesRef.current = nodes;
-  currentLinksRef.current = links;
-  currentGroupsRef.current = groups;
-  currentNodeOutputsRef.current = nodeOutputs;
+  useEffect(() => {
+    currentWorkflowIdRef.current = workspace.currentId;
+    currentNodesRef.current = nodes;
+    currentLinksRef.current = links;
+    currentGroupsRef.current = groups;
+    currentNodeOutputsRef.current = nodeOutputs;
+  }, [groups, links, nodeOutputs, nodes, workspace.currentId]);
 
   const linkDraftIssue = useMemo(
     () =>
@@ -494,31 +673,25 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     const node = createNodeFromType(type, id, nextX, nextY);
     node.title = getNextNumberedNodeTitle(nodes, type) || node.title;
     if (initialProps) {
-      const { __nodeTitle, __uploadedAssetUrl, __uploadedAssetKind, __uploadedAssetName, ...restProps } = initialProps;
+      const {
+        __nodeTitle,
+        __uploadedAssetUrl,
+        __uploadedAssetKind,
+        __uploadedAssetName,
+        ...restProps
+      } = initialProps;
       node.properties = { ...node.properties, ...restProps };
       if (typeof __nodeTitle === "string" && __nodeTitle.trim()) {
         node.title = __nodeTitle.trim();
       }
       if (__uploadedAssetKind === "image" && typeof __uploadedAssetUrl === "string") {
-        node.data = {
-          ...(node.data || {}),
-          imageUrl: __uploadedAssetUrl,
-          status: "success",
-          loading: false,
-        };
-        node.properties.imageUrl = __uploadedAssetUrl;
+        Object.assign(node, markUploadedAssetNodeAsSource(node, "image", __uploadedAssetUrl));
         if (typeof __uploadedAssetName === "string" && __uploadedAssetName.trim()) {
           node.title = getNextNumberedNodeTitle(nodes, "image_node") || node.title;
         }
       }
       if (__uploadedAssetKind === "video" && typeof __uploadedAssetUrl === "string") {
-        node.data = {
-          ...(node.data || {}),
-          videoUrl: __uploadedAssetUrl,
-          status: "success",
-          loading: false,
-        };
-        node.properties.videoUrl = __uploadedAssetUrl;
+        Object.assign(node, markUploadedAssetNodeAsSource(node, "video", __uploadedAssetUrl));
         if (typeof __uploadedAssetName === "string" && __uploadedAssetName.trim()) {
           node.title = getNextNumberedNodeTitle(nodes, "video_node") || node.title;
         }
@@ -533,8 +706,14 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       const fromOutput = fromNodeCandidate?.outputs[connectFromDraft.fromOutputIndex];
       const requestedInput = toNodeCandidate.inputs[requestedInputIndex];
       const normalizedInputIndex =
-        fromNodeCandidate && fromOutput && (!requestedInput || !isDataTypeCompatible(fromOutput.type, requestedInput.type))
-          ? findFirstCompatibleInputIndex(fromNodeCandidate, toNodeCandidate, connectFromDraft.fromOutputIndex)
+        fromNodeCandidate &&
+        fromOutput &&
+        (!requestedInput || !isDataTypeCompatible(fromOutput.type, requestedInput.type))
+          ? findFirstCompatibleInputIndex(
+              fromNodeCandidate,
+              toNodeCandidate,
+              connectFromDraft.fromOutputIndex
+            )
           : requestedInputIndex;
       const normalizedDraft = {
         fromNodeId: connectFromDraft.fromNodeId,
@@ -637,13 +816,21 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     appendLog("warning", "Canvas cleared.");
   };
 
-  const addLinkFromDraft = (draft: { fromNodeId: string; toNodeId: string; fromOutputIndex: number; toInputIndex: number }) => {
+  const addLinkFromDraft = (draft: {
+    fromNodeId: string;
+    toNodeId: string;
+    fromOutputIndex: number;
+    toInputIndex: number;
+  }) => {
     const fromNodeCandidate = nodes.find((n) => n.id === draft.fromNodeId);
     const toNodeCandidate = nodes.find((n) => n.id === draft.toNodeId);
     const fromOutput = fromNodeCandidate?.outputs[draft.fromOutputIndex];
     const requestedInput = toNodeCandidate?.inputs[draft.toInputIndex];
     const normalizedInputIndex =
-      fromNodeCandidate && toNodeCandidate && fromOutput && (!requestedInput || !isDataTypeCompatible(fromOutput.type, requestedInput.type))
+      fromNodeCandidate &&
+      toNodeCandidate &&
+      fromOutput &&
+      (!requestedInput || !isDataTypeCompatible(fromOutput.type, requestedInput.type))
         ? findFirstCompatibleInputIndex(fromNodeCandidate, toNodeCandidate, draft.fromOutputIndex)
         : draft.toInputIndex;
     const normalizedDraft = { ...draft, toInputIndex: normalizedInputIndex };
@@ -757,198 +944,251 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     appendLog("warning", `宸茬Щ闄よ繛绾?${linkId}`);
   };
 
-  const createImagePromptStarter = useCallback((textNodeId: string) => {
-    const textNode = nodes.find((n) => n.id === textNodeId && n.type === "text_node");
-    if (!textNode) return null;
-    const existingStarterLink = links.find((link) => link.toNodeId === textNodeId && link.locked);
-    const imageNodeX = textNode.x - IMAGE_PROMPT_STARTER_IMAGE_OFFSET_X;
-    const imageNodeY = textNode.y + IMAGE_PROMPT_STARTER_IMAGE_OFFSET_Y;
-    if (existingStarterLink) {
-      setSelectedNodeId(textNodeId);
-      const imageNode = nodes.find((node) => node.id === existingStarterLink.fromNodeId);
-      if (imageNode && (
-        imageNode.x !== imageNodeX ||
-        imageNode.y !== imageNodeY ||
-        imageNode.data?.imagePromptStarter !== true ||
-        imageNode.data?.starterTextNodeId !== textNodeId
-      )) {
-        const nextNodes = nodes.map((node) =>
-          node.id === imageNode.id
-            ? {
-                ...node,
-                x: imageNodeX,
-                y: imageNodeY,
-                data: {
-                  ...(node.data || {}),
-                  imagePromptStarter: true,
-                  starterTextNodeId: textNodeId,
-                  starterGapX: IMAGE_PROMPT_STARTER_GAP_X,
-                },
-              }
-            : node
-        );
-        setNodes(nextNodes);
-        syncCurrentWorkflowMeta((wf) => ({
-          ...wf,
-          summary: { ...wf.summary, updatedAt: Date.now() },
-          data: { ...wf.data, nodes: nextNodes, links },
-        }));
-        pushHistory({ nodes: nextNodes, links });
-        appendLog("info", "鍥剧墖鍙嶆帹鎻愮ず璇嶆ā鏉垮凡瀵归綈鍒版爣鍑嗗竷灞€");
-      } else {
-        appendLog("info", "鍥剧墖鍙嶆帹鎻愮ず璇嶆ā鏉垮凡瀛樺湪");
+  const createImagePromptStarter = useCallback(
+    (textNodeId: string) => {
+      const textNode = nodes.find((n) => n.id === textNodeId && n.type === "text_node");
+      if (!textNode) return null;
+      const existingStarterLink = links.find((link) => link.toNodeId === textNodeId && link.locked);
+      const imageNodeX = textNode.x - IMAGE_PROMPT_STARTER_IMAGE_OFFSET_X;
+      const imageNodeY = textNode.y + IMAGE_PROMPT_STARTER_IMAGE_OFFSET_Y;
+      if (existingStarterLink) {
+        setSelectedNodeId(textNodeId);
+        const imageNode = nodes.find((node) => node.id === existingStarterLink.fromNodeId);
+        if (
+          imageNode &&
+          (imageNode.x !== imageNodeX ||
+            imageNode.y !== imageNodeY ||
+            imageNode.data?.imagePromptStarter !== true ||
+            imageNode.data?.starterTextNodeId !== textNodeId)
+        ) {
+          const nextNodes = nodes.map((node) =>
+            node.id === imageNode.id
+              ? {
+                  ...node,
+                  x: imageNodeX,
+                  y: imageNodeY,
+                  data: {
+                    ...(node.data || {}),
+                    imagePromptStarter: true,
+                    starterTextNodeId: textNodeId,
+                    starterGapX: IMAGE_PROMPT_STARTER_GAP_X,
+                  },
+                }
+              : node
+          );
+          setNodes(nextNodes);
+          syncCurrentWorkflowMeta((wf) => ({
+            ...wf,
+            summary: { ...wf.summary, updatedAt: Date.now() },
+            data: { ...wf.data, nodes: nextNodes, links },
+          }));
+          pushHistory({ nodes: nextNodes, links });
+          appendLog("info", "鍥剧墖鍙嶆帹鎻愮ず璇嶆ā鏉垮凡瀵归綈鍒版爣鍑嗗竷灞€");
+        } else {
+          appendLog("info", "鍥剧墖鍙嶆帹鎻愮ず璇嶆ā鏉垮凡瀛樺湪");
+        }
+        return {
+          imageNodeId: existingStarterLink.fromNodeId,
+          textNodeId,
+          bounds: getImagePromptStarterFocusBounds(textNode, imageNodeX, imageNodeY),
+        };
       }
-      return {
-        imageNodeId: existingStarterLink.fromNodeId,
-        textNodeId,
-        bounds: getImagePromptStarterFocusBounds(textNode, imageNodeX, imageNodeY),
+      const imageId = makeId("node");
+      const linkId = makeId("link");
+      const imageNode = createNodeFromType("image_node", imageId, imageNodeX, imageNodeY);
+      imageNode.title = getNextNumberedNodeTitle(nodes, "image_node") || imageNode.title;
+      imageNode.properties = {
+        ...imageNode.properties,
+        imageUrl: IMAGE_PROMPT_PLACEHOLDER_URL,
+        text: "鍥剧墖鍙嶆帹鎻愮ず璇嶅弬鑰冨浘",
       };
-    }
-    const imageId = makeId("node");
-    const linkId = makeId("link");
-    const imageNode = createNodeFromType("image_node", imageId, imageNodeX, imageNodeY);
-    imageNode.title = getNextNumberedNodeTitle(nodes, "image_node") || imageNode.title;
-    imageNode.properties = {
-      ...imageNode.properties,
-      imageUrl: IMAGE_PROMPT_PLACEHOLDER_URL,
-      text: "鍥剧墖鍙嶆帹鎻愮ず璇嶅弬鑰冨浘",
-    };
-    imageNode.data = {
-      ...(imageNode.data || {}),
-      imageUrl: IMAGE_PROMPT_PLACEHOLDER_URL,
-      imageUrls: [IMAGE_PROMPT_PLACEHOLDER_URL],
-      activeImageIndex: 0,
-      imageNaturalWidth: 1152,
-      imageNaturalHeight: 864,
-      isUploadPlaceholder: true,
-      imagePromptStarter: true,
-      starterTextNodeId: textNodeId,
-      starterGapX: IMAGE_PROMPT_STARTER_GAP_X,
-      status: "success",
-      loading: false,
-    };
+      imageNode.data = {
+        ...(imageNode.data || {}),
+        imageUrl: IMAGE_PROMPT_PLACEHOLDER_URL,
+        imageUrls: [IMAGE_PROMPT_PLACEHOLDER_URL],
+        activeImageIndex: 0,
+        imageNaturalWidth: 1152,
+        imageNaturalHeight: 864,
+        isUploadPlaceholder: true,
+        imagePromptStarter: true,
+        starterTextNodeId: textNodeId,
+        starterGapX: IMAGE_PROMPT_STARTER_GAP_X,
+        status: "success",
+        loading: false,
+      };
 
-    const nextNodes = [
-      ...nodes,
-      imageNode,
-    ].map((node) =>
-      node.id === textNodeId
-        ? {
-            ...node,
-            properties: {
-              ...node.properties,
-              text: typeof node.properties.text === "string" && node.properties.text.trim()
-                ? node.properties.text
-                : IMAGE_PROMPT_DEFAULT_TEXT,
-              model: "MiniMax-M3",
-              status: node.properties.status || "idle",
-            },
-          }
-        : node
-    );
-    const nextLinks = [
-      ...links,
-      {
-        id: linkId,
-        fromNodeId: imageId,
-        fromOutputIndex: 0,
-        toNodeId: textNodeId,
-        toInputIndex: 1,
-        locked: true,
-      },
-    ];
-
-    setNodes(nextNodes);
-    setLinks(nextLinks);
-    setSelectedNodeId(textNodeId);
-    syncCurrentWorkflowMeta((wf) => ({
-      ...wf,
-      summary: { ...wf.summary, updatedAt: Date.now() },
-      data: { ...wf.data, nodes: nextNodes, links: nextLinks },
-    }));
-    pushHistory({ nodes: nextNodes, links: nextLinks });
-    appendLog("success", "宸插垱寤哄浘鐗囧弽鎺ㄦ彁绀鸿瘝妯℃澘");
-    return {
-      imageNodeId: imageId,
-      textNodeId,
-      bounds: getImagePromptStarterFocusBounds(textNode, imageNodeX, imageNodeY),
-    };
-  }, [appendLog, links, nodes, pushHistory, syncCurrentWorkflowMeta]);
-
-  const syncImagePromptStarterLayout = useCallback((imageNodeId: string, imageNodeWidth: number) => {
-    if (!Number.isFinite(imageNodeWidth) || imageNodeWidth <= 0) return;
-
-    let nextNodesSnapshot: GraphNode[] | null = null;
-    setNodes((prev) => {
-      const imageNode = prev.find((node) => node.id === imageNodeId && node.type === "image_node");
-      const textNodeId = typeof imageNode?.data?.starterTextNodeId === "string" ? imageNode.data.starterTextNodeId : "";
-      const textNode = prev.find((node) => node.id === textNodeId && node.type === "text_node");
-      if (!imageNode || !textNode) return prev;
-
-      const nextTextNodeX = getImagePromptStarterTextNodeX(
-        imageNode.x,
-        imageNodeWidth,
-        typeof imageNode.data?.starterGapX === "number" ? imageNode.data.starterGapX : IMAGE_PROMPT_STARTER_GAP_X
-      );
-      if (Math.abs(textNode.x - nextTextNodeX) < 1) return prev;
-
-      const nextNodes = prev.map((node) =>
-        node.id === textNode.id
+      const nextNodes = [...nodes, imageNode].map((node) =>
+        node.id === textNodeId
           ? {
               ...node,
-              x: nextTextNodeX,
+              properties: {
+                ...node.properties,
+                text:
+                  typeof node.properties.text === "string" && node.properties.text.trim()
+                    ? node.properties.text
+                    : IMAGE_PROMPT_DEFAULT_TEXT,
+                model: "MiniMax-M3",
+                status: node.properties.status || "idle",
+              },
             }
           : node
       );
-      nextNodesSnapshot = nextNodes;
-      return nextNodes;
-    });
+      const nextLinks = [
+        ...links,
+        {
+          id: linkId,
+          fromNodeId: imageId,
+          fromOutputIndex: 0,
+          toNodeId: textNodeId,
+          toInputIndex: 1,
+          locked: true,
+        },
+      ];
 
-    if (!nextNodesSnapshot) return;
+      setNodes(nextNodes);
+      setLinks(nextLinks);
+      setSelectedNodeId(textNodeId);
+      syncCurrentWorkflowMeta((wf) => ({
+        ...wf,
+        summary: { ...wf.summary, updatedAt: Date.now() },
+        data: { ...wf.data, nodes: nextNodes, links: nextLinks },
+      }));
+      pushHistory({ nodes: nextNodes, links: nextLinks });
+      appendLog("success", "宸插垱寤哄浘鐗囧弽鎺ㄦ彁绀鸿瘝妯℃澘");
+      return {
+        imageNodeId: imageId,
+        textNodeId,
+        bounds: getImagePromptStarterFocusBounds(textNode, imageNodeX, imageNodeY),
+      };
+    },
+    [appendLog, links, nodes, pushHistory, syncCurrentWorkflowMeta]
+  );
 
-    syncCurrentWorkflowMeta((wf) => ({
-      ...wf,
-      summary: { ...wf.summary, updatedAt: Date.now() },
-      data: { ...wf.data, nodes: nextNodesSnapshot, links },
-    }));
-    pushHistory({ nodes: nextNodesSnapshot, links });
-  }, [links, pushHistory, syncCurrentWorkflowMeta]);
+  const createTextNodeStarterFlow = useCallback(
+    (textNodeId: string, action: TextNodeStarterFlowAction) => {
+      const result = createTextNodeStarterFlowSnapshot({
+        nodes,
+        links,
+        textNodeId,
+        action,
+        makeId,
+      });
+      if (!result) return null;
+
+      setNodes(result.nodes);
+      setLinks(result.links);
+      setSelectedNodeId(textNodeId);
+      syncCurrentWorkflowMeta((wf) => ({
+        ...wf,
+        summary: { ...wf.summary, updatedAt: Date.now() },
+        data: { ...wf.data, nodes: result.nodes, links: result.links },
+      }));
+      pushHistory({ nodes: result.nodes, links: result.links });
+      appendLog(
+        "success",
+        action === "video" ? "已创建文生视频流转节点" : "已创建文字生音乐流转节点"
+      );
+      return result;
+    },
+    [appendLog, links, nodes, pushHistory, syncCurrentWorkflowMeta]
+  );
+
+  const syncImagePromptStarterLayout = useCallback(
+    (imageNodeId: string, imageNodeWidth: number) => {
+      if (!Number.isFinite(imageNodeWidth) || imageNodeWidth <= 0) return;
+
+      let nextNodesSnapshot: GraphNode[] | null = null;
+      setNodes((prev) => {
+        const imageNode = prev.find(
+          (node) => node.id === imageNodeId && node.type === "image_node"
+        );
+        const textNodeId =
+          typeof imageNode?.data?.starterTextNodeId === "string"
+            ? imageNode.data.starterTextNodeId
+            : "";
+        const textNode = prev.find((node) => node.id === textNodeId && node.type === "text_node");
+        if (!imageNode || !textNode) return prev;
+
+        const nextTextNodeX = getImagePromptStarterTextNodeX(
+          imageNode.x,
+          imageNodeWidth,
+          typeof imageNode.data?.starterGapX === "number"
+            ? imageNode.data.starterGapX
+            : IMAGE_PROMPT_STARTER_GAP_X
+        );
+        if (Math.abs(textNode.x - nextTextNodeX) < 1) return prev;
+
+        const nextNodes = prev.map((node) =>
+          node.id === textNode.id
+            ? {
+                ...node,
+                x: nextTextNodeX,
+              }
+            : node
+        );
+        nextNodesSnapshot = nextNodes;
+        return nextNodes;
+      });
+
+      if (!nextNodesSnapshot) return;
+
+      syncCurrentWorkflowMeta((wf) => ({
+        ...wf,
+        summary: { ...wf.summary, updatedAt: Date.now() },
+        data: { ...wf.data, nodes: nextNodesSnapshot, links },
+      }));
+      pushHistory({ nodes: nextNodesSnapshot, links });
+    },
+    [links, pushHistory, syncCurrentWorkflowMeta]
+  );
 
   const updateNodeProperty = (nodeId: string, key: string, value: unknown) => {
-    setNodes((prev) => prev.map((n) => (n.id === nodeId ? { ...n, properties: { ...n.properties, [key]: value } } : n)));
+    setNodes((prev) => updateNodePropertySnapshot(prev, nodeId, key, value));
   };
 
   const updateNodeData = useCallback((nodeId: string, data: Partial<GraphNode["data"]>) => {
-    setNodes((prev) => prev.map((n) => (n.id === nodeId ? { ...n, data: { ...(n.data || {}), ...data } } : n)));
+    setNodes((prev) =>
+      prev.map((n) => (n.id === nodeId ? { ...n, data: { ...(n.data || {}), ...data } } : n))
+    );
   }, []);
 
-  const setPrimaryImageResult = useCallback((nodeId: string, imageUrl: string, imageIndex: number) => {
-    setNodes((prev) =>
-      prev.map((n) =>
-        n.id === nodeId
-          ? {
-              ...n,
-              data: {
-                ...(n.data || {}),
-                imageUrl,
-                activeImageIndex: imageIndex,
-              },
-            }
-          : n
-      )
-    );
-    setNodeOutputs((prev) => {
-      const next = new Map(prev);
-      const existingOutputs = next.get(nodeId);
-      const inner = new Map<number, unknown>(existingOutputs instanceof Map ? existingOutputs : []);
-      inner.set(0, imageUrl);
-      next.set(nodeId, inner);
-      return next;
-    });
-  }, []);
+  const setPrimaryImageResult = useCallback(
+    (nodeId: string, imageUrl: string, imageIndex: number) => {
+      setNodes((prev) =>
+        prev.map((n) =>
+          n.id === nodeId
+            ? {
+                ...n,
+                data: {
+                  ...(n.data || {}),
+                  imageUrl,
+                  activeImageIndex: imageIndex,
+                },
+              }
+            : n
+        )
+      );
+      setNodeOutputs((prev) => {
+        const next = new Map(prev);
+        const existingOutputs = next.get(nodeId);
+        const inner = new Map<number, unknown>(
+          existingOutputs instanceof Map ? existingOutputs : []
+        );
+        inner.set(0, imageUrl);
+        next.set(nodeId, inner);
+        return next;
+      });
+    },
+    []
+  );
 
   const addVideoFrameAnalysis = useCallback(
-    (videoNodeId: string, segments: VideoFrameAnalysisSegment[], overview: VideoFrameAnalysisOverview, analysisMarkdown: string) => {
+    (
+      videoNodeId: string,
+      segments: VideoFrameAnalysisSegment[],
+      overview: VideoFrameAnalysisOverview,
+      analysisMarkdown: string
+    ) => {
       const sourceNode = nodes.find((n) => n.id === videoNodeId);
       if (!sourceNode || segments.length === 0 || !overview.imageUrl) {
         appendLog("warning", "閫愬抚鍒嗘瀽澶辫触:鏈壘鍒拌棰戣妭鐐规垨娌℃湁鍙敤鍒嗘");
@@ -962,7 +1202,8 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       const nextLinks = [...links];
       const nextOutputs: NodeOutputMap = new Map(nodeOutputs);
       const createdNodes: GraphNode[] = [];
-      const videoUrl = (sourceNode.data?.videoUrl as string) || (sourceNode.properties.videoUrl as string) || "";
+      const videoUrl =
+        (sourceNode.data?.videoUrl as string) || (sourceNode.properties.videoUrl as string) || "";
 
       const makePreviewNode = (title: string, x: number, y: number) => {
         const id = makeId("node");
@@ -1005,7 +1246,14 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       textNode.properties = {
         ...textNode.properties,
         frameAnalysisVideoUrl: videoUrl,
-        frameAnalysisSegments: segments.map(({ title, start, end, frameCount, width, height }) => ({ title, start, end, frameCount, width, height })),
+        frameAnalysisSegments: segments.map(({ title, start, end, frameCount, width, height }) => ({
+          title,
+          start,
+          end,
+          frameCount,
+          width,
+          height,
+        })),
         isFullVideoAnalysisText: true,
         response: analysisMarkdown,
         text: "瀹屾暣瑙嗛鍒嗘瀽缁撴灉",
@@ -1085,10 +1333,18 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       syncCurrentWorkflowMeta((wf) => ({
         ...wf,
         summary: { ...wf.summary, updatedAt: Date.now() },
-        data: { ...wf.data, nodes: nextNodes, links: nextLinks, nodeOutputs: mapToOutputs(nextOutputs) },
+        data: {
+          ...wf.data,
+          nodes: nextNodes,
+          links: nextLinks,
+          nodeOutputs: mapToOutputs(nextOutputs),
+        },
       }));
       pushHistory({ nodes: nextNodes, links: nextLinks });
-      appendLog("success", `閫愬抚鍒嗘瀽瀹屾垚:鐢熸垚 2 涓棰戦瑙堣妭鐐广€? 涓垎鏋愭枃鏈妭鐐广€? 涓€昏鍥惧拰 ${segments.length} 涓垎娈靛浘鑺傜偣`);
+      appendLog(
+        "success",
+        `閫愬抚鍒嗘瀽瀹屾垚:鐢熸垚 2 涓棰戦瑙堣妭鐐广€? 涓垎鏋愭枃鏈妭鐐广€? 涓€昏鍥惧拰 ${segments.length} 涓垎娈靛浘鑺傜偣`
+      );
     },
     [appendLog, links, nodeOutputs, nodes, pushHistory, syncCurrentWorkflowMeta]
   );
@@ -1142,10 +1398,18 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       syncCurrentWorkflowMeta((wf) => ({
         ...wf,
         summary: { ...wf.summary, updatedAt: Date.now() },
-        data: { ...wf.data, nodes: nextNodes, links: nextLinks, nodeOutputs: mapToOutputs(nextOutputs) },
+        data: {
+          ...wf.data,
+          nodes: nextNodes,
+          links: nextLinks,
+          nodeOutputs: mapToOutputs(nextOutputs),
+        },
       }));
       pushHistory({ nodes: nextNodes, links: nextLinks });
-      appendLog("success", `Reverse analysis completed: generated ${analyses.length} segment text nodes.`);
+      appendLog(
+        "success",
+        `Reverse analysis completed: generated ${analyses.length} segment text nodes.`
+      );
     },
     [appendLog, links, nodeOutputs, nodes, pushHistory, syncCurrentWorkflowMeta]
   );
@@ -1155,71 +1419,80 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     updateNodeProperty(selectedNodeId, key, value);
   };
 
-  const createGroup = useCallback((nodeIds: string[], title?: string): import("../types").GroupBox | null => {
-    if (nodeIds.length < 2) {
-      appendLog("warning", "Grouping requires at least 2 nodes.");
-      return null;
-    }
-    const selectedNodes = nodes.filter((n) => nodeIds.includes(n.id));
-    if (selectedNodes.length < 2) {
-      appendLog("warning", "Grouping requires at least 2 nodes.");
-      return null;
-    }
-    const minX = Math.min(...selectedNodes.map((n) => n.x)) - 24;
-    const minY = Math.min(...selectedNodes.map((n) => n.y)) - 56;
-    const maxX = Math.max(...selectedNodes.map((n) => n.x + 280)) + 24;
-    const maxY = Math.max(...selectedNodes.map((n) => n.y + 200)) + 24;
-    const id = makeId("group");
-    const colors = ["#6366f1", "#a855f7", "#ec4899", "#f59e0b", "#10b981"];
-    const color = colors[groups.length % colors.length];
-    const group: import("../types").GroupBox = {
-      id,
-      title: title?.trim() || `鑺傜偣鍒嗙粍 ${groups.length + 1}`,
-      x: minX,
-      y: minY,
-      width: maxX - minX,
-      height: maxY - minY,
-      color,
-    };
-    const nextGroups = [...groups, group];
-    const nextNodes = nodes.map((n) => (nodeIds.includes(n.id) ? { ...n, groupId: id } : n));
-    setGroups(nextGroups);
-    setNodes(nextNodes);
-    syncCurrentWorkflowMeta((wf) => ({
-      ...wf,
-      summary: { ...wf.summary, updatedAt: Date.now() },
-      data: { ...wf.data, groups: nextGroups, nodes: nextNodes },
-    }));
-    appendLog("success", `宸叉墦缁?"${group.title}" (${nodeIds.length} 鑺傜偣)`);
-    return group;
-  }, [nodes, groups, appendLog, syncCurrentWorkflowMeta]);
+  const createGroup = useCallback(
+    (nodeIds: string[], title?: string): import("../types").GroupBox | null => {
+      if (nodeIds.length < 2) {
+        appendLog("warning", "Grouping requires at least 2 nodes.");
+        return null;
+      }
+      const selectedNodes = nodes.filter((n) => nodeIds.includes(n.id));
+      if (selectedNodes.length < 2) {
+        appendLog("warning", "Grouping requires at least 2 nodes.");
+        return null;
+      }
+      const minX = Math.min(...selectedNodes.map((n) => n.x)) - 24;
+      const minY = Math.min(...selectedNodes.map((n) => n.y)) - 56;
+      const maxX = Math.max(...selectedNodes.map((n) => n.x + 280)) + 24;
+      const maxY = Math.max(...selectedNodes.map((n) => n.y + 200)) + 24;
+      const id = makeId("group");
+      const colors = ["#6366f1", "#a855f7", "#ec4899", "#f59e0b", "#10b981"];
+      const color = colors[groups.length % colors.length];
+      const group: import("../types").GroupBox = {
+        id,
+        title: title?.trim() || `鑺傜偣鍒嗙粍 ${groups.length + 1}`,
+        x: minX,
+        y: minY,
+        width: maxX - minX,
+        height: maxY - minY,
+        color,
+      };
+      const nextGroups = [...groups, group];
+      const nextNodes = nodes.map((n) => (nodeIds.includes(n.id) ? { ...n, groupId: id } : n));
+      setGroups(nextGroups);
+      setNodes(nextNodes);
+      syncCurrentWorkflowMeta((wf) => ({
+        ...wf,
+        summary: { ...wf.summary, updatedAt: Date.now() },
+        data: { ...wf.data, groups: nextGroups, nodes: nextNodes },
+      }));
+      appendLog("success", `宸叉墦缁?"${group.title}" (${nodeIds.length} 鑺傜偣)`);
+      return group;
+    },
+    [nodes, groups, appendLog, syncCurrentWorkflowMeta]
+  );
 
-  const ungroup = useCallback((groupId: string): boolean => {
-    const group = groups.find((g) => g.id === groupId);
-    if (!group) return false;
-    const nextGroups = groups.filter((g) => g.id !== groupId);
-    const nextNodes = nodes.map((n) => (n.groupId === groupId ? { ...n, groupId: null } : n));
-    setGroups(nextGroups);
-    setNodes(nextNodes);
-    syncCurrentWorkflowMeta((wf) => ({
-      ...wf,
-      summary: { ...wf.summary, updatedAt: Date.now() },
-      data: { ...wf.data, groups: nextGroups, nodes: nextNodes },
-    }));
-    appendLog("info", `宸茶В缁?"${group.title}"`);
-    return true;
-  }, [groups, nodes, appendLog, syncCurrentWorkflowMeta]);
+  const ungroup = useCallback(
+    (groupId: string): boolean => {
+      const group = groups.find((g) => g.id === groupId);
+      if (!group) return false;
+      const nextGroups = groups.filter((g) => g.id !== groupId);
+      const nextNodes = nodes.map((n) => (n.groupId === groupId ? { ...n, groupId: null } : n));
+      setGroups(nextGroups);
+      setNodes(nextNodes);
+      syncCurrentWorkflowMeta((wf) => ({
+        ...wf,
+        summary: { ...wf.summary, updatedAt: Date.now() },
+        data: { ...wf.data, groups: nextGroups, nodes: nextNodes },
+      }));
+      appendLog("info", `宸茶В缁?"${group.title}"`);
+      return true;
+    },
+    [groups, nodes, appendLog, syncCurrentWorkflowMeta]
+  );
 
-  const updateGroup = useCallback((groupId: string, patch: Partial<import("../types").GroupBox>): boolean => {
-    const nextGroups = groups.map((g) => (g.id === groupId ? { ...g, ...patch } : g));
-    setGroups(nextGroups);
-    syncCurrentWorkflowMeta((wf) => ({
-      ...wf,
-      summary: { ...wf.summary, updatedAt: Date.now() },
-      data: { ...wf.data, groups: nextGroups },
-    }));
-    return true;
-  }, [groups, syncCurrentWorkflowMeta]);
+  const updateGroup = useCallback(
+    (groupId: string, patch: Partial<import("../types").GroupBox>): boolean => {
+      const nextGroups = groups.map((g) => (g.id === groupId ? { ...g, ...patch } : g));
+      setGroups(nextGroups);
+      syncCurrentWorkflowMeta((wf) => ({
+        ...wf,
+        summary: { ...wf.summary, updatedAt: Date.now() },
+        data: { ...wf.data, groups: nextGroups },
+      }));
+      return true;
+    },
+    [groups, syncCurrentWorkflowMeta]
+  );
 
   const writeNodeOutput = useCallback((nodeId: string, outputs: Record<number, unknown>) => {
     setNodeOutputs((prev) => {
@@ -1247,7 +1520,8 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         if (sourceNode.type === "image_node") {
           const imageUrl =
             (typeof sourceNode.data?.imageUrl === "string" && sourceNode.data.imageUrl.trim()) ||
-            (typeof sourceNode.properties.imageUrl === "string" && sourceNode.properties.imageUrl.trim()) ||
+            (typeof sourceNode.properties.imageUrl === "string" &&
+              sourceNode.properties.imageUrl.trim()) ||
             "";
           if (imageUrl && !imageUrls.includes(imageUrl)) imageUrls.push(imageUrl);
           return;
@@ -1256,7 +1530,8 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         if (sourceNode.type === "video_node") {
           const videoUrl =
             (typeof sourceNode.data?.videoUrl === "string" && sourceNode.data.videoUrl.trim()) ||
-            (typeof sourceNode.properties.videoUrl === "string" && sourceNode.properties.videoUrl.trim()) ||
+            (typeof sourceNode.properties.videoUrl === "string" &&
+              sourceNode.properties.videoUrl.trim()) ||
             "";
           if (videoUrl && !videoUrls.includes(videoUrl)) videoUrls.push(videoUrl);
           return;
@@ -1265,7 +1540,8 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         if (sourceNode.type === "audio_node") {
           const audioUrl =
             (typeof sourceNode.data?.audioUrl === "string" && sourceNode.data.audioUrl.trim()) ||
-            (typeof sourceNode.properties.audioUrl === "string" && sourceNode.properties.audioUrl.trim()) ||
+            (typeof sourceNode.properties.audioUrl === "string" &&
+              sourceNode.properties.audioUrl.trim()) ||
             "";
           if (audioUrl && !audioUrls.includes(audioUrl)) audioUrls.push(audioUrl);
         }
@@ -1286,20 +1562,29 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         return;
       }
 
-      const inputs = resolveNodeInputs(node, links, nodeOutputs);
+      const inputs = resolveNodeInputs(node, links, nodeOutputs, nodes);
       if (node.type === "text_node") {
         const { imageUrls, videoUrls, audioUrls } = collectTextNodeMediaReferences(nodeId);
         if (imageUrls.length > 0) inputs.reference_images = imageUrls;
         if (videoUrls.length > 0) inputs.reference_videos = videoUrls;
         if (audioUrls.length > 0) inputs.reference_audios = audioUrls;
       }
-      updateNodeData(nodeId, { loading: true, error: undefined, response: undefined, status: "loading" });
+      updateNodeData(nodeId, {
+        loading: true,
+        error: undefined,
+        response: undefined,
+        status: "loading",
+      });
       appendLog("info", `寮€濮嬫墽琛?[${node.title}]`);
 
       try {
         const result = await executor({ inputs, properties: node.properties, apiConfig });
         writeNodeOutput(nodeId, result.outputs);
-        const patch: Record<string, unknown> = { loading: false, error: undefined, ...(result.patch || {}) };
+        const patch: Record<string, unknown> = {
+          loading: false,
+          error: undefined,
+          ...(result.patch || {}),
+        };
         if (typeof result.outputs[0] === "string") patch.response = result.outputs[0];
         updateNodeData(nodeId, patch);
         appendLog("success", `[${node.title}] 瀹屾垚`);
@@ -1309,28 +1594,40 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         appendLog("error", `[${node.title}] 澶辫触:${message}`);
       }
     },
-    [nodes, links, nodeOutputs, apiConfig, appendLog, updateNodeData, writeNodeOutput, collectTextNodeMediaReferences]
+    [
+      nodes,
+      links,
+      nodeOutputs,
+      apiConfig,
+      appendLog,
+      updateNodeData,
+      writeNodeOutput,
+      collectTextNodeMediaReferences,
+    ]
   );
 
-  const runGroup = useCallback(async (groupId: string) => {
-    const group = groups.find((g) => g.id === groupId);
-    if (!group) return;
-    const memberIds = new Set(nodes.filter((n) => n.groupId === groupId).map((n) => n.id));
-    if (memberIds.size === 0) {
-      appendLog("warning", `Group "${group.title}" has no nodes.`);
-      return;
-    }
-    appendLog("info", `寮€濮嬩竴閿噸璺戠粍 "${group.title}" (${memberIds.size} 鑺傜偣)`);
-    setIsRunning(true);
-    try {
-      for (const id of memberIds) {
-        await runNode(id);
+  const runGroup = useCallback(
+    async (groupId: string) => {
+      const group = groups.find((g) => g.id === groupId);
+      if (!group) return;
+      const memberIds = new Set(nodes.filter((n) => n.groupId === groupId).map((n) => n.id));
+      if (memberIds.size === 0) {
+        appendLog("warning", `Group "${group.title}" has no nodes.`);
+        return;
       }
-      appendLog("success", `Group "${group.title}" rerun completed.`);
-    } finally {
-      setIsRunning(false);
-    }
-  }, [groups, nodes, runNode, appendLog]);
+      appendLog("info", `寮€濮嬩竴閿噸璺戠粍 "${group.title}" (${memberIds.size} 鑺傜偣)`);
+      setIsRunning(true);
+      try {
+        for (const id of memberIds) {
+          await runNode(id);
+        }
+        appendLog("success", `Group "${group.title}" rerun completed.`);
+      } finally {
+        setIsRunning(false);
+      }
+    },
+    [groups, nodes, runNode, appendLog]
+  );
 
   const runWorkflow = useCallback(async () => {
     if (isRunning) return;
@@ -1341,17 +1638,26 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
 
     const { levels, hasCycle, cyclePath } = topologicalLevels(nodes, links);
     if (hasCycle) {
-      appendLog("error", `椤圭洰瀛樺湪寰幆渚濊禆,鏃犳硶鎵ц銆傛秹鍙婅妭鐐?${cyclePath.join(", ")}`);
+      appendLog(
+        "error",
+        `椤圭洰瀛樺湪寰幆渚濊禆,鏃犳硶鎵ц銆傛秹鍙婅妭鐐?${cyclePath.join(", ")}`
+      );
       return;
     }
 
     setIsRunning(true);
     setNodeOutputs(new Map());
-    appendLog("info", `Running project "${currentWorkflowSummary?.name ?? ""}" with ${nodes.length} nodes across ${levels.length} levels.`);
+    appendLog(
+      "info",
+      `Running project "${currentWorkflowSummary?.name ?? ""}" with ${nodes.length} nodes across ${levels.length} levels.`
+    );
 
     for (let i = 0; i < levels.length; i++) {
       const level = levels[i];
-      appendLog("info", `绗?${i + 1}/${levels.length} 灞?(${level.length} 涓妭鐐瑰苟鍙? 鈥?[${level.map((n) => n.title).join(", ")}]`);
+      appendLog(
+        "info",
+        `绗?${i + 1}/${levels.length} 灞?(${level.length} 涓妭鐐瑰苟鍙? 鈥?[${level.map((n) => n.title).join(", ")}]`
+      );
       await Promise.all(level.map((node) => runNode(node.id)));
     }
 
@@ -1398,15 +1704,20 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     });
   }, [appendLog, syncCurrentWorkflowMeta]);
 
-  const createWorkflow = useCallback((name?: string): WorkflowSummary => {
-    const wf = makeEmptyWorkflow(name?.trim() || `椤圭洰 ${Object.keys(workspace.workflows).length + 1}`);
-    setWorkspace((prev) => ({
-      ...prev,
-      workflows: { ...prev.workflows, [wf.summary.id]: wf },
-    }));
-    appendLog("success", `宸叉柊寤洪」鐩?"${wf.summary.name}"`);
-    return wf.summary;
-  }, [appendLog, workspace.workflows]);
+  const createWorkflow = useCallback(
+    (name?: string): WorkflowSummary => {
+      const wf = makeEmptyWorkflow(
+        name?.trim() || `椤圭洰 ${Object.keys(workspace.workflows).length + 1}`
+      );
+      setWorkspace((prev) => ({
+        ...prev,
+        workflows: { ...prev.workflows, [wf.summary.id]: wf },
+      }));
+      appendLog("success", `宸叉柊寤洪」鐩?"${wf.summary.name}"`);
+      return wf.summary;
+    },
+    [appendLog, workspace.workflows]
+  );
 
   const createWorkflowFromTemplate = useCallback(
     (templateId: string, customName?: string): WorkflowSummary | null => {
@@ -1418,15 +1729,17 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       const wfId = makeId("wf");
       const now = Date.now();
       const nodeIds: string[] = [];
-      const nodes: GraphNode[] = normalizeNodes(tmpl.nodes.map((n) => {
-        const nodeId = makeId("node");
-        nodeIds.push(nodeId);
-        const base = createNodeFromType(n.type, nodeId, n.x, n.y);
-        if (n.defaultProperties) {
-          base.properties = { ...base.properties, ...n.defaultProperties };
-        }
-        return base;
-      }));
+      const nodes: GraphNode[] = normalizeNodes(
+        tmpl.nodes.map((n) => {
+          const nodeId = makeId("node");
+          nodeIds.push(nodeId);
+          const base = createNodeFromType(n.type, nodeId, n.x, n.y);
+          if (n.defaultProperties) {
+            base.properties = { ...base.properties, ...n.defaultProperties };
+          }
+          return base;
+        })
+      );
       const links: GraphLink[] = tmpl.links.map((l) => ({
         id: makeId("link"),
         fromNodeId: nodeIds[l.fromNodeIndex],
@@ -1467,7 +1780,10 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         data: {
           nodes,
           links,
-          nodeOutputs: Array.from(outputsMap.entries()).map(([k, v]) => [k, Array.from(v.entries())]),
+          nodeOutputs: Array.from(outputsMap.entries()).map(([k, v]) => [
+            k,
+            Array.from(v.entries()),
+          ]),
         },
       };
       setWorkspace((prev) => ({ ...prev, workflows: { ...prev.workflows, [wfId]: wf } }));
@@ -1499,15 +1815,17 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       }
       const now = Date.now();
       const nodeIds: string[] = [];
-      const nodes: GraphNode[] = normalizeNodes(tmpl.nodes.map((n) => {
-        const nodeId = makeId("node");
-        nodeIds.push(nodeId);
-        const base = createNodeFromType(n.type, nodeId, n.x, n.y);
-        if (n.defaultProperties) {
-          base.properties = { ...base.properties, ...n.defaultProperties };
-        }
-        return base;
-      }));
+      const nodes: GraphNode[] = normalizeNodes(
+        tmpl.nodes.map((n) => {
+          const nodeId = makeId("node");
+          nodeIds.push(nodeId);
+          const base = createNodeFromType(n.type, nodeId, n.x, n.y);
+          if (n.defaultProperties) {
+            base.properties = { ...base.properties, ...n.defaultProperties };
+          }
+          return base;
+        })
+      );
       const links: GraphLink[] = tmpl.links.map((l) => ({
         id: makeId("link"),
         fromNodeId: nodeIds[l.fromNodeIndex],
@@ -1540,11 +1858,19 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         if (!cur) return prev;
         const updated: Workflow = {
           ...cur,
-          summary: { ...cur.summary, category: tmpl.category, tags: ["妯℃澘", tmpl.category], updatedAt: now },
+          summary: {
+            ...cur.summary,
+            category: tmpl.category,
+            tags: ["妯℃澘", tmpl.category],
+            updatedAt: now,
+          },
           data: {
             nodes: nodes.map((n) => ({ ...n })),
             links: links.map((l) => ({ ...l })),
-            nodeOutputs: Array.from(outputsMap.entries()).map(([k, v]) => [k, Array.from(v.entries())]),
+            nodeOutputs: Array.from(outputsMap.entries()).map(([k, v]) => [
+              k,
+              Array.from(v.entries()),
+            ]),
           },
         };
         return { ...prev, workflows: { ...prev.workflows, [prev.currentId]: updated } };
@@ -1564,100 +1890,129 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     [workspace, appendLog, clearLinkDraft, resetHistory]
   );
 
-  const switchWorkflow = useCallback((id: string): boolean => {
-    if (!workspace.workflows[id]) {
-      appendLog("warning", `Project ${id} was not found.`);
-      return false;
-    }
-    if (id === workspace.currentId) {
-      appendLog("info", `宸插湪椤圭洰 "${workspace.workflows[id].summary.name}"`);
+  const switchWorkflow = useCallback(
+    (id: string): boolean => {
+      if (!workspace.workflows[id]) {
+        appendLog("warning", `Project ${id} was not found.`);
+        return false;
+      }
+      if (id === workspace.currentId) {
+        appendLog("info", `宸插湪椤圭洰 "${workspace.workflows[id].summary.name}"`);
+        return true;
+      }
+      setWorkspace((prev) => {
+        const target = prev.workflows[id];
+        if (!target) return prev;
+        const nextNodes = normalizeNodes(target.data.nodes);
+        setNodes(nextNodes);
+        setLinks(target.data.links);
+        setNodeOutputs(outputsToMap(target.data.nodeOutputs));
+        setSelectedNodeId(null);
+        clearLinkDraft();
+        resetHistory({ nodes: nextNodes, links: target.data.links });
+        appendLog(
+          "info",
+          `宸插垏鎹㈠埌椤圭洰 "${target.summary.name}" (${nextNodes.length} 鑺傜偣, ${target.data.links.length} 杩炵嚎)`
+        );
+        return { ...prev, currentId: id };
+      });
       return true;
-    }
-    setWorkspace((prev) => {
-      const target = prev.workflows[id];
-      if (!target) return prev;
-      const nextNodes = normalizeNodes(target.data.nodes);
-      setNodes(nextNodes);
-      setLinks(target.data.links);
-      setNodeOutputs(outputsToMap(target.data.nodeOutputs));
-      setSelectedNodeId(null);
-      clearLinkDraft();
-      resetHistory({ nodes: nextNodes, links: target.data.links });
-      appendLog("info", `宸插垏鎹㈠埌椤圭洰 "${target.summary.name}" (${nextNodes.length} 鑺傜偣, ${target.data.links.length} 杩炵嚎)`);
-      return { ...prev, currentId: id };
-    });
-    return true;
-  }, [workspace, appendLog, clearLinkDraft, resetHistory]);
+    },
+    [workspace, appendLog, clearLinkDraft, resetHistory]
+  );
 
-  const renameWorkflow = useCallback((id: string, name: string): boolean => {
-    const trimmed = name.trim();
-    if (!trimmed) {
-      appendLog("warning", "椤圭洰鍚嶇О涓嶈兘涓虹┖");
-      return false;
-    }
-    if (!workspace.workflows[id]) return false;
-    setWorkspace((prev) => {
-      const wf = prev.workflows[id];
-      const updated: Workflow = { ...wf, summary: { ...wf.summary, name: trimmed, updatedAt: Date.now() } };
-      return { ...prev, workflows: { ...prev.workflows, [id]: updated } };
-    });
-    appendLog("success", `宸查噸鍛藉悕涓?"${trimmed}"`);
-    return true;
-  }, [workspace, appendLog]);
+  const renameWorkflow = useCallback(
+    (id: string, name: string): boolean => {
+      const trimmed = name.trim();
+      if (!trimmed) {
+        appendLog("warning", "椤圭洰鍚嶇О涓嶈兘涓虹┖");
+        return false;
+      }
+      if (!workspace.workflows[id]) return false;
+      setWorkspace((prev) => {
+        const wf = prev.workflows[id];
+        const updated: Workflow = {
+          ...wf,
+          summary: { ...wf.summary, name: trimmed, updatedAt: Date.now() },
+        };
+        return { ...prev, workflows: { ...prev.workflows, [id]: updated } };
+      });
+      appendLog("success", `宸查噸鍛藉悕涓?"${trimmed}"`);
+      return true;
+    },
+    [workspace, appendLog]
+  );
 
-  const setWorkflowCategory = useCallback((id: string, category: string): boolean => {
-    if (!workspace.workflows[id]) return false;
-    const trimmed = category.trim();
-    setWorkspace((prev) => {
-      const wf = prev.workflows[id];
-      const updated: Workflow = {
-        ...wf,
-        summary: {
-          ...wf.summary,
-          category: trimmed || undefined,
-          updatedAt: Date.now(),
-        },
-      };
-      return { ...prev, workflows: { ...prev.workflows, [id]: updated } };
-    });
-    return true;
-  }, [workspace]);
+  const setWorkflowCategory = useCallback(
+    (id: string, category: string): boolean => {
+      if (!workspace.workflows[id]) return false;
+      const trimmed = category.trim();
+      setWorkspace((prev) => {
+        const wf = prev.workflows[id];
+        const updated: Workflow = {
+          ...wf,
+          summary: {
+            ...wf.summary,
+            category: trimmed || undefined,
+            updatedAt: Date.now(),
+          },
+        };
+        return { ...prev, workflows: { ...prev.workflows, [id]: updated } };
+      });
+      return true;
+    },
+    [workspace]
+  );
 
-  const addTagToWorkflow = useCallback((id: string, tag: string): boolean => {
-    const trimmed = tag.trim();
-    if (!trimmed) {
-      appendLog("warning", "鏍囩涓嶈兘涓虹┖");
-      return false;
-    }
-    if (!workspace.workflows[id]) return false;
-    const wf = workspace.workflows[id];
-    const existing = wf.summary.tags ?? [];
-    if (existing.includes(trimmed)) return false;
-    setWorkspace((prev) => {
-      const target = prev.workflows[id];
-      if (!target) return prev;
-      const updated: Workflow = {
-        ...target,
-        summary: { ...target.summary, tags: [...(target.summary.tags ?? []), trimmed], updatedAt: Date.now() },
-      };
-      return { ...prev, workflows: { ...prev.workflows, [id]: updated } };
-    });
-    return true;
-  }, [workspace, appendLog]);
+  const addTagToWorkflow = useCallback(
+    (id: string, tag: string): boolean => {
+      const trimmed = tag.trim();
+      if (!trimmed) {
+        appendLog("warning", "鏍囩涓嶈兘涓虹┖");
+        return false;
+      }
+      if (!workspace.workflows[id]) return false;
+      const wf = workspace.workflows[id];
+      const existing = wf.summary.tags ?? [];
+      if (existing.includes(trimmed)) return false;
+      setWorkspace((prev) => {
+        const target = prev.workflows[id];
+        if (!target) return prev;
+        const updated: Workflow = {
+          ...target,
+          summary: {
+            ...target.summary,
+            tags: [...(target.summary.tags ?? []), trimmed],
+            updatedAt: Date.now(),
+          },
+        };
+        return { ...prev, workflows: { ...prev.workflows, [id]: updated } };
+      });
+      return true;
+    },
+    [workspace, appendLog]
+  );
 
-  const removeTagFromWorkflow = useCallback((id: string, tag: string): boolean => {
-    if (!workspace.workflows[id]) return false;
-    setWorkspace((prev) => {
-      const target = prev.workflows[id];
-      if (!target) return prev;
-      const updated: Workflow = {
-        ...target,
-        summary: { ...target.summary, tags: (target.summary.tags ?? []).filter((t) => t !== tag), updatedAt: Date.now() },
-      };
-      return { ...prev, workflows: { ...prev.workflows, [id]: updated } };
-    });
-    return true;
-  }, [workspace]);
+  const removeTagFromWorkflow = useCallback(
+    (id: string, tag: string): boolean => {
+      if (!workspace.workflows[id]) return false;
+      setWorkspace((prev) => {
+        const target = prev.workflows[id];
+        if (!target) return prev;
+        const updated: Workflow = {
+          ...target,
+          summary: {
+            ...target.summary,
+            tags: (target.summary.tags ?? []).filter((t) => t !== tag),
+            updatedAt: Date.now(),
+          },
+        };
+        return { ...prev, workflows: { ...prev.workflows, [id]: updated } };
+      });
+      return true;
+    },
+    [workspace]
+  );
 
   const moveWorkflow = useCallback(
     (sourceId: string, targetId: string, position: "before" | "after" = "before"): boolean => {
@@ -1698,79 +2053,90 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     [workspace]
   );
 
-  const deleteWorkflow = useCallback((id: string): boolean => {
-    if (!workspace.workflows[id]) return false;
-    if (workspace.workflows[id].summary.deletedAt) return false;
-    const removed = workspace.workflows[id];
-    const remaining = (Object.values(workspace.workflows) as Workflow[]).filter((w) => w.summary.id !== id);
-    if (remaining.length === 0) {
-      appendLog("warning", "At least one project must remain.");
-      return false;
-    }
-    const wasCurrent = id === workspace.currentId;
-    const nextCurrentId = wasCurrent
-      ? remaining.sort((a, b) => b.summary.updatedAt - a.summary.updatedAt)[0].summary.id
-      : workspace.currentId;
-    const now = Date.now();
-    const tombstoned: Workflow = {
-      ...removed,
-      summary: { ...removed.summary, deletedAt: now, updatedAt: now },
-    };
-    setWorkspace((prev) => {
-      const next = { ...prev.workflows };
-      delete next[id];
-      return {
-        ...prev,
-        workflows: next,
-        trash: [tombstoned, ...prev.trash.filter((w) => w.summary.id !== id)],
-        currentId: nextCurrentId,
+  const deleteWorkflow = useCallback(
+    (id: string): boolean => {
+      if (!workspace.workflows[id]) return false;
+      if (workspace.workflows[id].summary.deletedAt) return false;
+      const removed = workspace.workflows[id];
+      const remaining = (Object.values(workspace.workflows) as Workflow[]).filter(
+        (w) => w.summary.id !== id
+      );
+      if (remaining.length === 0) {
+        appendLog("warning", "At least one project must remain.");
+        return false;
+      }
+      const wasCurrent = id === workspace.currentId;
+      const nextCurrentId = wasCurrent
+        ? remaining.sort((a, b) => b.summary.updatedAt - a.summary.updatedAt)[0].summary.id
+        : workspace.currentId;
+      const now = Date.now();
+      const tombstoned: Workflow = {
+        ...removed,
+        summary: { ...removed.summary, deletedAt: now, updatedAt: now },
       };
-    });
-    if (wasCurrent) {
-      const nextWf = workspace.workflows[nextCurrentId];
-      const nextNodes = normalizeNodes(nextWf.data.nodes);
-      setNodes(nextNodes);
-      setLinks(nextWf.data.links);
-      setNodeOutputs(outputsToMap(nextWf.data.nodeOutputs));
-      setSelectedNodeId(null);
-      clearLinkDraft();
-      resetHistory({ nodes: nextNodes, links: nextWf.data.links });
-    }
-    appendLog("warning", `宸茬Щ鑷冲洖鏀剁珯 "${removed.summary.name}"`);
-    return true;
-  }, [workspace, appendLog, clearLinkDraft, resetHistory]);
+      setWorkspace((prev) => {
+        const next = { ...prev.workflows };
+        delete next[id];
+        return {
+          ...prev,
+          workflows: next,
+          trash: [tombstoned, ...prev.trash.filter((w) => w.summary.id !== id)],
+          currentId: nextCurrentId,
+        };
+      });
+      if (wasCurrent) {
+        const nextWf = workspace.workflows[nextCurrentId];
+        const nextNodes = normalizeNodes(nextWf.data.nodes);
+        setNodes(nextNodes);
+        setLinks(nextWf.data.links);
+        setNodeOutputs(outputsToMap(nextWf.data.nodeOutputs));
+        setSelectedNodeId(null);
+        clearLinkDraft();
+        resetHistory({ nodes: nextNodes, links: nextWf.data.links });
+      }
+      appendLog("warning", `宸茬Щ鑷冲洖鏀剁珯 "${removed.summary.name}"`);
+      return true;
+    },
+    [workspace, appendLog, clearLinkDraft, resetHistory]
+  );
 
-  const restoreWorkflow = useCallback((id: string): boolean => {
-    const src = workspace.trash.find((w) => w.summary.id === id);
-    if (!src) return false;
-    if (workspace.workflows[id]) {
-      appendLog("warning", `椤圭洰 "${src.summary.name}" 宸插瓨鍦?鏃犳硶杩樺師`);
-      return false;
-    }
-    const now = Date.now();
-    const restored: Workflow = {
-      ...src,
-      summary: { ...src.summary, deletedAt: undefined, updatedAt: now },
-    };
-    setWorkspace((prev) => ({
-      ...prev,
-      workflows: { ...prev.workflows, [id]: restored },
-      trash: prev.trash.filter((w) => w.summary.id !== id),
-    }));
-    appendLog("success", `宸茶繕鍘?"${src.summary.name}"`);
-    return true;
-  }, [workspace, appendLog]);
+  const restoreWorkflow = useCallback(
+    (id: string): boolean => {
+      const src = workspace.trash.find((w) => w.summary.id === id);
+      if (!src) return false;
+      if (workspace.workflows[id]) {
+        appendLog("warning", `椤圭洰 "${src.summary.name}" 宸插瓨鍦?鏃犳硶杩樺師`);
+        return false;
+      }
+      const now = Date.now();
+      const restored: Workflow = {
+        ...src,
+        summary: { ...src.summary, deletedAt: undefined, updatedAt: now },
+      };
+      setWorkspace((prev) => ({
+        ...prev,
+        workflows: { ...prev.workflows, [id]: restored },
+        trash: prev.trash.filter((w) => w.summary.id !== id),
+      }));
+      appendLog("success", `宸茶繕鍘?"${src.summary.name}"`);
+      return true;
+    },
+    [workspace, appendLog]
+  );
 
-  const purgeWorkflow = useCallback((id: string): boolean => {
-    const src = workspace.trash.find((w) => w.summary.id === id);
-    if (!src) return false;
-    setWorkspace((prev) => ({
-      ...prev,
-      trash: prev.trash.filter((w) => w.summary.id !== id),
-    }));
-    appendLog("warning", `宸叉案涔呭垹闄?"${src.summary.name}"`);
-    return true;
-  }, [workspace, appendLog]);
+  const purgeWorkflow = useCallback(
+    (id: string): boolean => {
+      const src = workspace.trash.find((w) => w.summary.id === id);
+      if (!src) return false;
+      setWorkspace((prev) => ({
+        ...prev,
+        trash: prev.trash.filter((w) => w.summary.id !== id),
+      }));
+      appendLog("warning", `宸叉案涔呭垹闄?"${src.summary.name}"`);
+      return true;
+    },
+    [workspace, appendLog]
+  );
 
   const emptyTrash = useCallback((): number => {
     const count = workspace.trash.length;
@@ -1785,58 +2151,77 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     const expired = workspace.trash.filter((w) => (w.summary.deletedAt ?? 0) < cutoff);
     if (expired.length === 0) return 0;
     const expiredIds = new Set(expired.map((w) => w.summary.id));
-    setWorkspace((prev) => ({ ...prev, trash: prev.trash.filter((w) => !expiredIds.has(w.summary.id)) }));
+    setWorkspace((prev) => ({
+      ...prev,
+      trash: prev.trash.filter((w) => !expiredIds.has(w.summary.id)),
+    }));
     appendLog(
       "warning",
-      `Trash cleanup removed ${expired.length} expired projects older than ${TRASH_RETENTION_DAYS} days${expired.length > 0 ? ` ("${expired.slice(0, 3).map((w) => w.summary.name).join('", "')}${expired.length > 3 ? '" etc.' : '"'})` : ""}`
+      `Trash cleanup removed ${expired.length} expired projects older than ${TRASH_RETENTION_DAYS} days${
+        expired.length > 0
+          ? ` ("${expired
+              .slice(0, 3)
+              .map((w) => w.summary.name)
+              .join('", "')}${expired.length > 3 ? '" etc.' : '"'})`
+          : ""
+      }`
     );
     return expired.length;
   }, [workspace, appendLog]);
 
-  const duplicateWorkflow = useCallback((id: string): WorkflowSummary | null => {
-    const src = workspace.workflows[id];
-    if (!src) return null;
-    const now = Date.now();
-    const wf: Workflow = {
-      summary: {
-        id: makeId("wf"),
-        name: `${src.summary.name} - 鍓湰`,
-        category: src.summary.category,
-        tags: [...(src.summary.tags ?? [])],
-        sortIndex: now,
-        createdAt: now,
-        updatedAt: now,
-      },
-      data: {
-        nodes: src.data.nodes.map((n) => ({ ...n, id: makeId("node") })),
-        links: [],
-        nodeOutputs: [],
-      },
-    };
-    const oldToNew = new Map<string, string>();
-    src.data.nodes.forEach((n, i) => oldToNew.set(n.id, wf.data.nodes[i].id));
-    wf.data.links = src.data.links
-      .filter((l) => oldToNew.has(l.fromNodeId) && oldToNew.has(l.toNodeId))
-      .map((l) => ({
-        ...l,
-        id: makeId("link"),
-        fromNodeId: oldToNew.get(l.fromNodeId)!,
-        toNodeId: oldToNew.get(l.toNodeId)!,
+  const duplicateWorkflow = useCallback(
+    (id: string): WorkflowSummary | null => {
+      const src = workspace.workflows[id];
+      if (!src) return null;
+      const now = Date.now();
+      const wf: Workflow = {
+        summary: {
+          id: makeId("wf"),
+          name: `${src.summary.name} - 鍓湰`,
+          category: src.summary.category,
+          tags: [...(src.summary.tags ?? [])],
+          sortIndex: now,
+          createdAt: now,
+          updatedAt: now,
+        },
+        data: {
+          nodes: src.data.nodes.map((n) => ({ ...n, id: makeId("node") })),
+          links: [],
+          nodeOutputs: [],
+        },
+      };
+      const oldToNew = new Map<string, string>();
+      src.data.nodes.forEach((n, i) => oldToNew.set(n.id, wf.data.nodes[i].id));
+      wf.data.links = src.data.links
+        .filter((l) => oldToNew.has(l.fromNodeId) && oldToNew.has(l.toNodeId))
+        .map((l) => ({
+          ...l,
+          id: makeId("link"),
+          fromNodeId: oldToNew.get(l.fromNodeId)!,
+          toNodeId: oldToNew.get(l.toNodeId)!,
+        }));
+      setWorkspace((prev) => ({
+        ...prev,
+        workflows: { ...prev.workflows, [wf.summary.id]: wf },
       }));
-    setWorkspace((prev) => ({
-      ...prev,
-      workflows: { ...prev.workflows, [wf.summary.id]: wf },
-    }));
-    appendLog("success", `宸插鍒朵负鏂伴」鐩?"${wf.summary.name}" (${wf.data.nodes.length} 鑺傜偣)`);
-    return wf.summary;
-  }, [workspace, appendLog]);
+      appendLog(
+        "success",
+        `宸插鍒朵负鏂伴」鐩?"${wf.summary.name}" (${wf.data.nodes.length} 鑺傜偣)`
+      );
+      return wf.summary;
+    },
+    [workspace, appendLog]
+  );
 
   const exportWorkspaceJson = useCallback((): string => {
     return JSON.stringify(workspace, null, 2);
   }, [workspace]);
 
   const importWorkspaceJson = useCallback(
-    (json: string, options: { includeTrash?: boolean; renameConflicts?: boolean } = {}): { imported: number; skipped: number; renamed: number; errors: string[] } => {
+    (
+      json: string,
+      options: { includeTrash?: boolean; renameConflicts?: boolean } = {}
+    ): { imported: number; skipped: number; renamed: number; errors: string[] } => {
       const { includeTrash = true, renameConflicts = true } = options;
       const result = { imported: 0, skipped: 0, renamed: 0, errors: [] };
       let parsed: any;
@@ -1846,12 +2231,19 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         result.errors.push(`JSON 瑙ｆ瀽澶辫触:${err instanceof Error ? err.message : String(err)}`);
         return result;
       }
-      if (!parsed || typeof parsed !== "object" || !parsed.workflows || typeof parsed.workflows !== "object") {
+      if (
+        !parsed ||
+        typeof parsed !== "object" ||
+        !parsed.workflows ||
+        typeof parsed.workflows !== "object"
+      ) {
         result.errors.push("鏂囦欢鏍煎紡鏃犳晥:缂哄皯 workflows 瀛楁");
         return result;
       }
       const incoming = parsed.workflows as Record<string, Workflow>;
-      const incomingTrash: Workflow[] = Array.isArray(parsed.trash) ? (parsed.trash as Workflow[]) : [];
+      const incomingTrash: Workflow[] = Array.isArray(parsed.trash)
+        ? (parsed.trash as Workflow[])
+        : [];
 
       setWorkspace((prev) => {
         const merged: Record<string, Workflow> = { ...prev.workflows };
@@ -1882,7 +2274,12 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
               }));
             merged[newId] = {
               ...wf,
-              summary: { ...wf.summary, id: newId, name: `${wf.summary.name} (瀵煎叆)`, updatedAt: Date.now() },
+              summary: {
+                ...wf.summary,
+                id: newId,
+                name: `${wf.summary.name} (瀵煎叆)`,
+                updatedAt: Date.now(),
+              },
               data: { ...wf.data, nodes: remappedNodes, links: remappedLinks, nodeOutputs: [] },
             };
             result.renamed++;
@@ -1982,6 +2379,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     linkFromOutputIndex,
     linkToInputIndex,
     linkDraftIssue,
+    nodeOutputs,
     resolvedInputsMap,
     isRunning,
     canUndo,
@@ -2000,6 +2398,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     clearLinkDraft,
     addNode,
     createImagePromptStarter,
+    createTextNodeStarterFlow,
     syncImagePromptStarterLayout,
     removeNode,
     duplicateNode,
@@ -2043,4 +2442,3 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     getWorkspaceSnapshot,
   };
 }
-

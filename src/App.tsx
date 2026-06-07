@@ -25,13 +25,30 @@ import { shouldOpenCanvasContextMenu } from "./utils/canvasContextMenuPolicy";
 import { shouldFinishCanvasLinkOnCanvasPointerUp } from "./utils/canvasPointerPolicy";
 import { cropImageGridCell, getGridChildNodePosition } from "./utils/imageGridSplit";
 import { getCanvasViewportClassName } from "./utils/canvasViewportLayout";
+import { collectTextNodeReferences } from "./utils/textNodeReferences";
 import { ConfigProvider, theme } from "antd";
-import { GraphNode, NodeClass, VideoFrameAnalysisOverview, VideoFrameAnalysisSegment, VideoSegmentTextAnalysis } from "./types";
-import { ApiSettings, getActiveProfile, getProviderProfile, loadApiSettings, saveApiSettings } from "./features/api/apiSettings";
+import {
+  GraphNode,
+  NodeClass,
+  VideoFrameAnalysisOverview,
+  VideoFrameAnalysisSegment,
+  VideoSegmentTextAnalysis,
+} from "./types";
+import {
+  ApiSettings,
+  getActiveProfile,
+  getProviderProfile,
+  loadApiSettings,
+  saveApiSettings,
+} from "./features/api/apiSettings";
 import { clearAuthSession } from "./features/auth/authStorage";
 import { logout } from "./features/auth/authApi";
 import { performOptimisticLogout } from "./features/auth/logoutFlow";
-import { getRemoteProjectDetail, updateRemoteProject, type RemoteCanvasProject } from "./features/workspace/remoteCanvas";
+import {
+  getRemoteProjectDetail,
+  updateRemoteProject,
+  type RemoteCanvasProject,
+} from "./features/workspace/remoteCanvas";
 
 const SearchMenu = React.lazy(() => import("./components/SearchMenu"));
 
@@ -47,15 +64,23 @@ export default function App({ onLoggedOut }: AppProps) {
 
   const panelFallback = (
     <div className="absolute inset-0 z-40 flex items-center justify-center bg-[#0f1218]/55 backdrop-blur-sm">
-      <div className="rounded-full border border-[#2b3142] bg-[#171b26] px-4 py-2 text-sm text-gray-300">鍔犺浇涓?..</div>
+      <div className="rounded-full border border-[#2b3142] bg-[#171b26] px-4 py-2 text-sm text-gray-300">
+        鍔犺浇涓?..
+      </div>
     </div>
   );
 
   const [apiSettings, setApiSettings] = React.useState<ApiSettings>(() => loadApiSettings());
   const [apiSettingsOpen, setApiSettingsOpen] = React.useState(false);
   const activeApiProfile = React.useMemo(() => getActiveProfile(apiSettings), [apiSettings]);
-  const deepseekApiProfile = React.useMemo(() => getProviderProfile(apiSettings, "deepseek"), [apiSettings]);
-  const minimaxApiProfile = React.useMemo(() => getProviderProfile(apiSettings, "minimax"), [apiSettings]);
+  const deepseekApiProfile = React.useMemo(
+    () => getProviderProfile(apiSettings, "deepseek"),
+    [apiSettings]
+  );
+  const minimaxApiProfile = React.useMemo(
+    () => getProviderProfile(apiSettings, "minimax"),
+    [apiSettings]
+  );
   const apiBaseUrl = activeApiProfile.baseUrl;
   const apiKey = activeApiProfile.apiKey;
   const apiModel = activeApiProfile.model;
@@ -63,26 +88,29 @@ export default function App({ onLoggedOut }: AppProps) {
   const [isProjectLoading, setIsProjectLoading] = React.useState(Boolean(requestedWorkflowId));
   const [projectLoadError, setProjectLoadError] = React.useState("");
 
-  const refreshRemoteProject = React.useCallback((showLoading = true) => {
-    if (!requestedWorkflowId) {
-      setIsProjectLoading(false);
-      setProjectLoadError("Missing projectId, cannot load remote project.");
-      return;
-    }
-
-    if (showLoading) setIsProjectLoading(true);
-    setProjectLoadError("");
-    void getRemoteProjectDetail(requestedWorkflowId)
-      .then((project) => {
-        setRemoteProject(project);
-      })
-      .catch((error) => {
-        setProjectLoadError(error instanceof Error ? error.message : "鍔犺浇椤圭洰璇︽儏澶辫触");
-      })
-      .finally(() => {
+  const refreshRemoteProject = React.useCallback(
+    (showLoading = true) => {
+      if (!requestedWorkflowId) {
         setIsProjectLoading(false);
-      });
-  }, [requestedWorkflowId]);
+        setProjectLoadError("Missing projectId, cannot load remote project.");
+        return;
+      }
+
+      if (showLoading) setIsProjectLoading(true);
+      setProjectLoadError("");
+      void getRemoteProjectDetail(requestedWorkflowId)
+        .then((project) => {
+          setRemoteProject(project);
+        })
+        .catch((error) => {
+          setProjectLoadError(error instanceof Error ? error.message : "鍔犺浇椤圭洰璇︽儏澶辫触");
+        })
+        .finally(() => {
+          setIsProjectLoading(false);
+        });
+    },
+    [requestedWorkflowId]
+  );
 
   const handleLogout = React.useCallback(() => {
     performOptimisticLogout({
@@ -109,6 +137,7 @@ export default function App({ onLoggedOut }: AppProps) {
     runNode,
     addNode,
     createImagePromptStarter,
+    createTextNodeStarterFlow,
     syncImagePromptStarterLayout,
     removeNode,
     removeLink,
@@ -124,6 +153,7 @@ export default function App({ onLoggedOut }: AppProps) {
     linkFromOutputIndex,
     linkToInputIndex,
     linkDraftIssue,
+    nodeOutputs,
     resolvedInputsMap,
     canUndo,
     canRedo,
@@ -185,32 +215,14 @@ export default function App({ onLoggedOut }: AppProps) {
     },
   });
 
-  const textNodeReferenceImagesMap = React.useMemo(() => {
-    const nodeById = new Map<string, GraphNode>(nodes.map((node) => [node.id, node]));
-    const map = new Map<string, string[]>();
-
-    for (const link of links) {
-      const targetNode = nodeById.get(link.toNodeId);
-      const sourceNode = nodeById.get(link.fromNodeId);
-      if (!targetNode || !sourceNode || targetNode.type !== "text_node") continue;
-
-      const imageUrl =
-        typeof sourceNode.data?.imageUrl === "string" && sourceNode.data.imageUrl.trim()
-          ? sourceNode.data.imageUrl.trim()
-          : typeof sourceNode.properties.imageUrl === "string" && sourceNode.properties.imageUrl.trim()
-            ? sourceNode.properties.imageUrl.trim()
-            : "";
-
-      if (!imageUrl) continue;
-      const existing = map.get(targetNode.id) ?? [];
-      if (!existing.includes(imageUrl)) {
-        existing.push(imageUrl);
-        map.set(targetNode.id, existing);
-      }
-    }
-
+  const textNodeReferencesMap = React.useMemo(() => {
+    const map = new Map<string, ReturnType<typeof collectTextNodeReferences>>();
+    nodes.forEach((node) => {
+      if (node.type !== "text_node") return;
+      map.set(node.id, collectTextNodeReferences({ links, nodeOutputs, nodes, textNodeId: node.id }));
+    });
     return map;
-  }, [links, nodes]);
+  }, [links, nodeOutputs, nodes]);
 
   const {
     isWelcomeDismissed,
@@ -244,19 +256,33 @@ export default function App({ onLoggedOut }: AppProps) {
   const [canvasSize, setCanvasSize] = React.useState({ width: 0, height: 0 });
   const [selectedGroupId, setSelectedGroupId] = React.useState<string | null>(null);
   const [selectedLinkId, setSelectedLinkId] = React.useState<string | null>(null);
-  const [selectedLinkAnchor, setSelectedLinkAnchor] = React.useState<{ x: number; y: number } | null>(null);
+  const [selectedLinkAnchor, setSelectedLinkAnchor] = React.useState<{
+    x: number;
+    y: number;
+  } | null>(null);
   const [selectedNodeIds, setSelectedNodeIds] = React.useState<Set<string>>(new Set());
-  const [nodeContextMenu, setNodeContextMenu] = React.useState<{ nodeId: string; x: number; y: number } | null>(null);
+  const [nodeContextMenu, setNodeContextMenu] = React.useState<{
+    nodeId: string;
+    x: number;
+    y: number;
+  } | null>(null);
   const nodeContextMenuNode = React.useMemo(
-    () => (nodeContextMenu ? nodes.find((node) => node.id === nodeContextMenu.nodeId) ?? null : null),
+    () =>
+      nodeContextMenu ? (nodes.find((node) => node.id === nodeContextMenu.nodeId) ?? null) : null,
     [nodeContextMenu, nodes]
   );
   const nodeContextMenuText = React.useMemo(() => {
     if (!nodeContextMenuNode || nodeContextMenuNode.type !== "text_node") return "";
-    return (nodeContextMenuNode.data?.response as string) || (nodeContextMenuNode.properties.response as string) || "";
+    return (
+      (nodeContextMenuNode.data?.response as string) ||
+      (nodeContextMenuNode.properties.response as string) ||
+      ""
+    );
   }, [nodeContextMenuNode]);
   const menuCloseTimerRef = React.useRef<number | null>(null);
-  const autoFitStateRef = React.useRef<{ workflowId: string | null; nodeCount: number } | null>(null);
+  const autoFitStateRef = React.useRef<{ workflowId: string | null; nodeCount: number } | null>(
+    null
+  );
 
   React.useEffect(() => {
     if (!currentWorkflowSummary?.name) return;
@@ -275,11 +301,7 @@ export default function App({ onLoggedOut }: AppProps) {
     setIsWelcomeDismissed(true);
     setCurrentView("canvas");
     setActiveQuickTool(null);
-  }, [
-    setActiveQuickTool,
-    setCurrentView,
-    setIsWelcomeDismissed,
-  ]);
+  }, [setActiveQuickTool, setCurrentView, setIsWelcomeDismissed]);
 
   const {
     canvasRef,
@@ -374,20 +396,81 @@ export default function App({ onLoggedOut }: AppProps) {
         });
       });
     },
-    [createImagePromptStarter, focusWorldRect, setActiveQuickTool, setCurrentView, setSelectedNodeId]
+    [
+      createImagePromptStarter,
+      focusWorldRect,
+      setActiveQuickTool,
+      setCurrentView,
+      setSelectedNodeId,
+    ]
+  );
+
+  const handleCreateTextStarterFlow = React.useCallback(
+    (nodeId: string, action: "video" | "music") => {
+      const result = createTextNodeStarterFlow(nodeId, action);
+      if (!result) return;
+
+      const textNode = result.nodes.find((node) => node.id === result.textNodeId);
+      const createdNode = result.nodes.find((node) => node.id === result.createdNodeId);
+      setCurrentView("canvas");
+      setActiveQuickTool(null);
+      setSelectedLinkId(null);
+      setSelectedGroupId(null);
+      setSelectedNodeIds(new Set([result.textNodeId]));
+      setSelectedNodeId(result.textNodeId);
+
+      if (textNode && createdNode) {
+        window.requestAnimationFrame(() => {
+          focusWorldRect(
+            {
+              minX: Math.min(textNode.x, createdNode.x) - 40,
+              minY: Math.min(textNode.y, createdNode.y) - 80,
+              maxX: Math.max(textNode.x + 560, createdNode.x + 560),
+              maxY: Math.max(textNode.y + 500, createdNode.y + 420),
+            },
+            {
+              maxZoom: 0.92,
+              padding: 180,
+              offsetX: 0,
+              offsetY: -20,
+            }
+          );
+        });
+      }
+    },
+    [
+      createTextNodeStarterFlow,
+      focusWorldRect,
+      setActiveQuickTool,
+      setCurrentView,
+      setSelectedNodeId,
+    ]
   );
 
   const handleSplitImageGrid = React.useCallback(
-    async (nodeId: string, imageUrl: string, gridRows: number, gridCols: number, cellIndices: number[]) => {
+    async (
+      nodeId: string,
+      imageUrl: string,
+      gridRows: number,
+      gridCols: number,
+      cellIndices: number[]
+    ) => {
       const sourceNode = nodes.find((n) => n.id === nodeId);
       if (!sourceNode) {
         showNotice("Source node was not found.");
         return;
       }
       try {
-        const normalizedCellIndices = Array.from(new Set(cellIndices.map((index) => Math.max(0, Math.floor(index))))).sort((a, b) => a - b);
+        const normalizedCellIndices = Array.from(
+          new Set(cellIndices.map((index) => Math.max(0, Math.floor(index))))
+        ).sort((a, b) => a - b);
         for (const cellIndex of normalizedCellIndices) {
-          const { dataUrl, crop } = await cropImageGridCell(imageUrl, gridRows, cellIndex, gridCols);
+          const { dataUrl, crop } = await cropImageGridCell(
+            imageUrl,
+            gridRows,
+            cellIndex,
+            gridCols
+          );
           const position = getGridChildNodePosition(sourceNode, gridRows, cellIndex, gridCols);
           addNode(
             "image_node",
@@ -418,63 +501,80 @@ export default function App({ onLoggedOut }: AppProps) {
     [addNode, nodes, showNotice]
   );
 
-  const moveGroup = React.useCallback((groupId: string, x: number, y: number) => {
-    const group = groups.find((g) => g.id === groupId);
-    if (!group) return;
-    const dx = x - group.x;
-    const dy = y - group.y;
-    if (dx === 0 && dy === 0) return;
-    updateGroup(groupId, { x, y });
-    const memberIds: string[] = nodes.filter((n) => n.groupId === groupId).map((n) => n.id);
-    memberIds.forEach((id: string) => {
-      const n = nodes.find((nn) => nn.id === id);
-      if (!n) return;
-      updateNodePosition(id, n.x + dx, n.y + dy);
-    });
-  }, [groups, nodes, updateGroup, updateNodePosition]);
-
-  const handleSelectNode = React.useCallback((nodeId: string, e?: { shiftKey?: boolean }) => {
-    setSelectedGroupId(null);
-    setSelectedLinkId(null);
-    if (e?.shiftKey) {
-      setSelectedNodeIds((prev) => {
-        const next = new Set(prev);
-        if (next.has(nodeId)) next.delete(nodeId);
-        else next.add(nodeId);
-        return next;
+  const moveGroup = React.useCallback(
+    (groupId: string, x: number, y: number) => {
+      const group = groups.find((g) => g.id === groupId);
+      if (!group) return;
+      const dx = x - group.x;
+      const dy = y - group.y;
+      if (dx === 0 && dy === 0) return;
+      updateGroup(groupId, { x, y });
+      const memberIds: string[] = nodes.filter((n) => n.groupId === groupId).map((n) => n.id);
+      memberIds.forEach((id: string) => {
+        const n = nodes.find((nn) => nn.id === id);
+        if (!n) return;
+        updateNodePosition(id, n.x + dx, n.y + dy);
       });
+    },
+    [groups, nodes, updateGroup, updateNodePosition]
+  );
+
+  const handleSelectNode = React.useCallback(
+    (nodeId: string, e?: { shiftKey?: boolean }) => {
+      setSelectedGroupId(null);
+      setSelectedLinkId(null);
+      if (e?.shiftKey) {
+        setSelectedNodeIds((prev) => {
+          const next = new Set(prev);
+          if (next.has(nodeId)) next.delete(nodeId);
+          else next.add(nodeId);
+          return next;
+        });
+        setSelectedNodeId(nodeId);
+        return;
+      }
+      setSelectedNodeIds(new Set([nodeId]));
       setSelectedNodeId(nodeId);
-      return;
-    }
-    setSelectedNodeIds(new Set([nodeId]));
-    setSelectedNodeId(nodeId);
-  }, [setSelectedNodeId]);
+    },
+    [setSelectedNodeId]
+  );
 
-  const handleSelectLink = React.useCallback((linkId: string | null, anchor?: { x: number; y: number } | null) => {
-    setSelectedNodeId(null);
-    setSelectedNodeIds(new Set());
-    setSelectedGroupId(null);
-    setSelectedLinkId(linkId);
-    setSelectedLinkAnchor(linkId ? (anchor ?? null) : null);
-  }, [setSelectedNodeId]);
+  const handleSelectLink = React.useCallback(
+    (linkId: string | null, anchor?: { x: number; y: number } | null) => {
+      setSelectedNodeId(null);
+      setSelectedNodeIds(new Set());
+      setSelectedGroupId(null);
+      setSelectedLinkId(linkId);
+      setSelectedLinkAnchor(linkId ? (anchor ?? null) : null);
+    },
+    [setSelectedNodeId]
+  );
 
-  const handleNodeContextMenu = React.useCallback((nodeId: string, event: React.MouseEvent) => {
-    event.preventDefault();
-    event.stopPropagation();
-    const rect = canvasRef.current?.getBoundingClientRect();
-    setSelectedGroupId(null);
-    setSelectedLinkId(null);
-    setSelectedLinkAnchor(null);
-    setSelectedNodeIds(new Set([nodeId]));
-    setSelectedNodeId(nodeId);
-    setMenuPos(null);
-    setPendingLinkMenuDraft(null);
-    setNodeContextMenu({
-      nodeId,
-      x: event.clientX - (rect?.left ?? 0),
-      y: event.clientY - (rect?.top ?? 0),
-    });
-  }, [canvasRef, setSelectedNodeId]);
+  const handleNodeContextMenu = React.useCallback(
+    (nodeId: string, event: React.MouseEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const rect = canvasRef.current?.getBoundingClientRect();
+      const node = nodes.find((candidate) => candidate.id === nodeId);
+      setSelectedGroupId(null);
+      setSelectedLinkId(null);
+      setSelectedLinkAnchor(null);
+      setSelectedNodeIds(new Set([nodeId]));
+      setSelectedNodeId(nodeId);
+      setMenuPos(null);
+      setPendingLinkMenuDraft(null);
+      if (node?.type === "text_node") {
+        setNodeContextMenu(null);
+        return;
+      }
+      setNodeContextMenu({
+        nodeId,
+        x: event.clientX - (rect?.left ?? 0),
+        y: event.clientY - (rect?.top ?? 0),
+      });
+    },
+    [canvasRef, nodes, setSelectedNodeId]
+  );
 
   const closeNodeContextMenu = React.useCallback(() => {
     setNodeContextMenu(null);
@@ -494,8 +594,13 @@ export default function App({ onLoggedOut }: AppProps) {
   };
 
   const handleAnalyzeVideo = React.useCallback(
-    async (node: GraphNode, segments: VideoFrameAnalysisSegment[], overview: VideoFrameAnalysisOverview) => {
-      const videoUrl = (node.data?.videoUrl as string) || (node.properties.videoUrl as string) || "";
+    async (
+      node: GraphNode,
+      segments: VideoFrameAnalysisSegment[],
+      overview: VideoFrameAnalysisOverview
+    ) => {
+      const videoUrl =
+        (node.data?.videoUrl as string) || (node.properties.videoUrl as string) || "";
       if (!videoUrl || segments.length === 0) {
         showNotice("No video or keyframe data available for analysis.");
         return;
@@ -509,13 +614,24 @@ export default function App({ onLoggedOut }: AppProps) {
           credentials: "include",
           headers: {
             "Content-Type": "application/json",
-            ...(deepseekApiProfile?.apiKey ? { "X-DeepSeek-Api-Key": deepseekApiProfile.apiKey } : {}),
-            ...(deepseekApiProfile?.baseUrl ? { "X-DeepSeek-Base-Url": deepseekApiProfile.baseUrl } : {}),
+            ...(deepseekApiProfile?.apiKey
+              ? { "X-DeepSeek-Api-Key": deepseekApiProfile.apiKey }
+              : {}),
+            ...(deepseekApiProfile?.baseUrl
+              ? { "X-DeepSeek-Base-Url": deepseekApiProfile.baseUrl }
+              : {}),
             ...(deepseekApiProfile?.model ? { "X-DeepSeek-Model": deepseekApiProfile.model } : {}),
           },
           body: JSON.stringify({
             video_url: videoUrl,
-            segments: segments.map(({ title, start, end, frameCount, width, height }) => ({ title, start, end, frameCount, width, height })),
+            segments: segments.map(({ title, start, end, frameCount, width, height }) => ({
+              title,
+              start,
+              end,
+              frameCount,
+              width,
+              height,
+            })),
           }),
         });
         const data = await response.json().catch(() => ({}));
@@ -535,8 +651,13 @@ export default function App({ onLoggedOut }: AppProps) {
 
   const handleReverseSegmentAnalysis = React.useCallback(
     async (node: GraphNode) => {
-      const videoUrl = typeof node.properties.frameAnalysisVideoUrl === "string" ? node.properties.frameAnalysisVideoUrl : "";
-      const rawSegments = Array.isArray(node.properties.frameAnalysisSegments) ? node.properties.frameAnalysisSegments : [];
+      const videoUrl =
+        typeof node.properties.frameAnalysisVideoUrl === "string"
+          ? node.properties.frameAnalysisVideoUrl
+          : "";
+      const rawSegments = Array.isArray(node.properties.frameAnalysisSegments)
+        ? node.properties.frameAnalysisSegments
+        : [];
       const segments = rawSegments
         .map((segment) => ({
           title: typeof segment?.title === "string" ? segment.title : "",
@@ -562,9 +683,15 @@ export default function App({ onLoggedOut }: AppProps) {
               credentials: "include",
               headers: {
                 "Content-Type": "application/json",
-                ...(deepseekApiProfile?.apiKey ? { "X-DeepSeek-Api-Key": deepseekApiProfile.apiKey } : {}),
-                ...(deepseekApiProfile?.baseUrl ? { "X-DeepSeek-Base-Url": deepseekApiProfile.baseUrl } : {}),
-                ...(deepseekApiProfile?.model ? { "X-DeepSeek-Model": deepseekApiProfile.model } : {}),
+                ...(deepseekApiProfile?.apiKey
+                  ? { "X-DeepSeek-Api-Key": deepseekApiProfile.apiKey }
+                  : {}),
+                ...(deepseekApiProfile?.baseUrl
+                  ? { "X-DeepSeek-Base-Url": deepseekApiProfile.baseUrl }
+                  : {}),
+                ...(deepseekApiProfile?.model
+                  ? { "X-DeepSeek-Model": deepseekApiProfile.model }
+                  : {}),
               },
               body: JSON.stringify({
                 video_url: videoUrl,
@@ -588,7 +715,8 @@ export default function App({ onLoggedOut }: AppProps) {
                   : `## ${segment.title}\n\nNo analysis result was returned.`,
             };
           } catch (error) {
-            const message = error instanceof Error ? error.message : "Segment reverse analysis failed.";
+            const message =
+              error instanceof Error ? error.message : "Segment reverse analysis failed.";
             return {
               title: segment.title,
               start: segment.start,
@@ -605,10 +733,13 @@ export default function App({ onLoggedOut }: AppProps) {
     [addSegmentVideoAnalyses, deepseekApiProfile, showNotice]
   );
 
-  const handleUngroup = React.useCallback((groupId: string) => {
-    ungroup(groupId);
-    if (selectedGroupId === groupId) setSelectedGroupId(null);
-  }, [ungroup, selectedGroupId]);
+  const handleUngroup = React.useCallback(
+    (groupId: string) => {
+      ungroup(groupId);
+      if (selectedGroupId === groupId) setSelectedGroupId(null);
+    },
+    [ungroup, selectedGroupId]
+  );
 
   const runNow = () => {
     runWorkflow();
@@ -666,8 +797,7 @@ export default function App({ onLoggedOut }: AppProps) {
     autoFitStateRef.current = { workflowId, nodeCount: nodes.length };
 
     const shouldFit =
-      nodes.length > 0 &&
-      (!prev || prev.workflowId !== workflowId || prev.nodeCount === 0);
+      nodes.length > 0 && (!prev || prev.workflowId !== workflowId || prev.nodeCount === 0);
     if (shouldFit) fitView();
   }, [currentWorkflowSummary?.id, fitView, nodes.length]);
 
@@ -709,7 +839,19 @@ export default function App({ onLoggedOut }: AppProps) {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [currentView, isLinkingOnCanvas, resetCanvasLinkDraft, setActiveQuickTool, setCurrentView, undo, redo, selectedLinkId, removeLink, selectedNodeId, removeNode]);
+  }, [
+    currentView,
+    isLinkingOnCanvas,
+    resetCanvasLinkDraft,
+    setActiveQuickTool,
+    setCurrentView,
+    undo,
+    redo,
+    selectedLinkId,
+    removeLink,
+    selectedNodeId,
+    removeNode,
+  ]);
 
   React.useEffect(() => {
     return () => {
@@ -762,7 +904,9 @@ export default function App({ onLoggedOut }: AppProps) {
       if (isLinkingOnCanvas) return;
 
       const target = e.target as HTMLElement;
-      if (target.closest("[data-node-action='true'], .node-card, button, input, select, textarea")) {
+      if (
+        target.closest("[data-node-action='true'], .node-card, button, input, select, textarea")
+      ) {
         return;
       }
 
@@ -773,7 +917,13 @@ export default function App({ onLoggedOut }: AppProps) {
       clearMenuCloseTimer();
       setMenuPos({ x: e.clientX, y: e.clientY });
     },
-    [clearMenuCloseTimer, closeNodeContextMenu, currentView, isLinkingOnCanvas, setIsMenuFromToolbar]
+    [
+      clearMenuCloseTimer,
+      closeNodeContextMenu,
+      currentView,
+      isLinkingOnCanvas,
+      setIsMenuFromToolbar,
+    ]
   );
 
   if (isProjectLoading) {
@@ -811,379 +961,404 @@ export default function App({ onLoggedOut }: AppProps) {
           onLogout={handleLogout}
         />
 
-      <main
-        ref={canvasRef}
-        className={getCanvasViewportClassName()}
-        onDoubleClick={handleCanvasDoubleClick}
-        onPointerDown={(e) => {
-          if (isLinkingOnCanvas) {
-            e.preventDefault();
-            resetCanvasLinkDraft();
-            return;
-          }
-          
-          // 鐐瑰嚮鑳屾櫙鏃跺彇娑堟墍鏈夐€夋嫨 (濡傛灉娌℃湁鐐瑰嚮鍒拌妭鐐规垨鍔ㄤ綔鎸夐挳)
-          const target = e.target as HTMLElement;
-          if (!target.closest("[data-node-action='true'], .node-card, button, input, select, textarea")) {
-            setSelectedNodeId(null);
-            setSelectedNodeIds(new Set());
-            setSelectedGroupId(null);
-            setSelectedLinkId(null);
-            setSelectedLinkAnchor(null);
-            closeNodeContextMenu();
-          }
-          
-          onCanvasPointerDown(e);
-        }}
-        onPointerMove={onPointerMove}
-        onPointerMoveCapture={(e) => {
-          if (isLinkingOnCanvas) {
-            setDraftCursor(toWorld(e.clientX, e.clientY));
-          }
-        }}
-        onPointerUp={(e) => {
-          onPointerUp(e);
-          if (shouldFinishCanvasLinkOnCanvasPointerUp(isLinkingOnCanvas)) finishCanvasLink();
-        }}
-        onPointerLeave={(e) => {
-          onPointerUp(e);
-          if (isLinkingOnCanvas) resetCanvasLinkDraft();
-        }}
-      >
-        <LeaferCanvas
-          nodes={nodes}
-          links={links}
-          pan={pan}
-          zoom={zoom}
-          showGrid={showGrid}
-          selectedNodeId={selectedNodeId}
-          draftFromNodeId={linkFromNodeId}
-          draftToNodeId={linkToNodeId}
-          draftFromOutputIndex={linkFromOutputIndex}
-          draftToInputIndex={linkToInputIndex}
-          draftIssue={linkDraftIssue}
-          draftCursor={draftCursor}
-          renderDraftPreview={false}
-        />
-
-        {!isLinkingOnCanvas && (
-          <LinkInteractionOverlay
-            links={links}
-            nodes={nodes}
-            pan={pan}
-            zoom={zoom}
-            selectedNodeId={selectedNodeId}
-            selectedLinkId={selectedLinkId}
-            selectedLinkAnchor={selectedLinkAnchor}
-            onSelectLink={(linkId, anchor) => {
-              if (!linkId || !anchor) {
-                handleSelectLink(linkId, null);
-                return;
-              }
-              handleSelectLink(linkId, toWorld(anchor.x, anchor.y));
-            }}
-            onDeleteLink={removeLink}
-          />
-        )}
-
-        <GroupsLayer
-          groups={groups}
-          pan={pan}
-          zoom={zoom}
-          selectedNodeId={selectedNodeId}
-          selectedGroupId={selectedGroupId}
-          memberCountByGroup={memberCountByGroup}
-          onSelectGroup={setSelectedGroupId}
-          onRunGroup={runGroup}
-          onUngroup={handleUngroup}
-          onDeleteGroup={handleUngroup}
-          onMoveGroup={moveGroup}
-          isRunning={isRunning}
-        />
-
-        {nodes.length === 0 && currentView === "canvas" && (
-          <EmptyCanvasState
-            mode={isWelcomeDismissed ? "empty-project" : "welcome"}
-            onPrimaryAction={isWelcomeDismissed ? openQuickMenu : handleCreateProjectFromWelcome}
-          />
-        )}
-        <AnimatePresence>
-          {menuPos && (
-            <React.Suspense fallback={null}>
-              <SearchMenu
-                x={menuPos.x}
-                y={menuPos.y}
-                isContextMenu={!isMenuFromToolbar}
-                onClose={() => {
-                  clearMenuCloseTimer();
-                  setMenuPos(null);
-                  setIsMenuFromToolbar(false);
-                  setPendingLinkMenuDraft(null);
-                  closeNodeContextMenu();
-                }}
-                onAddNode={(type, x, y, initialProps) => {
-                  if (pendingLinkMenuDraft) {
-                    addNodeAtPosition(
-                      type,
-                      pendingLinkMenuDraft.clientX,
-                      pendingLinkMenuDraft.clientY,
-                      initialProps,
-                      {
-                        fromNodeId: pendingLinkMenuDraft.fromNodeId,
-                        fromOutputIndex: pendingLinkMenuDraft.fromOutputIndex,
-                      }
-                    );
-                  } else {
-                    addNodeAtPosition(type, x, y, initialProps);
-                  }
-                  setCurrentView("canvas");
-                  setActiveQuickTool(null);
-                  setPendingLinkMenuDraft(null);
-                  closeNodeContextMenu();
-                }}
-                onNotice={showNotice}
-                onHoverStart={clearMenuCloseTimer}
-                onHoverEnd={scheduleMenuClose}
-              />
-            </React.Suspense>
-          )}
-        </AnimatePresence>
-
-        {nodeContextMenu && (
-          <div
-            data-node-action="true"
-            className="absolute z-50 w-44 overflow-hidden rounded-xl border border-white/10 bg-[#141923]/96 p-1.5 text-sm text-slate-100 shadow-[0_24px_60px_-28px_rgba(0,0,0,0.95),0_0_28px_rgba(56,189,248,0.12)] backdrop-blur-xl"
-            style={{
-              left: Math.min(nodeContextMenu.x, Math.max(12, canvasSize.width - 188)),
-              top: Math.min(nodeContextMenu.y, Math.max(12, canvasSize.height - (nodeContextMenuNode?.type === "text_node" ? 178 : 96))),
-            }}
-            onPointerDown={(event) => event.stopPropagation()}
-            onContextMenu={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-            }}
-          >
-            {nodeContextMenuNode?.type === "text_node" && (
-              <>
-                <button
-                  type="button"
-                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left font-semibold text-slate-200 transition hover:bg-cyan-300/10 hover:text-cyan-100"
-                  onClick={() => {
-                    if (!nodeContextMenuText) {
-                      showNotice("This text node has no content to copy.");
-                      closeNodeContextMenu();
-                      return;
-                    }
-                    void navigator.clipboard.writeText(nodeContextMenuText);
-                    showNotice("Text content copied.");
-                    closeNodeContextMenu();
-                  }}
-                >
-                  <Copy className="h-4 w-4" />
-                  复制内容
-                </button>
-                <button
-                  type="button"
-                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left font-semibold text-slate-200 transition hover:bg-cyan-300/10 hover:text-cyan-100"
-                  onClick={() => {
-                    if (!nodeContextMenuText) {
-                      showNotice("This text node has no content to preview.");
-                      closeNodeContextMenu();
-                      return;
-                    }
-                    setPreviewContent({
-                      content: nodeContextMenuText,
-                      nodeId: nodeContextMenu.nodeId,
-                      title: "文本节点输出",
-                    });
-                    closeNodeContextMenu();
-                  }}
-                >
-                  <Eye className="h-4 w-4" />
-                  展开查看
-                </button>
-                <div className="my-1 h-px bg-white/10" />
-              </>
-            )}
-            <button
-              type="button"
-              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left font-semibold text-slate-200 transition hover:bg-cyan-300/10 hover:text-cyan-100"
-              onClick={() => {
-                duplicateNode(nodeContextMenu.nodeId);
-                closeNodeContextMenu();
-              }}
-            >
-              <Copy className="h-4 w-4" />
-              复制节点
-            </button>
-            <button
-              type="button"
-              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left font-semibold text-rose-100/90 transition hover:bg-rose-400/12 hover:text-rose-50"
-              onClick={() => {
-                removeNode(nodeContextMenu.nodeId);
-                setSelectedNodeIds(new Set());
-                setSelectedLinkId(null);
-                closeNodeContextMenu();
-              }}
-            >
-              <Trash2 className="h-4 w-4" />
-              删除节点
-            </button>
-          </div>
-        )}
-
-        <SettingsPanels
-          apiSettings={apiSettings}
-          autoSaveWorkflow={autoSaveWorkflow}
-          currentView={currentView}
-          fallback={panelFallback}
-          workflowName={workflowName}
-          onSaveApiSettings={(s) => {
-            setApiSettings(s);
-            showNotice("API settings saved.");
-          }}
-          onSaveWorkflow={() => {
-            const trimmedName = workflowName.trim();
-            if (currentWorkflowSummary?.id && trimmedName && trimmedName !== currentWorkflowSummary.name) {
-              renameWorkflow(currentWorkflowSummary.id, trimmedName);
+        <main
+          ref={canvasRef}
+          className={getCanvasViewportClassName()}
+          onDoubleClick={handleCanvasDoubleClick}
+          onPointerDown={(e) => {
+            if (isLinkingOnCanvas) {
+              e.preventDefault();
+              resetCanvasLinkDraft();
+              return;
             }
-            showNotice("Project settings saved.");
-            setCurrentView("canvas");
-            setActiveQuickTool(null);
-          }}
-          setAutoSaveWorkflow={setAutoSaveWorkflow}
-          setWorkflowName={setWorkflowName}
-          showNotice={showNotice}
-        />
 
-        <ApiSettingsModal
-          open={apiSettingsOpen}
-          settings={apiSettings}
-          onClose={() => setApiSettingsOpen(false)}
-          onSave={(settings) => {
-            setApiSettings(settings);
-            showNotice("API settings saved.");
-          }}
-          showNotice={showNotice}
-        />
+            // 鐐瑰嚮鑳屾櫙鏃跺彇娑堟墍鏈夐€夋嫨 (濡傛灉娌℃湁鐐瑰嚮鍒拌妭鐐规垨鍔ㄤ綔鎸夐挳)
+            const target = e.target as HTMLElement;
+            if (
+              !target.closest(
+                "[data-node-action='true'], .node-card, button, input, select, textarea"
+              )
+            ) {
+              setSelectedNodeId(null);
+              setSelectedNodeIds(new Set());
+              setSelectedGroupId(null);
+              setSelectedLinkId(null);
+              setSelectedLinkAnchor(null);
+              closeNodeContextMenu();
+            }
 
-        <CanvasNodeLayer
-          apiConfig={{
-            baseUrl: apiBaseUrl,
-            apiKey,
-            providerModels: {
-              deepseek: deepseekApiProfile?.model || "",
-              minimax: minimaxApiProfile?.model || "",
-            },
+            onCanvasPointerDown(e);
           }}
-          isLinkingOnCanvas={isLinkingOnCanvas}
-          linkFromNodeId={linkFromNodeId}
-          linkFromOutputIndex={linkFromOutputIndex}
-          linkToInputIndex={linkToInputIndex}
-          linkToNodeId={linkToNodeId}
-          nodes={nodes}
-          pan={pan}
-          selectedNodeId={selectedNodeId}
-          zoom={zoom}
-          getCanvasLinkTargetIssue={getCanvasLinkTargetIssue}
-          onBeginCanvasLink={beginCanvasLink}
-          onCanvasPointerDown={onCanvasPointerDown}
-          onDeleteNode={removeNode}
-          onDuplicateNode={duplicateNode}
-          onFinishCanvasLink={finishCanvasLink}
-          onHoverCanvasLinkTarget={hoverCanvasLinkTarget}
-          onLeaveCanvasLinkTarget={leaveCanvasLinkTarget}
-          onNodeContextMenu={handleNodeContextMenu}
-          onNodeDragStart={onNodeDragStart}
-          onPreview={(content, title, nodeId, items, currentIndex) =>
-            setPreviewContent({ title: title || "棰勮鍐呭", content, nodeId, items, currentIndex })
-          }
-          onAnalyzeVideo={handleAnalyzeVideo}
-          onReverseSegmentAnalysis={handleReverseSegmentAnalysis}
-          onSelectNode={(nodeId, e) => handleSelectNode(nodeId, e)}
-          onUpdateNodeData={updateNodeData}
-          onUpdateNodeProperty={updateNodeProperty}
-          onSetPrimaryImageResult={setPrimaryImageResult}
-          onSyncImagePromptStarterLayout={syncImagePromptStarterLayout}
-          onSplitImageGrid={handleSplitImageGrid}
-          resolvedInputsMap={resolvedInputsMap}
-          textNodeReferenceImagesMap={textNodeReferenceImagesMap}
-          onRunNode={runNode}
-          onCreateImagePromptStarter={handleCreateImagePromptStarter}
-          onNotice={showNotice}
-        />
-        {isLinkingOnCanvas && (
-          <DraftLinkOverlay
+          onPointerMove={onPointerMove}
+          onPointerMoveCapture={(e) => {
+            if (isLinkingOnCanvas) {
+              setDraftCursor(toWorld(e.clientX, e.clientY));
+            }
+          }}
+          onPointerUp={(e) => {
+            onPointerUp(e);
+            if (shouldFinishCanvasLinkOnCanvasPointerUp(isLinkingOnCanvas)) finishCanvasLink();
+          }}
+          onPointerLeave={(e) => {
+            onPointerUp(e);
+            if (isLinkingOnCanvas) resetCanvasLinkDraft();
+          }}
+        >
+          <LeaferCanvas
             nodes={nodes}
+            links={links}
             pan={pan}
             zoom={zoom}
+            showGrid={showGrid}
+            selectedNodeId={selectedNodeId}
             draftFromNodeId={linkFromNodeId}
             draftToNodeId={linkToNodeId}
             draftFromOutputIndex={linkFromOutputIndex}
             draftToInputIndex={linkToInputIndex}
             draftIssue={linkDraftIssue}
             draftCursor={draftCursor}
+            renderDraftPreview={false}
           />
-        )}
-        {currentView === "canvas" && showMiniMap && miniMapConfig && (
-          <MiniMap
-            activeNodeId={selectedNodeId}
-            config={miniMapConfig}
-            onJumpToWorldPos={jumpToWorldPos}
-            onScrollToNode={scrollToNode}
-            onSelectNode={setSelectedNodeId}
-          />
-        )}
-        {currentView === "canvas" && (
-          <CanvasControls
-            showGrid={showGrid}
-            showMiniMap={showMiniMap}
-            snapToGridEnabled={snapToGridEnabled}
-            selectedCount={selectedNodeIds.size}
-            zoom={zoom}
-            onFitView={() => {
-              fitView();
-              showNotice("已自适应居中");
-            }}
-            onToggleGrid={() => {
-              setShowGrid((v) => !v);
-              showNotice(showGrid ? "已隐藏网格" : "已显示网格");
-            }}
-            onToggleMiniMap={() => {
-              setShowMiniMap((v) => !v);
-              showNotice(showMiniMap ? "已隐藏小地图" : "已显示小地图");
-            }}
-            onToggleSnapToGrid={() => {
-              setSnapToGridEnabled((v) => !v);
-              showNotice(snapToGridEnabled ? "已关闭网格吸附" : "已开启网格吸附");
-            }}
-            onCreateGroup={handleCreateGroup}
-          />
-        )}
-        {currentView === "canvas" && (
-          <CanvasHistoryDock
-            canUndo={canUndo}
-            canRedo={canRedo}
-            onUndo={undo}
-            onRedo={redo}
-            onClearCanvas={clearCanvas}
-          />
-        )}
-        {runNotice && <div className="absolute right-6 top-20 z-50 px-3 py-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-emerald-200 text-xs">{runNotice}</div>}
-      </main>
 
-      {previewContent && (
-        <PreviewModal
-          preview={previewContent}
-          onClose={() => setPreviewContent(null)}
-          onPreviewChange={setPreviewContent}
-          onUpdateNodeText={(nodeId, text) => updateNodeProperty(nodeId, "text", text)}
-          onSetPrimaryImageResult={setPrimaryImageResult}
-          showNotice={showNotice}
-        />
-      )}
-    </div>
+          {!isLinkingOnCanvas && (
+            <LinkInteractionOverlay
+              links={links}
+              nodes={nodes}
+              pan={pan}
+              zoom={zoom}
+              selectedNodeId={selectedNodeId}
+              selectedLinkId={selectedLinkId}
+              selectedLinkAnchor={selectedLinkAnchor}
+              onSelectLink={(linkId, anchor) => {
+                if (!linkId || !anchor) {
+                  handleSelectLink(linkId, null);
+                  return;
+                }
+                handleSelectLink(linkId, toWorld(anchor.x, anchor.y));
+              }}
+              onDeleteLink={removeLink}
+            />
+          )}
+
+          <GroupsLayer
+            groups={groups}
+            pan={pan}
+            zoom={zoom}
+            selectedNodeId={selectedNodeId}
+            selectedGroupId={selectedGroupId}
+            memberCountByGroup={memberCountByGroup}
+            onSelectGroup={setSelectedGroupId}
+            onRunGroup={runGroup}
+            onUngroup={handleUngroup}
+            onDeleteGroup={handleUngroup}
+            onMoveGroup={moveGroup}
+            isRunning={isRunning}
+          />
+
+          {nodes.length === 0 && currentView === "canvas" && (
+            <EmptyCanvasState
+              mode={isWelcomeDismissed ? "empty-project" : "welcome"}
+              onPrimaryAction={isWelcomeDismissed ? openQuickMenu : handleCreateProjectFromWelcome}
+            />
+          )}
+          <AnimatePresence>
+            {menuPos && (
+              <React.Suspense fallback={null}>
+                <SearchMenu
+                  x={menuPos.x}
+                  y={menuPos.y}
+                  isContextMenu={!isMenuFromToolbar}
+                  onClose={() => {
+                    clearMenuCloseTimer();
+                    setMenuPos(null);
+                    setIsMenuFromToolbar(false);
+                    setPendingLinkMenuDraft(null);
+                    closeNodeContextMenu();
+                  }}
+                  onAddNode={(type, x, y, initialProps) => {
+                    if (pendingLinkMenuDraft) {
+                      addNodeAtPosition(
+                        type,
+                        pendingLinkMenuDraft.clientX,
+                        pendingLinkMenuDraft.clientY,
+                        initialProps,
+                        {
+                          fromNodeId: pendingLinkMenuDraft.fromNodeId,
+                          fromOutputIndex: pendingLinkMenuDraft.fromOutputIndex,
+                        }
+                      );
+                    } else {
+                      addNodeAtPosition(type, x, y, initialProps);
+                    }
+                    setCurrentView("canvas");
+                    setActiveQuickTool(null);
+                    setPendingLinkMenuDraft(null);
+                    closeNodeContextMenu();
+                  }}
+                  onNotice={showNotice}
+                  onHoverStart={clearMenuCloseTimer}
+                  onHoverEnd={scheduleMenuClose}
+                />
+              </React.Suspense>
+            )}
+          </AnimatePresence>
+
+          {nodeContextMenu && (
+            <div
+              data-node-action="true"
+              className="absolute z-50 w-44 overflow-hidden rounded-xl border border-white/10 bg-[#141923]/96 p-1.5 text-sm text-slate-100 shadow-[0_24px_60px_-28px_rgba(0,0,0,0.95),0_0_28px_rgba(56,189,248,0.12)] backdrop-blur-xl"
+              style={{
+                left: Math.min(nodeContextMenu.x, Math.max(12, canvasSize.width - 188)),
+                top: Math.min(
+                  nodeContextMenu.y,
+                  Math.max(
+                    12,
+                    canvasSize.height - (nodeContextMenuNode?.type === "text_node" ? 178 : 96)
+                  )
+                ),
+              }}
+              onPointerDown={(event) => event.stopPropagation()}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+              }}
+            >
+              {nodeContextMenuNode?.type === "text_node" && (
+                <>
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left font-semibold text-slate-200 transition hover:bg-cyan-300/10 hover:text-cyan-100"
+                    onClick={() => {
+                      if (!nodeContextMenuText) {
+                        showNotice("This text node has no content to copy.");
+                        closeNodeContextMenu();
+                        return;
+                      }
+                      void navigator.clipboard.writeText(nodeContextMenuText);
+                      showNotice("Text content copied.");
+                      closeNodeContextMenu();
+                    }}
+                  >
+                    <Copy className="h-4 w-4" />
+                    复制内容
+                  </button>
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left font-semibold text-slate-200 transition hover:bg-cyan-300/10 hover:text-cyan-100"
+                    onClick={() => {
+                      if (!nodeContextMenuText) {
+                        showNotice("This text node has no content to preview.");
+                        closeNodeContextMenu();
+                        return;
+                      }
+                      setPreviewContent({
+                        content: nodeContextMenuText,
+                        nodeId: nodeContextMenu.nodeId,
+                        title: "文本节点输出",
+                      });
+                      closeNodeContextMenu();
+                    }}
+                  >
+                    <Eye className="h-4 w-4" />
+                    展开查看
+                  </button>
+                  <div className="my-1 h-px bg-white/10" />
+                </>
+              )}
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left font-semibold text-slate-200 transition hover:bg-cyan-300/10 hover:text-cyan-100"
+                onClick={() => {
+                  duplicateNode(nodeContextMenu.nodeId);
+                  closeNodeContextMenu();
+                }}
+              >
+                <Copy className="h-4 w-4" />
+                复制节点
+              </button>
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left font-semibold text-rose-100/90 transition hover:bg-rose-400/12 hover:text-rose-50"
+                onClick={() => {
+                  removeNode(nodeContextMenu.nodeId);
+                  setSelectedNodeIds(new Set());
+                  setSelectedLinkId(null);
+                  closeNodeContextMenu();
+                }}
+              >
+                <Trash2 className="h-4 w-4" />
+                删除节点
+              </button>
+            </div>
+          )}
+
+          <SettingsPanels
+            apiSettings={apiSettings}
+            autoSaveWorkflow={autoSaveWorkflow}
+            currentView={currentView}
+            fallback={panelFallback}
+            workflowName={workflowName}
+            onSaveApiSettings={(s) => {
+              setApiSettings(s);
+              showNotice("API settings saved.");
+            }}
+            onSaveWorkflow={() => {
+              const trimmedName = workflowName.trim();
+              if (
+                currentWorkflowSummary?.id &&
+                trimmedName &&
+                trimmedName !== currentWorkflowSummary.name
+              ) {
+                renameWorkflow(currentWorkflowSummary.id, trimmedName);
+              }
+              showNotice("Project settings saved.");
+              setCurrentView("canvas");
+              setActiveQuickTool(null);
+            }}
+            setAutoSaveWorkflow={setAutoSaveWorkflow}
+            setWorkflowName={setWorkflowName}
+            showNotice={showNotice}
+          />
+
+          <ApiSettingsModal
+            open={apiSettingsOpen}
+            settings={apiSettings}
+            onClose={() => setApiSettingsOpen(false)}
+            onSave={(settings) => {
+              setApiSettings(settings);
+              showNotice("API settings saved.");
+            }}
+            showNotice={showNotice}
+          />
+
+          <CanvasNodeLayer
+            apiConfig={{
+              baseUrl: apiBaseUrl,
+              apiKey,
+              providerModels: {
+                deepseek: deepseekApiProfile?.model || "",
+                minimax: minimaxApiProfile?.model || "",
+              },
+            }}
+            isLinkingOnCanvas={isLinkingOnCanvas}
+            linkFromNodeId={linkFromNodeId}
+            linkFromOutputIndex={linkFromOutputIndex}
+            linkToInputIndex={linkToInputIndex}
+            linkToNodeId={linkToNodeId}
+            links={links}
+            nodes={nodes}
+            pan={pan}
+            selectedNodeId={selectedNodeId}
+            zoom={zoom}
+            getCanvasLinkTargetIssue={getCanvasLinkTargetIssue}
+            onBeginCanvasLink={beginCanvasLink}
+            onCanvasPointerDown={onCanvasPointerDown}
+            onDeleteNode={removeNode}
+            onDuplicateNode={duplicateNode}
+            onFinishCanvasLink={finishCanvasLink}
+            onHoverCanvasLinkTarget={hoverCanvasLinkTarget}
+            onLeaveCanvasLinkTarget={leaveCanvasLinkTarget}
+            onNodeContextMenu={handleNodeContextMenu}
+            onNodeDragStart={onNodeDragStart}
+            onPreview={(content, title, nodeId, items, currentIndex) =>
+              setPreviewContent({
+                title: title || "棰勮鍐呭",
+                content,
+                nodeId,
+                items,
+                currentIndex,
+              })
+            }
+            onAnalyzeVideo={handleAnalyzeVideo}
+            onReverseSegmentAnalysis={handleReverseSegmentAnalysis}
+            onSelectNode={(nodeId, e) => handleSelectNode(nodeId, e)}
+            onUpdateNodeData={updateNodeData}
+            onUpdateNodeProperty={updateNodeProperty}
+            onSetPrimaryImageResult={setPrimaryImageResult}
+            onSyncImagePromptStarterLayout={syncImagePromptStarterLayout}
+            onSplitImageGrid={handleSplitImageGrid}
+            resolvedInputsMap={resolvedInputsMap}
+            textNodeReferencesMap={textNodeReferencesMap}
+            onRunNode={runNode}
+            onCreateImagePromptStarter={handleCreateImagePromptStarter}
+            onCreateTextStarterFlow={handleCreateTextStarterFlow}
+            onNotice={showNotice}
+          />
+          {isLinkingOnCanvas && (
+            <DraftLinkOverlay
+              nodes={nodes}
+              pan={pan}
+              zoom={zoom}
+              draftFromNodeId={linkFromNodeId}
+              draftToNodeId={linkToNodeId}
+              draftFromOutputIndex={linkFromOutputIndex}
+              draftToInputIndex={linkToInputIndex}
+              draftIssue={linkDraftIssue}
+              draftCursor={draftCursor}
+            />
+          )}
+          {currentView === "canvas" && showMiniMap && miniMapConfig && (
+            <MiniMap
+              activeNodeId={selectedNodeId}
+              config={miniMapConfig}
+              onJumpToWorldPos={jumpToWorldPos}
+              onScrollToNode={scrollToNode}
+              onSelectNode={setSelectedNodeId}
+            />
+          )}
+          {currentView === "canvas" && (
+            <CanvasControls
+              showGrid={showGrid}
+              showMiniMap={showMiniMap}
+              snapToGridEnabled={snapToGridEnabled}
+              selectedCount={selectedNodeIds.size}
+              zoom={zoom}
+              onFitView={() => {
+                fitView();
+                showNotice("已自适应居中");
+              }}
+              onToggleGrid={() => {
+                setShowGrid((v) => !v);
+                showNotice(showGrid ? "已隐藏网格" : "已显示网格");
+              }}
+              onToggleMiniMap={() => {
+                setShowMiniMap((v) => !v);
+                showNotice(showMiniMap ? "已隐藏小地图" : "已显示小地图");
+              }}
+              onToggleSnapToGrid={() => {
+                setSnapToGridEnabled((v) => !v);
+                showNotice(snapToGridEnabled ? "已关闭网格吸附" : "已开启网格吸附");
+              }}
+              onCreateGroup={handleCreateGroup}
+            />
+          )}
+          {currentView === "canvas" && (
+            <CanvasHistoryDock
+              canUndo={canUndo}
+              canRedo={canRedo}
+              onUndo={undo}
+              onRedo={redo}
+              onClearCanvas={clearCanvas}
+            />
+          )}
+          {runNotice && (
+            <div className="absolute right-6 top-20 z-50 px-3 py-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-emerald-200 text-xs">
+              {runNotice}
+            </div>
+          )}
+        </main>
+
+        {previewContent && (
+          <PreviewModal
+            preview={previewContent}
+            onClose={() => setPreviewContent(null)}
+            onPreviewChange={setPreviewContent}
+            onUpdateNodeText={(nodeId, text) => updateNodeProperty(nodeId, "text", text)}
+            onSetPrimaryImageResult={setPrimaryImageResult}
+            showNotice={showNotice}
+          />
+        )}
+      </div>
     </ConfigProvider>
   );
 }
-

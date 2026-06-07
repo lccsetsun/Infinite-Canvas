@@ -1,6 +1,13 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { IMAGE_PROMPT_PLACEHOLDER_URL, isRemoteWorkflowEcho, serializeRemotePersistSnapshot } from "./useWorkflowState";
+import {
+  IMAGE_PROMPT_PLACEHOLDER_URL,
+  createTextNodeStarterFlowSnapshot,
+  markUploadedAssetNodeAsSource,
+  updateNodePropertySnapshot,
+  isRemoteWorkflowEcho,
+  serializeRemotePersistSnapshot,
+} from "./useWorkflowState";
 import type { RemoteCanvasProject } from "../features/workspace/remoteCanvas";
 import type { GraphNode } from "../types";
 
@@ -19,7 +26,9 @@ describe("IMAGE_PROMPT_PLACEHOLDER_URL", () => {
     expect(IMAGE_PROMPT_PLACEHOLDER_URL).toMatch(/^data:image\/svg\+xml,/);
     expect(IMAGE_PROMPT_PLACEHOLDER_URL).not.toContain("?3C");
 
-    const decoded = decodeURIComponent(IMAGE_PROMPT_PLACEHOLDER_URL.replace("data:image/svg+xml,", ""));
+    const decoded = decodeURIComponent(
+      IMAGE_PROMPT_PLACEHOLDER_URL.replace("data:image/svg+xml,", "")
+    );
     expect(decoded).toContain("<svg");
     expect(decoded).toContain("</svg>");
     expect(decoded).toContain("<rect");
@@ -151,5 +160,102 @@ describe("serializeRemotePersistSnapshot", () => {
     });
 
     expect(second).not.toBe(first);
+  });
+});
+
+describe("createTextNodeStarterFlowSnapshot", () => {
+  it("creates a linked video node and primes an empty text node with a video system prompt", () => {
+    const textNode = makeTextNode("text-1");
+
+    const result = createTextNodeStarterFlowSnapshot({
+      nodes: [textNode],
+      links: [],
+      textNodeId: "text-1",
+      action: "video",
+      makeId: (prefix) => `${prefix}-new`,
+    });
+
+    expect(result?.nodes).toHaveLength(2);
+    expect(result?.createdNodeId).toBe("node-new");
+    expect(result?.nodes.find((node) => node.id === "text-1")?.properties.system_prompt).toContain(
+      "视频生成"
+    );
+    expect(result?.nodes.find((node) => node.id === "text-1")?.properties.text).toBeUndefined();
+    expect(result?.nodes.find((node) => node.id === "node-new")?.type).toBe("video_node");
+    expect(result?.links).toEqual([
+      {
+        id: "link-new",
+        fromNodeId: "text-1",
+        fromOutputIndex: 0,
+        toNodeId: "node-new",
+        toInputIndex: 0,
+      },
+    ]);
+  });
+
+  it("creates a linked audio node without replacing existing text", () => {
+    const textNode = {
+      ...makeTextNode("text-1"),
+      properties: { text: "已有提示词" },
+    };
+
+    const result = createTextNodeStarterFlowSnapshot({
+      nodes: [textNode],
+      links: [],
+      textNodeId: "text-1",
+      action: "music",
+      makeId: (prefix) => `${prefix}-new`,
+    });
+
+    expect(result?.nodes.find((node) => node.id === "text-1")?.properties.text).toBe("已有提示词");
+    expect(result?.nodes.find((node) => node.id === "node-new")?.type).toBe("audio_node");
+    expect(result?.links[0]).toMatchObject({
+      fromNodeId: "text-1",
+      toNodeId: "node-new",
+      toInputIndex: 0,
+    });
+  });
+});
+
+describe("source node semantics", () => {
+  it("clears text node inputs when switching to plain text mode", () => {
+    const textNode = {
+      ...makeTextNode("text-1"),
+      inputs: [
+        { name: "system_prompt", type: "STRING" as const },
+        { name: "user_prompt", type: "ANY" as const },
+      ],
+      outputs: [{ name: "文本", type: "STRING" as const }],
+    };
+
+    const nodes = updateNodePropertySnapshot([textNode], "text-1", "textMode", "plain");
+
+    expect(nodes[0].properties.textMode).toBe("plain");
+    expect(nodes[0].inputs).toEqual([]);
+    expect(nodes[0].outputs).toEqual(textNode.outputs);
+  });
+
+  it("marks uploaded image, video, and audio nodes as source nodes without inputs", () => {
+    const imageNode: GraphNode = {
+      id: "image-1",
+      type: "image_node",
+      title: "图片节点 1",
+      x: 0,
+      y: 0,
+      inputs: [{ name: "prompt", type: "STRING" }],
+      outputs: [{ name: "图片", type: "IMAGE" }],
+      properties: {},
+    };
+
+    const sourceNode = markUploadedAssetNodeAsSource(
+      imageNode,
+      "image",
+      "https://oss.example.com/a.png"
+    );
+
+    expect(sourceNode.inputs).toEqual([]);
+    expect(sourceNode.properties.isSourceNode).toBe(true);
+    expect(sourceNode.data?.isSourceNode).toBe(true);
+    expect(sourceNode.properties.imageUrl).toBe("https://oss.example.com/a.png");
   });
 });
