@@ -1,7 +1,7 @@
 import React from "react";
 import { motion } from "motion/react";
 import { createPortal } from "react-dom";
-import { ArrowRight, FolderOpen, Image as ImageIcon, Loader2, MoreHorizontal, Plus, Upload } from "lucide-react";
+import { AlertTriangle, ArrowRight, FolderOpen, Image as ImageIcon, Loader2, MoreHorizontal, Plus, Trash2, Upload } from "lucide-react";
 import AppHeader from "../app/AppHeader";
 import ApiSettingsModal from "../app/ApiSettingsModal";
 import type { HomeProjectCard } from "../../features/workspace/projectTypes";
@@ -21,6 +21,11 @@ type EditDialogState = {
   originalCoverUrl: string;
 } | null;
 
+type DeleteDialogState = {
+  projectId: string;
+  name: string;
+} | null;
+
 interface ProjectGalleryPageProps {
   title: string;
   subtitle: string;
@@ -36,6 +41,12 @@ interface ProjectGalleryPageProps {
   loading?: boolean;
   errorMessage?: string;
   emptyMessage?: string;
+  pagination?: {
+    pageNum: number;
+    pageSize: number;
+    total: number;
+    onPageChange: (pageNum: number) => void;
+  };
   onCreateProject?: () => void | Promise<void>;
   onRenameProject?: (projectId: string, name: string) => boolean | Promise<boolean>;
   onChangeProjectCover?: (projectId: string, coverUrl: string) => boolean | Promise<boolean>;
@@ -408,6 +419,61 @@ function EditProjectDialog({
   );
 }
 
+function DeleteProjectDialog({
+  state,
+  isDeleting,
+  onClose,
+  onConfirm,
+}: {
+  state: DeleteDialogState;
+  isDeleting: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  if (!state) return null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-[260] flex items-center justify-center bg-black/65 px-6 backdrop-blur-sm">
+      <div className="w-full max-w-[440px] overflow-hidden rounded-[28px] border border-white/[0.08] bg-[#111318] shadow-[0_28px_90px_rgba(0,0,0,0.48)]">
+        <div className="flex items-start gap-4 border-b border-white/[0.06] px-7 py-6">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-rose-400/20 bg-rose-500/10 text-rose-200">
+            <AlertTriangle className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-xl font-semibold tracking-[-0.04em] text-white">删除项目</div>
+            <div className="mt-2 text-sm leading-6 text-slate-500">
+              确认删除
+              <span className="mx-1 font-semibold text-slate-200">「{state.name}」</span>
+              吗？删除后将无法恢复。
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-3 px-7 py-5">
+          <button
+            type="button"
+            disabled={isDeleting}
+            onClick={onClose}
+            className="inline-flex h-11 min-w-24 items-center justify-center rounded-2xl border border-white/[0.08] bg-white/[0.02] px-5 text-sm font-semibold text-slate-300 transition hover:bg-white/[0.04] hover:text-white disabled:cursor-not-allowed disabled:opacity-45"
+          >
+            取消
+          </button>
+          <button
+            type="button"
+            disabled={isDeleting}
+            onClick={onConfirm}
+            className="inline-flex h-11 min-w-28 items-center justify-center gap-2 rounded-2xl bg-rose-500 px-5 text-sm font-semibold text-white shadow-[0_14px_32px_rgba(244,63,94,0.22)] transition hover:bg-rose-400 disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+            {isDeleting ? "删除中..." : "确认删除"}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 export default function ProjectGalleryPage({
   title,
   subtitle,
@@ -423,6 +489,7 @@ export default function ProjectGalleryPage({
   loading = false,
   errorMessage = "",
   emptyMessage = "还没有项目，先创建一个开始吧。",
+  pagination,
   onCreateProject,
   onRenameProject,
   onChangeProjectCover,
@@ -432,14 +499,21 @@ export default function ProjectGalleryPage({
   const [menuOpenId, setMenuOpenId] = React.useState<string | null>(null);
   const [hoveredMenuId, setHoveredMenuId] = React.useState<string | null>(null);
   const [editDialogState, setEditDialogState] = React.useState<EditDialogState>(null);
+  const [deleteDialogState, setDeleteDialogState] = React.useState<DeleteDialogState>(null);
   const [isUploadingCover, setIsUploadingCover] = React.useState(false);
   const [isSubmittingEdit, setIsSubmittingEdit] = React.useState(false);
+  const [isDeletingProject, setIsDeletingProject] = React.useState(false);
   const [coverUploadError, setCoverUploadError] = React.useState("");
   const [apiSettings, setApiSettings] = React.useState<ApiSettings>(() => loadApiSettings());
   const [apiSettingsOpen, setApiSettingsOpen] = React.useState(false);
   const [apiNotice, setApiNotice] = React.useState<{ message: string; kind: "info" | "success" | "warning" | "error" } | null>(null);
   const menuHostRef = React.useRef<HTMLDivElement | null>(null);
   const activeMenuRef = React.useRef<HTMLDivElement | null>(null);
+  const pageCount = pagination ? Math.max(1, Math.ceil(pagination.total / pagination.pageSize)) : 1;
+  const canGoPrev = Boolean(pagination && pagination.pageNum > 1 && !loading);
+  const canGoNext = Boolean(pagination && pagination.pageNum < pageCount && !loading);
+  const paginationSummaryVisible = Boolean(pagination);
+  const paginationControlsVisible = Boolean(pagination && pagination.total > pagination.pageSize);
 
   React.useEffect(() => {
     if (typeof document === "undefined") return;
@@ -538,14 +612,36 @@ export default function ProjectGalleryPage({
 
   const handleDeleteProject = React.useCallback(
     (projectId: string) => {
-      if (!window.confirm("确认删除这个项目吗？")) return;
-      void Promise.resolve(onDeleteProject?.(projectId)).then((result) => {
-        if (result !== false) onProjectsChanged();
+      const target = projects.find((project) => project.id === projectId);
+      if (!target) return;
+
+      setDeleteDialogState({
+        projectId,
+        name: target.name,
       });
       closeMenus();
     },
-    [closeMenus, onDeleteProject, onProjectsChanged]
+    [closeMenus, projects]
   );
+
+  const handleConfirmDeleteProject = React.useCallback(() => {
+    if (!deleteDialogState || isDeletingProject) return;
+
+    setIsDeletingProject(true);
+    void Promise.resolve(onDeleteProject?.(deleteDialogState.projectId))
+      .then((result) => {
+        if (result !== false) onProjectsChanged();
+        setDeleteDialogState(null);
+      })
+      .finally(() => {
+        setIsDeletingProject(false);
+      });
+  }, [deleteDialogState, isDeletingProject, onDeleteProject, onProjectsChanged]);
+
+  const handleCloseDeleteDialog = React.useCallback(() => {
+    if (isDeletingProject) return;
+    setDeleteDialogState(null);
+  }, [isDeletingProject]);
 
   const handleCoverFileSelection = React.useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     try {
@@ -645,10 +741,45 @@ export default function ProjectGalleryPage({
                   {primaryActionLabel}
                 </button>
               ) : null}
+
             </div>
 
             <div className="max-w-xl text-[13px] leading-6 text-slate-500">{subtitle}</div>
           </div>
+
+          {paginationSummaryVisible && pagination ? (
+            <div className="mb-5 flex items-center justify-between gap-4">
+              <div className="text-[12px] font-medium text-slate-500">
+                {loading ? "正在刷新项目列表..." : `共 ${pagination.total} 个项目`}
+              </div>
+
+              {paginationControlsVisible ? (
+                <div className="inline-flex items-center gap-2 rounded-2xl border border-white/[0.045] bg-white/[0.018] p-1 shadow-[0_18px_44px_-36px_rgba(0,0,0,0.9)] backdrop-blur-xl">
+                  <button
+                    type="button"
+                    disabled={!canGoPrev}
+                    onClick={() => pagination.onPageChange(Math.max(1, pagination.pageNum - 1))}
+                    className="inline-flex h-8 items-center justify-center rounded-xl px-3 text-[12px] font-semibold text-slate-300 transition hover:bg-white/[0.04] hover:text-white disabled:cursor-not-allowed disabled:text-slate-700 disabled:hover:bg-transparent"
+                  >
+                    上一页
+                  </button>
+                  <div className="inline-flex h-8 items-center gap-2 rounded-xl bg-black/16 px-3 text-[12px] text-slate-500">
+                    <span className="font-mono text-sm font-bold text-white">{pagination.pageNum}</span>
+                    <span className="text-slate-600">/</span>
+                    <span className="font-mono text-sm text-slate-400">{pageCount}</span>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={!canGoNext}
+                    onClick={() => pagination.onPageChange(Math.min(pageCount, pagination.pageNum + 1))}
+                    className="inline-flex h-8 items-center justify-center rounded-xl px-3 text-[12px] font-semibold text-slate-300 transition hover:bg-white/[0.04] hover:text-white disabled:cursor-not-allowed disabled:text-slate-700 disabled:hover:bg-transparent"
+                  >
+                    下一页
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
 
           {loading && projects.length > 0 ? (
             <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-xs text-slate-400">
@@ -714,6 +845,13 @@ export default function ProjectGalleryPage({
           resetEditDialogFeedback();
         }}
         onSubmit={handleSubmitEditDialog}
+      />
+
+      <DeleteProjectDialog
+        state={deleteDialogState}
+        isDeleting={isDeletingProject}
+        onClose={handleCloseDeleteDialog}
+        onConfirm={handleConfirmDeleteProject}
       />
 
       <ApiSettingsModal

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AUTH_STORAGE_KEY } from "./authConfig";
+import { API_NOTICE_EVENT, type ApiNoticeDetail } from "./apiNotice";
 import { devApiFetch } from "./request";
 
 describe("devApiFetch", () => {
@@ -56,5 +57,40 @@ describe("devApiFetch", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     await expect(first.json()).resolves.toEqual({ ok: true });
     await expect(second.json()).resolves.toEqual({ ok: true });
+  });
+
+  function stubNoticeDispatch() {
+    const events: Array<{ type: string; detail?: ApiNoticeDetail }> = [];
+    vi.stubGlobal(
+      "CustomEvent",
+      class<T> extends Event {
+        detail: T;
+        constructor(type: string, init?: CustomEventInit<T>) {
+          super(type);
+          this.detail = init?.detail as T;
+        }
+      }
+    );
+    vi.stubGlobal("window", {
+      dispatchEvent: vi.fn((event: Event & { detail?: ApiNoticeDetail }) => {
+        events.push({ type: event.type, detail: event.detail });
+        return true;
+      }),
+    });
+    return events;
+  }
+
+  it("emits a global notice and clears the session on http 401", async () => {
+    const fetchMock = vi.fn(async () => new Response(null, { status: 401 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const events = stubNoticeDispatch();
+
+    await devApiFetch("/system/canvas/list", { method: "GET" });
+
+    expect(localStorage.removeItem).toHaveBeenCalledWith(AUTH_STORAGE_KEY);
+    expect(events).toContainEqual({
+      type: API_NOTICE_EVENT,
+      detail: { message: "登录已失效，请重新登录", kind: "warning" },
+    });
   });
 });

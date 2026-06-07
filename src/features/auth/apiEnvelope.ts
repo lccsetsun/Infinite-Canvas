@@ -1,3 +1,4 @@
+import { emitApiNotice } from "./apiNotice";
 import { AUTH_ENCRYPT_RESPONSE_HEADER } from "./authConfig";
 import { clearAuthSession } from "./authStorage";
 import { decryptBase64, decryptWithAes, decryptWithRsa } from "./crypto";
@@ -25,17 +26,23 @@ export async function parseDevApiEnvelope<T>(response: Response): Promise<ApiEnv
   try {
     parsed = JSON.parse(decodedText) as ApiEnvelope<T>;
   } catch {
-    throw new Error(decodedText || "响应解析失败");
+    const message = decodedText || "响应解析失败";
+    emitApiNotice(message, "error", "api:parse-error");
+    throw new Error(message);
   }
 
   if (!response.ok) {
-    throw new Error(parsed?.msg || `请求失败 (${response.status})`);
+    const message = parsed?.msg || `请求失败 (${response.status})`;
+    emitApiNotice(message, response.status === 401 ? "warning" : "error", response.status === 401 ? "auth:401" : `http:${response.status}:${message}`);
+    throw new Error(message);
   }
   if (parsed.code !== 200) {
     if (parsed.code === 401) {
       clearAuthSession();
     }
-    throw new Error(parsed.msg || "请求失败");
+    const message = parsed.msg || "请求失败";
+    emitApiNotice(message, parsed.code === 401 ? "warning" : "error", parsed.code === 401 ? "auth:401" : `biz:${parsed.code}:${message}`);
+    throw new Error(message);
   }
   return parsed;
 }

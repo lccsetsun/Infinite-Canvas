@@ -1,5 +1,6 @@
 import { AUTH_BASE_API, AUTH_CLIENT_ID } from "./authConfig";
 import { clearAuthSession, getAccessToken } from "./authStorage";
+import { emitApiNotice } from "./apiNotice";
 
 export interface DevApiRequestOptions extends RequestInit {
   auth?: boolean;
@@ -81,10 +82,18 @@ export async function devApiFetch(path: string, options: DevApiRequestOptions = 
     inFlightGetRequests.set(dedupKey, fetchPromise);
   }
 
-  const response = await fetchPromise;
+  let response: Response;
+  try {
+    response = await fetchPromise;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    emitApiNotice(`接口请求失败：${message}`, "error", `network:${url}`);
+    throw error;
+  }
 
   if (response.status === 401) {
     clearAuthSession();
+    emitApiNotice("登录已失效，请重新登录", "warning", "auth:401");
   }
 
   return shouldDedup ? response.clone() : response;

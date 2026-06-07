@@ -3,6 +3,7 @@ import App from "./App";
 import AllProjectsPage from "./pages/AllProjectsPage";
 import HomePage from "./pages/HomePage";
 import LoginPage from "./pages/LoginPage";
+import { API_NOTICE_EVENT, type ApiNoticeDetail } from "./features/auth/apiNotice";
 import { AUTH_SESSION_CHANGED_EVENT, clearAuthSession, hasAuthSession, setAccessToken } from "./features/auth/authStorage";
 import { performLocalLogout } from "./features/auth/logoutFlow";
 
@@ -32,6 +33,8 @@ function navigate(to: string, replace = false) {
 export default function RootApp() {
   const [pathname, setPathname] = React.useState(() => getPathname());
   const [isLoggedIn, setIsLoggedIn] = React.useState(() => hasAuthSession());
+  const [apiNotice, setApiNotice] = React.useState<ApiNoticeDetail | null>(null);
+  const apiNoticeTimerRef = React.useRef<number | null>(null);
 
   React.useEffect(() => {
     const handleLocationChange = () => {
@@ -65,6 +68,30 @@ export default function RootApp() {
     }
   }, [isLoggedIn, pathname]);
 
+  React.useEffect(() => {
+    const handleApiNotice = (event: Event) => {
+      const detail = (event as CustomEvent<ApiNoticeDetail>).detail;
+      if (!detail?.message) return;
+
+      if (apiNoticeTimerRef.current !== null) {
+        window.clearTimeout(apiNoticeTimerRef.current);
+      }
+      setApiNotice(detail);
+      apiNoticeTimerRef.current = window.setTimeout(() => {
+        setApiNotice(null);
+        apiNoticeTimerRef.current = null;
+      }, detail.kind === "error" ? 2600 : 2000);
+    };
+
+    window.addEventListener(API_NOTICE_EVENT, handleApiNotice);
+    return () => {
+      window.removeEventListener(API_NOTICE_EVENT, handleApiNotice);
+      if (apiNoticeTimerRef.current !== null) {
+        window.clearTimeout(apiNoticeTimerRef.current);
+      }
+    };
+  }, []);
+
   const handleLogin = React.useCallback((accessToken: string) => {
     setAccessToken(accessToken);
     setIsLoggedIn(true);
@@ -86,27 +113,40 @@ export default function RootApp() {
     window.open(buildCanvasUrl(projectId), "_blank", "noopener,noreferrer");
   }, []);
 
+  const noticeNode = apiNotice ? <GlobalApiNotice notice={apiNotice} /> : null;
+
   if (!isLoggedIn) {
-    return <LoginPage onLogin={handleLogin} />;
+    return (
+      <>
+        <LoginPage onLogin={handleLogin} />
+        {noticeNode}
+      </>
+    );
   }
 
   if (pathname === DEFAULT_PATH) {
     return (
-      <HomePage
-        onLogout={handleLoggedOut}
-        onOpenCanvas={handleOpenCanvas}
-        onOpenAllProjects={() => navigate(PROJECTS_PATH)}
-      />
+      <>
+        <HomePage
+          onLogout={handleLoggedOut}
+          onOpenCanvas={handleOpenCanvas}
+          onOpenAllProjects={() => navigate(PROJECTS_PATH)}
+        />
+        {noticeNode}
+      </>
     );
   }
 
   if (pathname === PROJECTS_PATH) {
     return (
-      <AllProjectsPage
-        onLogout={handleLoggedOut}
-        onOpenCanvas={handleOpenCanvas}
-        onBackHome={() => navigate(DEFAULT_PATH)}
-      />
+      <>
+        <AllProjectsPage
+          onLogout={handleLoggedOut}
+          onOpenCanvas={handleOpenCanvas}
+          onBackHome={() => navigate(DEFAULT_PATH)}
+        />
+        {noticeNode}
+      </>
     );
   }
 
@@ -114,5 +154,25 @@ export default function RootApp() {
     return null;
   }
 
-  return <App onLoggedOut={handleLoggedOut} />;
+  return (
+    <>
+      <App onLoggedOut={handleLoggedOut} />
+      {noticeNode}
+    </>
+  );
+}
+
+function GlobalApiNotice({ notice }: { notice: ApiNoticeDetail }) {
+  const tone =
+    notice.kind === "warning"
+      ? "border-amber-400/35 bg-amber-500/12 text-amber-100"
+      : notice.kind === "success"
+        ? "border-emerald-400/35 bg-emerald-500/12 text-emerald-100"
+        : "border-rose-400/35 bg-rose-500/12 text-rose-100";
+
+  return (
+    <div className={`fixed left-1/2 top-5 z-[10000] max-w-[min(560px,calc(100vw-32px))] -translate-x-1/2 rounded-2xl border px-4 py-3 text-sm font-medium shadow-[0_18px_42px_rgba(0,0,0,0.32)] backdrop-blur-xl ${tone}`}>
+      {notice.message}
+    </div>
+  );
 }

@@ -99,8 +99,8 @@ export default function HeaderRightPanel({
     ? `inline-flex h-10 items-center gap-2 rounded-2xl bg-[#141923]/34 px-2.5 py-1.5 shadow-[0_10px_24px_-20px_rgba(0,0,0,0.92)] backdrop-blur-xl transition-all ${
         isBusy ? "cursor-wait" : "cursor-pointer hover:bg-[#141923]/48"
       }`
-    : `group flex h-11 items-center gap-2.5 rounded-2xl border border-white/[0.055] bg-[linear-gradient(180deg,rgba(17,22,33,0.78),rgba(10,14,22,0.72))] px-3 shadow-[0_10px_26px_-24px_rgba(0,0,0,0.88)] backdrop-blur-xl transition-all duration-200 ${
-        isBusy ? "cursor-wait opacity-80" : "cursor-pointer hover:border-white/12 hover:bg-[#111827]/88"
+    : `group flex h-11 items-center gap-2.5 rounded-2xl px-2.5 transition-all duration-200 ${
+        isBusy ? "cursor-wait opacity-80" : "cursor-pointer hover:brightness-125"
       }`;
 
   const avatarClassName = isCompact
