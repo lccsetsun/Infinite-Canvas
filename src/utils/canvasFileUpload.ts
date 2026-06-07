@@ -25,6 +25,10 @@ interface UploadCanvasFileOptions {
 }
 
 const LOCAL_METADATA_TIMEOUT_MS = 2500;
+const RESULT_IMAGE_MAX_WIDTH = 780;
+const RESULT_IMAGE_MAX_HEIGHT = 585;
+const VIDEO_NODE_WIDTH = 520;
+const RESULT_VIDEO_MAX_HEIGHT = 390;
 
 function withMetadataTimeout<T>(read: Promise<T>, fallback: T): Promise<T> {
   return new Promise((resolve) => {
@@ -92,7 +96,52 @@ async function readLocalMediaMetadata(
   return {};
 }
 
-function buildInitialNodeData(
+function isFinitePositiveNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
+function fitImageSize(naturalSize: { width: number; height: number }) {
+  const scale = Math.min(
+    RESULT_IMAGE_MAX_WIDTH / naturalSize.width,
+    RESULT_IMAGE_MAX_HEIGHT / naturalSize.height
+  );
+  return {
+    width: Math.round(naturalSize.width * scale),
+    height: Math.round(naturalSize.height * scale),
+  };
+}
+
+function fitVideoSize(naturalSize: { width: number; height: number }) {
+  const scale = Math.min(
+    VIDEO_NODE_WIDTH / naturalSize.width,
+    RESULT_VIDEO_MAX_HEIGHT / naturalSize.height,
+    1
+  );
+  return {
+    width: Math.round(naturalSize.width * scale),
+    height: Math.round(naturalSize.height * scale),
+  };
+}
+
+function assertLocalMediaDimensions(assetKind: UploadedAssetKind, metadata: LocalMediaMetadata) {
+  if (
+    assetKind === "image" &&
+    (!isFinitePositiveNumber(metadata.imageNaturalWidth) ||
+      !isFinitePositiveNumber(metadata.imageNaturalHeight))
+  ) {
+    throw new Error("无法读取图片尺寸，未创建节点");
+  }
+
+  if (
+    assetKind === "video" &&
+    (!isFinitePositiveNumber(metadata.videoNaturalWidth) ||
+      !isFinitePositiveNumber(metadata.videoNaturalHeight))
+  ) {
+    throw new Error("无法读取视频尺寸，未创建节点");
+  }
+}
+
+export function buildInitialCanvasFileNodeData(
   assetKind: UploadedAssetKind,
   propKey: string,
   localUrl: string,
@@ -110,6 +159,30 @@ function buildInitialNodeData(
   if (assetKind === "image") {
     data.imageUrls = [localUrl];
     data.activeImageIndex = 0;
+    if (
+      isFinitePositiveNumber(metadata.imageNaturalWidth) &&
+      isFinitePositiveNumber(metadata.imageNaturalHeight)
+    ) {
+      const displaySize = fitImageSize({
+        width: metadata.imageNaturalWidth,
+        height: metadata.imageNaturalHeight,
+      });
+      data.imageDisplayWidth = displaySize.width;
+      data.imageDisplayHeight = displaySize.height;
+    }
+  }
+
+  if (
+    assetKind === "video" &&
+    isFinitePositiveNumber(metadata.videoNaturalWidth) &&
+    isFinitePositiveNumber(metadata.videoNaturalHeight)
+  ) {
+    const displaySize = fitVideoSize({
+      width: metadata.videoNaturalWidth,
+      height: metadata.videoNaturalHeight,
+    });
+    data.videoDisplayWidth = displaySize.width;
+    data.videoDisplayHeight = displaySize.height;
   }
 
   return data;
@@ -168,12 +241,13 @@ export async function uploadCanvasFileAsNode({
     const expectedNode = resolveUploadedFileNode(file, "");
     localUrl = URL.createObjectURL(file);
     const metadata = await readLocalMediaMetadata(file, localUrl, expectedNode.assetKind);
+    assertLocalMediaDimensions(expectedNode.assetKind, metadata);
     const nodeId = addNode(expectedNode.nodeType, position.clientX, position.clientY, {
       [expectedNode.propKey]: localUrl,
       __uploadedAssetKind: expectedNode.assetKind,
       __uploadedAssetName: file.name,
       __uploadedAssetUrl: localUrl,
-      __nodeData: buildInitialNodeData(
+      __nodeData: buildInitialCanvasFileNodeData(
         expectedNode.assetKind,
         expectedNode.propKey,
         localUrl,

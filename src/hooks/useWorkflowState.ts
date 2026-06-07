@@ -290,6 +290,123 @@ function makeId(prefix: string) {
   return `${prefix}_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
 }
 
+export interface AddNodeToWorkflowSnapshotOptions {
+  nodes: GraphNode[];
+  links: GraphLink[];
+  type: NodeClass;
+  x?: number;
+  y?: number;
+  initialProps?: Record<string, unknown>;
+  connectFromDraft?: { fromNodeId: string; fromOutputIndex: number; toInputIndex?: number };
+  makeId?: (prefix: string) => string;
+}
+
+export interface AddNodeToWorkflowSnapshotResult {
+  id: string;
+  node: GraphNode;
+  nodes: GraphNode[];
+  links: GraphLink[];
+  warning?: string;
+}
+
+export function addNodeToWorkflowSnapshot({
+  nodes,
+  links,
+  type,
+  x,
+  y,
+  initialProps,
+  connectFromDraft,
+  makeId: makeSnapshotId = makeId,
+}: AddNodeToWorkflowSnapshotOptions): AddNodeToWorkflowSnapshotResult {
+  const id = makeSnapshotId("node");
+  const nextX = x ?? 80 + (nodes.length % 4) * 280;
+  const nextY = y ?? 120 + Math.floor(nodes.length / 4) * 180;
+  const node = createNodeFromType(type, id, nextX, nextY);
+  node.title = getNextNumberedNodeTitle(nodes, type) || node.title;
+
+  if (initialProps) {
+    const {
+      __nodeTitle,
+      __nodeData,
+      __uploadedAssetUrl,
+      __uploadedAssetKind,
+      __uploadedAssetName,
+      ...restProps
+    } = initialProps;
+    node.properties = { ...node.properties, ...restProps };
+    if (typeof __nodeTitle === "string" && __nodeTitle.trim()) {
+      node.title = __nodeTitle.trim();
+    }
+    if (__uploadedAssetKind === "image" && typeof __uploadedAssetUrl === "string") {
+      Object.assign(node, markUploadedAssetNodeAsSource(node, "image", __uploadedAssetUrl));
+      if (typeof __uploadedAssetName === "string" && __uploadedAssetName.trim()) {
+        node.title = getNextNumberedNodeTitle(nodes, "image_node") || node.title;
+      }
+    }
+    if (__uploadedAssetKind === "video" && typeof __uploadedAssetUrl === "string") {
+      Object.assign(node, markUploadedAssetNodeAsSource(node, "video", __uploadedAssetUrl));
+      if (typeof __uploadedAssetName === "string" && __uploadedAssetName.trim()) {
+        node.title = getNextNumberedNodeTitle(nodes, "video_node") || node.title;
+      }
+    }
+    if (__uploadedAssetKind === "audio" && typeof __uploadedAssetUrl === "string") {
+      Object.assign(node, markUploadedAssetNodeAsSource(node, "audio", __uploadedAssetUrl));
+      if (typeof __uploadedAssetName === "string" && __uploadedAssetName.trim()) {
+        node.title = getNextNumberedNodeTitle(nodes, "audio_node") || node.title;
+      }
+    }
+    if (__nodeData && typeof __nodeData === "object" && !Array.isArray(__nodeData)) {
+      node.data = { ...(node.data || {}), ...(__nodeData as GraphNode["data"]) };
+    }
+  }
+
+  const nextNodes = [...nodes, node];
+  let nextLinks = links;
+  let warning: string | undefined;
+
+  if (connectFromDraft) {
+    const fromNodeCandidate = nextNodes.find((n) => n.id === connectFromDraft.fromNodeId);
+    const toNodeCandidate = node;
+    const requestedInputIndex = connectFromDraft.toInputIndex ?? 0;
+    const fromOutput = fromNodeCandidate?.outputs[connectFromDraft.fromOutputIndex];
+    const requestedInput = toNodeCandidate.inputs[requestedInputIndex];
+    const normalizedInputIndex =
+      fromNodeCandidate &&
+      fromOutput &&
+      (!requestedInput || !isDataTypeCompatible(fromOutput.type, requestedInput.type))
+        ? findFirstCompatibleInputIndex(
+            fromNodeCandidate,
+            toNodeCandidate,
+            connectFromDraft.fromOutputIndex
+          )
+        : requestedInputIndex;
+    const normalizedDraft = {
+      fromNodeId: connectFromDraft.fromNodeId,
+      fromOutputIndex: connectFromDraft.fromOutputIndex,
+      toNodeId: id,
+      toInputIndex: normalizedInputIndex,
+    };
+    const issue = getLinkDraftIssue({ ...normalizedDraft, nodes: nextNodes, links });
+    if (issue) {
+      warning = issue;
+    } else {
+      nextLinks = [
+        ...links,
+        {
+          id: makeSnapshotId("link"),
+          fromNodeId: normalizedDraft.fromNodeId,
+          fromOutputIndex: normalizedDraft.fromOutputIndex,
+          toNodeId: normalizedDraft.toNodeId,
+          toInputIndex: normalizedDraft.toInputIndex,
+        },
+      ];
+    }
+  }
+
+  return { id, node, nodes: nextNodes, links: nextLinks, warning };
+}
+
 function makeLog(type: ExecutionLog["type"], message: string): ExecutionLog {
   return {
     id: makeId("log"),
@@ -667,86 +784,21 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     initialProps?: Record<string, unknown>,
     connectFromDraft?: { fromNodeId: string; fromOutputIndex: number; toInputIndex?: number }
   ) => {
-    const id = makeId("node");
-    const nextX = x ?? 80 + (nodes.length % 4) * 280;
-    const nextY = y ?? 120 + Math.floor(nodes.length / 4) * 180;
-    const node = createNodeFromType(type, id, nextX, nextY);
-    node.title = getNextNumberedNodeTitle(nodes, type) || node.title;
-    if (initialProps) {
-      const {
-        __nodeTitle,
-        __nodeData,
-        __uploadedAssetUrl,
-        __uploadedAssetKind,
-        __uploadedAssetName,
-        ...restProps
-      } = initialProps;
-      node.properties = { ...node.properties, ...restProps };
-      if (typeof __nodeTitle === "string" && __nodeTitle.trim()) {
-        node.title = __nodeTitle.trim();
-      }
-      if (__uploadedAssetKind === "image" && typeof __uploadedAssetUrl === "string") {
-        Object.assign(node, markUploadedAssetNodeAsSource(node, "image", __uploadedAssetUrl));
-        if (typeof __uploadedAssetName === "string" && __uploadedAssetName.trim()) {
-          node.title = getNextNumberedNodeTitle(nodes, "image_node") || node.title;
-        }
-      }
-      if (__uploadedAssetKind === "video" && typeof __uploadedAssetUrl === "string") {
-        Object.assign(node, markUploadedAssetNodeAsSource(node, "video", __uploadedAssetUrl));
-        if (typeof __uploadedAssetName === "string" && __uploadedAssetName.trim()) {
-          node.title = getNextNumberedNodeTitle(nodes, "video_node") || node.title;
-        }
-      }
-      if (__uploadedAssetKind === "audio" && typeof __uploadedAssetUrl === "string") {
-        Object.assign(node, markUploadedAssetNodeAsSource(node, "audio", __uploadedAssetUrl));
-        if (typeof __uploadedAssetName === "string" && __uploadedAssetName.trim()) {
-          node.title = getNextNumberedNodeTitle(nodes, "audio_node") || node.title;
-        }
-      }
-      if (__nodeData && typeof __nodeData === "object" && !Array.isArray(__nodeData)) {
-        node.data = { ...(node.data || {}), ...(__nodeData as GraphNode["data"]) };
-      }
+    const result = addNodeToWorkflowSnapshot({
+      nodes: currentNodesRef.current,
+      links: currentLinksRef.current,
+      type,
+      x,
+      y,
+      initialProps,
+      connectFromDraft,
+    });
+    const { id, node, nodes: nextNodes, links: nextLinks, warning } = result;
+    if (warning) {
+      appendLog("warning", warning);
     }
-    const nextNodes = [...nodes, node];
-    let nextLinks = links;
-    if (connectFromDraft) {
-      const fromNodeCandidate = nextNodes.find((n) => n.id === connectFromDraft.fromNodeId);
-      const toNodeCandidate = node;
-      const requestedInputIndex = connectFromDraft.toInputIndex ?? 0;
-      const fromOutput = fromNodeCandidate?.outputs[connectFromDraft.fromOutputIndex];
-      const requestedInput = toNodeCandidate.inputs[requestedInputIndex];
-      const normalizedInputIndex =
-        fromNodeCandidate &&
-        fromOutput &&
-        (!requestedInput || !isDataTypeCompatible(fromOutput.type, requestedInput.type))
-          ? findFirstCompatibleInputIndex(
-              fromNodeCandidate,
-              toNodeCandidate,
-              connectFromDraft.fromOutputIndex
-            )
-          : requestedInputIndex;
-      const normalizedDraft = {
-        fromNodeId: connectFromDraft.fromNodeId,
-        fromOutputIndex: connectFromDraft.fromOutputIndex,
-        toNodeId: id,
-        toInputIndex: normalizedInputIndex,
-      };
-      const issue = getLinkDraftIssue({ ...normalizedDraft, nodes: nextNodes, links });
-      if (issue) {
-        appendLog("warning", issue);
-      } else {
-        nextLinks = [
-          ...links,
-          {
-            id: makeId("link"),
-            fromNodeId: normalizedDraft.fromNodeId,
-            fromOutputIndex: normalizedDraft.fromOutputIndex,
-            toNodeId: normalizedDraft.toNodeId,
-            toInputIndex: normalizedDraft.toInputIndex,
-          },
-        ];
-      }
-    }
+    currentNodesRef.current = nextNodes;
+    currentLinksRef.current = nextLinks;
     setNodes(nextNodes);
     setLinks(nextLinks);
     setSelectedNodeId(node.id);

@@ -4,6 +4,7 @@ import {
   IMAGE_PROMPT_PLACEHOLDER_URL,
   createTextNodeStarterFlowSnapshot,
   markUploadedAssetNodeAsSource,
+  addNodeToWorkflowSnapshot,
   updateNodePropertySnapshot,
   isRemoteWorkflowEcho,
   serializeRemotePersistSnapshot,
@@ -257,5 +258,44 @@ describe("source node semantics", () => {
     expect(sourceNode.properties.isSourceNode).toBe(true);
     expect(sourceNode.data?.isSourceNode).toBe(true);
     expect(sourceNode.properties.imageUrl).toBe("https://oss.example.com/a.png");
+  });
+});
+
+describe("addNodeToWorkflowSnapshot", () => {
+  it("can be chained from the latest snapshot without dropping uploaded file nodes", () => {
+    const first = addNodeToWorkflowSnapshot({
+      nodes: [],
+      links: [],
+      type: "image_node",
+      x: 100,
+      y: 120,
+      initialProps: {
+        imageUrl: "blob:first",
+        __uploadedAssetKind: "image",
+        __uploadedAssetUrl: "blob:first",
+        __uploadedAssetName: "first.png",
+      },
+      makeId: (prefix) => `${prefix}-1`,
+    });
+
+    const second = addNodeToWorkflowSnapshot({
+      nodes: first.nodes,
+      links: first.links,
+      type: "video_node",
+      x: 160,
+      y: 180,
+      initialProps: {
+        videoUrl: "blob:second",
+        __uploadedAssetKind: "video",
+        __uploadedAssetUrl: "blob:second",
+        __uploadedAssetName: "second.mp4",
+      },
+      makeId: (prefix) => `${prefix}-2`,
+    });
+
+    expect(second.nodes).toHaveLength(2);
+    expect(second.nodes.map((node) => node.type)).toEqual(["image_node", "video_node"]);
+    expect(second.nodes[0].properties.imageUrl).toBe("blob:first");
+    expect(second.nodes[1].properties.videoUrl).toBe("blob:second");
   });
 });
