@@ -3,6 +3,7 @@ import { AnimatePresence } from "motion/react";
 import CanvasHeader from "./components/app/CanvasHeader";
 import CanvasControls from "./components/app/CanvasControls";
 import CanvasHistoryDock from "./components/app/CanvasHistoryDock";
+import ApiSettingsModal from "./components/app/ApiSettingsModal";
 import CanvasNodeLayer from "./components/app/CanvasNodeLayer";
 import DraftLinkOverlay from "./components/app/DraftLinkOverlay";
 import GroupsLayer from "./components/app/GroupsLayer";
@@ -51,6 +52,7 @@ export default function App({ onLoggedOut }: AppProps) {
   );
 
   const [apiSettings, setApiSettings] = React.useState<ApiSettings>(() => loadApiSettings());
+  const [apiSettingsOpen, setApiSettingsOpen] = React.useState(false);
   const activeApiProfile = React.useMemo(() => getActiveProfile(apiSettings), [apiSettings]);
   const deepseekApiProfile = React.useMemo(() => getProviderProfile(apiSettings, "deepseek"), [apiSettings]);
   const minimaxApiProfile = React.useMemo(() => getProviderProfile(apiSettings, "minimax"), [apiSettings]);
@@ -804,8 +806,7 @@ export default function App({ onLoggedOut }: AppProps) {
       >
         <CanvasHeader
           onOpenApiSettings={() => {
-            setCurrentView("api");
-            setActiveQuickTool(null);
+            setApiSettingsOpen(true);
           }}
           onLogout={handleLogout}
         />
@@ -1052,6 +1053,17 @@ export default function App({ onLoggedOut }: AppProps) {
           }}
           setAutoSaveWorkflow={setAutoSaveWorkflow}
           setWorkflowName={setWorkflowName}
+          showNotice={showNotice}
+        />
+
+        <ApiSettingsModal
+          open={apiSettingsOpen}
+          settings={apiSettings}
+          onClose={() => setApiSettingsOpen(false)}
+          onSave={(settings) => {
+            setApiSettings(settings);
+            showNotice("API settings saved.");
+          }}
           showNotice={showNotice}
         />
 

@@ -1,5 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import type { ChangeEvent } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Alert,
@@ -9,11 +8,7 @@ import {
   InputNumber,
   Slider,
   Switch,
-  Tabs,
-  Tooltip,
-  Modal,
 } from "antd";
-import type { TabsProps } from "antd";
 import {
   AlertCircle,
   BookOpen,
@@ -22,8 +17,6 @@ import {
   CheckCircle2,
   Clock,
   Cpu,
-  Copy,
-  Download,
   ExternalLink,
   FlaskConical,
   Globe,
@@ -31,17 +24,13 @@ import {
   Image as ImageIcon,
   Key,
   Lightbulb,
-  Plus,
   Power,
   RefreshCw,
-  RotateCcw,
   Settings2,
   Shield,
   Sliders,
   Sparkles,
   Timer,
-  Trash2,
-  Upload,
   Wifi,
   XCircle,
   Zap,
@@ -53,11 +42,7 @@ import {
   PROVIDER_ORDER,
   PROVIDER_PRESETS,
   ProviderPreset,
-  cloneProfile,
-  makeDefaultProfile,
   makeDefaultSettings,
-  selectProviderProfile,
-  testConnection,
   validateProfile,
 } from "../../features/api/apiSettings";
 
@@ -85,8 +70,33 @@ const TEMPERATURE_PRESETS: { label: string; value: number; description: string }
   { label: "创意", value: 1.3, description: "故事、头脑风暴" },
 ];
 
-function genId() {
+function _genId() {
   return `api_${Date.now().toString(36)}_${Math.floor(Math.random() * 1e6).toString(36)}`;
+}
+
+function normalizeBuiltinSettings(source?: ApiSettings): ApiSettings {
+  const base = makeDefaultSettings();
+  const incoming = source?.profiles ?? [];
+  const profiles = PROVIDER_ORDER.map((provider) => {
+    const fallback = base.profiles.find((p) => p.provider === provider)!;
+    const saved = incoming.find((p) => p.provider === provider);
+    return {
+      ...fallback,
+      apiKey: saved?.apiKey ?? fallback.apiKey,
+      updatedAt: saved?.updatedAt ?? fallback.updatedAt,
+    };
+  });
+  const activeProvider = incoming.find((p) => p.id === source?.activeProfileId)?.provider;
+  const activeProfileId =
+    profiles.find((p) => p.provider === activeProvider)?.id ??
+    profiles.find((p) => p.provider === "deepseek")?.id ??
+    profiles[0].id;
+
+  return {
+    profiles,
+    activeProfileId,
+    autoTestOnSave: false,
+  };
 }
 
 function _maskKey(key: string): string {
@@ -108,14 +118,10 @@ function detectKeyStrength(key: string, provider: ApiProvider): { level: "empty"
 }
 
 export default function ApiSettingsPage({ initial, onSave, showNotice }: ApiSettingsPageProps) {
-  const [settings, setSettings] = useState<ApiSettings>(() => initial ?? makeDefaultSettings());
+  const [settings, setSettings] = useState<ApiSettings>(() => normalizeBuiltinSettings(initial));
   const [dirty, setDirty] = useState(false);
   const [showKey, setShowKey] = useState(false);
-  const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<{ ok: boolean; message: string; latencyMs?: number; models?: string[] } | null>(null);
   const [validation, setValidation] = useState<{ ok: boolean; issues: string[] }>({ ok: true, issues: [] });
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [activeTab, setActiveTab] = useState<string>("connection");
 
   const active = useMemo(
     () => settings.profiles.find((p) => p.id === settings.activeProfileId) ?? settings.profiles[0],
@@ -135,70 +141,6 @@ export default function ApiSettingsPage({ initial, onSave, showNotice }: ApiSett
       profiles: prev.profiles.map((p) => (p.id === active.id ? { ...p, ...patch, updatedAt: Date.now() } : p)),
     }));
     setDirty(true);
-    setTestResult(null);
-  };
-
-  const switchProvider = (provider: ApiProvider) => {
-    setSettings((prev) => selectProviderProfile(prev, provider));
-    setDirty(true);
-    setTestResult(null);
-  };
-
-  const handleNew = () => {
-    const profile = makeDefaultProfile();
-    profile.name = `配置 ${settings.profiles.length + 1}`;
-    setSettings((prev) => ({ ...prev, profiles: [...prev.profiles, profile], activeProfileId: profile.id }));
-    setDirty(true);
-    setTestResult(null);
-  };
-
-  const handleDuplicate = () => {
-    if (!active) return;
-    const copy = cloneProfile(active, { name: `${active.name} 副本` });
-    setSettings((prev) => ({ ...prev, profiles: [...prev.profiles, copy], activeProfileId: copy.id }));
-    setDirty(true);
-    setTestResult(null);
-  };
-
-  const handleDelete = () => {
-    if (settings.profiles.length <= 1) {
-      showNotice("至少需要保留一个配置", "warning");
-      return;
-    }
-    if (!active) return;
-    Modal.confirm({
-      title: `删除配置「${active.name}」?`,
-      content: "此操作不可撤销。如需保留请先导出。",
-      okText: "删除",
-      okType: "danger",
-      cancelText: "取消",
-      onOk: () => {
-        setSettings((prev) => {
-          const remaining = prev.profiles.filter((p) => p.id !== active.id);
-          return { ...prev, profiles: remaining, activeProfileId: remaining[0]?.id ?? "" };
-        });
-        setDirty(true);
-        setTestResult(null);
-        showNotice(`已删除「${active.name}」`, "info");
-      },
-    });
-  };
-
-  const handleReset = () => {
-    Modal.confirm({
-      title: "恢复默认设置?",
-      content: "所有自定义配置将被清空,无法恢复。建议先导出当前配置。",
-      okText: "恢复",
-      okType: "danger",
-      cancelText: "取消",
-      onOk: () => {
-        const fresh = makeDefaultSettings();
-        setSettings(fresh);
-        setDirty(true);
-        setTestResult(null);
-        showNotice("已恢复为默认配置(尚未保存,请点击保存)", "info");
-      },
-    });
   };
 
   const handleSave = () => {
@@ -211,93 +153,6 @@ export default function ApiSettingsPage({ initial, onSave, showNotice }: ApiSett
     showNotice("API 设置已保存", "success");
   };
 
-  const handleTest = async () => {
-    if (!active) return;
-    if (!active.baseUrl || !active.model) {
-      showNotice("请先填写 Base URL 和模型", "warning");
-      return;
-    }
-    setTesting(true);
-    setTestResult(null);
-    const result = await testConnection(active);
-    setTesting(false);
-    setTestResult(result);
-    if (result.ok) {
-      showNotice(`${result.message}${result.latencyMs ? ` · ${result.latencyMs}ms` : ""}`, "success");
-    } else {
-      showNotice(result.message, "error");
-    }
-  };
-
-  const handleExport = () => {
-    const json = JSON.stringify(
-      {
-        version: 2,
-        exportedAt: new Date().toISOString(),
-        settings: { ...settings, profiles: settings.profiles.map((p) => ({ ...p, apiKey: "" })) },
-      },
-      null,
-      2
-    );
-    if (navigator.clipboard?.writeText) {
-      navigator.clipboard
-        .writeText(json)
-        .then(() => showNotice("配置(密钥已脱敏)已复制到剪贴板", "success"))
-        .catch(() => fallbackDownload(json));
-    } else {
-      fallbackDownload(json);
-    }
-  };
-
-  const fallbackDownload = (json: string) => {
-    const blob = new Blob([json], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `api-settings-${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const handleImport = () => fileInputRef.current?.click();
-
-  const onFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-    try {
-      const text = await file.text();
-      const parsed = JSON.parse(text);
-      const incoming: ApiSettings | null =
-        parsed && Array.isArray(parsed.profiles) && parsed.profiles.length > 0
-          ? (parsed as { settings?: ApiSettings }).settings ?? (parsed as ApiSettings)
-          : null;
-      if (!incoming) {
-        showNotice("文件格式无效:缺少 profiles 字段", "error");
-        return;
-      }
-      const profiles = incoming.profiles.map((p) => ({
-        ...makeDefaultProfile(),
-        ...p,
-        id: p.id || genId(),
-        apiKey: typeof p.apiKey === "string" ? p.apiKey : "",
-      }));
-      const next: ApiSettings = {
-        profiles,
-        activeProfileId: profiles.some((p) => p.id === incoming.activeProfileId)
-          ? incoming.activeProfileId
-          : profiles[0].id,
-        autoTestOnSave: !!incoming.autoTestOnSave,
-      };
-      setSettings(next);
-      setDirty(true);
-      setTestResult(null);
-      showNotice(`已导入 ${profiles.length} 个配置`, "success");
-    } catch (err) {
-      showNotice(`导入失败:${err instanceof Error ? err.message : String(err)}`, "error");
-    }
-  };
-
   if (!active || !preset) {
     return (
       <PageShell>
@@ -306,79 +161,11 @@ export default function ApiSettingsPage({ initial, onSave, showNotice }: ApiSett
     );
   }
 
-  const tabs: TabsProps["items"] = [
-    {
-      key: "connection",
-      label: (
-        <span className="flex items-center gap-1.5">
-          <Globe className="w-3.5 h-3.5" />
-          连接
-        </span>
-      ),
-      children: <ConnectionTab active={active} preset={preset} onChange={updateActive} showKey={showKey} setShowKey={setShowKey} onSwitchProvider={switchProvider} />,
-    },
-    {
-      key: "parameters",
-      label: (
-        <span className="flex items-center gap-1.5">
-          <Sliders className="w-3.5 h-3.5" />
-          参数
-        </span>
-      ),
-      children: <ParametersTab active={active} onChange={updateActive} />,
-    },
-    {
-      key: "prompt",
-      label: (
-        <span className="flex items-center gap-1.5">
-          <BookOpen className="w-3.5 h-3.5" />
-          提示词
-        </span>
-      ),
-      children: <PromptTab active={active} onChange={updateActive} />,
-    },
-    {
-      key: "test",
-      label: (
-        <span className="flex items-center gap-1.5">
-          <FlaskConical className="w-3.5 h-3.5" />
-          测试
-          {testResult && (
-            <span
-              className={`ml-1 w-1.5 h-1.5 rounded-full ${
-                testResult.ok ? "bg-emerald-400" : "bg-rose-400"
-              }`}
-            />
-          )}
-        </span>
-      ),
-      children: (
-        <TestTab
-          active={active}
-          testing={testing}
-          result={testResult}
-          onTest={handleTest}
-          settings={settings}
-          onSwitchModel={(model) => updateActive({ model })}
-          onChangeSettings={(patch) => {
-            setSettings((prev) => ({ ...prev, ...patch }));
-            setDirty(true);
-          }}
-        />
-      ),
-    },
-  ];
-
   return (
     <PageShell>
-      <input ref={fileInputRef} type="file" accept="application/json" className="hidden" onChange={onFileChange} />
-
       <Header
         active={active}
         dirty={dirty}
-        onImport={handleImport}
-        onExport={handleExport}
-        onReset={handleReset}
       />
 
       <div className="flex-1 overflow-y-auto" data-canvas-passthrough="true">
@@ -389,31 +176,16 @@ export default function ApiSettingsPage({ initial, onSave, showNotice }: ApiSett
             onSwitch={(id) => {
               setSettings((prev) => ({ ...prev, activeProfileId: id }));
               setDirty(true);
-              setTestResult(null);
             }}
-            onNew={handleNew}
-            onDuplicate={handleDuplicate}
-            onDelete={handleDelete}
           />
 
           <motion.div
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-            className="rounded-2xl border border-white/5 bg-white/[0.02] overflow-hidden"
+            className="rounded-2xl border border-white/5 bg-white/[0.02] p-5"
           >
-            <Tabs
-              activeKey={activeTab}
-              onChange={setActiveTab}
-              items={tabs}
-              className="api-settings-tabs"
-              tabBarStyle={{
-                margin: 0,
-                padding: "0 8px",
-                borderBottom: "1px solid rgba(255,255,255,0.05)",
-                background: "rgba(255,255,255,0.015)",
-              }}
-            />
+            <ConnectionTab active={active} preset={preset} onChange={updateActive} showKey={showKey} setShowKey={setShowKey} />
           </motion.div>
 
           <AnimatePresence>
@@ -445,12 +217,8 @@ export default function ApiSettingsPage({ initial, onSave, showNotice }: ApiSett
       </div>
 
       <Footer
-        profileCount={settings.profiles.length}
-        activeName={active.name}
-        testing={testing}
         valid={validation.ok}
         dirty={dirty}
-        onTest={handleTest}
         onSave={handleSave}
       />
     </PageShell>
@@ -514,15 +282,9 @@ function PageShell({ children }: { children: React.ReactNode }) {
 function Header({
   active,
   dirty,
-  onImport,
-  onExport,
-  onReset,
 }: {
   active: ApiProfile;
   dirty: boolean;
-  onImport: () => void;
-  onExport: () => void;
-  onReset: () => void;
 }) {
   return (
     <div className="shrink-0 border-b border-white/5 bg-black/40 backdrop-blur-xl">
@@ -540,36 +302,6 @@ function Header({
               管理 LLM 服务端点、密钥与调用参数 · <span className="text-indigo-300/80">{active.name}</span>
             </p>
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Tooltip title="从 JSON 文件导入配置" placement="bottom">
-            <Button 
-              icon={<Upload className="w-3.5 h-3.5" />} 
-              onClick={onImport} 
-              className="bg-white/5 border-white/10 hover:bg-white/10 text-gray-300"
-            >
-              导入
-            </Button>
-          </Tooltip>
-          <Tooltip title="导出当前配置(密钥自动脱敏)" placement="bottom">
-            <Button 
-              icon={<Download className="w-3.5 h-3.5" />} 
-              onClick={onExport}
-              className="bg-white/5 border-white/10 hover:bg-white/10 text-gray-300"
-            >
-              导出
-            </Button>
-          </Tooltip>
-          <div className="w-px h-4 bg-white/10 mx-1" />
-          <Tooltip title="恢复为默认配置" placement="bottom">
-            <Button 
-              icon={<RotateCcw className="w-3.5 h-3.5" />} 
-              onClick={onReset}
-              className="bg-rose-500/5 border-rose-500/20 hover:bg-rose-500/10 text-rose-300"
-            >
-              恢复默认
-            </Button>
-          </Tooltip>
         </div>
       </div>
     </div>
@@ -603,51 +335,19 @@ function SaveBadge({ dirty }: { dirty: boolean }) {
 /* ----------------------------- Footer ----------------------------- */
 
 function Footer({
-  profileCount,
-  activeName,
-  testing,
   valid,
   dirty,
-  onTest,
   onSave,
 }: {
-  profileCount: number;
-  activeName: string;
-  testing: boolean;
   valid: boolean;
   dirty: boolean;
-  onTest: () => void;
   onSave: () => void;
 }) {
   return (
     <div className="shrink-0 border-t border-white/5 bg-black/60 backdrop-blur-xl">
-      <div className="max-w-[1200px] mx-auto px-6 py-4 flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-4 text-[11px] font-medium text-gray-500">
-          <span className="inline-flex items-center gap-2 py-1 px-2 rounded-lg bg-white/5 border border-white/5">
-            <Boxes className="w-3.5 h-3.5 text-indigo-400/80" />
-            <span className="text-gray-300">{profileCount}</span> 套配置
-          </span>
-          <div className="w-px h-3 bg-white/10" />
-          <span className="flex items-center gap-2">
-            当前激活: <span className="text-indigo-300 font-semibold">{activeName}</span>
-          </span>
-          {dirty && (
-            <span className="inline-flex items-center gap-1.5 text-amber-400 animate-in fade-in slide-in-from-left-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-              更改待保存
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-3">
-          <Button
-            icon={<FlaskConical className="w-3.5 h-3.5" />}
-            onClick={onTest}
-            loading={testing}
-            disabled={!valid}
-            className="h-9 px-4 border-white/10 hover:border-indigo-500/50 hover:text-indigo-300 transition-colors"
-          >
-            测试连接
-          </Button>
+      <div className="max-w-[1200px] mx-auto px-6 py-4 flex items-center justify-end">
+        <div className="flex items-center gap-2">
+          {dirty && <span className="text-[11px] font-medium text-amber-300/80">更改待保存</span>}
           <Button
             type="primary"
             icon={<Check className="w-3.5 h-3.5" />}
@@ -688,39 +388,21 @@ function ProfileManager({
   profiles,
   activeId,
   onSwitch,
-  onNew,
-  onDuplicate,
-  onDelete,
 }: {
   profiles: ApiProfile[];
   activeId: string;
   onSwitch: (id: string) => void;
-  onNew: () => void;
-  onDuplicate: () => void;
-  onDelete: () => void;
 }) {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between px-1">
         <span className="flex items-center gap-2 text-xs font-bold text-gray-400 uppercase tracking-widest">
           <Boxes className="w-3.5 h-3.5 text-indigo-400" />
-          配置方案
-          <span className="text-[10px] text-gray-600 font-normal">({profiles.length})</span>
+          内置服务
         </span>
-        <Tooltip title="点击新建配置方案" placement="top">
-          <Button
-            type="text"
-            size="small"
-            icon={<Plus className="w-3.5 h-3.5" />}
-            onClick={onNew}
-            className="text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10"
-          >
-            新建方案
-          </Button>
-        </Tooltip>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {profiles.map((p) => {
           const isActive = p.id === activeId;
           const Icon = PROVIDER_ICON[p.provider];
@@ -744,47 +426,17 @@ function ProfileManager({
                 >
                   <Icon className="w-5 h-5" strokeWidth={isActive ? 2.5 : 2} />
                 </div>
-                <div className={`flex items-center gap-1 transition-opacity duration-200 ${isActive ? "opacity-100" : "opacity-0"}`}>
-                  <Tooltip title="复制">
-                    <Button
-                      type="text"
-                      size="small"
-                      icon={<Copy className="w-3.5 h-3.5" />}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onDuplicate();
-                      }}
-                      className="text-gray-500 hover:text-indigo-300 hover:bg-indigo-500/10"
-                    />
-                  </Tooltip>
-                  {profiles.length > 1 && (
-                    <Tooltip title="删除">
-                      <Button
-                        type="text"
-                        size="small"
-                        danger
-                        icon={<Trash2 className="w-3.5 h-3.5" />}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onDelete();
-                        }}
-                        className="text-gray-500 hover:text-rose-400 hover:bg-rose-500/10"
-                      />
-                    </Tooltip>
-                  )}
-                </div>
               </div>
               <div className="min-w-0">
                 <div className={`text-sm font-bold truncate ${isActive ? "text-white" : "text-gray-300 group-hover:text-white"}`}>
-                  {p.name}
+                  {PROVIDER_PRESETS[p.provider].label}
                 </div>
                 <div className="flex items-center gap-1.5 mt-1">
                   <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${
                     isActive ? "bg-indigo-500/20 text-indigo-300" : "bg-white/5 text-gray-500"
                   }`}>
-                    {PROVIDER_PRESETS[p.provider].label}
+                    {p.apiKey.trim() ? "已配置" : "未配置"}
                   </span>
-                  <span className="text-[10px] text-gray-600 truncate">{p.model}</span>
                 </div>
               </div>
               {isActive && (
@@ -820,173 +472,70 @@ function ConnectionTab({
   onChange,
   showKey,
   setShowKey,
-  onSwitchProvider,
 }: {
   active: ApiProfile;
   preset: ProviderPreset;
   onChange: (patch: Partial<ApiProfile>) => void;
   showKey: boolean;
   setShowKey: (v: boolean) => void;
-  onSwitchProvider: (provider: ApiProvider) => void;
 }) {
   const strength = detectKeyStrength(active.apiKey, active.provider);
+  const Icon = PROVIDER_ICON[active.provider];
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500">
-      <section className="space-y-4">
-        <div className="flex items-center gap-2 mb-2 px-1">
-          <div className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
-          <h4 className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">服务提供商</h4>
+    <div className="animate-in fade-in duration-500">
+      <section className="max-w-2xl space-y-5">
+        <div className="flex items-center gap-3 rounded-2xl border border-white/5 bg-white/[0.02] px-4 py-3">
+          <div className="w-10 h-10 rounded-xl bg-indigo-500/15 border border-indigo-400/20 flex items-center justify-center text-indigo-300">
+            <Icon className="w-5 h-5" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-sm font-bold text-white">{preset.label}</div>
+            <div className="text-[11px] text-gray-500 mt-0.5">
+              内置接口：{preset.baseUrl} · 默认模型：{preset.defaultModel}
+            </div>
+          </div>
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          {(Object.entries(PROVIDER_PRESETS) as [ApiProvider, ProviderPreset][]).map(
-            ([key, p]) => {
-              const Icon = PROVIDER_ICON[key];
-              const isSelected = active.provider === key;
-              return (
-                <button
-                  key={key}
-                  onClick={() => onSwitchProvider(key)}
-                  className={`flex flex-col items-center gap-2.5 p-3 rounded-2xl transition-all duration-300 border ${
-                    isSelected
-                      ? "bg-indigo-500/15 border-indigo-500/40 shadow-lg shadow-indigo-500/5 ring-1 ring-indigo-500/20"
-                      : "bg-white/[0.02] border-white/5 hover:border-white/20 hover:bg-white/[0.04] text-gray-500 hover:text-gray-300"
-                  }`}
-                >
-                  <Icon className={`w-6 h-6 ${isSelected ? "text-indigo-300" : ""}`} strokeWidth={isSelected ? 2.5 : 2} />
-                  <span className={`text-[10px] font-bold tracking-tight ${isSelected ? "text-white" : ""}`}>
-                    {p.label}
-                  </span>
-                </button>
-              );
-            }
-          )}
-        </div>
-      </section>
 
-      <section className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        <div className="space-y-6">
-          <Field
-            label={
-              <span className="flex items-center gap-2">
-                <Globe className="w-3.5 h-3.5 text-indigo-400" />
-                API 接口地址
-                <span className="text-rose-500">*</span>
-              </span>
-            }
-            hint={
-              preset.docsUrl ? (
+        <Field
+          label={
+            <span className="flex items-center gap-2">
+              <Key className="w-3.5 h-3.5 text-indigo-400" />
+              API 访问密钥
+              <span className="text-rose-500">*</span>
+            </span>
+          }
+          hint={
+            <span className="flex items-center gap-1.5 text-gray-500">
+              <Shield className="w-3.5 h-3.5" />
+              本地加密存储
+              {active.apiKey && (
+                <span className={`font-bold ${strength.color} uppercase tracking-tighter ml-1`}>
+                  · {strength.label}
+                </span>
+              )}
+              {preset.docsUrl && (
                 <a
                   href={preset.docsUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 text-indigo-300/80 hover:text-indigo-300 transition-colors font-medium"
+                  className="ml-2 inline-flex items-center gap-1 text-indigo-300/80 hover:text-indigo-300 transition-colors"
                 >
-                  {PROVIDER_PRESETS[active.provider].label} 官方文档
+                  官方文档
                   <ExternalLink className="w-2.5 h-2.5" />
                 </a>
-              ) : (
-                <span className="text-gray-500">{preset.description}</span>
-              )
-            }
-          >
-            <Input
-              value={active.baseUrl}
-              onChange={(e) => onChange({ baseUrl: e.target.value })}
-              placeholder={preset.baseUrl || "https://api.example.com/v1"}
-              className="h-10 bg-white/[0.03] border-white/10 hover:border-indigo-500/40 focus:border-indigo-500/60 font-mono text-sm rounded-xl"
-            />
-          </Field>
-
-          <Field
-            label={
-              <span className="flex items-center gap-2">
-                <Key className="w-3.5 h-3.5 text-indigo-400" />
-                API 访问密钥
-                <span className="text-rose-500">*</span>
-              </span>
-            }
-            hint={
-              <span className="flex items-center gap-1.5 text-gray-500">
-                <Shield className="w-3.5 h-3.5" />
-                本地加密存储 · 
-                {active.apiKey && (
-                  <span className={`font-bold ${strength.color} uppercase tracking-tighter ml-1`}>
-                    {strength.label}
-                  </span>
-                )}
-              </span>
-            }
-          >
-            <Input.Password
-              value={active.apiKey}
-              onChange={(e) => onChange({ apiKey: e.target.value })}
-              visibilityToggle={{ visible: showKey, onVisibleChange: setShowKey }}
-              placeholder={preset.keyHint || "sk-..."}
-              className="h-10 bg-white/[0.03] border-white/10 hover:border-indigo-500/40 focus:border-indigo-500/60 font-mono text-sm rounded-xl"
-            />
-          </Field>
-        </div>
-
-        <div className="space-y-6">
-          <Field
-            label={
-              <span className="flex items-center gap-2">
-                <Cpu className="w-3.5 h-3.5 text-indigo-400" />
-                模型名称
-                <span className="text-rose-500">*</span>
-              </span>
-            }
-            hint="指定调用的具体模型 ID"
-          >
-            <Input
-              value={active.model}
-              onChange={(e) => onChange({ model: e.target.value })}
-              placeholder={preset.defaultModel || "gpt-4"}
-              className="h-10 bg-white/[0.03] border-white/10 hover:border-indigo-500/40 focus:border-indigo-500/60 font-mono text-sm rounded-xl"
-              list={`models-${active.id}`}
-            />
-            <datalist id={`models-${active.id}`}>
-              {preset.models.map((m) => (
-                <option key={m} value={m} />
-              ))}
-            </datalist>
-            {preset.models.length > 0 && (
-              <div className="flex flex-wrap gap-2 mt-3">
-                {preset.models.map((m) => (
-                  <button
-                    key={m}
-                    onClick={() => onChange({ model: m })}
-                    className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border transition-all duration-200 uppercase tracking-wider ${
-                      active.model === m
-                        ? "border-indigo-500/50 bg-indigo-500/20 text-indigo-200 shadow-sm shadow-indigo-500/10"
-                        : "border-white/5 bg-white/5 text-gray-500 hover:text-gray-300 hover:border-white/10 hover:bg-white/10"
-                    }`}
-                  >
-                    {m}
-                  </button>
-                ))}
-              </div>
-            )}
-          </Field>
-
-          <Field
-            label={
-              <span className="flex items-center gap-2">
-                <Settings2 className="w-3.5 h-3.5 text-indigo-400" />
-                配置名称
-              </span>
-            }
-            hint="为这套配置起个好记的名字"
-          >
-            <Input
-              value={active.name}
-              onChange={(e) => onChange({ name: e.target.value })}
-              placeholder="例如: 生产环境 / 个人测试"
-              className="h-10 bg-white/[0.03] border-white/10 hover:border-indigo-500/40 focus:border-indigo-500/60 text-sm rounded-xl"
-            />
-          </Field>
-        </div>
+              )}
+            </span>
+          }
+        >
+          <Input.Password
+            value={active.apiKey}
+            onChange={(e) => onChange({ apiKey: e.target.value })}
+            visibilityToggle={{ visible: showKey, onVisibleChange: setShowKey }}
+            placeholder={preset.keyHint || "sk-..."}
+            className="h-11 bg-white/[0.03] border-white/10 hover:border-indigo-500/40 focus:border-indigo-500/60 font-mono text-sm rounded-xl"
+          />
+        </Field>
       </section>
     </div>
   );
@@ -1028,7 +577,7 @@ function _ProviderGrid({ value, onChange }: { value: ApiProvider; onChange: (p: 
 
 /* ----------------------------- Parameters Tab ----------------------------- */
 
-function ParametersTab({ active, onChange }: { active: ApiProfile; onChange: (patch: Partial<ApiProfile>) => void }) {
+function _ParametersTab({ active, onChange }: { active: ApiProfile; onChange: (patch: Partial<ApiProfile>) => void }) {
   return (
     <div className="space-y-10 animate-in fade-in duration-500 p-2">
       <section className="space-y-6">
@@ -1198,7 +747,7 @@ function ParametersTab({ active, onChange }: { active: ApiProfile; onChange: (pa
 
 /* ----------------------------- Prompt Tab ----------------------------- */
 
-function PromptTab({ active, onChange }: { active: ApiProfile; onChange: (patch: Partial<ApiProfile>) => void }) {
+function _PromptTab({ active, onChange }: { active: ApiProfile; onChange: (patch: Partial<ApiProfile>) => void }) {
   return (
     <div className="space-y-8 animate-in fade-in duration-500 p-2">
       <Field
@@ -1258,7 +807,7 @@ function PromptTab({ active, onChange }: { active: ApiProfile; onChange: (patch:
 
 /* ----------------------------- Test Tab ----------------------------- */
 
-function TestTab({
+function _TestTab({
   active,
   testing,
   result,

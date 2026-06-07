@@ -3,8 +3,10 @@ import { motion } from "motion/react";
 import { createPortal } from "react-dom";
 import { ArrowRight, FolderOpen, Image as ImageIcon, Loader2, MoreHorizontal, Plus, Upload } from "lucide-react";
 import AppHeader from "../app/AppHeader";
+import ApiSettingsModal from "../app/ApiSettingsModal";
 import type { HomeProjectCard } from "../../features/workspace/projectTypes";
 import { uploadFileToOss } from "../../features/resource/ossApi";
+import { ApiSettings, loadApiSettings, saveApiSettings } from "../../features/api/apiSettings";
 import { isHomeProjectMenuInteractionInside } from "../../utils/homeProjectMenuInteraction";
 import { consumeSingleImageUploadSelection } from "../../utils/consumeSingleImageUploadSelection";
 import { getHomeProjectMenuPosition } from "../../utils/homeProjectMenuPosition";
@@ -433,6 +435,9 @@ export default function ProjectGalleryPage({
   const [isUploadingCover, setIsUploadingCover] = React.useState(false);
   const [isSubmittingEdit, setIsSubmittingEdit] = React.useState(false);
   const [coverUploadError, setCoverUploadError] = React.useState("");
+  const [apiSettings, setApiSettings] = React.useState<ApiSettings>(() => loadApiSettings());
+  const [apiSettingsOpen, setApiSettingsOpen] = React.useState(false);
+  const [apiNotice, setApiNotice] = React.useState<{ message: string; kind: "info" | "success" | "warning" | "error" } | null>(null);
   const menuHostRef = React.useRef<HTMLDivElement | null>(null);
   const activeMenuRef = React.useRef<HTMLDivElement | null>(null);
 
@@ -475,6 +480,20 @@ export default function ProjectGalleryPage({
     setIsSubmittingEdit(false);
     setCoverUploadError("");
   }, []);
+
+  const showApiNotice = React.useCallback((message: string, kind: "info" | "success" | "warning" | "error" = "info") => {
+    setApiNotice({ message, kind });
+    window.setTimeout(() => setApiNotice(null), 1800);
+  }, []);
+
+  const handleSaveApiSettings = React.useCallback(
+    (settings: ApiSettings) => {
+      setApiSettings(settings);
+      saveApiSettings(settings);
+      showApiNotice("API 设置已保存", "success");
+    },
+    [showApiNotice],
+  );
 
   const handleOpenProject = React.useCallback(
     (projectId: string) => {
@@ -589,7 +608,14 @@ export default function ProjectGalleryPage({
   return (
     <div className="project-scrollbar h-screen overflow-x-hidden overflow-y-auto bg-[#0d0f13] text-slate-100">
       <div className="relative z-10 min-h-full">
-        <AppHeader workflowName="AI CANVAS" workflowCount={0} onRun={() => {}} onLogout={onLogout} showProjectSwitcher={false} />
+        <AppHeader
+          workflowName="AI CANVAS"
+          workflowCount={0}
+          onRun={() => {}}
+          onLogout={onLogout}
+          onOpenApiSettings={() => setApiSettingsOpen(true)}
+          showProjectSwitcher={false}
+        />
 
         <main className="mx-auto w-full max-w-[1920px] px-10 pb-14 pt-12">
           <div className="mb-6 space-y-3">
@@ -689,6 +715,28 @@ export default function ProjectGalleryPage({
         }}
         onSubmit={handleSubmitEditDialog}
       />
+
+      <ApiSettingsModal
+        open={apiSettingsOpen}
+        settings={apiSettings}
+        onClose={() => setApiSettingsOpen(false)}
+        onSave={handleSaveApiSettings}
+        showNotice={showApiNotice}
+      />
+
+      {apiNotice ? (
+        <div
+          className={`fixed right-6 top-20 z-[300] rounded-2xl border px-4 py-3 text-sm shadow-[0_18px_44px_rgba(0,0,0,0.35)] backdrop-blur-xl ${
+            apiNotice.kind === "error"
+              ? "border-rose-400/20 bg-rose-500/15 text-rose-100"
+              : apiNotice.kind === "warning"
+                ? "border-amber-400/20 bg-amber-500/15 text-amber-100"
+                : "border-emerald-400/20 bg-emerald-500/15 text-emerald-100"
+          }`}
+        >
+          {apiNotice.message}
+        </div>
+      ) : null}
     </div>
   );
 }
