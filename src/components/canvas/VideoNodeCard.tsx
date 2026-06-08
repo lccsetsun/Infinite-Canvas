@@ -16,7 +16,9 @@ import {
   Volume2,
   VolumeX,
 } from "lucide-react";
-import { GraphNode, VideoFrameAnalysisOverview, VideoFrameAnalysisSegment } from "../../types";
+import { GraphNode } from "../../types";
+import type { VideoFrameCaptureItem } from "../../features/video/frameCapture";
+import { fetchVideoFrameCapture } from "../../features/video/frameCapture";
 import { findResolvedStringInput } from "../../utils/resolvedInputs";
 import { shouldShowInlinePortHandles } from "../../utils/portHandleVisibility";
 import { getNodeWidth, VIDEO_NODE_WIDTH } from "./geometry";
@@ -24,7 +26,6 @@ import { Tooltip } from "../common/Tooltip";
 import {
   downloadMediaAsset,
   extensionFromAssetUrl,
-  isLocalBrowserAsset,
 } from "../../utils/mediaAssets";
 import { uploadFileToOss } from "../../features/resource/ossApi";
 import { getMediaNodeLoadingLabel } from "../../utils/mediaNodeLoadingState";
@@ -45,11 +46,7 @@ interface VideoNodeCardProps {
     items?: string[],
     currentIndex?: number
   ) => void;
-  onAnalyzeVideo?: (
-    node: GraphNode,
-    segments: VideoFrameAnalysisSegment[],
-    overview: VideoFrameAnalysisOverview
-  ) => Promise<void> | void;
+  onAnalyzeVideo?: (node: GraphNode, captures: VideoFrameCaptureItem[]) => Promise<void> | void;
   resolvedInputs?: Record<string, unknown>;
   onRun?: (nodeId: string) => void;
   isLinkingOnCanvas?: boolean;
@@ -81,14 +78,18 @@ function parseAspectRatio(ratio: string): number {
   return w / h;
 }
 
-function fitVideoSize(
+export function fitVideoSize(
   naturalSize: { width: number; height: number } | null,
   aspectRatio: string,
   maxWidth: number,
   maxHeight: number
 ) {
   if (naturalSize && naturalSize.width > 0 && naturalSize.height > 0) {
-    const scale = Math.min(maxWidth / naturalSize.width, maxHeight / naturalSize.height, 1);
+    const aspect = naturalSize.width / naturalSize.height;
+    const scale =
+      aspect < 1
+        ? maxWidth / naturalSize.width
+        : Math.min(maxWidth / naturalSize.width, maxHeight / naturalSize.height, 1);
     return {
       width: Math.round(naturalSize.width * scale),
       height: Math.round(naturalSize.height * scale),
@@ -96,26 +97,10 @@ function fitVideoSize(
   }
 
   const ratio = parseAspectRatio(aspectRatio);
-  if (ratio >= maxWidth / maxHeight)
+  if (ratio >= maxWidth / maxHeight) {
     return { width: maxWidth, height: Math.round(maxWidth / ratio) };
-  return { width: Math.round(maxHeight * ratio), height: maxHeight };
-}
-
-function getFrameAnalysisTileSize(video: HTMLVideoElement) {
-  const sourceWidth = video.videoWidth || 16;
-  const sourceHeight = video.videoHeight || 9;
-  const aspect = sourceWidth > 0 && sourceHeight > 0 ? sourceWidth / sourceHeight : 16 / 9;
-  const longSide = 176;
-  if (aspect >= 1) {
-    return {
-      width: longSide,
-      height: Math.max(72, Math.round(longSide / aspect)),
-    };
   }
-  return {
-    width: Math.max(72, Math.round(longSide * aspect)),
-    height: longSide,
-  };
+  return { width: maxWidth, height: Math.round(maxWidth / ratio) };
 }
 
 function formatTime(seconds: number): string {
@@ -429,127 +414,22 @@ function VideoNodeCardImpl({
     </>
   );
 
-  const seekVideo = (video: HTMLVideoElement, time: number) =>
-    new Promise<void>((resolve, reject) => {
-      const timeout = window.setTimeout(() => {
-        cleanup();
-        reject(new Error("视频跳帧超时"));
-      }, 8000);
-      const cleanup = () => {
-        window.clearTimeout(timeout);
-        video.removeEventListener("seeked", onSeeked);
-        video.removeEventListener("error", onError);
-      };
-      const onSeeked = () => {
-        cleanup();
-        resolve();
-      };
-      const onError = () => {
-        cleanup();
-        reject(new Error("视频跳帧失败"));
-      };
-      video.addEventListener("seeked", onSeeked);
-      video.addEventListener("error", onError);
-      video.currentTime = Math.min(Math.max(time, 0), Math.max(video.duration - 0.05, 0));
-    });
-
   const analyzeFrames = async () => {
     if (!videoUrl || isAnalyzingFrames) return;
     setIsAnalyzingFrames(true);
-    let objectUrl = "";
+    onUpdateData?.(node.id, { error: undefined, loading: true, status: "loading" });
     try {
-      if (!isLocalBrowserAsset(videoUrl)) {
-        const assetResponse = await fetch(
-          `/api/download-asset?url=${encodeURIComponent(videoUrl)}&filename=frame-analysis.mp4`
-        );
-        if (!assetResponse.ok) throw new Error("无法读取视频文件");
-        const blob = await assetResponse.blob();
-        objectUrl = URL.createObjectURL(blob);
-      }
-      const video = document.createElement("video");
-      video.muted = true;
-      video.playsInline = true;
-      video.preload = "auto";
-      video.src = objectUrl || videoUrl;
-      if (!Number.isFinite(video.duration) || video.duration <= 0) {
-        await new Promise<void>((resolve) => {
-          const onLoaded = () => {
-            video.removeEventListener("loadedmetadata", onLoaded);
-            resolve();
-          };
-          video.addEventListener("loadedmetadata", onLoaded);
-          video.load();
-        });
-      }
-
-      const durationSeconds = Math.max(video.duration || 15, 1);
-      const segmentLength = 15;
-      const segmentCount = Math.max(1, Math.ceil(durationSeconds / segmentLength));
-      const frameCount: number = 15;
-      const columns = 5;
-      const rows = 3;
-      const { width: tileWidth, height: tileHeight } = getFrameAnalysisTileSize(video);
-      video.pause();
-
-      const segments: VideoFrameAnalysisSegment[] = [];
-      const segmentCanvases: HTMLCanvasElement[] = [];
-      for (let index = 0; index < segmentCount; index += 1) {
-        const start = index * segmentLength;
-        const end = Math.min(durationSeconds, start + segmentLength);
-        const canvas = document.createElement("canvas");
-        canvas.width = columns * tileWidth;
-        canvas.height = rows * tileHeight;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) throw new Error("无法创建逐帧分析画布");
-
-        ctx.fillStyle = "#000000";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-        for (let frameIndex = 0; frameIndex < frameCount; frameIndex += 1) {
-          const progress = frameCount === 1 ? 0 : frameIndex / (frameCount - 1);
-          const sampleAt = start + Math.max(0.05, (end - start) * progress - 0.02);
-          await seekVideo(video, sampleAt);
-          const x = (frameIndex % columns) * tileWidth;
-          const y = Math.floor(frameIndex / columns) * tileHeight;
-          ctx.drawImage(video, x, y, tileWidth, tileHeight);
-        }
-
-        segmentCanvases.push(canvas);
-        segments.push({
-          title: `分段${index + 1}_${Math.round(start)}-${Math.round(end)}秒`,
-          start,
-          end,
-          imageUrl: canvas.toDataURL("image/jpeg", 0.86),
-          width: canvas.width,
-          height: canvas.height,
-          frameCount,
-        });
-      }
-
-      const overviewCanvas = document.createElement("canvas");
-      overviewCanvas.width = segmentCanvases[0]?.width || columns * tileWidth;
-      overviewCanvas.height =
-        segmentCanvases.reduce((sum, canvas) => sum + canvas.height, 0) || rows * tileHeight;
-      const overviewCtx = overviewCanvas.getContext("2d");
-      if (!overviewCtx) throw new Error("无法创建完整逐帧总览画布");
-      overviewCtx.fillStyle = "#000000";
-      overviewCtx.fillRect(0, 0, overviewCanvas.width, overviewCanvas.height);
-      let offsetY = 0;
-      for (const canvas of segmentCanvases) {
-        overviewCtx.drawImage(canvas, 0, offsetY);
-        offsetY += canvas.height;
-      }
-
-      await onAnalyzeVideo?.(node, segments, {
-        imageUrl: overviewCanvas.toDataURL("image/jpeg", 0.86),
-        width: overviewCanvas.width,
-        height: overviewCanvas.height,
-        frameCount: segments.reduce((sum, segment) => sum + segment.frameCount, 0),
-      });
+      const captures = await fetchVideoFrameCapture(videoUrl);
+      if (captures.length === 0) throw new Error("\u9010\u5e27\u5206\u6790\u63a5\u53e3\u672a\u8fd4\u56de\u53ef\u7528\u5e27\u6570\u636e");
+      await onAnalyzeVideo?.(node, captures);
+      onUpdateData?.(node.id, { loading: false, status: "success", error: undefined });
     } catch (error) {
-      onUpdateData?.(node.id, { error: error instanceof Error ? error.message : "逐帧分析失败" });
+      onUpdateData?.(node.id, {
+        error: error instanceof Error ? error.message : "\u9010\u5e27\u5206\u6790\u5931\u8d25",
+        loading: false,
+        status: "error",
+      });
     } finally {
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
       setIsAnalyzingFrames(false);
     }
   };

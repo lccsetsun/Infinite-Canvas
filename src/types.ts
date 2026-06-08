@@ -83,6 +83,10 @@ export interface GraphNode {
     videoNaturalHeight?: number;
     videoDuration?: number;
     videoFrameUrl?: string;
+    isFrameStrip?: boolean;
+    frameGridColumns?: number;
+    frameGridRows?: number;
+    frameCaptureSourceNodeId?: string;
     audioUrl?: string;
     audioDuration?: number;
     uploadingAsset?: boolean;

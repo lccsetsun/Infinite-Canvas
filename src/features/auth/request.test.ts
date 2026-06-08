@@ -59,6 +59,34 @@ describe("devApiFetch", () => {
     await expect(second.json()).resolves.toEqual({ ok: true });
   });
 
+  it("aborts requests after the configured timeout", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(
+      async (_url: string | URL | Request, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("Aborted", "AbortError"));
+          });
+        })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const request = devApiFetch("/auth/code", {
+      method: "GET",
+      auth: false,
+      timeoutMs: 50,
+    });
+    const result = request.then(
+      () => "resolved",
+      (error: unknown) => (error instanceof Error ? error.message : String(error))
+    );
+
+    await vi.advanceTimersByTimeAsync(50);
+
+    await expect(result).resolves.toBe("接口请求超时，请稍后重试");
+    vi.useRealTimers();
+  });
+
   function stubNoticeDispatch() {
     const events: Array<{ type: string; detail?: ApiNoticeDetail }> = [];
     vi.stubGlobal(

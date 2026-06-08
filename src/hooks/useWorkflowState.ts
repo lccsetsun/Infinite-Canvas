@@ -8,10 +8,9 @@ import {
   GraphNode,
   GroupBox,
   NodeClass,
-  VideoFrameAnalysisOverview,
-  VideoFrameAnalysisSegment,
   VideoSegmentTextAnalysis,
 } from "../types";
+import type { VideoFrameCaptureItem } from "../features/video/frameCapture";
 import {
   IMAGE_PROMPT_STARTER_GAP_X,
   getImagePromptStarterTextNodeX,
@@ -27,6 +26,7 @@ import {
   resolveNodeInputs,
   topologicalLevels,
 } from "../runtime/dataflow";
+import { createVideoFrameCaptureSnapshot } from "../utils/videoFrameCaptureLayout";
 import type {
   RemoteCanvasProject,
   RemoteCanvasWorkflowData,
@@ -57,8 +57,6 @@ const AUDIO_NODE_REQUIRED_INPUTS = [
 const MINIMAX_IMAGE_RATIOS = new Set(["1:1", "16:9", "4:3", "3:2", "2:3", "3:4", "9:16", "21:9"]);
 const IMAGE_NODE_MODEL_FALLBACKS = new Set(["", "lib-navo-pro", "flux-1", "sdxl", "midjourney"]);
 const TEXT_NODE_MODEL_FALLBACKS = new Set(["", "deepseek-v4-flash"]);
-const FRAME_IMAGE_MAX_WIDTH = 520;
-const FRAME_IMAGE_MAX_HEIGHT = 390;
 export const IMAGE_PROMPT_PLACEHOLDER_URL = `data:image/svg+xml,${encodeURIComponent(`
 <svg xmlns="http://www.w3.org/2000/svg" width="1152" height="864" viewBox="0 0 1152 864">
   <defs>
@@ -121,16 +119,6 @@ function getImagePromptStarterFocusBounds(
     minY: Math.min(textNode.y - 18, imageNodeY - 24),
     maxX: textNode.x + 428,
     maxY: Math.max(textNode.y + 620, imageNodeY + 556),
-  };
-}
-
-function fitFrameImageSize(width: number, height: number) {
-  const safeWidth = Math.max(1, width);
-  const safeHeight = Math.max(1, height);
-  const scale = Math.min(FRAME_IMAGE_MAX_WIDTH / safeWidth, FRAME_IMAGE_MAX_HEIGHT / safeHeight, 1);
-  return {
-    width: Math.round(safeWidth * scale),
-    height: Math.round(safeHeight * scale),
   };
 }
 
@@ -1290,168 +1278,37 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
   );
 
   const addVideoFrameAnalysis = useCallback(
-    (
-      videoNodeId: string,
-      segments: VideoFrameAnalysisSegment[],
-      overview: VideoFrameAnalysisOverview,
-      analysisMarkdown: string
-    ) => {
-      const sourceNode = nodes.find((n) => n.id === videoNodeId);
-      if (!sourceNode || segments.length === 0 || !overview.imageUrl) {
-        appendLog("warning", "閫愬抚鍒嗘瀽澶辫触:鏈壘鍒拌棰戣妭鐐规垨娌℃湁鍙敤鍒嗘");
+    (videoNodeId: string, captures: VideoFrameCaptureItem[]) => {
+      const snapshot = createVideoFrameCaptureSnapshot({
+        nodes,
+        links,
+        nodeOutputs,
+        sourceNodeId: videoNodeId,
+        captures,
+        makeId,
+      });
+
+      if (!snapshot) {
+        appendLog("warning", "\u9010\u5e27\u5206\u6790\u5931\u8d25\uff1a\u672a\u627e\u5230\u89c6\u9891\u8282\u70b9\u6216\u6ca1\u6709\u53ef\u7528\u5e27\u6570\u636e");
         return;
       }
 
-      const baseX = sourceNode.x + 720;
-      const baseY = sourceNode.y;
-      const childX = baseX + 720;
-      const nextNodes = [...nodes];
-      const nextLinks = [...links];
-      const nextOutputs: NodeOutputMap = new Map(nodeOutputs);
-      const createdNodes: GraphNode[] = [];
-      const videoUrl =
-        (sourceNode.data?.videoUrl as string) || (sourceNode.properties.videoUrl as string) || "";
-
-      const makePreviewNode = (title: string, x: number, y: number) => {
-        const id = makeId("node");
-        const node = createNodeFromType("video_node", id, x, y);
-        node.title = title;
-        node.properties = {
-          ...node.properties,
-          videoUrl,
-          text: "",
-        };
-        node.data = {
-          ...(node.data || {}),
-          videoUrl,
-          videoNaturalWidth: sourceNode.data?.videoNaturalWidth,
-          videoNaturalHeight: sourceNode.data?.videoNaturalHeight,
-          videoDisplayWidth: sourceNode.data?.videoDisplayWidth,
-          videoDisplayHeight: sourceNode.data?.videoDisplayHeight,
-          status: "success",
-          loading: false,
-        };
-        nextNodes.push(node);
-        createdNodes.push(node);
-        nextOutputs.set(id, new Map([[0, videoUrl]]));
-        nextLinks.push({
-          id: makeId("link"),
-          fromNodeId: sourceNode.id,
-          fromOutputIndex: 0,
-          toNodeId: id,
-          toInputIndex: 0,
-        });
-        return node;
-      };
-
-      const analysisPreview = makePreviewNode("瀹屾暣瑙嗛鍒嗘瀽", baseX, baseY);
-      const segmentPreview = makePreviewNode("鍒嗘閫愬抚鎷嗚В", baseX, baseY + 520);
-
-      const textId = makeId("node");
-      const textNode = createNodeFromType("text_node", textId, childX, baseY);
-      textNode.title = "瀹屾暣瑙嗛鍒嗘瀽鏂囨湰";
-      textNode.properties = {
-        ...textNode.properties,
-        frameAnalysisVideoUrl: videoUrl,
-        frameAnalysisSegments: segments.map(({ title, start, end, frameCount, width, height }) => ({
-          title,
-          start,
-          end,
-          frameCount,
-          width,
-          height,
-        })),
-        isFullVideoAnalysisText: true,
-        response: analysisMarkdown,
-        text: "瀹屾暣瑙嗛鍒嗘瀽缁撴灉",
-      };
-      textNode.data = { response: analysisMarkdown, loading: false, status: "success" };
-      nextNodes.push(textNode);
-      createdNodes.push(textNode);
-      nextOutputs.set(textId, new Map([[0, analysisMarkdown]]));
-      nextLinks.push({
-        id: makeId("link"),
-        fromNodeId: analysisPreview.id,
-        fromOutputIndex: 0,
-        toNodeId: textId,
-        toInputIndex: 1,
-      });
-
-      const overviewSize = fitFrameImageSize(overview.width, overview.height);
-      const overviewId = makeId("node");
-      const overviewNode = createNodeFromType("image_node", overviewId, childX, baseY + 300);
-      overviewNode.title = "瀹屾暣瑙嗛閫愬抚鎬昏";
-      overviewNode.properties = {
-        ...overviewNode.properties,
-        imageUrl: overview.imageUrl,
-        text: "",
-      };
-      overviewNode.data = {
-        imageUrl: overview.imageUrl,
-        imageNaturalWidth: overview.width,
-        imageNaturalHeight: overview.height,
-        imageDisplayWidth: overviewSize.width,
-        imageDisplayHeight: overviewSize.height,
-      };
-      nextNodes.push(overviewNode);
-      createdNodes.push(overviewNode);
-      nextOutputs.set(overviewId, new Map([[0, overview.imageUrl]]));
-      nextLinks.push({
-        id: makeId("link"),
-        fromNodeId: analysisPreview.id,
-        fromOutputIndex: 0,
-        toNodeId: overviewId,
-        toInputIndex: 0,
-      });
-
-      segments.forEach((segment, index) => {
-        const id = makeId("node");
-        const size = fitFrameImageSize(segment.width, segment.height);
-        const node = createNodeFromType("image_node", id, childX, baseY + 620 + index * 230);
-        node.title = segment.title;
-        node.properties = {
-          ...node.properties,
-          imageUrl: segment.imageUrl,
-          text: "",
-        };
-        node.data = {
-          imageUrl: segment.imageUrl,
-          imageNaturalWidth: segment.width,
-          imageNaturalHeight: segment.height,
-          imageDisplayWidth: size.width,
-          imageDisplayHeight: size.height,
-        };
-        nextNodes.push(node);
-        createdNodes.push(node);
-        nextOutputs.set(id, new Map([[0, segment.imageUrl]]));
-        nextLinks.push({
-          id: makeId("link"),
-          fromNodeId: segmentPreview.id,
-          fromOutputIndex: 0,
-          toNodeId: id,
-          toInputIndex: 0,
-        });
-      });
-
-      setNodes(nextNodes);
-      setLinks(nextLinks);
-      setNodeOutputs(nextOutputs);
-      setSelectedNodeId(createdNodes[0]?.id ?? sourceNode.id);
+      setNodes(snapshot.nodes);
+      setLinks(snapshot.links);
+      setNodeOutputs(snapshot.nodeOutputs);
+      setSelectedNodeId(snapshot.createdNodes[0]?.id ?? videoNodeId);
       syncCurrentWorkflowMeta((wf) => ({
         ...wf,
         summary: { ...wf.summary, updatedAt: Date.now() },
         data: {
           ...wf.data,
-          nodes: nextNodes,
-          links: nextLinks,
-          nodeOutputs: mapToOutputs(nextOutputs),
+          nodes: snapshot.nodes,
+          links: snapshot.links,
+          nodeOutputs: mapToOutputs(snapshot.nodeOutputs),
         },
       }));
-      pushHistory({ nodes: nextNodes, links: nextLinks });
-      appendLog(
-        "success",
-        `閫愬抚鍒嗘瀽瀹屾垚:鐢熸垚 2 涓棰戦瑙堣妭鐐广€? 涓垎鏋愭枃鏈妭鐐广€? 涓€昏鍥惧拰 ${segments.length} 涓垎娈靛浘鑺傜偣`
-      );
+      pushHistory({ nodes: snapshot.nodes, links: snapshot.links });
+      appendLog("success", `\u9010\u5e27\u5206\u6790\u5b8c\u6210\uff1a\u751f\u6210 ${captures.length} \u7ec4\u63a5\u53e3\u8282\u70b9`);
     },
     [appendLog, links, nodeOutputs, nodes, pushHistory, syncCurrentWorkflowMeta]
   );

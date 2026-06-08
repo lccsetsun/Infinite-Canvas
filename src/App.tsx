@@ -39,10 +39,9 @@ import { ConfigProvider, theme } from "antd";
 import {
   GraphNode,
   NodeClass,
-  VideoFrameAnalysisOverview,
-  VideoFrameAnalysisSegment,
   VideoSegmentTextAnalysis,
 } from "./types";
+import type { VideoFrameCaptureItem } from "./features/video/frameCapture";
 import {
   ApiSettings,
   getActiveProfile,
@@ -684,59 +683,16 @@ export default function App({ onLoggedOut }: AppProps) {
   };
 
   const handleAnalyzeVideo = React.useCallback(
-    async (
-      node: GraphNode,
-      segments: VideoFrameAnalysisSegment[],
-      overview: VideoFrameAnalysisOverview
-    ) => {
-      const videoUrl =
-        (node.data?.videoUrl as string) || (node.properties.videoUrl as string) || "";
-      if (!videoUrl || segments.length === 0) {
-        showNotice("No video or keyframe data available for analysis.");
+    async (node: GraphNode, captures: VideoFrameCaptureItem[]) => {
+      if (captures.length === 0) {
+        showNotice("\u9010\u5e27\u5206\u6790\u63a5\u53e3\u6ca1\u6709\u8fd4\u56de\u53ef\u7528\u6570\u636e\u3002");
         return;
       }
 
-      showNotice("Analyzing full video.");
-      let analysisMarkdown = "";
-      try {
-        const response = await fetch("/api/video/frame-analysis", {
-          method: "POST",
-          credentials: "include",
-          headers: {
-            "Content-Type": "application/json",
-            ...(deepseekApiProfile?.apiKey
-              ? { "X-DeepSeek-Api-Key": deepseekApiProfile.apiKey }
-              : {}),
-            ...(deepseekApiProfile?.baseUrl
-              ? { "X-DeepSeek-Base-Url": deepseekApiProfile.baseUrl }
-              : {}),
-            ...(deepseekApiProfile?.model ? { "X-DeepSeek-Model": deepseekApiProfile.model } : {}),
-          },
-          body: JSON.stringify({
-            video_url: videoUrl,
-            segments: segments.map(({ title, start, end, frameCount, width, height }) => ({
-              title,
-              start,
-              end,
-              frameCount,
-              width,
-              height,
-            })),
-          }),
-        });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data?.error || "Video analysis failed.");
-        analysisMarkdown = typeof data?.text === "string" ? data.text : "";
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Video analysis failed.";
-        analysisMarkdown = `## Full Video Analysis\n\nBackend analysis failed: ${message}\n\nGenerated the overview and segment keyframe nodes.`;
-        showNotice(message);
-      }
-
-      addVideoFrameAnalysis(node.id, segments, overview, analysisMarkdown);
-      showNotice("Video analysis structure generated.");
+      addVideoFrameAnalysis(node.id, captures);
+      showNotice(`\u5df2\u751f\u6210 ${captures.length} \u7ec4\u9010\u5e27\u5206\u6790\u8282\u70b9\u3002`);
     },
-    [addVideoFrameAnalysis, deepseekApiProfile, showNotice]
+    [addVideoFrameAnalysis, showNotice]
   );
 
   const handleReverseSegmentAnalysis = React.useCallback(

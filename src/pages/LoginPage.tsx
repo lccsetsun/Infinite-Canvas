@@ -14,6 +14,11 @@ import {
 import aiCanvasLockup from "../assets/brand/ai-canvas-lockup.svg";
 import { fetchCaptcha, loginWithPassword } from "../features/auth/authApi";
 import { resolveCaptchaState, resolveLoginBootstrapState } from "../features/auth/loginBootstrap";
+import {
+  resolveCaptchaVisualState,
+  resolveLoginSubmitState,
+  shouldShowCaptchaRefreshBadge,
+} from "../features/auth/loginUiState";
 
 interface LoginPageProps {
   onLogin: (accessToken: string) => void;
@@ -23,6 +28,16 @@ type FieldKey = "username" | "password" | "captcha";
 
 const DEFAULT_USERNAME = "lccsetsun";
 const DEFAULT_PASSWORD = "lccsetsun";
+const CAPTCHA_FALLBACK_ERROR = "验证码获取失败，请稍后重试";
+
+type CaptchaRefreshOptions = {
+  updateGlobalError?: boolean;
+  rethrow?: boolean;
+};
+
+function toDisplayError(error: unknown, fallback: string) {
+  return error instanceof Error && error.message.trim() ? error.message : fallback;
+}
 
 const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
   const [username, setUsername] = React.useState(DEFAULT_USERNAME);
@@ -34,7 +49,8 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
   const [captchaEnabled, setCaptchaEnabled] = React.useState(true);
   const [showPassword, setShowPassword] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(false);
-  const [isBootstrapping, setIsBootstrapping] = React.useState(true);
+  const [isCaptchaLoading, setIsCaptchaLoading] = React.useState(false);
+  const [captchaError, setCaptchaError] = React.useState("");
   const [errorMessage, setErrorMessage] = React.useState("");
   const [focusedField, setFocusedField] = React.useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = React.useState<Partial<Record<FieldKey, string>>>({});
@@ -56,20 +72,38 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     []
   );
 
-  const refreshCaptcha = React.useCallback(async () => {
-    applyCaptchaState(await resolveCaptchaState(loadCaptcha));
-  }, [applyCaptchaState, loadCaptcha]);
+  const refreshCaptcha = React.useCallback(
+    async ({ updateGlobalError = false, rethrow = false }: CaptchaRefreshOptions = {}) => {
+      setIsCaptchaLoading(true);
+      setCaptchaError("");
+      if (updateGlobalError) setErrorMessage("");
+
+      try {
+        applyCaptchaState(await resolveCaptchaState(loadCaptcha));
+      } catch (error) {
+        const message = toDisplayError(error, CAPTCHA_FALLBACK_ERROR);
+        setCaptchaError(message);
+        if (updateGlobalError) setErrorMessage(message);
+        if (rethrow) throw error;
+      } finally {
+        setIsCaptchaLoading(false);
+      }
+    },
+    [applyCaptchaState, loadCaptcha]
+  );
 
   const bootstrapLogin = React.useCallback(async () => {
-    setIsBootstrapping(true);
+    setIsCaptchaLoading(true);
+    setCaptchaError("");
     setErrorMessage("");
     try {
       const bootstrapState = await resolveLoginBootstrapState(loadCaptcha);
+      const captchaEnabledForUi = bootstrapState.warningMessage ? true : bootstrapState.captchaEnabled;
       setTenantId((current) => current || bootstrapState.tenantId);
-      applyCaptchaState(bootstrapState);
-      setErrorMessage(bootstrapState.warningMessage);
+      applyCaptchaState({ ...bootstrapState, captchaEnabled: captchaEnabledForUi });
+      setCaptchaError(bootstrapState.warningMessage);
     } finally {
-      setIsBootstrapping(false);
+      setIsCaptchaLoading(false);
     }
   }, [applyCaptchaState, loadCaptcha]);
 
@@ -92,9 +126,17 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     const nextErrors: Partial<Record<FieldKey, string>> = {};
     if (!username.trim()) nextErrors.username = "请输入账号";
     if (!password) nextErrors.password = "请输入密码";
-    if (captchaEnabled && !captchaCode.trim()) nextErrors.captcha = "请输入验证码";
+    if (captchaEnabled) {
+      if (isCaptchaLoading) {
+        nextErrors.captcha = "验证码正在加载，请稍候";
+      } else if (captchaError || !captchaUuid) {
+        nextErrors.captcha = captchaError || "验证码尚未加载，请刷新后重试";
+      } else if (!captchaCode.trim()) {
+        nextErrors.captcha = "请输入验证码";
+      }
+    }
     return nextErrors;
-  }, [captchaCode, captchaEnabled, password, username]);
+  }, [captchaCode, captchaEnabled, captchaError, captchaUuid, isCaptchaLoading, password, username]);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -118,7 +160,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
       setErrorMessage(error instanceof Error ? error.message : "登录失败");
       if (captchaEnabled) {
         try {
-          await refreshCaptcha();
+          await refreshCaptcha({ rethrow: true });
         } catch {
           // Preserve the original login error if captcha refresh also fails.
         }
@@ -166,6 +208,12 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
 
   const shellClassName =
     "relative flex items-center overflow-hidden rounded-2xl border border-white/6 bg-white/[0.035] transition-all duration-300";
+  const captchaVisualState = resolveCaptchaVisualState({ isCaptchaLoading, captchaImage, captchaError });
+  const loginSubmitState = resolveLoginSubmitState({
+    isLoginLoading: isLoading,
+    captchaEnabled,
+    isCaptchaLoading,
+  });
 
   return (
     <div className="relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-[#030617] px-6 py-10">
@@ -318,20 +366,37 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                   <button
                     type="button"
                     onClick={() => void refreshCaptcha()}
-                    className="group/captcha relative flex h-[58px] w-[142px] shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-[1.05rem] border border-white/8 bg-[#10182f] transition-all duration-300 hover:border-indigo-300/18 hover:bg-[#121c37]"
-                    title="刷新验证码"
+                    disabled={isCaptchaLoading}
+                    className="group/captcha relative flex h-[58px] w-[142px] shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-[1.05rem] border border-white/8 bg-[#10182f] transition-all duration-300 hover:border-indigo-300/18 hover:bg-[#121c37] disabled:cursor-wait disabled:opacity-80"
+                    title={isCaptchaLoading ? "验证码加载中" : captchaError ? "重新获取验证码" : "刷新验证码"}
                   >
-                    {captchaImage ? (
+                    {captchaVisualState === "image" ? (
                       <img src={captchaImage} alt="验证码" className="h-[32px] w-[108px] rounded-[0.5rem] bg-white object-contain" />
+                    ) : captchaVisualState === "loading" ? (
+                      <Loader2 className="h-5 w-5 animate-spin text-indigo-200" />
+                    ) : captchaVisualState === "error" ? (
+                      <span className="flex items-center gap-2 text-xs font-semibold text-rose-100/90">
+                        <AlertCircle className="h-4 w-4 text-rose-300" />
+                        获取失败
+                      </span>
                     ) : (
                       <RefreshCcw className="h-5 w-5 text-slate-400 transition-transform group-hover/captcha:rotate-180" />
                     )}
-                    <div className="pointer-events-none absolute bottom-1.5 right-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-[rgba(17,25,53,0.82)] text-slate-300/78 backdrop-blur-sm transition-colors duration-300 group-hover/captcha:text-indigo-200">
-                      <RefreshCcw className="h-3 w-3 transition-transform duration-300 group-hover/captcha:rotate-180" />
-                    </div>
+                    {shouldShowCaptchaRefreshBadge(captchaVisualState) ? (
+                      <div className="pointer-events-none absolute bottom-1.5 right-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-[rgba(17,25,53,0.82)] text-slate-300/78 backdrop-blur-sm transition-colors duration-300 group-hover/captcha:text-indigo-200">
+                        <RefreshCcw className="h-3 w-3 transition-transform duration-300 group-hover/captcha:rotate-180" />
+                      </div>
+                    ) : null}
                   </button>
                 </div>
-                {renderFieldMessage("captcha")}
+                {captchaError && !fieldErrors.captcha ? (
+                  <div className="flex items-center gap-2 rounded-2xl border border-rose-400/16 bg-rose-500/10 px-3 py-2 text-sm text-rose-100/90">
+                    <AlertCircle size={15} className="shrink-0 text-rose-300/90" />
+                    <span>{captchaError}</span>
+                  </div>
+                ) : (
+                  renderFieldMessage("captcha")
+                )}
               </div>
             ) : null}
 
@@ -344,7 +409,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
             <motion.button
               whileHover={{ scale: 1.018, y: -2 }}
               whileTap={{ scale: 0.982, y: 0 }}
-              disabled={isLoading || isBootstrapping}
+              disabled={loginSubmitState.disabled}
               type="submit"
               className="group/btn relative mt-1.5 w-full cursor-pointer overflow-hidden rounded-2xl bg-[linear-gradient(90deg,#4e5ed7_0%,#7060e8_52%,#a05be8_100%)] shadow-[0_16px_40px_rgba(76,86,198,0.34)] transition-shadow duration-300 hover:shadow-[0_22px_55px_rgba(104,88,220,0.4)] focus:outline-none disabled:cursor-not-allowed disabled:opacity-70"
             >
@@ -354,7 +419,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                 <div className="absolute -left-1/3 top-0 h-full w-1/3 skew-x-[-24deg] bg-white/18 blur-xl group-hover/btn:animate-button-sweep" />
               </div>
               <div className="relative flex items-center justify-center gap-2 px-6 py-4">
-                {isLoading || isBootstrapping ? (
+                {loginSubmitState.showSpinner ? (
                   <Loader2 className="h-5 w-5 animate-spin text-white" />
                 ) : (
                   <>

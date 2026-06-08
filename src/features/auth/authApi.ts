@@ -39,6 +39,7 @@ export async function fetchCaptcha() {
   const response = await devApiFetch("/auth/code", {
     method: "GET",
     auth: false,
+    timeoutMs: 10000,
   });
   const parsed = await parseDevApiEnvelope<CaptchaResponse>(response);
   return parsed.data;

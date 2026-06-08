@@ -6,12 +6,8 @@ import ImageNodeCard from "../canvas/ImageNodeCard";
 import VideoNodeCard from "../canvas/VideoNodeCard";
 import AudioNodeCard from "../canvas/AudioNodeCard";
 import { getInputAnchor, getOutputAnchor } from "../canvas/geometry";
-import {
-  GraphLink,
-  GraphNode,
-  VideoFrameAnalysisOverview,
-  VideoFrameAnalysisSegment,
-} from "../../types";
+import { GraphLink, GraphNode } from "../../types";
+import type { VideoFrameCaptureItem } from "../../features/video/frameCapture";
 import type { TextNodeReferenceItem } from "../../utils/textNodeReferences";
 import { getCanvasNodeZIndex } from "../../utils/canvasNodeLayering";
 
@@ -54,11 +50,7 @@ interface CanvasNodeLayerProps {
     items?: string[],
     currentIndex?: number
   ) => void;
-  onAnalyzeVideo?: (
-    node: GraphNode,
-    segments: VideoFrameAnalysisSegment[],
-    overview: VideoFrameAnalysisOverview
-  ) => Promise<void> | void;
+  onAnalyzeVideo?: (node: GraphNode, captures: VideoFrameCaptureItem[]) => Promise<void> | void;
   onReverseSegmentAnalysis?: (node: GraphNode) => Promise<void> | void;
   onSelectNode: (nodeId: string, e?: React.MouseEvent) => void;
   onUpdateNodeData: (nodeId: string, data: any) => void;

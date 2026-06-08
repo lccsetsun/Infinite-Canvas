@@ -5,6 +5,7 @@ import { emitApiNotice } from "./apiNotice";
 export interface DevApiRequestOptions extends RequestInit {
   auth?: boolean;
   includeClientId?: boolean;
+  timeoutMs?: number;
   token?: string;
 }
 
@@ -26,14 +27,58 @@ function serializeRequestBody(body: BodyInit | null | undefined) {
   return String(body);
 }
 
-function buildDedupKey(method: string, url: string, headers: Headers, body: BodyInit | null | undefined) {
+function buildDedupKey(
+  method: string,
+  url: string,
+  headers: Headers,
+  body: BodyInit | null | undefined,
+  timeoutMs: number | undefined
+) {
   const headerPairs = Array.from(headers.entries()).sort(([left], [right]) => left.localeCompare(right));
   return JSON.stringify({
     method,
     url,
     headers: headerPairs,
     body: serializeRequestBody(body),
+    timeoutMs: timeoutMs ?? null,
   });
+}
+
+function createRequestSignal(signal: AbortSignal | null | undefined, timeoutMs: number | undefined) {
+  if (!timeoutMs || timeoutMs <= 0) {
+    return {
+      signal,
+      didTimeout: () => false,
+      cleanup: () => undefined,
+    };
+  }
+
+  const controller = new AbortController();
+  let timedOut = false;
+
+  const abortFromUpstream = () => {
+    controller.abort(signal?.reason);
+  };
+
+  if (signal?.aborted) {
+    abortFromUpstream();
+  } else {
+    signal?.addEventListener("abort", abortFromUpstream, { once: true });
+  }
+
+  const timeoutId = setTimeout(() => {
+    timedOut = true;
+    controller.abort(new DOMException("Request timed out", "TimeoutError"));
+  }, timeoutMs);
+
+  return {
+    signal: controller.signal,
+    didTimeout: () => timedOut,
+    cleanup: () => {
+      clearTimeout(timeoutId);
+      signal?.removeEventListener("abort", abortFromUpstream);
+    },
+  };
 }
 
 export async function devApiFetch(path: string, options: DevApiRequestOptions = {}) {
@@ -42,6 +87,8 @@ export async function devApiFetch(path: string, options: DevApiRequestOptions = 
     includeClientId = true,
     token,
     headers,
+    timeoutMs,
+    signal,
     ...init
   } = options;
   const method = (init.method || "GET").toUpperCase();
@@ -60,19 +107,22 @@ export async function devApiFetch(path: string, options: DevApiRequestOptions = 
     }
   }
 
+  const requestSignal = createRequestSignal(signal, timeoutMs);
   const requestInit: RequestInit = {
     ...init,
     method,
     headers: finalHeaders,
+    signal: requestSignal.signal,
   };
 
   const shouldDedup = import.meta.env.DEV && method === "GET";
-  const dedupKey = shouldDedup ? buildDedupKey(method, url, finalHeaders, requestInit.body) : "";
+  const dedupKey = shouldDedup ? buildDedupKey(method, url, finalHeaders, requestInit.body, timeoutMs) : "";
 
   const fetchPromise =
     shouldDedup && inFlightGetRequests.has(dedupKey)
       ? inFlightGetRequests.get(dedupKey)!
       : fetch(url, requestInit).finally(() => {
+          requestSignal.cleanup();
           if (shouldDedup) {
             inFlightGetRequests.delete(dedupKey);
           }
@@ -86,9 +136,13 @@ export async function devApiFetch(path: string, options: DevApiRequestOptions = 
   try {
     response = await fetchPromise;
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = requestSignal.didTimeout()
+      ? "接口请求超时，请稍后重试"
+      : error instanceof Error
+        ? error.message
+        : String(error);
     emitApiNotice(`接口请求失败：${message}`, "error", `network:${url}`);
-    throw error;
+    throw requestSignal.didTimeout() ? new Error(message) : error;
   }
 
   if (response.status === 401) {

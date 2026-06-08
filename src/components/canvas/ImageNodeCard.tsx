@@ -454,6 +454,15 @@ function ImageNodeCardImpl({
       ? [fallbackImageUrl]
       : [];
   const imageUrl = resolvedImageUrls[activeImageIndex] || resolvedImageUrls[0] || "";
+  const isFrameStrip = node.data?.isFrameStrip === true;
+  const frameGridColumns = Math.max(
+    1,
+    Math.min(8, Math.round(node.data?.frameGridColumns ?? 5))
+  );
+  const frameGridRows = Math.max(
+    1,
+    Math.ceil(Math.max(1, resolvedImageUrls.length) / frameGridColumns)
+  );
   const isImageLoaded = Boolean(
     imageUrl && imageLoadState.url === imageUrl && imageLoadState.status === "loaded"
   );
@@ -492,11 +501,24 @@ function ImageNodeCardImpl({
       node.data?.isUploadPlaceholder,
     ]
   );
+  const frameStripSize = {
+    width:
+      typeof node.data?.imageDisplayWidth === "number" && node.data.imageDisplayWidth > 0
+        ? Math.round(node.data.imageDisplayWidth)
+        : frameGridColumns * 108,
+    height:
+      typeof node.data?.imageDisplayHeight === "number" && node.data.imageDisplayHeight > 0
+        ? Math.round(node.data.imageDisplayHeight)
+        : frameGridRows * 122,
+  };
+  const mediaFrameSize = isFrameStrip ? frameStripSize : resultImageSize;
   const imageSetKey = React.useMemo(() => resolvedImageUrls.join("||"), [resolvedImageUrls]);
   const naturalSizeLabel =
-    naturalImageSize && naturalImageSize.width > 0 && naturalImageSize.height > 0
-      ? `${naturalImageSize.width} × ${naturalImageSize.height}`
-      : `${resultImageSize.width} × ${resultImageSize.height}`;
+    isFrameStrip
+      ? `${resolvedImageUrls.length} \u5e27`
+      : naturalImageSize && naturalImageSize.width > 0 && naturalImageSize.height > 0
+        ? `${naturalImageSize.width} \u00d7 ${naturalImageSize.height}`
+        : `${resultImageSize.width} \u00d7 ${resultImageSize.height}`;
   const shouldShowUploadButton = shouldShowImageUploadButton({
     hasImageUrl: Boolean(imageUrl),
     isImageLoaded,
@@ -1510,7 +1532,7 @@ function ImageNodeCardImpl({
                 </span>
               </div>
               <div className="flex shrink-0 items-center gap-3">
-                {resolvedImageUrls.length > 1 && (
+                {!isFrameStrip && resolvedImageUrls.length > 1 && (
                   <span className="rounded-full border border-slate-400/18 bg-slate-900/46 px-2.5 py-1 text-[11px] font-semibold text-slate-300/72">
                     {activeImageIndex + 1}/{resolvedImageUrls.length}
                   </span>
@@ -1525,14 +1547,14 @@ function ImageNodeCardImpl({
             <div
               ref={mediaFrameRef}
               className={getImagePreviewFrameClassName({
-                isImageLoaded,
+                isImageLoaded: isFrameStrip || isImageLoaded,
                 isSelected: selected,
                 isStarterPlaceholder,
               })}
-              style={{ width: resultImageSize.width, height: resultImageSize.height }}
+              style={{ width: mediaFrameSize.width, height: mediaFrameSize.height }}
             >
               <div className="relative h-full w-full">
-                {!isStarterPlaceholder && !isImageLoaded && (
+                {!isFrameStrip && !isStarterPlaceholder && !isImageLoaded && (
                   <div
                     aria-hidden="true"
                     className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center overflow-hidden bg-[linear-gradient(135deg,rgba(15,23,42,0.96),rgba(17,24,39,0.92)_48%,rgba(30,41,59,0.96))]"
@@ -1549,42 +1571,71 @@ function ImageNodeCardImpl({
                     </div>
                   </div>
                 )}
-                <img
-                  ref={imageElementRef}
-                  src={imageUrl}
-                  alt="生成图片"
-                  className={`block h-full w-full transition-opacity duration-200 ${isStarterPlaceholder || isImageLoaded ? "opacity-100" : "opacity-0"} ${isStarterPlaceholder ? "object-cover" : "object-contain"}`}
-                  draggable={false}
-                  onLoad={(e) => {
-                    const img = e.currentTarget;
-                    setImageLoadState({ status: "loaded", url: imageUrl });
-                    const naturalSize = {
-                      width: img.naturalWidth || resultImageSize.width,
-                      height: img.naturalHeight || resultImageSize.height,
-                    };
-                    const displaySize = fitImageSize(
-                      naturalSize,
-                      aspectRatio,
-                      resultImageBounds.maxWidth,
-                      resultImageBounds.maxHeight
-                    );
-                    setNaturalImageSize(naturalSize);
-                    if (
-                      node.data?.imageNaturalWidth !== naturalSize.width ||
-                      node.data?.imageNaturalHeight !== naturalSize.height ||
-                      node.data?.imageDisplayWidth !== displaySize.width ||
-                      node.data?.imageDisplayHeight !== displaySize.height
-                    ) {
-                      onUpdateData?.(node.id, {
-                        imageNaturalWidth: naturalSize.width,
-                        imageNaturalHeight: naturalSize.height,
-                        imageDisplayWidth: displaySize.width,
-                        imageDisplayHeight: displaySize.height,
-                      });
-                    }
-                  }}
-                  onError={() => setImageLoadState({ status: "error", url: imageUrl })}
-                />
+                {isFrameStrip ? (
+                  <div
+                    className="grid h-full w-full overflow-hidden rounded-[inherit] bg-slate-950"
+                    style={{
+                      gridTemplateColumns: `repeat(${frameGridColumns}, minmax(0, 1fr))`,
+                    }}
+                  >
+                    {resolvedImageUrls.map((url, index) => (
+                      <button
+                        key={`${url}-${index}`}
+                        type="button"
+                        data-node-action="true"
+                        onClick={() => {
+                          setActiveImageIndex(index);
+                          onSetPrimaryImageResult?.(node.id, url, index);
+                        }}
+                        className="relative min-h-0 min-w-0 overflow-hidden border border-black/45 bg-slate-950 transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300/70"
+                      >
+                        <img
+                          src={url}
+                          alt={`\u9010\u5e27\u5206\u6790 ${index + 1}`}
+                          className="h-full w-full object-cover"
+                          draggable={false}
+                        />
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <img
+                    ref={imageElementRef}
+                    src={imageUrl}
+                    alt="\u751f\u6210\u56fe\u7247"
+                    className={`block h-full w-full transition-opacity duration-200 ${isStarterPlaceholder || isImageLoaded ? "opacity-100" : "opacity-0"} ${isStarterPlaceholder ? "object-cover" : "object-contain"}`}
+                    draggable={false}
+                    onLoad={(e) => {
+                      const img = e.currentTarget;
+                      setImageLoadState({ status: "loaded", url: imageUrl });
+                      const naturalSize = {
+                        width: img.naturalWidth || resultImageSize.width,
+                        height: img.naturalHeight || resultImageSize.height,
+                      };
+                      const displaySize = fitImageSize(
+                        naturalSize,
+                        aspectRatio,
+                        resultImageBounds.maxWidth,
+                        resultImageBounds.maxHeight
+                      );
+                      setNaturalImageSize(naturalSize);
+                      if (
+                        node.data?.imageNaturalWidth !== naturalSize.width ||
+                        node.data?.imageNaturalHeight !== naturalSize.height ||
+                        node.data?.imageDisplayWidth !== displaySize.width ||
+                        node.data?.imageDisplayHeight !== displaySize.height
+                      ) {
+                        onUpdateData?.(node.id, {
+                          imageNaturalWidth: naturalSize.width,
+                          imageNaturalHeight: naturalSize.height,
+                          imageDisplayWidth: displaySize.width,
+                          imageDisplayHeight: displaySize.height,
+                        });
+                      }
+                    }}
+                    onError={() => setImageLoadState({ status: "error", url: imageUrl })}
+                  />
+                )}
                 {selected && activeGridSelection && onSplitImageGrid && (
                   <div
                     data-node-action="true"
@@ -1701,7 +1752,7 @@ function ImageNodeCardImpl({
                 )}
               </div>
             </div>
-            {resolvedImageUrls.length > 1 && (
+            {!isFrameStrip && resolvedImageUrls.length > 1 && (
               <div
                 data-node-action="true"
                 className="mt-3 flex w-full items-center justify-center gap-3"
