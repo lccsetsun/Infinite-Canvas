@@ -8,6 +8,7 @@ import AudioNodeCard from "../canvas/AudioNodeCard";
 import { getInputAnchor, getOutputAnchor } from "../canvas/geometry";
 import { GraphLink, GraphNode, VideoFrameAnalysisOverview, VideoFrameAnalysisSegment } from "../../types";
 import type { TextNodeReferenceItem } from "../../utils/textNodeReferences";
+import { getCanvasNodeZIndex } from "../../utils/canvasNodeLayering";
 
 interface CanvasNodeLayerProps {
   apiConfig: {
@@ -23,6 +24,7 @@ interface CanvasNodeLayerProps {
   links: GraphLink[];
   nodes: GraphNode[];
   pan: { x: number; y: number };
+  draggingNodeId?: string | null;
   selectedNodeId: string | null;
   zoom: number;
   getCanvasLinkTargetIssue: (nodeId: string, inputIndex: number) => string | null;
@@ -83,6 +85,7 @@ export default function CanvasNodeLayer({
   links,
   nodes,
   pan,
+  draggingNodeId,
   selectedNodeId,
   zoom,
   getCanvasLinkTargetIssue,
@@ -125,7 +128,14 @@ export default function CanvasNodeLayer({
               key={node.id}
               className="absolute left-0 top-0"
               data-canvas-node-id={node.id}
-              style={{ transform: `translate3d(${node.x}px, ${node.y}px, 0)` }}
+              style={{
+                transform: `translate3d(${node.x}px, ${node.y}px, 0)`,
+                zIndex: getCanvasNodeZIndex({
+                  draggingNodeId,
+                  nodeId: node.id,
+                  selectedNodeId,
+                }),
+              }}
               onContextMenu={(event) => onNodeContextMenu(node.id, event)}
             >
               {node.type === "text_node" ? (

@@ -33,17 +33,30 @@ export const CONNECTION_DRAFT_STYLE = {
   flow: {
     dashPattern: [34, 48],
     duration: 0.72,
-    invalidStroke: "#fbbf24",
+    invalidStroke: "#fb7185",
     shadow: "0 0 24px rgba(103, 232, 249, 0.94), 0 0 50px rgba(99, 102, 241, 0.58)",
     stroke: "#67e8f9",
     strokeWidth: 4,
   },
   glow: {
-    invalidStroke: "rgba(251, 191, 36, 0.22)",
+    invalidStroke: "rgba(244, 63, 94, 0.26)",
     stroke: "rgba(34, 211, 238, 0.48)",
     strokeWidth: 10,
   },
 } as const;
+
+export type DraftLinkVisualState = "neutral" | "valid" | "invalid";
+
+export function getDraftLinkVisualState({
+  draftIssue,
+  hasTargetNode,
+}: {
+  draftIssue?: string | null;
+  hasTargetNode: boolean;
+}): DraftLinkVisualState {
+  if (draftIssue && hasTargetNode) return "invalid";
+  return hasTargetNode ? "valid" : "neutral";
+}
 
 export const PORT_HANDLE_CLASSES = {
   base:

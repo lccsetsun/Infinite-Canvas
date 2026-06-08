@@ -329,6 +329,7 @@ export default function App({ onLoggedOut }: AppProps) {
     scrollToNode,
     jumpToWorldPos,
     focusWorldRect,
+    draggingNodeId,
     onNodeDragStart,
     onCanvasPointerDown,
     onPointerMove,
@@ -1369,6 +1370,7 @@ export default function App({ onLoggedOut }: AppProps) {
             links={links}
             nodes={nodes}
             pan={pan}
+            draggingNodeId={draggingNodeId}
             selectedNodeId={selectedNodeId}
             zoom={zoom}
             getCanvasLinkTargetIssue={getCanvasLinkTargetIssue}

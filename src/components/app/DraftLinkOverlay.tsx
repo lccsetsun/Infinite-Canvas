@@ -1,6 +1,9 @@
 import { GraphNode } from "../../types";
 import { getInputAnchor, getNodeById, getOutputAnchor, linkPath } from "../canvas/geometry";
-import { CONNECTION_DRAFT_STYLE } from "../../utils/connectionVisualTokens";
+import {
+  CONNECTION_DRAFT_STYLE,
+  getDraftLinkVisualState,
+} from "../../utils/connectionVisualTokens";
 
 interface DraftLinkOverlayProps {
   nodes: GraphNode[];
@@ -34,8 +37,26 @@ export default function DraftLinkOverlay({
   if (!to) return null;
 
   const path = linkPath(from, to);
-  const flowStroke = draftIssue ? CONNECTION_DRAFT_STYLE.flow.invalidStroke : CONNECTION_DRAFT_STYLE.flow.stroke;
-  const glowStroke = draftIssue ? CONNECTION_DRAFT_STYLE.glow.invalidStroke : CONNECTION_DRAFT_STYLE.glow.stroke;
+  const visualState = getDraftLinkVisualState({
+    draftIssue,
+    hasTargetNode: Boolean(toNode),
+  });
+  const isInvalidTarget = visualState === "invalid";
+  const isValidTarget = visualState === "valid";
+  const flowStroke = isInvalidTarget
+    ? CONNECTION_DRAFT_STYLE.flow.invalidStroke
+    : CONNECTION_DRAFT_STYLE.flow.stroke;
+  const glowStroke = isInvalidTarget
+    ? CONNECTION_DRAFT_STYLE.glow.invalidStroke
+    : CONNECTION_DRAFT_STYLE.glow.stroke;
+  const baseStroke = isInvalidTarget
+    ? flowStroke
+    : isValidTarget
+      ? "rgba(103,232,249,0.46)"
+      : "rgba(129,140,248,0.24)";
+  const softPulseStroke = isValidTarget
+    ? "rgba(165,243,252,0.72)"
+    : "rgba(196,181,253,0.48)";
 
   return (
     <svg className="pointer-events-none absolute inset-0 z-[35] overflow-visible" aria-hidden="true">
@@ -47,16 +68,21 @@ export default function DraftLinkOverlay({
             <feMergeNode in="SourceGraphic" />
           </feMerge>
         </filter>
-        <linearGradient id="draft-link-purple-tail" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="rgba(99,102,241,0)" />
-          <stop offset="30%" stopColor="rgba(129,140,248,0.16)" />
-          <stop offset="76%" stopColor="rgba(147,51,234,0.92)" />
-          <stop offset="100%" stopColor="rgba(244,114,182,0.1)" />
+        <linearGradient id="draft-link-cyan-violet-tail" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="rgba(103,232,249,0)" />
+          <stop offset="30%" stopColor="rgba(103,232,249,0.2)" />
+          <stop offset="72%" stopColor="rgba(167,139,250,0.88)" />
+          <stop offset="100%" stopColor="rgba(224,231,255,0.22)" />
         </linearGradient>
-        <linearGradient id="draft-link-purple-head" x1="0%" y1="0%" x2="100%" y2="0%">
+        <linearGradient id="draft-link-cyan-head" x1="0%" y1="0%" x2="100%" y2="0%">
           <stop offset="0%" stopColor="rgba(224,231,255,0.08)" />
-          <stop offset="48%" stopColor="rgba(255,255,255,0.98)" />
-          <stop offset="100%" stopColor="rgba(233,213,255,0.96)" />
+          <stop offset="46%" stopColor="rgba(255,255,255,0.98)" />
+          <stop offset="100%" stopColor="rgba(103,232,249,0.94)" />
+        </linearGradient>
+        <linearGradient id="draft-link-rose-tail" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="rgba(244,63,94,0)" />
+          <stop offset="62%" stopColor="rgba(251,113,133,0.74)" />
+          <stop offset="100%" stopColor="rgba(255,255,255,0.22)" />
         </linearGradient>
       </defs>
       <g transform={`translate(${pan.x} ${pan.y}) scale(${zoom})`}>
@@ -72,53 +98,57 @@ export default function DraftLinkOverlay({
         <path
           d={path}
           fill="none"
-          stroke={draftIssue ? flowStroke : "rgba(129,140,248,0.32)"}
+          stroke={baseStroke}
           strokeLinecap="round"
-          strokeWidth={5.6}
-          opacity={draftIssue ? CONNECTION_DRAFT_STYLE.core.opacity : 0.9}
+          strokeWidth={isValidTarget ? 4.8 : 4.2}
+          opacity={isInvalidTarget ? CONNECTION_DRAFT_STYLE.core.opacity : 0.72}
         />
         <path
           d={path}
           fill="none"
-          stroke={draftIssue ? flowStroke : "rgba(233,213,255,0.84)"}
+          stroke={isInvalidTarget ? flowStroke : "rgba(224,231,255,0.7)"}
           strokeLinecap="round"
-          strokeWidth={1.8}
-          opacity="0.94"
+          strokeWidth={1.65}
+          opacity={isValidTarget ? 0.95 : 0.82}
         />
         <path
           d={path}
           className="link-energy-pulse"
           pathLength={100}
           fill="none"
-          stroke={draftIssue ? flowStroke : "url(#draft-link-purple-tail)"}
-          strokeDasharray={draftIssue ? "54 260" : "34 66"}
+          stroke={
+            isInvalidTarget
+              ? "url(#draft-link-rose-tail)"
+              : "url(#draft-link-cyan-violet-tail)"
+          }
+          strokeDasharray={isInvalidTarget ? "54 260" : "34 66"}
           strokeLinecap="round"
-          strokeWidth={draftIssue ? CONNECTION_DRAFT_STYLE.flow.strokeWidth : 4.2}
-          opacity="0.96"
+          strokeWidth={isInvalidTarget ? 3.1 : isValidTarget ? 3.4 : 2.8}
+          opacity={isInvalidTarget ? 0.84 : 0.9}
           filter="url(#draft-link-overlay-glow)"
         />
-        {!draftIssue && (
+        {!isInvalidTarget && (
           <path
             d={path}
             className="link-energy-pulse link-energy-pulse-soft"
             pathLength={100}
             fill="none"
-            stroke="rgba(196,181,253,0.68)"
+            stroke={softPulseStroke}
             strokeDasharray="16 84"
             strokeLinecap="round"
-            strokeWidth={1.8}
+            strokeWidth={1.45}
           />
         )}
-        {!draftIssue && (
+        {!isInvalidTarget && (
           <path
             d={path}
             className="link-energy-pulse-head"
             pathLength={100}
             fill="none"
-            stroke="url(#draft-link-purple-head)"
+            stroke="url(#draft-link-cyan-head)"
             strokeDasharray="3 97"
             strokeLinecap="round"
-            strokeWidth={2.1}
+            strokeWidth={isValidTarget ? 2.05 : 1.7}
             filter="url(#draft-link-overlay-glow)"
           />
         )}

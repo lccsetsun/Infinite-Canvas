@@ -25,6 +25,7 @@ import { downloadMediaAsset, extensionFromAssetUrl } from "../../utils/mediaAsse
 import { formatGridCellLabel } from "../../utils/imageGridSplit";
 import { uploadFileToOss } from "../../features/resource/ossApi";
 import { ReferencePreviewCard } from "./ReferencePreviewCard";
+import { getMediaNodeLoadingLabel } from "../../utils/mediaNodeLoadingState";
 
 interface ImageNodeCardProps {
   node: GraphNode;
@@ -1481,8 +1482,12 @@ function ImageNodeCardImpl({
             <div className="flex min-h-[250px] flex-col items-center justify-center gap-5 text-slate-300/60">
               <Loader2 className="h-10 w-10 animate-spin" />
               <div className="text-center">
-                <div className="text-[13px] text-slate-100/80">正在生成图片</div>
-                <div className="mt-2 text-[11px] text-slate-400/60">MiniMax 正在构建画面</div>
+                <div className="text-[13px] text-slate-100/80">
+                  {getMediaNodeLoadingLabel({
+                    isUploading: isUploadingNodeAsset,
+                    mediaType: "image",
+                  })}
+                </div>
               </div>
             </div>
           ) : (

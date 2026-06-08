@@ -27,6 +27,7 @@ import {
   isLocalBrowserAsset,
 } from "../../utils/mediaAssets";
 import { uploadFileToOss } from "../../features/resource/ossApi";
+import { getMediaNodeLoadingLabel } from "../../utils/mediaNodeLoadingState";
 
 interface VideoNodeCardProps {
   node: GraphNode;
@@ -951,8 +952,12 @@ function VideoNodeCardImpl({
             <div className="flex min-h-[250px] flex-col items-center justify-center gap-5 text-slate-300/60">
               <Loader2 className="h-10 w-10 animate-spin" />
               <div className="text-center">
-                <div className="text-[13px] text-slate-100/80">正在生成视频</div>
-                <div className="mt-2 text-[11px] text-slate-400/60">MiniMax 正在构建动态画面</div>
+                <div className="text-[13px] text-slate-100/80">
+                  {getMediaNodeLoadingLabel({
+                    isUploading: isUploadingAsset,
+                    mediaType: "video",
+                  })}
+                </div>
               </div>
             </div>
           ) : (

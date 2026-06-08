@@ -32,6 +32,7 @@ export function useCanvasInteraction({ nodes, snapToGridEnabled = true, updateNo
   const pendingDragRef = React.useRef<PendingDrag | null>(null);
   const [pan, setPan] = React.useState({ x: 0, y: 0 });
   const [zoom, setZoom] = React.useState(1);
+  const [draggingNodeId, setDraggingNodeId] = React.useState<string | null>(null);
 
   const toWorld = React.useCallback(
     (clientX: number, clientY: number) => {
@@ -162,6 +163,7 @@ export function useCanvasInteraction({ nodes, snapToGridEnabled = true, updateNo
   const onNodeDragStart = React.useCallback((e: React.PointerEvent, node: GraphNode) => {
     e.preventDefault();
     e.stopPropagation();
+    setDraggingNodeId(node.id);
     dragRef.current = {
       mode: "node",
       nodeId: node.id,
@@ -248,6 +250,7 @@ export function useCanvasInteraction({ nodes, snapToGridEnabled = true, updateNo
     }
     pendingDragRef.current = null;
     dragRef.current = { mode: null, startX: 0, startY: 0 };
+    setDraggingNodeId(null);
   }, [updateNodePosition]);
 
   const onWheel = React.useCallback(
@@ -309,6 +312,7 @@ export function useCanvasInteraction({ nodes, snapToGridEnabled = true, updateNo
     jumpToWorldPos,
     focusWorldRect,
     autoLayout,
+    draggingNodeId,
     onNodeDragStart,
     onCanvasPointerDown,
     onPointerMove,
