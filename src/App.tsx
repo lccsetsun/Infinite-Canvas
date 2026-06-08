@@ -235,7 +235,10 @@ export default function App({ onLoggedOut }: AppProps) {
     const map = new Map<string, ReturnType<typeof collectTextNodeReferences>>();
     nodes.forEach((node) => {
       if (node.type !== "text_node") return;
-      map.set(node.id, collectTextNodeReferences({ links, nodeOutputs, nodes, textNodeId: node.id }));
+      map.set(
+        node.id,
+        collectTextNodeReferences({ links, nodeOutputs, nodes, textNodeId: node.id })
+      );
     });
     return map;
   }, [links, nodeOutputs, nodes]);
@@ -530,6 +533,58 @@ export default function App({ onLoggedOut }: AppProps) {
         setPreviewContent(null);
       } catch (error) {
         const message = error instanceof Error ? error.message : "鍥剧墖鍒囧垎澶辫触";
+        showNotice(message);
+      }
+    },
+    [addNode, nodes, showNotice]
+  );
+
+  const handleCropImage = React.useCallback(
+    async (
+      nodeId: string,
+      dataUrl: string,
+      crop: { sx: number; sy: number; sw: number; sh: number }
+    ) => {
+      const sourceNode = nodes.find((n) => n.id === nodeId);
+      if (!sourceNode) {
+        showNotice("未找到源图片节点");
+        return;
+      }
+
+      try {
+        const sourceWidth =
+          typeof sourceNode.data?.imageNodeWidth === "number"
+            ? sourceNode.data.imageNodeWidth
+            : 360;
+        const position = {
+          x: Math.round(sourceNode.x + sourceWidth + 160),
+          y: Math.round(sourceNode.y),
+        };
+        addNode(
+          "image_node",
+          position.x,
+          position.y,
+          {
+            __nodeTitle: "裁剪",
+            __nodeData: {
+              imageUrl: dataUrl,
+              imageNaturalWidth: crop.sw,
+              imageNaturalHeight: crop.sh,
+              imageDisplayWidth: Math.min(crop.sw, 520),
+              imageDisplayHeight: Math.min(crop.sh, 390),
+              status: "success",
+              loading: false,
+            },
+            imageUrl: dataUrl,
+            text: `来自 ${sourceNode.title} 的裁剪图片 (${crop.sw}x${crop.sh})`,
+            status: "success",
+          },
+          { fromNodeId: nodeId, fromOutputIndex: 0, toInputIndex: 0 }
+        );
+        showNotice("已生成裁剪图片");
+        setPreviewContent(null);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "图片裁剪失败";
         showNotice(message);
       }
     },
@@ -1400,6 +1455,7 @@ export default function App({ onLoggedOut }: AppProps) {
             onSetPrimaryImageResult={setPrimaryImageResult}
             onSyncImagePromptStarterLayout={syncImagePromptStarterLayout}
             onSplitImageGrid={handleSplitImageGrid}
+            onCropImage={handleCropImage}
             resolvedInputsMap={resolvedInputsMap}
             textNodeReferencesMap={textNodeReferencesMap}
             onRunNode={runNode}

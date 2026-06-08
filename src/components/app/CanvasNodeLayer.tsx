@@ -6,7 +6,12 @@ import ImageNodeCard from "../canvas/ImageNodeCard";
 import VideoNodeCard from "../canvas/VideoNodeCard";
 import AudioNodeCard from "../canvas/AudioNodeCard";
 import { getInputAnchor, getOutputAnchor } from "../canvas/geometry";
-import { GraphLink, GraphNode, VideoFrameAnalysisOverview, VideoFrameAnalysisSegment } from "../../types";
+import {
+  GraphLink,
+  GraphNode,
+  VideoFrameAnalysisOverview,
+  VideoFrameAnalysisSegment,
+} from "../../types";
 import type { TextNodeReferenceItem } from "../../utils/textNodeReferences";
 import { getCanvasNodeZIndex } from "../../utils/canvasNodeLayering";
 
@@ -67,6 +72,11 @@ interface CanvasNodeLayerProps {
     gridCols: number,
     cellIndices: number[]
   ) => void;
+  onCropImage?: (
+    nodeId: string,
+    dataUrl: string,
+    crop: { sx: number; sy: number; sw: number; sh: number }
+  ) => Promise<void> | void;
   resolvedInputsMap?: Map<string, Record<string, unknown>>;
   textNodeReferencesMap?: Map<string, TextNodeReferenceItem[]>;
   onRunNode?: (nodeId: string) => void;
@@ -107,6 +117,7 @@ export default function CanvasNodeLayer({
   onSetPrimaryImageResult,
   onSyncImagePromptStarterLayout,
   onSplitImageGrid,
+  onCropImage,
   resolvedInputsMap,
   textNodeReferencesMap,
   onRunNode,
@@ -199,6 +210,7 @@ export default function CanvasNodeLayer({
                   onSetPrimaryImageResult={onSetPrimaryImageResult}
                   onSyncImagePromptStarterLayout={onSyncImagePromptStarterLayout}
                   onSplitImageGrid={onSplitImageGrid}
+                  onCropImage={onCropImage}
                   onPreview={onPreview}
                   resolvedInputs={resolvedInputsMap?.get(node.id)}
                   onRun={onRunNode}

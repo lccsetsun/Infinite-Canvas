@@ -6,6 +6,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronUp,
+  Crop as CropIcon,
   Download,
   Eye,
   Grid3X3,
@@ -15,6 +16,7 @@ import {
   Undo2,
   Upload,
   Wand2,
+  X,
 } from "lucide-react";
 import { GraphNode } from "../../types";
 import { findResolvedStringInput } from "../../utils/resolvedInputs";
@@ -22,7 +24,17 @@ import { shouldShowInlinePortHandles } from "../../utils/portHandleVisibility";
 import { getNodeWidth } from "./geometry";
 import { Tooltip } from "../common/Tooltip";
 import { downloadMediaAsset, extensionFromAssetUrl } from "../../utils/mediaAssets";
-import { formatGridCellLabel } from "../../utils/imageGridSplit";
+import {
+  clampCropRect,
+  CROP_RATIO_OPTIONS,
+  cropLoadedImageElement,
+  cropImageRegionViaAssetProxy,
+  getCropAspectRatio,
+  getInitialCropRect,
+  type CropRatioPreset,
+  type CropRect,
+  type CropSize,
+} from "../../utils/imageCrop";
 import { uploadFileToOss } from "../../features/resource/ossApi";
 import { ReferencePreviewCard } from "./ReferencePreviewCard";
 import { getMediaNodeLoadingLabel } from "../../utils/mediaNodeLoadingState";
@@ -45,6 +57,11 @@ interface ImageNodeCardProps {
     gridCols: number,
     cellIndices: number[]
   ) => void;
+  onCropImage?: (
+    nodeId: string,
+    dataUrl: string,
+    crop: { sx: number; sy: number; sw: number; sh: number }
+  ) => Promise<void> | void;
   onPreview?: (
     content: string,
     title?: string,
@@ -90,6 +107,7 @@ const GRID_SPLIT_PRESETS = [
 ] as const;
 const CUSTOM_GRID_MAX_ROWS = 5;
 const CUSTOM_GRID_MAX_COLS = 5;
+const CROP_HANDLES = ["nw", "n", "ne", "e", "se", "s", "sw", "w"] as const;
 const EMPTY_IMAGE_NODE_MAIN_CARD_CENTER_Y = 145;
 const IMAGE_NODE_REFERENCE_IGNORED_KEYS = new Set([
   "negative_prompt",
@@ -210,10 +228,7 @@ function inferImageNodeInputReferenceKind(
   ) {
     return "audio";
   }
-  if (
-    normalizedKey.includes("video") ||
-    /\.(mp4|mov|webm|m4v|avi)(\?.*)?$/.test(normalizedValue)
-  ) {
+  if (normalizedKey.includes("video") || /\.(mp4|mov|webm|m4v|avi)(\?.*)?$/.test(normalizedValue)) {
     return "video";
   }
   if (IMAGE_NODE_TEXT_INPUT_KEYS.has(key) || normalizedKey.includes("prompt")) return "text";
@@ -353,6 +368,7 @@ function ImageNodeCardImpl({
   onSetPrimaryImageResult,
   onSyncImagePromptStarterLayout,
   onSplitImageGrid,
+  onCropImage,
   onPreview,
   resolvedInputs,
   onRun,
@@ -383,8 +399,14 @@ function ImageNodeCardImpl({
   } | null>(null);
   const [selectedGridCells, setSelectedGridCells] = React.useState<number[]>([]);
   const [hoveredGridCell, setHoveredGridCell] = React.useState<number | null>(null);
+  const [isCropMode, setIsCropMode] = React.useState(false);
+  const [cropRatio, setCropRatio] = React.useState<CropRatioPreset>("original");
+  const [cropRatioMenuOpen, setCropRatioMenuOpen] = React.useState(false);
+  const [cropRect, setCropRect] = React.useState<CropRect | null>(null);
+  const [isSavingCrop, setIsSavingCrop] = React.useState(false);
   const controlsRef = React.useRef<HTMLDivElement | null>(null);
   const gridMenuRef = React.useRef<HTMLDivElement | null>(null);
+  const cropMenuRef = React.useRef<HTMLDivElement | null>(null);
   const [activeImageIndex, setActiveImageIndex] = React.useState(() => {
     const index = node.data?.activeImageIndex;
     return typeof index === "number" && index >= 0 ? index : 0;
@@ -481,6 +503,12 @@ function ImageNodeCardImpl({
     isImageLoadFailed,
     isUploadingNodeAsset,
   });
+  const cropAspectRatio = React.useMemo(
+    () => getCropAspectRatio(cropRatio, naturalImageSize ?? resultImageSize),
+    [cropRatio, naturalImageSize, resultImageSize]
+  );
+  const selectedCropRatioLabel =
+    CROP_RATIO_OPTIONS.find((option) => option.value === cropRatio)?.label ?? "原图比例";
 
   React.useEffect(() => {
     const width = node.data?.imageNaturalWidth;
@@ -589,6 +617,19 @@ function ImageNodeCardImpl({
   }, [customGridOpen, gridMenuOpen]);
 
   React.useEffect(() => {
+    if (!cropRatioMenuOpen) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (cropMenuRef.current && !cropMenuRef.current.contains(event.target as Node)) {
+        setCropRatioMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [cropRatioMenuOpen]);
+
+  React.useEffect(() => {
     if (!activeGridSelection || !previewNodeRef.current) return;
 
     const handlePointerDown = (event: PointerEvent) => {
@@ -625,6 +666,24 @@ function ImageNodeCardImpl({
   }, [activeGridSelection, imageUrl, node.id, onSplitImageGrid, selectedGridCells]);
 
   React.useEffect(() => {
+    if (!isCropMode) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsCropMode(false);
+        setCropRatioMenuOpen(false);
+        setCropRect(null);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isCropMode]);
+
+  React.useEffect(() => {
+    if (!isCropMode) return;
+    setCropRect((current) => current ?? getInitialCropRect(resultImageSize, cropAspectRatio));
+  }, [cropAspectRatio, isCropMode, resultImageSize]);
+
+  React.useEffect(() => {
     if (!selected) {
       setOpenSelect(null);
       setGridMenuOpen(false);
@@ -633,6 +692,9 @@ function ImageNodeCardImpl({
       setActiveGridSelection(null);
       setSelectedGridCells([]);
       setHoveredGridCell(null);
+      setIsCropMode(false);
+      setCropRatioMenuOpen(false);
+      setCropRect(null);
     }
   }, [selected]);
 
@@ -857,6 +919,152 @@ function ImageNodeCardImpl({
     return `${row}-${col}`;
   };
 
+  const handleEnterCropMode = () => {
+    if (!imageUrl || !isImageLoaded || !onCropImage) return;
+    setActiveGridSelection(null);
+    setSelectedGridCells([]);
+    setHoveredGridCell(null);
+    setGridMenuOpen(false);
+    setCustomGridOpen(false);
+    setHoverCustomGrid(null);
+    setCropRatio("original");
+    setCropRect(
+      getInitialCropRect(
+        resultImageSize,
+        getCropAspectRatio("original", naturalImageSize ?? resultImageSize)
+      )
+    );
+    setIsCropMode(true);
+  };
+
+  const handleExitCropMode = () => {
+    if (isSavingCrop) return;
+    setIsCropMode(false);
+    setCropRatioMenuOpen(false);
+    setCropRect(null);
+  };
+
+  const handleSelectCropRatio = (nextRatio: CropRatioPreset) => {
+    setCropRatio(nextRatio);
+    setCropRatioMenuOpen(false);
+    setCropRect(
+      getInitialCropRect(
+        resultImageSize,
+        getCropAspectRatio(nextRatio, naturalImageSize ?? resultImageSize)
+      )
+    );
+  };
+
+  const handleConfirmCrop = async () => {
+    if (!cropRect || !imageUrl || !onCropImage || isSavingCrop) return;
+    const imageElement = imageElementRef.current;
+    if (!imageElement || !imageElement.complete || imageElement.naturalWidth <= 0) {
+      onNotice?.("图片还未加载完成，无法裁剪");
+      return;
+    }
+    try {
+      setIsSavingCrop(true);
+      let result: { dataUrl: string; crop: { sx: number; sy: number; sw: number; sh: number } };
+      try {
+        result = cropLoadedImageElement(imageElement, cropRect, resultImageSize, naturalImageSize);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "";
+        if (!message.includes("跨域")) throw error;
+        result = await cropImageRegionViaAssetProxy(
+          imageUrl,
+          cropRect,
+          resultImageSize,
+          naturalImageSize
+        );
+      }
+      await onCropImage(node.id, result.dataUrl, result.crop);
+      setIsCropMode(false);
+      setCropRatioMenuOpen(false);
+      setCropRect(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "图片裁剪失败";
+      onNotice?.(message);
+    } finally {
+      setIsSavingCrop(false);
+    }
+  };
+
+  const resizeCropRect = (
+    startRect: CropRect,
+    handle: string,
+    dx: number,
+    dy: number,
+    ratio: number
+  ) => {
+    if (handle === "move") {
+      return clampCropRect(
+        {
+          ...startRect,
+          x: startRect.x + dx,
+          y: startRect.y + dy,
+        },
+        resultImageSize
+      );
+    }
+
+    const east = handle.includes("e");
+    const west = handle.includes("w");
+    const south = handle.includes("s");
+    const north = handle.includes("n");
+    let nextWidth = startRect.width;
+    let nextHeight = startRect.height;
+
+    if ((east || west) && (north || south)) {
+      const horizontalWidth = Math.max(48, startRect.width + (east ? dx : -dx));
+      const verticalHeight = Math.max(48, startRect.height + (south ? dy : -dy));
+      if (Math.abs(dx) >= Math.abs(dy)) {
+        nextWidth = horizontalWidth;
+        nextHeight = nextWidth / ratio;
+      } else {
+        nextHeight = verticalHeight;
+        nextWidth = nextHeight * ratio;
+      }
+    } else if (east || west) {
+      nextWidth = Math.max(48, startRect.width + (east ? dx : -dx));
+      nextHeight = nextWidth / ratio;
+    } else {
+      nextHeight = Math.max(48, startRect.height + (south ? dy : -dy));
+      nextWidth = nextHeight * ratio;
+    }
+
+    let x = west ? startRect.x + startRect.width - nextWidth : startRect.x;
+    let y = north ? startRect.y + startRect.height - nextHeight : startRect.y;
+    if ((east || west) && !north && !south) y = startRect.y + (startRect.height - nextHeight) / 2;
+    if ((north || south) && !east && !west) x = startRect.x + (startRect.width - nextWidth) / 2;
+
+    return clampCropRect({ x, y, width: nextWidth, height: nextHeight }, resultImageSize);
+  };
+
+  const handleCropPointerDown = (handle: string, event: React.PointerEvent) => {
+    if (!cropRect || isSavingCrop) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const startRect = cropRect;
+    const ratio = cropAspectRatio;
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      moveEvent.preventDefault();
+      const dx = moveEvent.clientX - startX;
+      const dy = moveEvent.clientY - startY;
+      setCropRect(resizeCropRect(startRect, handle, dx, dy, ratio));
+    };
+
+    const handlePointerUp = () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+    };
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+  };
+
   const hasInputPorts = node.inputs.length > 0;
   const portTopStyle = getImageNodePortTopStyle({
     hasImageUrl: Boolean(imageUrl),
@@ -979,7 +1187,7 @@ function ImageNodeCardImpl({
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
           >
-            {shouldShowUploadButton ? uploadControl : null}
+            {shouldShowUploadButton && !isCropMode ? uploadControl : null}
           </div>
           <AnimatePresence>
             {selected && (
@@ -993,7 +1201,76 @@ function ImageNodeCardImpl({
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => e.stopPropagation()}
               >
-                {activeGridSelection ? (
+                {isCropMode ? (
+                  <>
+                    <Tooltip content="取消裁剪" position="top">
+                      <button
+                        type="button"
+                        onClick={handleExitCropMode}
+                        disabled={isSavingCrop}
+                        className="flex h-9 w-9 items-center justify-center rounded-[12px] text-slate-200 transition-colors hover:bg-white/[0.06] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        <X className="h-5 w-5" />
+                      </button>
+                    </Tooltip>
+                    <div className="mx-1 h-7 w-px bg-slate-500/22" />
+                    <div className="relative" ref={cropMenuRef}>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (isSavingCrop) return;
+                          setCropRatioMenuOpen((value) => !value);
+                        }}
+                        className="flex h-9 min-w-[124px] items-center justify-center gap-2 whitespace-nowrap rounded-[12px] bg-white/[0.08] px-3 text-[14px] font-semibold text-white transition-colors hover:bg-white/[0.12]"
+                      >
+                        <CropIcon className="h-[18px] w-[18px]" />
+                        <span>{selectedCropRatioLabel}</span>
+                        <ChevronDown
+                          className={`h-4 w-4 transition-transform ${cropRatioMenuOpen ? "rotate-180" : ""}`}
+                        />
+                      </button>
+                      <AnimatePresence>
+                        {cropRatioMenuOpen && (
+                          <motion.div
+                            initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                            transition={{ duration: 0.16, ease: "easeOut" }}
+                            className="absolute left-0 top-[calc(100%+12px)] z-50 w-[154px] rounded-[18px] border border-slate-300/14 bg-[#242424]/96 p-2 text-white shadow-[0_26px_62px_-26px_rgba(0,0,0,0.92),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-2xl"
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {CROP_RATIO_OPTIONS.map((option) => (
+                              <button
+                                key={option.value}
+                                type="button"
+                                onClick={() => handleSelectCropRatio(option.value)}
+                                className={`mb-1 flex h-10 w-full items-center gap-3 rounded-[12px] px-3 text-left text-[14px] font-semibold transition-colors last:mb-0 ${
+                                  cropRatio === option.value
+                                    ? "bg-white/[0.12] text-white"
+                                    : "text-slate-200/74 hover:bg-white/[0.08] hover:text-white"
+                                }`}
+                              >
+                                <CropIcon className="h-4 w-4 text-slate-200/76" />
+                                <span>{option.label}</span>
+                              </button>
+                            ))}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleConfirmCrop}
+                      disabled={isSavingCrop}
+                      className="flex h-10 min-w-[86px] items-center justify-center gap-2 rounded-[12px] bg-white px-4 text-[14px] font-semibold text-slate-950 shadow-[0_16px_34px_-24px_rgba(255,255,255,0.85)] transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:bg-white/70"
+                    >
+                      {isSavingCrop && <Loader2 className="h-4 w-4 animate-spin" />}
+                      <span>{isSavingCrop ? "保存中" : "确认"}</span>
+                    </button>
+                  </>
+                ) : activeGridSelection ? (
                   <>
                     <Tooltip content="退出宫格切分" position="top">
                       <button
@@ -1025,6 +1302,17 @@ function ImageNodeCardImpl({
                         <Download className="h-5 w-5" />
                       </button>
                     </Tooltip>
+                    {onCropImage && imageUrl && isImageLoaded && (
+                      <Tooltip content="裁剪图片" position="top">
+                        <button
+                          type="button"
+                          onClick={handleEnterCropMode}
+                          className="flex h-9 w-9 items-center justify-center rounded-[12px] text-slate-400 transition-colors hover:bg-white/[0.06] hover:text-slate-100"
+                        >
+                          <CropIcon className="h-5 w-5" />
+                        </button>
+                      </Tooltip>
+                    )}
                     <div className="relative" ref={gridMenuRef}>
                       <button
                         type="button"
@@ -1337,6 +1625,70 @@ function ImageNodeCardImpl({
                         </button>
                       );
                     })}
+                  </div>
+                )}
+                {selected && isCropMode && cropRect && (
+                  <div
+                    data-node-action="true"
+                    className="absolute inset-0 z-30"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div
+                      className="absolute cursor-move border-[3px] border-white shadow-[0_0_0_9999px_rgba(0,0,0,0.48),0_0_0_1px_rgba(15,23,42,0.62),0_14px_42px_-20px_rgba(0,0,0,0.9)]"
+                      style={{
+                        left: cropRect.x,
+                        top: cropRect.y,
+                        width: cropRect.width,
+                        height: cropRect.height,
+                      }}
+                      onPointerDown={(event) => handleCropPointerDown("move", event)}
+                    >
+                      <div className="pointer-events-none absolute left-1/3 top-0 h-full w-px bg-white/54" />
+                      <div className="pointer-events-none absolute left-2/3 top-0 h-full w-px bg-white/54" />
+                      <div className="pointer-events-none absolute left-0 top-1/3 h-px w-full bg-white/54" />
+                      <div className="pointer-events-none absolute left-0 top-2/3 h-px w-full bg-white/54" />
+                      {CROP_HANDLES.map((handle) => {
+                        const isTop = handle.includes("n");
+                        const isBottom = handle.includes("s");
+                        const isLeft = handle.includes("w");
+                        const isRight = handle.includes("e");
+                        const isVerticalSide = handle === "n" || handle === "s";
+                        const isHorizontalSide = handle === "e" || handle === "w";
+                        const cursor =
+                          handle === "n" || handle === "s"
+                            ? "ns-resize"
+                            : handle === "e" || handle === "w"
+                              ? "ew-resize"
+                              : handle === "nw" || handle === "se"
+                                ? "nwse-resize"
+                                : "nesw-resize";
+                        return (
+                          <button
+                            key={handle}
+                            type="button"
+                            aria-label={`裁剪控制点 ${handle}`}
+                            className="absolute z-10 rounded-[2px] bg-white shadow-[0_0_0_1px_rgba(15,23,42,0.45)]"
+                            style={{
+                              width: isVerticalSide ? 44 : 8,
+                              height: isHorizontalSide ? 44 : 8,
+                              left: isLeft ? -5 : isRight ? "calc(100% - 3px)" : "50%",
+                              top: isTop ? -5 : isBottom ? "calc(100% - 3px)" : "50%",
+                              transform:
+                                !isLeft && !isRight && !isTop && !isBottom
+                                  ? "translate(-50%, -50%)"
+                                  : !isLeft && !isRight
+                                    ? "translateX(-50%)"
+                                    : !isTop && !isBottom
+                                      ? "translateY(-50%)"
+                                      : undefined,
+                              cursor,
+                            }}
+                            onPointerDown={(event) => handleCropPointerDown(handle, event)}
+                          />
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
                 {isUploadingNodeAsset && (
