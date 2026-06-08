@@ -235,7 +235,9 @@ function TextNodeCardImpl({
   const inputPortRef = React.useRef<HTMLDivElement | null>(null);
   const outputPortRef = React.useRef<HTMLDivElement | null>(null);
   const modelMenuRef = React.useRef<HTMLDivElement | null>(null);
-  const [inlineEditing, setInlineEditing] = React.useState(false);
+  const [inlineEditing, setInlineEditing] = React.useState(
+    () => node.data?.forceInlineEditing === true
+  );
   const [portMagnet, setPortMagnet] = React.useState({
     input: { x: 0, y: 0 },
     output: { x: 0, y: 0 },
@@ -426,6 +428,20 @@ function TextNodeCardImpl({
       setInlineEditing(false);
     }
   }, [selected]);
+
+  React.useEffect(() => {
+    if (node.data?.forceComposerOpen !== true) return;
+    setForceComposerOpen(true);
+    _onUpdateData?.(node.id, { forceComposerOpen: false });
+    window.requestAnimationFrame(() => textareaRef.current?.focus());
+  }, [node.data?.forceComposerOpen, node.id, _onUpdateData]);
+
+  React.useEffect(() => {
+    if (node.data?.forceInlineEditing !== true) return;
+    setInlineEditing(true);
+    _onUpdateData?.(node.id, { forceInlineEditing: false });
+    window.requestAnimationFrame(() => inlineTextareaRef.current?.focus());
+  }, [node.data?.forceInlineEditing, node.id, _onUpdateData]);
 
   React.useEffect(() => {
     if (showInlineEditor) inlineTextareaRef.current?.focus();

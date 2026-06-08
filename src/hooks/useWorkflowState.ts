@@ -91,7 +91,7 @@ const TEXT_NODE_STARTER_FLOW_CONFIG: Record<
   music: {
     nodeType: "audio_node",
     offsetX: 560,
-    offsetY: 320,
+    offsetY: 0,
     systemPrompt:
       "你是音乐与音效提示词专家。请把用户的想法改写成适合音频生成的中文提示词，包含情绪、节奏、乐器、声场、氛围、时长和使用场景。",
   },
@@ -184,6 +184,11 @@ export function createTextNodeStarterFlowSnapshot({
                 node.properties.system_prompt.trim()
                   ? node.properties.system_prompt
                   : config.systemPrompt,
+              textMode: "plain",
+            },
+            data: {
+              ...(node.data || {}),
+              forceInlineEditing: true,
             },
           }
         : node

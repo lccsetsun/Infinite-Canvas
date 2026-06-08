@@ -101,4 +101,22 @@ describe("getTextNodeInteractionState", () => {
     expect(state.showStarterGuide).toBe(false);
     expect(state.showSkeleton).toBe(true);
   });
+
+  it("treats a forced composer as the active editing state instead of showing a skeleton", () => {
+    const state = getTextNodeInteractionState({
+      errorText: "",
+      forceComposerOpen: true,
+      hasConnectedLinks: true,
+      inlineEditing: false,
+      isHovered: false,
+      isMultimodalMode: false,
+      responseText: "",
+      selected: true,
+      textMode: undefined,
+    });
+
+    expect(state.showPromptComposer).toBe(true);
+    expect(state.showSkeleton).toBe(false);
+    expect(state.showStarterGuide).toBe(false);
+  });
 });

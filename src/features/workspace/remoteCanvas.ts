@@ -59,6 +59,7 @@ type RemoteCanvasListEnvelope = {
 };
 
 type RemoteCanvasDetailResponse = Record<string, unknown>;
+const remoteProjectDetailRequests = new Map<string, Promise<RemoteCanvasProject>>();
 
 function toTimestamp(value: unknown) {
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -166,7 +167,7 @@ export async function listRemoteProjects({
   };
 }
 
-export async function getRemoteProjectDetail(projectId: string): Promise<RemoteCanvasProject> {
+async function fetchRemoteProjectDetail(projectId: string): Promise<RemoteCanvasProject> {
   const response = await devApiFetch(`/system/canvas/${projectId}`, {
     method: "GET",
   });
@@ -193,6 +194,18 @@ export async function getRemoteProjectDetail(projectId: string): Promise<RemoteC
     nodeCount: workflow.nodes.length,
     workflow,
   };
+}
+
+export function getRemoteProjectDetail(projectId: string): Promise<RemoteCanvasProject> {
+  const requestKey = projectId.trim();
+  const pendingRequest = remoteProjectDetailRequests.get(requestKey);
+  if (pendingRequest) return pendingRequest;
+
+  const request = fetchRemoteProjectDetail(requestKey).finally(() => {
+    remoteProjectDetailRequests.delete(requestKey);
+  });
+  remoteProjectDetailRequests.set(requestKey, request);
+  return request;
 }
 
 function buildProjectPayload(project: {

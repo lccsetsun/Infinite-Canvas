@@ -3,13 +3,10 @@ import { motion } from "motion/react";
 import { ChevronDown, FolderPlus, Home, Layers3, Loader2, Trash2 } from "lucide-react";
 import HeaderRightPanel from "./HeaderRightPanel";
 import aiCanvasMark from "../../assets/brand/ai-canvas-mark.svg";
-import {
-  createRemoteProject,
-  deleteRemoteProject,
-  getRemoteProjectDetail,
-} from "../../features/workspace/remoteCanvas";
+import { createRemoteProject, deleteRemoteProject } from "../../features/workspace/remoteCanvas";
 
 interface CanvasHeaderProps {
+  projectName?: string;
   username?: string;
   onOpenApiSettings?: () => void;
   onLogout?: () => void;
@@ -25,6 +22,10 @@ function buildCanvasUrl(projectId?: string) {
 
 function BrandGlyph() {
   return <img src={aiCanvasMark} alt="幻影AI" className="h-5 w-5 shrink-0 object-contain opacity-95" />;
+}
+
+export function getCanvasHeaderProjectName(projectName?: string) {
+  return projectName?.trim() || "未命名";
 }
 
 function MenuItem({
@@ -68,34 +69,20 @@ function MenuItem({
 }
 
 export default function CanvasHeader({
+  projectName: loadedProjectName,
   username = "lccsetsun",
   onOpenApiSettings,
   onLogout,
 }: CanvasHeaderProps) {
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [pendingAction, setPendingAction] = React.useState<ProjectMenuAction>(null);
-  const [projectName, setProjectName] = React.useState("未命名");
   const menuRef = React.useRef<HTMLDivElement | null>(null);
+  const projectName = getCanvasHeaderProjectName(loadedProjectName);
 
   const projectId = React.useMemo(() => {
     if (typeof window === "undefined") return "";
     return new URLSearchParams(window.location.search).get("projectId")?.trim() || "";
   }, []);
-
-  React.useEffect(() => {
-    if (!projectId) {
-      setProjectName("未命名");
-      return;
-    }
-
-    void getRemoteProjectDetail(projectId)
-      .then((project) => {
-        setProjectName(project.name.trim() || "未命名");
-      })
-      .catch(() => {
-        setProjectName("未命名");
-      });
-  }, [projectId]);
 
   React.useEffect(() => {
     if (!menuOpen) return;

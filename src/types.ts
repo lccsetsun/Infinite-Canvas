@@ -70,6 +70,8 @@ export interface GraphNode {
     starterTextNodeId?: string;
     starterGapX?: number;
     textStarterDismissed?: boolean;
+    forceComposerOpen?: boolean;
+    forceInlineEditing?: boolean;
     imageNaturalWidth?: number;
     imageNaturalHeight?: number;
     videoDisplayWidth?: number;

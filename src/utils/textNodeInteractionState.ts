@@ -37,9 +37,11 @@ export function getTextNodeInteractionState({
   const isPlainMode = textMode === "plain";
   const hasResponse = responseText.trim().length > 0;
   const hasError = errorText.trim().length > 0;
+  const isComposerEditing = !isPlainMode && forceComposerOpen;
   const showInlineEditor = isPlainMode && inlineEditing;
   const showStarterGuide =
     !isPlainMode &&
+    !isComposerEditing &&
     !isMultimodalMode &&
     !hasReferences &&
     !hasConnectedLinks &&
@@ -51,7 +53,7 @@ export function getTextNodeInteractionState({
     isPlainMode,
     showInlineEditor,
     showPromptComposer: !isPlainMode && (isHovered || selected || forceComposerOpen),
-    showSkeleton: !isPlainMode && !showStarterGuide && !hasResponse && !hasError,
+    showSkeleton: !isPlainMode && !isComposerEditing && !showStarterGuide && !hasResponse && !hasError,
     showStarterGuide,
   };
 }

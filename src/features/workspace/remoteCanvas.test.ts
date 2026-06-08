@@ -101,6 +101,36 @@ describe("remote canvas api", () => {
     });
   });
 
+  it("deduplicates concurrent remote project detail requests for the same project", async () => {
+    mockedDevApiFetch.mockResolvedValueOnce(
+      makeResponse({
+        code: 200,
+        msg: "success",
+        data: {
+          id: "canvas-1",
+          canvasName: "Project 1",
+          data: {
+            nodes: [],
+            links: [],
+            nodeOutputs: [],
+            groups: [],
+          },
+        },
+      })
+    );
+
+    const [first, second] = await Promise.all([
+      getRemoteProjectDetail("canvas-1"),
+      getRemoteProjectDetail("canvas-1"),
+    ]);
+
+    expect(first).toEqual(second);
+    expect(mockedDevApiFetch).toHaveBeenCalledTimes(1);
+    expect(mockedDevApiFetch).toHaveBeenCalledWith("/system/canvas/canvas-1", {
+      method: "GET",
+    });
+  });
+
   it("loads remote project detail from metadata when present", async () => {
     mockedDevApiFetch.mockResolvedValueOnce(
       makeResponse({

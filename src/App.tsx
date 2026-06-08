@@ -1037,6 +1037,7 @@ export default function App({ onLoggedOut }: AppProps) {
         onContextMenu={handleCanvasContextMenu}
       >
         <CanvasHeader
+          projectName={remoteProject?.name}
           onOpenApiSettings={() => {
             setApiSettingsOpen(true);
           }}

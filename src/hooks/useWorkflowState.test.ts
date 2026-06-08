@@ -178,10 +178,13 @@ describe("createTextNodeStarterFlowSnapshot", () => {
 
     expect(result?.nodes).toHaveLength(2);
     expect(result?.createdNodeId).toBe("node-new");
-    expect(result?.nodes.find((node) => node.id === "text-1")?.properties.system_prompt).toContain(
-      "视频生成"
-    );
-    expect(result?.nodes.find((node) => node.id === "text-1")?.properties.text).toBeUndefined();
+    const updatedTextNode = result?.nodes.find((node) => node.id === "text-1") as
+      | GraphNode
+      | undefined;
+    expect(updatedTextNode?.properties.system_prompt).toContain("视频生成");
+    expect(updatedTextNode?.properties.textMode).toBe("plain");
+    expect(updatedTextNode?.data?.forceInlineEditing).toBe(true);
+    expect(updatedTextNode?.properties.text).toBeUndefined();
     expect(result?.nodes.find((node) => node.id === "node-new")?.type).toBe("video_node");
     expect(result?.links).toEqual([
       {
@@ -208,8 +211,14 @@ describe("createTextNodeStarterFlowSnapshot", () => {
       makeId: (prefix) => `${prefix}-new`,
     });
 
-    expect(result?.nodes.find((node) => node.id === "text-1")?.properties.text).toBe("已有提示词");
+    const updatedTextNode = result?.nodes.find((node) => node.id === "text-1") as
+      | GraphNode
+      | undefined;
+    expect(updatedTextNode?.properties.text).toBe("已有提示词");
+    expect(updatedTextNode?.properties.textMode).toBe("plain");
+    expect(updatedTextNode?.data?.forceInlineEditing).toBe(true);
     expect(result?.nodes.find((node) => node.id === "node-new")?.type).toBe("audio_node");
+    expect(result?.nodes.find((node) => node.id === "node-new")?.y).toBe(textNode.y);
     expect(result?.links[0]).toMatchObject({
       fromNodeId: "text-1",
       toNodeId: "node-new",

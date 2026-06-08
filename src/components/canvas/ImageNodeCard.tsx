@@ -88,6 +88,7 @@ const GRID_SPLIT_PRESETS = [
 ] as const;
 const CUSTOM_GRID_MAX_ROWS = 5;
 const CUSTOM_GRID_MAX_COLS = 5;
+const EMPTY_IMAGE_NODE_MAIN_CARD_CENTER_Y = 145;
 const MINIMAX_RATIO_SIZE: Record<string, string> = {
   "16:9": "1280×720",
   "9:16": "720×1280",
@@ -96,6 +97,50 @@ const MINIMAX_RATIO_SIZE: Record<string, string> = {
   "1:1": "1024×1024",
   "21:9": "1344×576",
 };
+
+export function getImagePreviewFrameClassName({
+  isImageLoaded,
+  isSelected,
+  isStarterPlaceholder,
+}: {
+  isImageLoaded: boolean;
+  isSelected: boolean;
+  isStarterPlaceholder: boolean;
+}) {
+  const surfaceClassName = isStarterPlaceholder
+    ? "bg-transparent"
+    : isImageLoaded
+      ? "bg-white"
+      : "border border-slate-500/14 bg-[#111827] shadow-[inset_0_1px_0_rgba(255,255,255,0.045)]";
+  const selectedClassName = isSelected
+    ? "shadow-[0_0_0_1.5px_rgba(192,132,252,0.58),0_0_0_6px_rgba(139,92,246,0.14),0_0_38px_rgba(109,40,217,0.18)]"
+    : "";
+
+  return `mx-auto overflow-hidden rounded-[8px] ${surfaceClassName} ${selectedClassName}`;
+}
+
+export function shouldShowImageUploadButton({
+  hasImageUrl,
+  isImageLoaded,
+  isImageLoadFailed,
+}: {
+  hasImageUrl: boolean;
+  isImageLoaded: boolean;
+  isImageLoadFailed: boolean;
+}) {
+  return !hasImageUrl || isImageLoaded || isImageLoadFailed;
+}
+
+export function getImageNodePortTopStyle({
+  hasImageUrl,
+  imagePortCenterY,
+}: {
+  hasImageUrl: boolean;
+  imagePortCenterY?: number;
+}) {
+  if (!hasImageUrl) return EMPTY_IMAGE_NODE_MAIN_CARD_CENTER_Y;
+  return imagePortCenterY ?? "50%";
+}
 
 function parseAspectRatio(ratio: string): number {
   const [w, h] = ratio.split(":").map((value) => Number.parseFloat(value));
@@ -248,6 +293,10 @@ function ImageNodeCardImpl({
   const uploadInputRef = React.useRef<HTMLInputElement | null>(null);
   const [isUploadingAsset, setIsUploadingAsset] = React.useState(false);
   const isUploadingNodeAsset = node.data?.uploadingAsset === true || isUploadingAsset;
+  const [imageLoadState, setImageLoadState] = React.useState<{
+    status: "idle" | "loaded" | "error";
+    url: string;
+  }>({ status: "idle", url: "" });
 
   const upstreamPrompt = findResolvedStringInput(resolvedInputs, [
     "prompt",
@@ -268,6 +317,12 @@ function ImageNodeCardImpl({
       ? [fallbackImageUrl]
       : [];
   const imageUrl = resolvedImageUrls[activeImageIndex] || resolvedImageUrls[0] || "";
+  const isImageLoaded = Boolean(
+    imageUrl && imageLoadState.url === imageUrl && imageLoadState.status === "loaded"
+  );
+  const isImageLoadFailed = Boolean(
+    imageUrl && imageLoadState.url === imageUrl && imageLoadState.status === "error"
+  );
   const aspectRatio = (node.properties.aspect_ratio as string) || "16:9";
   const quantity = (node.properties.quantity as string) || "1张";
   const isStarterPlaceholder = node.data?.isUploadPlaceholder === true;
@@ -305,7 +360,11 @@ function ImageNodeCardImpl({
     naturalImageSize && naturalImageSize.width > 0 && naturalImageSize.height > 0
       ? `${naturalImageSize.width} × ${naturalImageSize.height}`
       : `${resultImageSize.width} × ${resultImageSize.height}`;
-  const shouldShowUploadButton = true;
+  const shouldShowUploadButton = shouldShowImageUploadButton({
+    hasImageUrl: Boolean(imageUrl),
+    isImageLoaded,
+    isImageLoadFailed,
+  });
 
   React.useEffect(() => {
     const width = node.data?.imageNaturalWidth;
@@ -314,6 +373,10 @@ function ImageNodeCardImpl({
       typeof width === "number" && typeof height === "number" ? { width, height } : null
     );
   }, [node.data?.imageNaturalHeight, node.data?.imageNaturalWidth, imageUrl]);
+
+  React.useEffect(() => {
+    setImageLoadState({ status: "idle", url: imageUrl });
+  }, [imageUrl]);
 
   React.useEffect(() => {
     if (!imageUrl || !previewNodeRef.current) return;
@@ -667,9 +730,10 @@ function ImageNodeCardImpl({
   };
 
   const hasInputPorts = node.inputs.length > 0;
-  const portTopStyle = imageUrl
-    ? node.data?.imagePortCenterY ?? "50%"
-    : "50%";
+  const portTopStyle = getImageNodePortTopStyle({
+    hasImageUrl: Boolean(imageUrl),
+    imagePortCenterY: node.data?.imagePortCenterY,
+  });
   const portHandles = (
     <AnimatePresence>
       {shouldShowInlinePortHandles({ isHovered, isLinkingOnCanvas, selected }) && (
@@ -1044,17 +1108,39 @@ function ImageNodeCardImpl({
           <div className="flex w-full flex-col items-center">
             <div
               ref={mediaFrameRef}
-              className={`mx-auto overflow-hidden rounded-[8px] ${isStarterPlaceholder ? "bg-transparent" : "bg-white"} ${selected ? "shadow-[0_0_0_1.5px_rgba(192,132,252,0.58),0_0_0_6px_rgba(139,92,246,0.14),0_0_38px_rgba(109,40,217,0.18)]" : ""}`}
+              className={getImagePreviewFrameClassName({
+                isImageLoaded,
+                isSelected: selected,
+                isStarterPlaceholder,
+              })}
               style={{ width: resultImageSize.width, height: resultImageSize.height }}
             >
               <div className="relative h-full w-full">
+                {!isStarterPlaceholder && !isImageLoaded && (
+                  <div
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center overflow-hidden bg-[linear-gradient(135deg,rgba(15,23,42,0.96),rgba(17,24,39,0.92)_48%,rgba(30,41,59,0.96))]"
+                  >
+                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_28%_18%,rgba(129,140,248,0.16),transparent_32%),radial-gradient(circle_at_74%_72%,rgba(34,211,238,0.08),transparent_38%)]" />
+                    <div className="animate-shimmer absolute inset-y-0 left-[-45%] w-1/2 bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.08),transparent)]" />
+                    <div className="relative flex items-center gap-2 rounded-full border border-cyan-100/12 bg-[#0b1220]/72 px-3 py-1.5 text-[12px] font-semibold text-slate-200/72 shadow-[0_16px_42px_-24px_rgba(0,0,0,0.9),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-md">
+                      {isImageLoadFailed ? (
+                        <ImageIcon className="h-3.5 w-3.5 text-rose-200/72" />
+                      ) : (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin text-cyan-200/72" />
+                      )}
+                      <span>{isImageLoadFailed ? "图片加载失败" : "图片加载中"}</span>
+                    </div>
+                  </div>
+                )}
                 <img
                   src={imageUrl}
                   alt="生成图片"
-                  className={`block h-full w-full ${isStarterPlaceholder ? "object-cover" : "object-contain"}`}
+                  className={`block h-full w-full transition-opacity duration-200 ${isStarterPlaceholder || isImageLoaded ? "opacity-100" : "opacity-0"} ${isStarterPlaceholder ? "object-cover" : "object-contain"}`}
                   draggable={false}
                   onLoad={(e) => {
                     const img = e.currentTarget;
+                    setImageLoadState({ status: "loaded", url: imageUrl });
                     const naturalSize = {
                       width: img.naturalWidth || resultImageSize.width,
                       height: img.naturalHeight || resultImageSize.height,
@@ -1080,6 +1166,7 @@ function ImageNodeCardImpl({
                       });
                     }
                   }}
+                  onError={() => setImageLoadState({ status: "error", url: imageUrl })}
                 />
                 {selected && activeGridSelection && onSplitImageGrid && (
                   <div
