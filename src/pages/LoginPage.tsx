@@ -193,8 +193,8 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
         <div className="mb-7 flex justify-center">
           <img
             src={aiCanvasLockup}
-            alt="AI CANVAS"
-            className="pointer-events-none h-auto w-[min(100%,28rem)] drop-shadow-[0_12px_28px_rgba(8,15,35,0.26)]"
+            alt="幻影AI"
+            className="pointer-events-none h-auto w-[min(66%,17.5rem)] drop-shadow-[0_12px_28px_rgba(8,15,35,0.26)]"
           />
         </div>
 

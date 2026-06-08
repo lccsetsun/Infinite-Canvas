@@ -705,7 +705,7 @@ export default function ProjectGalleryPage({
     <div className="project-scrollbar h-screen overflow-x-hidden overflow-y-auto bg-[#0d0f13] text-slate-100">
       <div className="relative z-10 min-h-full">
         <AppHeader
-          workflowName="AI CANVAS"
+          workflowName="幻影AI"
           workflowCount={0}
           onRun={() => {}}
           onLogout={onLogout}

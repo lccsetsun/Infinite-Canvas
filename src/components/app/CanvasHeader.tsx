@@ -24,7 +24,7 @@ function buildCanvasUrl(projectId?: string) {
 }
 
 function BrandGlyph() {
-  return <img src={aiCanvasMark} alt="AI Canvas" className="h-5 w-5 shrink-0 object-contain opacity-95" />;
+  return <img src={aiCanvasMark} alt="幻影AI" className="h-5 w-5 shrink-0 object-contain opacity-95" />;
 }
 
 function MenuItem({
