@@ -24,6 +24,7 @@ import { Tooltip } from "../common/Tooltip";
 import { downloadMediaAsset, extensionFromAssetUrl } from "../../utils/mediaAssets";
 import { formatGridCellLabel } from "../../utils/imageGridSplit";
 import { uploadFileToOss } from "../../features/resource/ossApi";
+import { ReferencePreviewCard } from "./ReferencePreviewCard";
 
 interface ImageNodeCardProps {
   node: GraphNode;
@@ -89,6 +90,21 @@ const GRID_SPLIT_PRESETS = [
 const CUSTOM_GRID_MAX_ROWS = 5;
 const CUSTOM_GRID_MAX_COLS = 5;
 const EMPTY_IMAGE_NODE_MAIN_CARD_CENTER_Y = 145;
+const IMAGE_NODE_REFERENCE_IGNORED_KEYS = new Set([
+  "negative_prompt",
+  "aspect_ratio",
+  "quantity",
+  "n",
+  "prompt_optimizer",
+  "model",
+]);
+const IMAGE_NODE_TEXT_INPUT_KEYS = new Set([
+  "prompt",
+  "text",
+  "原始提示词",
+  "用户提示词",
+  "user_prompt",
+]);
 const MINIMAX_RATIO_SIZE: Record<string, string> = {
   "16:9": "1280×720",
   "9:16": "720×1280",
@@ -123,11 +139,14 @@ export function shouldShowImageUploadButton({
   hasImageUrl,
   isImageLoaded,
   isImageLoadFailed,
+  isUploadingNodeAsset = false,
 }: {
   hasImageUrl: boolean;
   isImageLoaded: boolean;
   isImageLoadFailed: boolean;
+  isUploadingNodeAsset?: boolean;
 }) {
+  if (isUploadingNodeAsset) return false;
   return !hasImageUrl || isImageLoaded || isImageLoadFailed;
 }
 
@@ -140,6 +159,95 @@ export function getImageNodePortTopStyle({
 }) {
   if (!hasImageUrl) return EMPTY_IMAGE_NODE_MAIN_CARD_CENTER_Y;
   return imagePortCenterY ?? "50%";
+}
+
+export function getSettledImageLoadStatus({
+  complete,
+  naturalWidth,
+}: {
+  complete: boolean;
+  naturalWidth: number;
+}): "idle" | "loaded" | "error" {
+  if (!complete) return "idle";
+  return naturalWidth > 0 ? "loaded" : "error";
+}
+
+export type ImageNodeInputReferenceKind = "text" | "image" | "audio" | "video";
+
+export interface ImageNodeInputReference {
+  key: string;
+  kind: ImageNodeInputReferenceKind;
+  label: string;
+  title: string;
+  value: string;
+}
+
+function stringifyInputReferenceValue(value: unknown): string {
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
+    return String(value);
+  }
+  return "";
+}
+
+function inferImageNodeInputReferenceKind(
+  key: string,
+  value: string
+): ImageNodeInputReferenceKind | null {
+  const normalizedKey = key.toLowerCase();
+  const normalizedValue = value.toLowerCase();
+  if (
+    normalizedKey.includes("image") ||
+    normalizedValue.startsWith("data:image/") ||
+    /\.(png|jpe?g|webp|gif|bmp|svg)(\?.*)?$/.test(normalizedValue)
+  ) {
+    return "image";
+  }
+  if (
+    normalizedKey.includes("audio") ||
+    /\.(mp3|wav|m4a|aac|flac|ogg)(\?.*)?$/.test(normalizedValue)
+  ) {
+    return "audio";
+  }
+  if (
+    normalizedKey.includes("video") ||
+    /\.(mp4|mov|webm|m4v|avi)(\?.*)?$/.test(normalizedValue)
+  ) {
+    return "video";
+  }
+  if (IMAGE_NODE_TEXT_INPUT_KEYS.has(key) || normalizedKey.includes("prompt")) return "text";
+  return null;
+}
+
+function getInputReferenceLabel(kind: ImageNodeInputReferenceKind) {
+  if (kind === "image") return "图片";
+  if (kind === "audio") return "音频";
+  if (kind === "video") return "视频";
+  return "文本";
+}
+
+export function getImageNodeInputReferences(
+  resolvedInputs: Record<string, unknown> | undefined
+): ImageNodeInputReference[] {
+  if (!resolvedInputs) return [];
+  return Object.entries(resolvedInputs).reduce<ImageNodeInputReference[]>(
+    (references, [key, rawValue]) => {
+      if (IMAGE_NODE_REFERENCE_IGNORED_KEYS.has(key)) return references;
+      const value = stringifyInputReferenceValue(rawValue);
+      if (!value) return references;
+      const kind = inferImageNodeInputReferenceKind(key, value);
+      if (!kind) return references;
+      references.push({
+        key,
+        kind,
+        label: getInputReferenceLabel(kind),
+        title: getInputReferenceLabel(kind),
+        value,
+      });
+      return references;
+    },
+    []
+  );
 }
 
 function parseAspectRatio(ratio: string): number {
@@ -290,6 +398,7 @@ function ImageNodeCardImpl({
   });
   const previewNodeRef = React.useRef<HTMLDivElement | null>(null);
   const mediaFrameRef = React.useRef<HTMLDivElement | null>(null);
+  const imageElementRef = React.useRef<HTMLImageElement | null>(null);
   const uploadInputRef = React.useRef<HTMLInputElement | null>(null);
   const [isUploadingAsset, setIsUploadingAsset] = React.useState(false);
   const isUploadingNodeAsset = node.data?.uploadingAsset === true || isUploadingAsset;
@@ -304,6 +413,11 @@ function ImageNodeCardImpl({
     "原始提示词",
     "用户提示词",
   ]);
+  const inputReferences = React.useMemo(
+    () => getImageNodeInputReferences(resolvedInputs),
+    [resolvedInputs]
+  );
+  const hasNonTextInputReferences = inputReferences.some((reference) => reference.kind !== "text");
   const promptText = upstreamPrompt?.value || (node.properties.text as string) || "";
   const imageUrls =
     Array.isArray(node.data?.imageUrls) && node.data?.imageUrls.length
@@ -364,6 +478,7 @@ function ImageNodeCardImpl({
     hasImageUrl: Boolean(imageUrl),
     isImageLoaded,
     isImageLoadFailed,
+    isUploadingNodeAsset,
   });
 
   React.useEffect(() => {
@@ -377,6 +492,18 @@ function ImageNodeCardImpl({
   React.useEffect(() => {
     setImageLoadState({ status: "idle", url: imageUrl });
   }, [imageUrl]);
+
+  React.useEffect(() => {
+    if (!imageUrl || isStarterPlaceholder) return;
+    const imageElement = imageElementRef.current;
+    if (!imageElement) return;
+    const settledStatus = getSettledImageLoadStatus({
+      complete: imageElement.complete,
+      naturalWidth: imageElement.naturalWidth,
+    });
+    if (settledStatus === "idle") return;
+    setImageLoadState({ status: settledStatus, url: imageUrl });
+  }, [imageUrl, isStarterPlaceholder]);
 
   React.useEffect(() => {
     if (!imageUrl || !previewNodeRef.current) return;
@@ -1134,6 +1261,7 @@ function ImageNodeCardImpl({
                   </div>
                 )}
                 <img
+                  ref={imageElementRef}
                   src={imageUrl}
                   alt="生成图片"
                   className={`block h-full w-full transition-opacity duration-200 ${isStarterPlaceholder || isImageLoaded ? "opacity-100" : "opacity-0"} ${isStarterPlaceholder ? "object-cover" : "object-contain"}`}
@@ -1382,6 +1510,25 @@ function ImageNodeCardImpl({
             className="relative node-card left-1/2 mt-5 w-[620px] -translate-x-1/2 rounded-[18px] border border-[#2b3142]/90 bg-[#121723]/88 px-4 pb-3 pt-3 shadow-[0_28px_70px_-26px_rgba(0,0,0,0.92),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl"
           >
             <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-slate-100/22 to-transparent" />
+            {inputReferences.length > 0 && (
+              <div className="mb-3 rounded-2xl border border-white/6 bg-[#0d1117]/46 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+                <div className="mb-2 flex items-center justify-between">
+                  <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-violet-200/54">
+                    References
+                  </div>
+                  <div className="rounded-full border border-white/8 bg-white/[0.04] px-2 py-0.5 text-[11px] font-medium text-slate-200/68">
+                    {inputReferences.length}
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {inputReferences.map((reference, index) => (
+                    <React.Fragment key={`${reference.key}-${reference.value}-${index}`}>
+                      <ReferencePreviewCard reference={reference} index={index} />
+                    </React.Fragment>
+                  ))}
+                </div>
+              </div>
+            )}
             <textarea
               value={upstreamPrompt ? "" : promptText}
               onChange={(e) => onUpdateProperty?.(node.id, "text", e.target.value)}
@@ -1389,7 +1536,9 @@ function ImageNodeCardImpl({
               placeholder={
                 upstreamPrompt
                   ? `已由上游节点 (${upstreamPrompt.key}) 提供提示词`
-                  : "描述你想要生成的画面内容"
+                  : hasNonTextInputReferences
+                    ? "描述你想基于这些输入生成的画面内容"
+                    : "描述你想要生成的画面内容"
               }
               className="h-[92px] w-full resize-none bg-transparent px-1 text-[15px] leading-7 text-slate-100/88 outline-none placeholder:text-slate-400/42 disabled:cursor-not-allowed disabled:text-slate-400/45 custom-scrollbar"
             />
@@ -1553,7 +1702,10 @@ function ImageNodeCardImpl({
 
 const ImageNodeCard = React.memo(
   ImageNodeCardImpl,
-  (prev, next) => prev.node === next.node && prev.selected === next.selected
+  (prev, next) =>
+    prev.node === next.node &&
+    prev.selected === next.selected &&
+    prev.resolvedInputs === next.resolvedInputs
 );
 
 export default ImageNodeCard;

@@ -18,6 +18,7 @@ import { shouldShowInlinePortHandles } from "../../utils/portHandleVisibility";
 import { Tooltip } from "../common/Tooltip";
 import { downloadMediaAsset, extensionFromAssetUrl } from "../../utils/mediaAssets";
 import { uploadFileToOss } from "../../features/resource/ossApi";
+import { ReferencePreviewCard } from "./ReferencePreviewCard";
 
 interface AudioNodeCardProps {
   node: GraphNode;
@@ -69,6 +70,25 @@ const EMOTION_OPTIONS = [
   { value: "fearful", label: "紧张" },
 ];
 const SPEED_OPTIONS = [0.8, 1, 1.2, 1.5];
+const AUDIO_NODE_REFERENCE_IGNORED_KEYS = new Set([
+  "时长",
+  "duration",
+  "speed",
+  "voice_id",
+  "emotion",
+  "model",
+]);
+const AUDIO_NODE_TEXT_INPUT_KEYS = new Set(["提示词", "prompt", "text", "用户提示词"]);
+
+export type AudioNodeInputReferenceKind = "text" | "image" | "audio";
+
+export interface AudioNodeInputReference {
+  key: string;
+  kind: AudioNodeInputReferenceKind;
+  label: string;
+  title: string;
+  value: string;
+}
 
 function formatDuration(value: unknown) {
   const seconds = typeof value === "number" && Number.isFinite(value) ? value : 0;
@@ -78,6 +98,68 @@ function formatDuration(value: unknown) {
     .toString()
     .padStart(2, "0");
   return `${minutes}:${remain}`;
+}
+
+function stringifyAudioInputReferenceValue(value: unknown): string {
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
+    return String(value);
+  }
+  return "";
+}
+
+function inferAudioNodeInputReferenceKind(
+  key: string,
+  value: string
+): AudioNodeInputReferenceKind | null {
+  const normalizedKey = key.toLowerCase();
+  const normalizedValue = value.toLowerCase();
+  if (
+    normalizedKey.includes("image") ||
+    normalizedValue.startsWith("data:image/") ||
+    /\.(png|jpe?g|webp|gif|bmp|svg)(\?.*)?$/.test(normalizedValue)
+  ) {
+    return "image";
+  }
+  if (
+    normalizedKey.includes("audio") ||
+    /\.(mp3|wav|m4a|aac|flac|ogg)(\?.*)?$/.test(normalizedValue)
+  ) {
+    return "audio";
+  }
+  if (AUDIO_NODE_TEXT_INPUT_KEYS.has(key) || normalizedKey.includes("prompt")) return "text";
+  return null;
+}
+
+function getAudioInputReferenceLabel(kind: AudioNodeInputReferenceKind) {
+  if (kind === "image") return "图片";
+  if (kind === "audio") return "音频";
+  return "文本";
+}
+
+export function getAudioNodeInputReferences(
+  resolvedInputs: Record<string, unknown> | undefined
+): AudioNodeInputReference[] {
+  if (!resolvedInputs) return [];
+  return Object.entries(resolvedInputs).reduce<AudioNodeInputReference[]>(
+    (references, [key, rawValue]) => {
+      if (AUDIO_NODE_REFERENCE_IGNORED_KEYS.has(key)) return references;
+      const value = stringifyAudioInputReferenceValue(rawValue);
+      if (!value) return references;
+      const kind = inferAudioNodeInputReferenceKind(key, value);
+      if (!kind) return references;
+      const label = getAudioInputReferenceLabel(kind);
+      references.push({
+        key,
+        kind,
+        label,
+        title: label,
+        value,
+      });
+      return references;
+    },
+    []
+  );
 }
 
 type AudioOptionMenu = "voice" | "emotion" | "speed" | null;
@@ -117,6 +199,11 @@ function AudioNodeCardImpl({
     "提示词",
     "用户提示词",
   ]);
+  const inputReferences = React.useMemo(
+    () => getAudioNodeInputReferences(resolvedInputs),
+    [resolvedInputs]
+  );
+  const hasNonTextInputReferences = inputReferences.some((reference) => reference.kind !== "text");
 
   const promptText = upstreamPrompt?.value || (node.properties.text as string) || "";
   const audioUrl = (node.data?.audioUrl as string) || (node.properties.audioUrl as string) || "";
@@ -540,6 +627,25 @@ function AudioNodeCardImpl({
             className="relative node-card left-1/2 mt-5 w-[620px] -translate-x-1/2 rounded-[18px] border border-[#2b3142]/90 bg-[#121723]/88 px-4 pb-3 pt-3 shadow-[0_28px_70px_-26px_rgba(0,0,0,0.92),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl"
           >
             <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-slate-100/22 to-transparent" />
+            {inputReferences.length > 0 && (
+              <div className="mb-3 rounded-2xl border border-white/6 bg-[#0d1117]/46 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+                <div className="mb-2 flex items-center justify-between">
+                  <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-violet-200/54">
+                    References
+                  </div>
+                  <div className="rounded-full border border-white/8 bg-white/[0.04] px-2 py-0.5 text-[11px] font-medium text-slate-200/68">
+                    {inputReferences.length}
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {inputReferences.map((reference, index) => (
+                    <React.Fragment key={`${reference.key}-${reference.value}-${index}`}>
+                      <ReferencePreviewCard reference={reference} index={index} />
+                    </React.Fragment>
+                  ))}
+                </div>
+              </div>
+            )}
             <textarea
               value={upstreamPrompt ? "" : promptText}
               onChange={(e) => onUpdateProperty?.(node.id, "text", e.target.value)}
@@ -547,7 +653,9 @@ function AudioNodeCardImpl({
               placeholder={
                 upstreamPrompt
                   ? `已由上游节点 (${upstreamPrompt.key}) 提供文本`
-                  : "输入要合成的语音文本"
+                  : hasNonTextInputReferences
+                    ? "描述你想基于这些输入生成的音乐、语音或音效"
+                    : "输入要合成的语音文本"
               }
               className="h-[92px] w-full resize-none bg-transparent px-1 text-[15px] leading-7 text-slate-100/88 outline-none placeholder:text-slate-400/42 disabled:cursor-not-allowed disabled:text-slate-400/45 custom-scrollbar"
             />
@@ -702,7 +810,10 @@ function AudioNodeCardImpl({
 
 const AudioNodeCard = React.memo(
   AudioNodeCardImpl,
-  (prev, next) => prev.node === next.node && prev.selected === next.selected
+  (prev, next) =>
+    prev.node === next.node &&
+    prev.selected === next.selected &&
+    prev.resolvedInputs === next.resolvedInputs
 );
 
 export default AudioNodeCard;

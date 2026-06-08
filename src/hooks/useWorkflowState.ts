@@ -40,6 +40,20 @@ const TRASH_RETENTION_DAYS = 30;
 const TRASH_RETENTION_MS = TRASH_RETENTION_DAYS * 86_400_000;
 const TRASH_PURGE_INTERVAL_MS = 60 * 60 * 1000;
 const VIDEO_IMAGE_INPUT = { name: "image", type: "IMAGE" as const };
+const IMAGE_NODE_REQUIRED_INPUTS = [
+  { name: "source_image", type: "IMAGE" as const },
+  { name: "prompt", type: "STRING" as const },
+  { name: "negative_prompt", type: "STRING" as const },
+  { name: "aspect_ratio", type: "STRING" as const },
+  { name: "source_audio", type: "AUDIO" as const },
+  { name: "source_video", type: "VIDEO" as const },
+];
+const AUDIO_NODE_REQUIRED_INPUTS = [
+  { name: "提示词", type: "STRING" as const },
+  { name: "时长", type: "NUMBER" as const },
+  { name: "source_image", type: "IMAGE" as const },
+  { name: "source_audio", type: "AUDIO" as const },
+];
 const MINIMAX_IMAGE_RATIOS = new Set(["1:1", "16:9", "4:3", "3:2", "2:3", "3:4", "9:16", "21:9"]);
 const IMAGE_NODE_MODEL_FALLBACKS = new Set(["", "lib-navo-pro", "flux-1", "sdxl", "midjourney"]);
 const TEXT_NODE_MODEL_FALLBACKS = new Set(["", "deepseek-v4-flash"]);
@@ -588,8 +602,18 @@ function normalizeNodePorts(node: GraphNode): GraphNode {
   if (nextNode.type === "image_node") {
     const aspectRatio = String(nextNode.properties.aspect_ratio || "16:9");
     const model = String(nextNode.properties.model || "");
+    const nextInputs = [...nextNode.inputs];
+    IMAGE_NODE_REQUIRED_INPUTS.forEach((requiredInput, index) => {
+      const existingIndex = nextInputs.findIndex((input) => input.name === requiredInput.name);
+      if (existingIndex >= 0) {
+        nextInputs[existingIndex] = requiredInput;
+        return;
+      }
+      nextInputs.splice(Math.min(index, nextInputs.length), 0, requiredInput);
+    });
     nextNode = {
       ...nextNode,
+      inputs: nextInputs,
       properties: {
         ...nextNode.properties,
         model: IMAGE_NODE_MODEL_FALLBACKS.has(model) ? "image-01" : model,
@@ -598,6 +622,22 @@ function normalizeNodePorts(node: GraphNode): GraphNode {
         n: 1,
         prompt_optimizer: false,
       },
+    };
+  }
+
+  if (nextNode.type === "audio_node") {
+    const nextInputs = [...nextNode.inputs];
+    AUDIO_NODE_REQUIRED_INPUTS.forEach((requiredInput, index) => {
+      const existingIndex = nextInputs.findIndex((input) => input.name === requiredInput.name);
+      if (existingIndex >= 0) {
+        nextInputs[existingIndex] = requiredInput;
+        return;
+      }
+      nextInputs.splice(Math.min(index, nextInputs.length), 0, requiredInput);
+    });
+    nextNode = {
+      ...nextNode,
+      inputs: nextInputs,
     };
   }
 

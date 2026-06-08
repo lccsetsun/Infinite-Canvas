@@ -130,6 +130,8 @@ const NODE_BLUEPRINTS: Partial<Record<NodeClass, NodeBlueprint>> = {
       { name: "prompt", type: "STRING" },
       { name: "negative_prompt", type: "STRING" },
       { name: "aspect_ratio", type: "STRING" },
+      { name: "source_audio", type: "AUDIO" },
+      { name: "source_video", type: "VIDEO" },
     ],
     outputs: [{ name: "图片", type: "IMAGE" }],
     properties: {
@@ -168,6 +170,8 @@ const NODE_BLUEPRINTS: Partial<Record<NodeClass, NodeBlueprint>> = {
     inputs: [
       { name: "提示词", type: "STRING" },
       { name: "时长", type: "NUMBER" },
+      { name: "source_image", type: "IMAGE" },
+      { name: "source_audio", type: "AUDIO" },
     ],
     outputs: [{ name: "音频", type: "AUDIO" }],
     properties: {
