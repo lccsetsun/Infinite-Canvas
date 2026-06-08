@@ -13,7 +13,7 @@ import LeaferCanvas from "./components/canvas/LeaferCanvas";
 import MiniMap from "./components/app/MiniMap";
 import PreviewModal, { PreviewContent } from "./components/app/PreviewModal";
 import SettingsPanels from "./components/app/SettingsPanels";
-import { Copy, Eye, Trash2 } from "lucide-react";
+import { Copy, Eye, Loader2, Trash2 } from "lucide-react";
 import { snapPointToGrid } from "./components/canvas/geometry";
 import { useCanvasInteraction } from "./hooks/useCanvasInteraction";
 import { useCanvasLinking } from "./hooks/useCanvasLinking";
@@ -25,6 +25,10 @@ import { shouldOpenCanvasContextMenu } from "./utils/canvasContextMenuPolicy";
 import { shouldFinishCanvasLinkOnCanvasPointerUp } from "./utils/canvasPointerPolicy";
 import { cropImageGridCell, getGridChildNodePosition } from "./utils/imageGridSplit";
 import { getCanvasViewportClassName } from "./utils/canvasViewportLayout";
+import {
+  shouldShowCanvasProjectLoading,
+  shouldShowEmptyCanvasState,
+} from "./utils/canvasLoadState";
 import {
   getFilesFromTransfer,
   transferHasFiles,
@@ -73,9 +77,10 @@ export default function App({ onLoggedOut }: AppProps) {
   }, []);
 
   const panelFallback = (
-    <div className="absolute inset-0 z-40 flex items-center justify-center bg-[#0f1218]/55 backdrop-blur-sm">
-      <div className="rounded-full border border-[#2b3142] bg-[#171b26] px-4 py-2 text-sm text-gray-300">
-        鍔犺浇涓?..
+    <div className="flex min-h-screen items-center justify-center bg-[#202637] text-slate-200">
+      <div className="inline-flex items-center gap-2 rounded-full border border-white/[0.06] bg-black/10 px-5 py-2.5 text-sm text-slate-300 backdrop-blur-sm">
+        <Loader2 className="h-4 w-4 animate-spin text-cyan-100/70" />
+        <span>加载中...</span>
       </div>
     </div>
   );
@@ -1008,7 +1013,18 @@ export default function App({ onLoggedOut }: AppProps) {
     ]
   );
 
-  if (isProjectLoading) {
+  const isCanvasProjectLoading = shouldShowCanvasProjectLoading({
+    currentWorkflowId: currentWorkflowSummary?.id,
+    isProjectLoading,
+    requestedWorkflowId,
+  });
+  const showEmptyCanvasState = shouldShowEmptyCanvasState({
+    currentView,
+    isCanvasProjectLoading,
+    nodeCount: nodes.length,
+  });
+
+  if (isCanvasProjectLoading && !projectLoadError) {
     return panelFallback;
   }
 
@@ -1156,7 +1172,7 @@ export default function App({ onLoggedOut }: AppProps) {
             isRunning={isRunning}
           />
 
-          {nodes.length === 0 && currentView === "canvas" && (
+          {showEmptyCanvasState && (
             <EmptyCanvasState
               mode={isWelcomeDismissed ? "empty-project" : "welcome"}
               onPrimaryAction={isWelcomeDismissed ? openQuickMenu : handleCreateProjectFromWelcome}
