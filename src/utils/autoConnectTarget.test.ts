@@ -3,7 +3,9 @@ import { GraphLink, GraphNode } from "../types";
 import { resolveAutoConnectTarget } from "./autoConnectTarget";
 import { createNodeFromType } from "../features/nodes/nodeFactory";
 
-function mockNode(partial: Partial<GraphNode> & Pick<GraphNode, "id" | "title" | "type">): GraphNode {
+function mockNode(
+  partial: Partial<GraphNode> & Pick<GraphNode, "id" | "title" | "type">
+): GraphNode {
   return {
     id: partial.id,
     title: partial.title,
@@ -59,7 +61,7 @@ describe("resolveAutoConnectTarget", () => {
     ).toBeNull();
   });
 
-  it("auto-connects any upstream node into a text node user prompt input", () => {
+  it("auto-connects image upstream nodes into the text node image input", () => {
     const imageSource = mockNode({
       id: "imageSource",
       title: "图片节点",
@@ -76,6 +78,6 @@ describe("resolveAutoConnectTarget", () => {
         links,
         nodes: [imageSource, textNode],
       })
-    ).toEqual({ nodeId: "textTarget", inputIndex: 1 });
+    ).toEqual({ nodeId: "textTarget", inputIndex: 2 });
   });
 });

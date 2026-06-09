@@ -5,6 +5,7 @@ import {
   createTextNodeStarterFlowSnapshot,
   markUploadedAssetNodeAsSource,
   addNodeToWorkflowSnapshot,
+  updateNodeDataSnapshot,
   updateNodePropertySnapshot,
   isRemoteWorkflowEcho,
   serializeRemotePersistSnapshot,
@@ -267,6 +268,28 @@ describe("source node semantics", () => {
     expect(sourceNode.properties.isSourceNode).toBe(true);
     expect(sourceNode.data?.isSourceNode).toBe(true);
     expect(sourceNode.properties.imageUrl).toBe("https://oss.example.com/a.png");
+  });
+
+  it("clears inputs when a node upload marks an existing media node as a source", () => {
+    const imageNode: GraphNode = {
+      id: "image-1",
+      type: "image_node",
+      title: "图片节点 1",
+      x: 0,
+      y: 0,
+      inputs: [{ name: "prompt", type: "STRING" }],
+      outputs: [{ name: "图片", type: "IMAGE" }],
+      properties: {},
+    };
+
+    const nodes = updateNodeDataSnapshot([imageNode], "image-1", {
+      imageUrl: "https://oss.example.com/upload.png",
+      isSourceNode: true,
+    });
+
+    expect(nodes[0].inputs).toEqual([]);
+    expect(nodes[0].data?.isSourceNode).toBe(true);
+    expect(nodes[0].properties.isSourceNode).toBe(true);
   });
 });
 

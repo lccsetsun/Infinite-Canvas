@@ -44,4 +44,18 @@ describe("getAudioNodeInputReferences", () => {
       }),
     ).toEqual([]);
   });
+
+  it("collects every media item when one input receives multiple links", () => {
+    expect(
+      getAudioNodeInputReferences({
+        source_video: [
+          "https://oss.example.com/reference-a.mp4",
+          "https://oss.example.com/reference-b.mp4",
+        ],
+      }).map((reference) => reference.value),
+    ).toEqual([
+      "https://oss.example.com/reference-a.mp4",
+      "https://oss.example.com/reference-b.mp4",
+    ]);
+  });
 });

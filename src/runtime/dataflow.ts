@@ -67,19 +67,21 @@ export function resolveNodeInputs(
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
   const inputs: Record<string, unknown> = {};
   target.inputs.forEach((input, idx) => {
-    const link = links.find((l) => l.toNodeId === target.id && l.toInputIndex === idx);
-    if (!link) return;
+    const inputLinks = links.filter((l) => l.toNodeId === target.id && l.toInputIndex === idx);
+    if (inputLinks.length === 0) return;
     const inputName = getResolvedInputName(target, input.name);
-    const sourceOutputs = nodeOutputs.get(link.fromNodeId);
-    if (sourceOutputs?.has(link.fromOutputIndex)) {
-      inputs[inputName] = sourceOutputs.get(link.fromOutputIndex);
-      return;
-    }
-    const sourceNode = nodeById.get(link.fromNodeId);
-    const fallbackOutput = sourceNode ? getNodePropertyOutputFallback(sourceNode) : undefined;
-    if (fallbackOutput !== undefined) {
-      inputs[inputName] = fallbackOutput;
-    }
+    const values = inputLinks
+      .map((link) => {
+        const sourceOutputs = nodeOutputs.get(link.fromNodeId);
+        if (sourceOutputs?.has(link.fromOutputIndex)) {
+          return sourceOutputs.get(link.fromOutputIndex);
+        }
+        const sourceNode = nodeById.get(link.fromNodeId);
+        return sourceNode ? getNodePropertyOutputFallback(sourceNode) : undefined;
+      })
+      .filter((value) => value !== undefined);
+    if (values.length === 0) return;
+    inputs[inputName] = values.length === 1 ? values[0] : values;
   });
   return inputs;
 }

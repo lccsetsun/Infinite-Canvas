@@ -8,6 +8,22 @@ export interface ReferencePreviewItem {
   value: string;
 }
 
+export function getReferencePreviewCardLayout(_kind: ReferencePreviewKind) {
+  return {
+    containerClassName: "h-14 w-14",
+  };
+}
+
+export function getReferencePreviewCardIconFrameClassName(_kind: ReferencePreviewKind) {
+  return "flex h-full w-full items-center justify-center text-violet-100/78";
+}
+
+function getReferenceIcon(kind: ReferencePreviewKind) {
+  if (kind === "video") return <Clapperboard className="h-6 w-6" />;
+  if (kind === "audio") return <Music4 className="h-6 w-6" />;
+  return <FileText className="h-6 w-6" />;
+}
+
 export function ReferencePreviewCard({
   index,
   reference,
@@ -16,11 +32,12 @@ export function ReferencePreviewCard({
   reference: ReferencePreviewItem;
 }) {
   const isImageReference = reference.kind === "image";
+  const { containerClassName } = getReferencePreviewCardLayout(reference.kind);
   return (
     <div
-      className={`relative shrink-0 overflow-hidden rounded-[14px] border border-white/8 bg-white/[0.03] ${
-        isImageReference ? "h-14 w-14" : "h-14 min-w-[128px] max-w-[180px] px-3 py-2"
-      }`}
+      className={`relative shrink-0 overflow-hidden rounded-[14px] border border-white/8 bg-white/[0.03] ${containerClassName}`}
+      aria-label={`${reference.title} ${index + 1}`}
+      title={reference.title}
     >
       {isImageReference ? (
         <img
@@ -30,24 +47,8 @@ export function ReferencePreviewCard({
           draggable={false}
         />
       ) : (
-        <div className="flex h-full min-w-0 items-center gap-2">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] border border-white/8 bg-white/[0.04] text-violet-100/70">
-            {reference.kind === "video" ? (
-              <Clapperboard className="h-4 w-4" />
-            ) : reference.kind === "audio" ? (
-              <Music4 className="h-4 w-4" />
-            ) : (
-              <FileText className="h-4 w-4" />
-            )}
-          </div>
-          <div className="min-w-0">
-            <div className="truncate text-[12px] font-semibold text-slate-100/82">
-              {reference.title}
-            </div>
-            <div className="mt-0.5 line-clamp-1 text-[11px] text-slate-400/62">
-              {reference.value}
-            </div>
-          </div>
+        <div className={getReferencePreviewCardIconFrameClassName(reference.kind)}>
+          {getReferenceIcon(reference.kind)}
         </div>
       )}
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.08),transparent_38%)]" />

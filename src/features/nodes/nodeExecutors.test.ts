@@ -97,6 +97,35 @@ describe("image_node MiniMax executor", () => {
     const request = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body));
     expect(request.aspect_ratio).toBe("4:3");
   });
+
+  it("combines editable node text with upstream prompt input", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ imageUrls: ["https://example.com/minimax-composed.png"] }),
+    } as Response);
+
+    const executor = getExecutor("image_node");
+    await executor?.({
+      inputs: { prompt: "Upstream text reference" },
+      properties: {
+        text: "Local image direction",
+        model: "image-01",
+        resolution: "1K",
+        aspect_ratio: "1:1",
+      },
+      apiConfig: {
+        baseUrl: "",
+        apiKey: "",
+        minimaxApiKey: "mini-test-key",
+        minimaxBaseUrl: "https://api.minimaxi.com/v1",
+      },
+    });
+
+    const request = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body));
+    expect(request.prompt).toBe(
+      "Local image direction\n\nUpstream input content:\nUpstream text reference"
+    );
+  });
 });
 
 describe("video_node MiniMax executor", () => {
@@ -160,6 +189,39 @@ describe("video_node MiniMax executor", () => {
       status: "success",
     });
   });
+
+  it("combines editable node text with upstream prompt input", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        videoUrl: "https://example.com/minimax-composed-video.mp4",
+        taskId: "task_composed",
+      }),
+    } as Response);
+
+    const executor = getExecutor("video_node");
+    await executor?.({
+      inputs: { prompt: "Upstream text reference" },
+      properties: {
+        text: "Local video direction",
+        model: "MiniMax-Hailuo-2.3",
+        duration: "6s",
+        resolution: "1K",
+        aspect_ratio: "16:9",
+      },
+      apiConfig: {
+        baseUrl: "",
+        apiKey: "",
+        minimaxApiKey: "mini-test-key",
+        minimaxBaseUrl: "https://api.minimaxi.com/v1",
+      },
+    });
+
+    const request = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body));
+    expect(request.prompt).toBe(
+      "Local video direction\n\nUpstream input content:\nUpstream text reference"
+    );
+  });
 });
 
 describe("audio_node MiniMax executor", () => {
@@ -206,6 +268,35 @@ describe("audio_node MiniMax executor", () => {
       audioUrl: "https://oss.example.com/generated-audio.mp3",
       status: "success",
     });
+  });
+
+  it("combines editable node text with upstream prompt input", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        audioUrl: "https://oss.example.com/composed-audio.mp3",
+      }),
+    } as Response);
+
+    const executor = getExecutor("audio_node");
+    await executor?.({
+      inputs: { prompt: "Upstream text reference" },
+      properties: {
+        text: "Local audio direction",
+        model: "speech-2.8-hd",
+      },
+      apiConfig: {
+        baseUrl: "",
+        apiKey: "",
+        minimaxApiKey: "mini-test-key",
+        minimaxBaseUrl: "https://api.minimaxi.com/v1",
+      },
+    });
+
+    const request = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body));
+    expect(request.text).toBe(
+      "Local audio direction\n\nUpstream input content:\nUpstream text reference"
+    );
   });
 });
 

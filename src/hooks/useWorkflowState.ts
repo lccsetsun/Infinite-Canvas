@@ -21,6 +21,12 @@ import {
   isDataTypeCompatible,
 } from "../utils/linking";
 import {
+  duplicateNodeAsSource,
+  isSourceNode,
+  markNodeAsSource,
+  normalizeSourceNode,
+} from "../utils/sourceNodes";
+import {
   NodeOutputMap,
   buildResolvedInputsMap,
   resolveNodeInputs,
@@ -39,7 +45,11 @@ const WORKSPACE_VERSION = 2 as const;
 const TRASH_RETENTION_DAYS = 30;
 const TRASH_RETENTION_MS = TRASH_RETENTION_DAYS * 86_400_000;
 const TRASH_PURGE_INTERVAL_MS = 60 * 60 * 1000;
-const VIDEO_IMAGE_INPUT = { name: "image", type: "IMAGE" as const };
+const TEXT_NODE_REQUIRED_MEDIA_INPUTS = [
+  { name: "source_image", type: "IMAGE" as const },
+  { name: "source_video", type: "VIDEO" as const },
+  { name: "source_audio", type: "AUDIO" as const },
+];
 const IMAGE_NODE_REQUIRED_INPUTS = [
   { name: "source_image", type: "IMAGE" as const },
   { name: "prompt", type: "STRING" as const },
@@ -52,7 +62,16 @@ const AUDIO_NODE_REQUIRED_INPUTS = [
   { name: "提示词", type: "STRING" as const },
   { name: "时长", type: "NUMBER" as const },
   { name: "source_image", type: "IMAGE" as const },
+  { name: "source_video", type: "VIDEO" as const },
   { name: "source_audio", type: "AUDIO" as const },
+];
+const VIDEO_NODE_REQUIRED_INPUTS = [
+  { name: "prompt", type: "STRING" as const },
+  { name: "image", type: "IMAGE" as const },
+  { name: "source_video", type: "VIDEO" as const },
+  { name: "source_audio", type: "AUDIO" as const },
+  { name: "duration", type: "NUMBER" as const },
+  { name: "aspect_ratio", type: "STRING" as const },
 ];
 const MINIMAX_IMAGE_RATIOS = new Set(["1:1", "16:9", "4:3", "3:2", "2:3", "3:4", "9:16", "21:9"]);
 const IMAGE_NODE_MODEL_FALLBACKS = new Set(["", "lib-navo-pro", "flux-1", "sdxl", "midjourney"]);
@@ -221,22 +240,7 @@ export function markUploadedAssetNodeAsSource(
 ): GraphNode {
   const propertyKey =
     assetKind === "image" ? "imageUrl" : assetKind === "video" ? "videoUrl" : "audioUrl";
-  return {
-    ...node,
-    inputs: [],
-    properties: {
-      ...node.properties,
-      [propertyKey]: assetUrl,
-      isSourceNode: true,
-    },
-    data: {
-      ...(node.data || {}),
-      [propertyKey]: assetUrl,
-      isSourceNode: true,
-      status: "success",
-      loading: false,
-    },
-  };
+  return markNodeAsSource(node, { [propertyKey]: assetUrl });
 }
 
 export function updateNodePropertySnapshot(
@@ -258,6 +262,21 @@ export function updateNodePropertySnapshot(
       };
     }
     return nextNode;
+  });
+}
+
+export function updateNodeDataSnapshot(
+  nodes: GraphNode[],
+  nodeId: string,
+  data: Partial<GraphNode["data"]>
+): GraphNode[] {
+  return nodes.map((node) => {
+    if (node.id !== nodeId) return node;
+    const nextNode = {
+      ...node,
+      data: { ...(node.data || {}), ...data },
+    };
+    return data.isSourceNode === true ? markNodeAsSource(nextNode) : nextNode;
   });
 }
 
@@ -560,7 +579,9 @@ function mapToOutputs(map: NodeOutputMap): SerializedNodeOutput[] {
 }
 
 function normalizeNodePorts(node: GraphNode): GraphNode {
-  let nextNode = node;
+  let nextNode = normalizeSourceNode(node);
+  if (isSourceNode(nextNode)) return nextNode;
+
   if (nextNode.type === "text_node") {
     const model = String(nextNode.properties.model || "");
     let inputsChanged = false;
@@ -574,6 +595,18 @@ function normalizeNodePorts(node: GraphNode): GraphNode {
         return { ...input, name: "system_prompt", type: "STRING" as const };
       }
       return input;
+    });
+    TEXT_NODE_REQUIRED_MEDIA_INPUTS.forEach((requiredInput) => {
+      const existingIndex = normalizedInputs.findIndex(
+        (input) => input.name === requiredInput.name
+      );
+      if (existingIndex >= 0) {
+        if (normalizedInputs[existingIndex].type !== requiredInput.type) inputsChanged = true;
+        normalizedInputs[existingIndex] = requiredInput;
+        return;
+      }
+      normalizedInputs.push(requiredInput);
+      inputsChanged = true;
     });
     if (TEXT_NODE_MODEL_FALLBACKS.has(model) || inputsChanged) {
       nextNode = {
@@ -629,18 +662,23 @@ function normalizeNodePorts(node: GraphNode): GraphNode {
     };
   }
 
-  if (nextNode.type !== "video_node" || nextNode.inputs.some((input) => input.type === "IMAGE"))
-    return nextNode;
-  const promptIndex = nextNode.inputs.findIndex((input) => input.name === "prompt");
-  const insertAt = promptIndex >= 0 ? promptIndex + 1 : 0;
-  return {
-    ...nextNode,
-    inputs: [
-      ...nextNode.inputs.slice(0, insertAt),
-      VIDEO_IMAGE_INPUT,
-      ...nextNode.inputs.slice(insertAt),
-    ],
-  };
+  if (nextNode.type === "video_node") {
+    const nextInputs = [...nextNode.inputs];
+    VIDEO_NODE_REQUIRED_INPUTS.forEach((requiredInput, index) => {
+      const existingIndex = nextInputs.findIndex((input) => input.name === requiredInput.name);
+      if (existingIndex >= 0) {
+        nextInputs[existingIndex] = requiredInput;
+        return;
+      }
+      nextInputs.splice(Math.min(index, nextInputs.length), 0, requiredInput);
+    });
+    nextNode = {
+      ...nextNode,
+      inputs: nextInputs,
+    };
+  }
+
+  return nextNode;
 }
 
 function normalizeNodes(nodes: GraphNode[]): GraphNode[] {
@@ -870,17 +908,11 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     const src = nodes.find((n) => n.id === nodeId);
     if (!src) return;
     const id = makeId("node");
-    const clone: GraphNode = {
-      ...src,
+    const clone = duplicateNodeAsSource(
+      src,
       id,
-      x: src.x + 36,
-      y: src.y + 36,
-      inputs: src.inputs.map((i) => ({ ...i })),
-      outputs: src.outputs.map((o) => ({ ...o })),
-      properties: { ...src.properties },
-      data: src.data ? { ...src.data } : {},
-      title: getNextNumberedNodeTitle(nodes, src.type) || `${src.title} Copy`,
-    };
+      getNextNumberedNodeTitle(nodes, src.type) || `${src.title} Copy`
+    );
     const nextNodes = [...nodes, clone];
     setNodes(nextNodes);
     setSelectedNodeId(id);
@@ -1242,9 +1274,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
   };
 
   const updateNodeData = useCallback((nodeId: string, data: Partial<GraphNode["data"]>) => {
-    setNodes((prev) =>
-      prev.map((n) => (n.id === nodeId ? { ...n, data: { ...(n.data || {}), ...data } } : n))
-    );
+    setNodes((prev) => updateNodeDataSnapshot(prev, nodeId, data));
   }, []);
 
   const setPrimaryImageResult = useCallback(
@@ -1289,7 +1319,10 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       });
 
       if (!snapshot) {
-        appendLog("warning", "\u9010\u5e27\u5206\u6790\u5931\u8d25\uff1a\u672a\u627e\u5230\u89c6\u9891\u8282\u70b9\u6216\u6ca1\u6709\u53ef\u7528\u5e27\u6570\u636e");
+        appendLog(
+          "warning",
+          "\u9010\u5e27\u5206\u6790\u5931\u8d25\uff1a\u672a\u627e\u5230\u89c6\u9891\u8282\u70b9\u6216\u6ca1\u6709\u53ef\u7528\u5e27\u6570\u636e"
+        );
         return;
       }
 
@@ -1308,7 +1341,10 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         },
       }));
       pushHistory({ nodes: snapshot.nodes, links: snapshot.links });
-      appendLog("success", `\u9010\u5e27\u5206\u6790\u5b8c\u6210\uff1a\u751f\u6210 ${captures.length} \u7ec4\u63a5\u53e3\u8282\u70b9`);
+      appendLog(
+        "success",
+        `\u9010\u5e27\u5206\u6790\u5b8c\u6210\uff1a\u751f\u6210 ${captures.length} \u7ec4\u63a5\u53e3\u8282\u70b9`
+      );
     },
     [appendLog, links, nodeOutputs, nodes, pushHistory, syncCurrentWorkflowMeta]
   );

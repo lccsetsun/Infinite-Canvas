@@ -114,6 +114,9 @@ const NODE_BLUEPRINTS: Partial<Record<NodeClass, NodeBlueprint>> = {
     inputs: [
       { name: "system_prompt", type: "STRING" },
       { name: "user_prompt", type: "ANY" },
+      { name: "source_image", type: "IMAGE" },
+      { name: "source_video", type: "VIDEO" },
+      { name: "source_audio", type: "AUDIO" },
     ],
     outputs: [{ name: "文本", type: "STRING" }],
     properties: {
@@ -124,7 +127,7 @@ const NODE_BLUEPRINTS: Partial<Record<NodeClass, NodeBlueprint>> = {
       quantity: "1张",
       n: 1,
       status: "idle",
-      response: ""
+      response: "",
     },
   },
   image_node: {
@@ -154,6 +157,8 @@ const NODE_BLUEPRINTS: Partial<Record<NodeClass, NodeBlueprint>> = {
     inputs: [
       { name: "prompt", type: "STRING" },
       { name: "image", type: "IMAGE" },
+      { name: "source_video", type: "VIDEO" },
+      { name: "source_audio", type: "AUDIO" },
       { name: "duration", type: "NUMBER" },
       { name: "aspect_ratio", type: "STRING" },
     ],
@@ -176,6 +181,7 @@ const NODE_BLUEPRINTS: Partial<Record<NodeClass, NodeBlueprint>> = {
       { name: "提示词", type: "STRING" },
       { name: "时长", type: "NUMBER" },
       { name: "source_image", type: "IMAGE" },
+      { name: "source_video", type: "VIDEO" },
       { name: "source_audio", type: "AUDIO" },
     ],
     outputs: [{ name: "音频", type: "AUDIO" }],

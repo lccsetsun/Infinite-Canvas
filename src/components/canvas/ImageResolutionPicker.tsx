@@ -15,6 +15,7 @@ interface ImageResolutionPickerProps {
   onChange: (resolution: ImageResolution, aspectRatio: ImageAspectRatio) => void;
   buttonClassName?: string;
   panelAlign?: "left" | "right";
+  panelTitle?: string;
 }
 
 const PANEL_WIDTH = 344;
@@ -27,6 +28,10 @@ function isImageResolution(value: string): value is ImageResolution {
 
 function getFallbackResolution(value: string): ImageResolution {
   return isImageResolution(value) ? value : "1K";
+}
+
+export function getResolutionPickerPanelTitle(panelTitle?: string) {
+  return panelTitle || "Image Size";
 }
 
 function getPanelPosition(
@@ -58,6 +63,7 @@ export function ImageResolutionPicker({
   onChange,
   buttonClassName = "",
   panelAlign = "left",
+  panelTitle,
 }: ImageResolutionPickerProps) {
   const [open, setOpen] = React.useState(false);
   const [activeResolution, setActiveResolution] = React.useState<ImageResolution>(() =>
@@ -167,7 +173,7 @@ export function ImageResolutionPicker({
             <div className="border-b border-white/8 bg-[linear-gradient(180deg,rgba(20,31,46,0.98),rgba(11,17,27,0.92))] px-3 pb-3 pt-3">
               <div className="mb-2 flex items-center justify-between">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-100/54">
-                  Image Size
+                  {getResolutionPickerPanelTitle(panelTitle)}
                 </div>
                 <div className="rounded-full border border-cyan-100/12 bg-cyan-100/[0.055] px-2 py-0.5 text-[11px] font-semibold text-cyan-50/82">
                   {selectedPreset?.resolution} {selectedPreset?.aspectRatio}
@@ -218,7 +224,7 @@ export function ImageResolutionPicker({
                       }`}
                     >
                       <span className="flex h-7 min-w-[72px] items-center justify-center rounded-[9px] border border-white/8 bg-white/[0.035] text-[13px] font-bold">
-                        {preset.resolution} {preset.aspectRatio}
+                        {preset.aspectRatio}
                       </span>
                       <span className="min-w-0 flex-1 text-[13px] tabular-nums text-slate-400/88 group-hover:text-slate-200/90">
                         {preset.width}×{preset.height}

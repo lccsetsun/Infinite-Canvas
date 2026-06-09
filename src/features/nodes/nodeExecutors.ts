@@ -221,12 +221,12 @@ function pickString(
   ...keys: string[]
 ): string {
   for (const k of keys) {
-    if (typeof inputs[k] === "string" && (inputs[k] as string).trim()) return inputs[k] as string;
-    if (typeof properties[k] === "string" && (properties[k] as string).trim())
-      return properties[k] as string;
+    const inputValue = firstStringValue(inputs[k]);
+    if (inputValue.trim()) return inputValue;
+    const propertyValue = firstStringValue(properties[k]);
+    if (propertyValue.trim()) return propertyValue;
   }
-  const fallback = (properties.text as string) ?? "";
-  return fallback;
+  return firstStringValue(properties.text);
 }
 
 function pickOptionalString(
@@ -235,11 +235,23 @@ function pickOptionalString(
   ...keys: string[]
 ): string {
   for (const key of keys) {
-    if (typeof inputs[key] === "string" && (inputs[key] as string).trim()) {
-      return inputs[key] as string;
-    }
-    if (typeof properties[key] === "string" && (properties[key] as string).trim()) {
-      return properties[key] as string;
+    const inputValue = firstStringValue(inputs[key]);
+    if (inputValue.trim()) return inputValue;
+    const propertyValue = firstStringValue(properties[key]);
+    if (propertyValue.trim()) return propertyValue;
+  }
+  return "";
+}
+
+function firstStringValue(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const nextValue = firstStringValue(item);
+      if (nextValue.trim()) return nextValue;
     }
   }
   return "";
@@ -707,7 +719,7 @@ export const executors: Partial<Record<NodeClass, NodeExecutor>> = {
   },
 
   image_node: async ({ inputs, properties, apiConfig }) => {
-    const prompt = pickString(inputs, properties, "prompt");
+    const prompt = composePromptLike(inputs, properties, "prompt");
     const model = String(properties.model || MINIMAX_IMAGE_MODEL);
     if (MINIMAX_IMAGE_MODELS.has(model)) {
       const aspect = pickString(inputs, properties, "aspect_ratio") || "16:9";
@@ -740,8 +752,8 @@ export const executors: Partial<Record<NodeClass, NodeExecutor>> = {
   },
 
   video_node: async ({ inputs, properties, apiConfig }) => {
-    const prompt = pickString(inputs, properties, "prompt");
-    const imageUrl = (inputs.image as string) || (inputs["首帧"] as string) || "";
+    const prompt = composePromptLike(inputs, properties, "prompt");
+    const imageUrl = pickOptionalString(inputs, properties, "image", "首帧");
     const model = normalizeMiniMaxVideoModel(properties.model);
     if (MINIMAX_VIDEO_MODELS.has(model)) {
       const minimaxApiKey = apiConfig.providerApiKeys?.minimax || apiConfig.minimaxApiKey;
@@ -809,27 +821,27 @@ export const executors: Partial<Record<NodeClass, NodeExecutor>> = {
   },
 
   prompt_enhancer: async ({ inputs }) => {
-    const text = (inputs["原始提示词"] as string) || (inputs.prompt as string) || "";
+    const text = pickString(inputs, {}, "原始提示词", "prompt");
     return { outputs: { 0: text } };
   },
 
   image_filter: async ({ inputs }) => {
-    const url = (inputs["输入图像"] as string) || (inputs.image as string) || "";
+    const url = pickOptionalString(inputs, {}, "输入图像", "image");
     return { outputs: { 0: url } };
   },
 
   vae_decode: async ({ inputs }) => {
-    const url = (inputs["核心图像"] as string) || (inputs.image as string) || "";
+    const url = pickOptionalString(inputs, {}, "核心图像", "image");
     return { outputs: { 0: url } };
   },
 
   video_viewer: async ({ inputs }) => {
-    const url = (inputs["视频输入"] as string) || (inputs.video as string) || "";
+    const url = pickOptionalString(inputs, {}, "视频输入", "video");
     return { outputs: { 0: url, 1: url } };
   },
 
   gemini_assistant: async ({ inputs }) => {
-    const prompt = (inputs["用户提示词"] as string) || (inputs.prompt as string) || "";
+    const prompt = pickString(inputs, {}, "用户提示词", "prompt");
     return { outputs: { 0: prompt } };
   },
 
@@ -838,12 +850,12 @@ export const executors: Partial<Record<NodeClass, NodeExecutor>> = {
   },
 
   ksampler: async ({ inputs }) => {
-    const prompt = (inputs["正向提示词"] as string) || (inputs.prompt as string) || "";
+    const prompt = pickString(inputs, {}, "正向提示词", "prompt");
     return { outputs: { 0: prompt } };
   },
 
   text_to_video: async ({ inputs }) => {
-    const prompt = (inputs["视频提示词"] as string) || (inputs.prompt as string) || "";
+    const prompt = pickString(inputs, {}, "视频提示词", "prompt");
     return { outputs: { 0: prompt } };
   },
 
@@ -863,7 +875,7 @@ export const executors: Partial<Record<NodeClass, NodeExecutor>> = {
   },
 
   audio_node: async ({ inputs, properties, apiConfig }) => {
-    const prompt = pickString(inputs, properties, "prompt", "提示词");
+    const prompt = composePromptLike(inputs, properties, "prompt", "提示词");
     const minimaxApiKey =
       apiConfig.providerApiKeys?.minimax || apiConfig.minimaxApiKey || apiConfig.apiKey;
     const minimaxBaseUrl = apiConfig.providerBaseUrls?.minimax || apiConfig.minimaxBaseUrl;

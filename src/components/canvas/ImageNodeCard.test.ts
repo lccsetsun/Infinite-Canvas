@@ -61,6 +61,20 @@ describe("getImageNodeInputReferences", () => {
       }),
     ).toEqual([]);
   });
+
+  it("collects every media item when one input receives multiple links", () => {
+    expect(
+      getImageNodeInputReferences({
+        source_image: [
+          "https://oss.example.com/reference-a.png",
+          "https://oss.example.com/reference-b.png",
+        ],
+      }).map((reference) => reference.value),
+    ).toEqual([
+      "https://oss.example.com/reference-a.png",
+      "https://oss.example.com/reference-b.png",
+    ]);
+  });
 });
 
 describe("getResultImageBounds", () => {

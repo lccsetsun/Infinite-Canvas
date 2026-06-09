@@ -1,4 +1,5 @@
-﻿import { DataType, GraphLink, GraphNode } from "../types";
+import { DataType, GraphLink, GraphNode } from "../types";
+import { isSourceNode } from "./sourceNodes";
 
 export type LinkDraftIssueCode =
   | "MISSING_ENDPOINTS"
@@ -6,6 +7,7 @@ export type LinkDraftIssueCode =
   | "NODE_NOT_FOUND"
   | "NO_OUTPUT_PORTS"
   | "NO_INPUT_PORTS"
+  | "SOURCE_NODE_TARGET"
   | "INVALID_OUTPUT_INDEX"
   | "INVALID_INPUT_INDEX"
   | "INCOMPATIBLE_TYPES"
@@ -42,6 +44,9 @@ export function findFirstCompatibleInputIndex(
   if (fromOutputIndex < 0 || fromOutputIndex >= fromNode.outputs.length) return 0;
 
   const outputType = fromNode.outputs[fromOutputIndex].type;
+  const exactIdx = toNode.inputs.findIndex((i) => i.type === outputType);
+  if (exactIdx >= 0) return exactIdx;
+
   const idx = toNode.inputs.findIndex((i) => isDataTypeCompatible(outputType, i.type));
   return idx >= 0 ? idx : 0;
 }
@@ -70,6 +75,9 @@ export function getLinkDraftIssueDetail(args: {
   }
   if (fromNode.outputs.length === 0) {
     return { code: "NO_OUTPUT_PORTS", message: "起点节点没有输出端口。" };
+  }
+  if (isSourceNode(toNode)) {
+    return { code: "SOURCE_NODE_TARGET", message: "源节点没有输入端口，不能作为连线终点。" };
   }
   if (toNode.inputs.length === 0) {
     return { code: "NO_INPUT_PORTS", message: "终点节点没有输入端口。" };

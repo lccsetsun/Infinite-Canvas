@@ -30,6 +30,8 @@ import type { TextNodeReferenceItem } from "../../utils/textNodeReferences";
 import { PROVIDER_PRESETS } from "../../features/api/apiSettings";
 import { ReferencePreviewCard } from "./ReferencePreviewCard";
 import { ImageResolutionPicker } from "./ImageResolutionPicker";
+import { insertMentionLabel, shouldShowMentionMenu } from "../../utils/inputResourceMentions";
+import { InputResourceMentionMenu } from "./InputResourceMentionMenu";
 
 interface TextNodeCardProps {
   node: GraphNode;
@@ -186,6 +188,7 @@ function TextNodeCardImpl({
   const [forceComposerOpen, setForceComposerOpen] = React.useState(false);
   const textareaRef = React.useRef<HTMLTextAreaElement | null>(null);
   const inlineTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
+  const [mentionMenuOpen, setMentionMenuOpen] = React.useState(false);
   const inputPortRef = React.useRef<HTMLDivElement | null>(null);
   const outputPortRef = React.useRef<HTMLDivElement | null>(null);
   const modelMenuRef = React.useRef<HTMLDivElement | null>(null);
@@ -224,6 +227,16 @@ function TextNodeCardImpl({
     return merged;
   }, [node.id, references, upstreamImageInput]);
   const upstreamTextPrompt = upstreamImageInput ? null : upstreamPrompt;
+  const mentionableReferences = React.useMemo(
+    () =>
+      composerReferences.filter(
+        (
+          reference
+        ): reference is TextNodeReferenceItem & { kind: "text" | "image" | "video" | "audio" } =>
+          ["text", "image", "video", "audio"].includes(reference.kind)
+      ),
+    [composerReferences]
+  );
 
   const promptText = (node.properties.text as string) || "";
   const displayPromptText = promptText || upstreamTextPrompt?.value || "";
@@ -234,7 +247,9 @@ function TextNodeCardImpl({
     (node.data?.response as string) || (node.properties.response as string) || "";
   const responseText = stripReasoningBlocks(rawResponseText);
   const errorText = typeof node.data?.error === "string" ? node.data.error : "";
-  const composerReferenceImages = composerReferences.filter((reference) => reference.kind === "image");
+  const composerReferenceImages = composerReferences.filter(
+    (reference) => reference.kind === "image"
+  );
   const isMultimodalMode = composerReferenceImages.length > 0;
   const interactionState = getTextNodeInteractionState({
     errorText,
@@ -290,6 +305,25 @@ function TextNodeCardImpl({
   const handleRun = () => {
     if (isRunning) return;
     onRun?.(node.id);
+  };
+
+  const handleComposerPromptChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+    onUpdateProperty?.(node.id, "text", event.target.value);
+    setMentionMenuOpen(
+      mentionableReferences.length > 0 &&
+        shouldShowMentionMenu(event.target.value, event.target.selectionStart)
+    );
+  };
+
+  const insertResourceMention = (label: string) => {
+    const cursorIndex = textareaRef.current?.selectionStart ?? promptText.length;
+    const { nextCursorIndex, nextValue } = insertMentionLabel(promptText, cursorIndex, label);
+    onUpdateProperty?.(node.id, "text", nextValue);
+    setMentionMenuOpen(false);
+    window.requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+      textareaRef.current?.setSelectionRange(nextCursorIndex, nextCursorIndex);
+    });
   };
 
   const focusComposer = () => {
@@ -621,8 +655,7 @@ function TextNodeCardImpl({
                 e.preventDefault();
               }}
               title={
-                getCanvasLinkTargetIssue?.(node.id, inputPortIndex) ||
-                "输入端口: 点击此处完成连线"
+                getCanvasLinkTargetIssue?.(node.id, inputPortIndex) || "输入端口: 点击此处完成连线"
               }
             >
               <Plus className="h-4 w-4 pointer-events-none" />
@@ -874,14 +907,6 @@ function TextNodeCardImpl({
             <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-slate-100/22 to-transparent" />
             {composerReferences.length > 0 && (
               <div className="mb-3 rounded-2xl border border-white/6 bg-[#0d1117]/46 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-                <div className="mb-2 flex items-center justify-between">
-                  <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-violet-200/54">
-                    References
-                  </div>
-                  <div className="rounded-full border border-white/8 bg-white/[0.04] px-2 py-0.5 text-[11px] font-medium text-slate-200/68">
-                    {composerReferences.length}
-                  </div>
-                </div>
                 <div className="flex flex-wrap items-center gap-2">
                   {composerReferences.map((reference, index) => (
                     <React.Fragment key={`${reference.id}-${reference.value}-${index}`}>
@@ -891,19 +916,39 @@ function TextNodeCardImpl({
                 </div>
               </div>
             )}
-            <textarea
-              ref={textareaRef}
-              value={promptText}
-              onChange={(e) => onUpdateProperty?.(node.id, "text", e.target.value)}
-              placeholder={
-                upstreamTextPrompt
-                  ? "输入你想如何处理上游内容，例如：总结、改写或回答它。"
-                  : upstreamImageInput
-                    ? "根据图片生成结构化中文提示词，包括主体描述、环境、光影、镜头语言与风格关键词。"
-                    : "写下你想讲的故事、场景或角色设定。例如：一个来自未来的机器人，在城市屋顶看着星星。"
-              }
-              className="relative h-[88px] w-full resize-none bg-transparent text-[15px] leading-7 text-slate-100/88 outline-none placeholder:text-slate-400/42 custom-scrollbar"
-            />
+            <div className="relative">
+              <textarea
+                ref={textareaRef}
+                value={promptText}
+                onChange={handleComposerPromptChange}
+                onFocus={(event) =>
+                  setMentionMenuOpen(
+                    mentionableReferences.length > 0 &&
+                      shouldShowMentionMenu(
+                        event.currentTarget.value,
+                        event.currentTarget.selectionStart
+                      )
+                  )
+                }
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") setMentionMenuOpen(false);
+                }}
+                placeholder={
+                  upstreamTextPrompt
+                    ? "输入你想如何处理上游内容，例如：总结、改写或回答它。"
+                    : upstreamImageInput
+                      ? "根据图片生成结构化中文提示词，包括主体描述、环境、光影、镜头语言与风格关键词。"
+                      : "写下你想讲的故事、场景或角色设定。例如：一个来自未来的机器人，在城市屋顶看着星星。"
+                }
+                className="relative h-[88px] w-full resize-none bg-transparent text-[15px] leading-7 text-slate-100/88 outline-none placeholder:text-slate-400/42 custom-scrollbar"
+              />
+              {mentionMenuOpen && (
+                <InputResourceMentionMenu
+                  resources={mentionableReferences}
+                  onPick={(label) => insertResourceMention(label)}
+                />
+              )}
+            </div>
             <div className="relative mt-3 flex flex-nowrap items-center gap-2 border-t border-slate-200/8 pt-3">
               <div className="min-w-0 flex-[1_1_230px]">
                 <div className="relative" ref={modelMenuRef}>

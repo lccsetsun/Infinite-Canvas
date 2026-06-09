@@ -39,6 +39,8 @@ import { uploadFileToOss } from "../../features/resource/ossApi";
 import { ReferencePreviewCard } from "./ReferencePreviewCard";
 import { getMediaNodeLoadingLabel } from "../../utils/mediaNodeLoadingState";
 import { ImageResolutionPicker } from "./ImageResolutionPicker";
+import { insertMentionLabel, shouldShowMentionMenu } from "../../utils/inputResourceMentions";
+import { InputResourceMentionMenu } from "./InputResourceMentionMenu";
 
 interface ImageNodeCardProps {
   node: GraphNode;
@@ -200,6 +202,16 @@ function stringifyInputReferenceValue(value: unknown): string {
   return "";
 }
 
+function stringifyInputReferenceValues(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => stringifyInputReferenceValue(item))
+      .filter((item) => item.trim().length > 0);
+  }
+  const singleValue = stringifyInputReferenceValue(value);
+  return singleValue ? [singleValue] : [];
+}
+
 function inferImageNodeInputReferenceKind(
   key: string,
   value: string
@@ -240,16 +252,16 @@ export function getImageNodeInputReferences(
   return Object.entries(resolvedInputs).reduce<ImageNodeInputReference[]>(
     (references, [key, rawValue]) => {
       if (IMAGE_NODE_REFERENCE_IGNORED_KEYS.has(key)) return references;
-      const value = stringifyInputReferenceValue(rawValue);
-      if (!value) return references;
-      const kind = inferImageNodeInputReferenceKind(key, value);
-      if (!kind) return references;
-      references.push({
-        key,
-        kind,
-        label: getInputReferenceLabel(kind),
-        title: getInputReferenceLabel(kind),
-        value,
+      stringifyInputReferenceValues(rawValue).forEach((value) => {
+        const kind = inferImageNodeInputReferenceKind(key, value);
+        if (!kind) return;
+        references.push({
+          key,
+          kind,
+          label: getInputReferenceLabel(kind),
+          title: getInputReferenceLabel(kind),
+          value,
+        });
       });
       return references;
     },
@@ -414,6 +426,8 @@ function ImageNodeCardImpl({
   const mediaFrameRef = React.useRef<HTMLDivElement | null>(null);
   const imageElementRef = React.useRef<HTMLImageElement | null>(null);
   const uploadInputRef = React.useRef<HTMLInputElement | null>(null);
+  const promptTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
+  const [mentionMenuOpen, setMentionMenuOpen] = React.useState(false);
   const [isUploadingAsset, setIsUploadingAsset] = React.useState(false);
   const isUploadingNodeAsset = node.data?.uploadingAsset === true || isUploadingAsset;
   const [imageLoadState, setImageLoadState] = React.useState<{
@@ -432,7 +446,7 @@ function ImageNodeCardImpl({
     [resolvedInputs]
   );
   const hasNonTextInputReferences = inputReferences.some((reference) => reference.kind !== "text");
-  const promptText = upstreamPrompt?.value || (node.properties.text as string) || "";
+  const promptText = (node.properties.text as string) || "";
   const imageUrls =
     Array.isArray(node.data?.imageUrls) && node.data?.imageUrls.length
       ? node.data.imageUrls.filter((url): url is string => typeof url === "string" && Boolean(url))
@@ -446,10 +460,7 @@ function ImageNodeCardImpl({
       : [];
   const imageUrl = resolvedImageUrls[activeImageIndex] || resolvedImageUrls[0] || "";
   const isFrameStrip = node.data?.isFrameStrip === true;
-  const frameGridColumns = Math.max(
-    1,
-    Math.min(8, Math.round(node.data?.frameGridColumns ?? 5))
-  );
+  const frameGridColumns = Math.max(1, Math.min(8, Math.round(node.data?.frameGridColumns ?? 5)));
   const frameGridRows = Math.max(
     1,
     Math.ceil(Math.max(1, resolvedImageUrls.length) / frameGridColumns)
@@ -505,12 +516,11 @@ function ImageNodeCardImpl({
   };
   const mediaFrameSize = isFrameStrip ? frameStripSize : resultImageSize;
   const imageSetKey = React.useMemo(() => resolvedImageUrls.join("||"), [resolvedImageUrls]);
-  const naturalSizeLabel =
-    isFrameStrip
-      ? `${resolvedImageUrls.length} \u5e27`
-      : naturalImageSize && naturalImageSize.width > 0 && naturalImageSize.height > 0
-        ? `${naturalImageSize.width} \u00d7 ${naturalImageSize.height}`
-        : `${resultImageSize.width} \u00d7 ${resultImageSize.height}`;
+  const naturalSizeLabel = isFrameStrip
+    ? `${resolvedImageUrls.length} \u5e27`
+    : naturalImageSize && naturalImageSize.width > 0 && naturalImageSize.height > 0
+      ? `${naturalImageSize.width} \u00d7 ${naturalImageSize.height}`
+      : `${resultImageSize.width} \u00d7 ${resultImageSize.height}`;
   const shouldShowUploadButton = shouldShowImageUploadButton({
     hasImageUrl: Boolean(imageUrl),
     isImageLoaded,
@@ -718,6 +728,30 @@ function ImageNodeCardImpl({
     onRun?.(node.id);
   };
 
+  const handlePromptChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+    onUpdateProperty?.(node.id, "text", event.target.value);
+    setMentionMenuOpen(
+      inputReferences.length > 0 &&
+        shouldShowMentionMenu(event.target.value, event.target.selectionStart)
+    );
+  };
+
+  const insertResourceMention = (label: string) => {
+    const cursorIndex =
+      promptTextareaRef.current?.selectionStart ?? (node.properties.text as string)?.length ?? 0;
+    const { nextCursorIndex, nextValue } = insertMentionLabel(
+      (node.properties.text as string) || "",
+      cursorIndex,
+      label
+    );
+    onUpdateProperty?.(node.id, "text", nextValue);
+    setMentionMenuOpen(false);
+    window.requestAnimationFrame(() => {
+      promptTextareaRef.current?.focus();
+      promptTextareaRef.current?.setSelectionRange(nextCursorIndex, nextCursorIndex);
+    });
+  };
+
   const downloadImage = async () => {
     if (!imageUrl) return;
     const filename = `${nodeBadgeTitle.replace(/\s+/g, "-") || "image-node"}-${Date.now()}.${extensionFromAssetUrl(imageUrl, "png")}`;
@@ -760,6 +794,7 @@ function ImageNodeCardImpl({
           setActiveImageIndex(0);
           setNaturalImageSize(naturalSize);
           onUpdateProperty?.(node.id, "imageUrl", uploadedUrl);
+          onUpdateProperty?.(node.id, "isSourceNode", true);
           onUpdateData?.(node.id, {
             imageUrl: uploadedUrl,
             imageUrls: [uploadedUrl],
@@ -770,6 +805,7 @@ function ImageNodeCardImpl({
             imageDisplayHeight: displaySize.height,
             uploadedImage: true,
             isUploadPlaceholder: false,
+            isSourceNode: true,
             uploadingAsset: false,
             status: "success",
             loading: false,
@@ -1912,14 +1948,6 @@ function ImageNodeCardImpl({
             <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-slate-100/22 to-transparent" />
             {inputReferences.length > 0 && (
               <div className="mb-3 rounded-2xl border border-white/6 bg-[#0d1117]/46 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-                <div className="mb-2 flex items-center justify-between">
-                  <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-violet-200/54">
-                    References
-                  </div>
-                  <div className="rounded-full border border-white/8 bg-white/[0.04] px-2 py-0.5 text-[11px] font-medium text-slate-200/68">
-                    {inputReferences.length}
-                  </div>
-                </div>
                 <div className="flex flex-wrap items-center gap-2">
                   {inputReferences.map((reference, index) => (
                     <React.Fragment key={`${reference.key}-${reference.value}-${index}`}>
@@ -1929,19 +1957,39 @@ function ImageNodeCardImpl({
                 </div>
               </div>
             )}
-            <textarea
-              value={upstreamPrompt ? "" : promptText}
-              onChange={(e) => onUpdateProperty?.(node.id, "text", e.target.value)}
-              disabled={!!upstreamPrompt}
-              placeholder={
-                upstreamPrompt
-                  ? `已由上游节点 (${upstreamPrompt.key}) 提供提示词`
-                  : hasNonTextInputReferences
-                    ? "描述你想基于这些输入生成的画面内容"
-                    : "描述你想要生成的画面内容"
-              }
-              className="h-[92px] w-full resize-none bg-transparent px-1 text-[15px] leading-7 text-slate-100/88 outline-none placeholder:text-slate-400/42 disabled:cursor-not-allowed disabled:text-slate-400/45 custom-scrollbar"
-            />
+            <div className="relative">
+              <textarea
+                ref={promptTextareaRef}
+                value={promptText}
+                onChange={handlePromptChange}
+                onFocus={(event) =>
+                  setMentionMenuOpen(
+                    inputReferences.length > 0 &&
+                      shouldShowMentionMenu(
+                        event.currentTarget.value,
+                        event.currentTarget.selectionStart
+                      )
+                  )
+                }
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") setMentionMenuOpen(false);
+                }}
+                placeholder={
+                  upstreamPrompt
+                    ? "继续补充这些输入资源要如何参与生成"
+                    : hasNonTextInputReferences
+                      ? "描述你想基于这些输入生成的画面内容"
+                      : "描述你想要生成的画面内容"
+                }
+                className="h-[92px] w-full resize-none bg-transparent px-1 text-[15px] leading-7 text-slate-100/88 outline-none placeholder:text-slate-400/42 custom-scrollbar"
+              />
+              {mentionMenuOpen && (
+                <InputResourceMentionMenu
+                  resources={inputReferences}
+                  onPick={(label) => insertResourceMention(label)}
+                />
+              )}
+            </div>
             <div
               ref={controlsRef}
               className="mt-3 flex items-center gap-2 border-t border-cyan-100/8 pt-3"

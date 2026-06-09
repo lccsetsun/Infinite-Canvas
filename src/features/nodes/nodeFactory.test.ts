@@ -19,6 +19,13 @@ describe("createNodeFromType", () => {
   it("creates text nodes with image generation parameter defaults", () => {
     const node = createNodeFromType("text_node", "text-1", 0, 0);
 
+    expect(node.inputs).toEqual([
+      { name: "system_prompt", type: "STRING" },
+      { name: "user_prompt", type: "ANY" },
+      { name: "source_image", type: "IMAGE" },
+      { name: "source_video", type: "VIDEO" },
+      { name: "source_audio", type: "AUDIO" },
+    ]);
     expect(node.properties.resolution).toBe("1K");
     expect(node.properties.aspect_ratio).toBe("16:9");
     expect(node.properties.quantity).toBe("1张");
@@ -28,6 +35,14 @@ describe("createNodeFromType", () => {
   it("creates video nodes with the shared visual generation parameter defaults", () => {
     const node = createNodeFromType("video_node", "video-1", 0, 0);
 
+    expect(node.inputs).toEqual([
+      { name: "prompt", type: "STRING" },
+      { name: "image", type: "IMAGE" },
+      { name: "source_video", type: "VIDEO" },
+      { name: "source_audio", type: "AUDIO" },
+      { name: "duration", type: "NUMBER" },
+      { name: "aspect_ratio", type: "STRING" },
+    ]);
     expect(node.properties.resolution).toBe("1K");
     expect(node.properties.aspect_ratio).toBe("16:9");
   });
@@ -39,6 +54,7 @@ describe("createNodeFromType", () => {
       { name: "提示词", type: "STRING" },
       { name: "时长", type: "NUMBER" },
       { name: "source_image", type: "IMAGE" },
+      { name: "source_video", type: "VIDEO" },
       { name: "source_audio", type: "AUDIO" },
     ]);
   });

@@ -16,6 +16,20 @@ function makeTextNode(id: string, text: string, inputs: GraphNode["inputs"] = []
   };
 }
 
+function makeImageNode(id: string, imageUrl: string): GraphNode {
+  return {
+    id,
+    type: "image_node",
+    title: id,
+    x: 0,
+    y: 0,
+    inputs: [],
+    outputs: [{ name: "image", type: "IMAGE" }],
+    properties: { imageUrl },
+    data: {},
+  };
+}
+
 describe("resolveNodeInputs", () => {
   it("falls back to source text node properties when the source has not been executed", () => {
     const source = makeTextNode("source", "Cats, dogs, and pigs");
@@ -65,5 +79,48 @@ describe("resolveNodeInputs", () => {
     );
 
     expect(inputs).toEqual({ user_prompt: "Legacy linked source" });
+  });
+
+  it("collects multiple links into the same input as an ordered array", () => {
+    const imageA = makeImageNode("image-a", "https://oss.example.com/a.png");
+    const imageB = makeImageNode("image-b", "https://oss.example.com/b.png");
+    const target: GraphNode = {
+      id: "video",
+      type: "video_node",
+      title: "video",
+      x: 0,
+      y: 0,
+      inputs: [{ name: "image", type: "IMAGE" }],
+      outputs: [{ name: "video", type: "VIDEO" }],
+      properties: {},
+      data: {},
+    };
+
+    const inputs = resolveNodeInputs(
+      target,
+      [
+        {
+          id: "link-a",
+          fromNodeId: "image-a",
+          fromOutputIndex: 0,
+          toNodeId: "video",
+          toInputIndex: 0,
+        },
+        {
+          id: "link-b",
+          fromNodeId: "image-b",
+          fromOutputIndex: 0,
+          toNodeId: "video",
+          toInputIndex: 0,
+        },
+      ],
+      new Map(),
+      [imageA, imageB, target]
+    );
+
+    expect(inputs.image).toEqual([
+      "https://oss.example.com/a.png",
+      "https://oss.example.com/b.png",
+    ]);
   });
 });

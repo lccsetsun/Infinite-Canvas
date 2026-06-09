@@ -20,6 +20,8 @@ import { downloadMediaAsset, extensionFromAssetUrl } from "../../utils/mediaAsse
 import { uploadFileToOss } from "../../features/resource/ossApi";
 import { ReferencePreviewCard } from "./ReferencePreviewCard";
 import { getMediaNodeLoadingLabel } from "../../utils/mediaNodeLoadingState";
+import { insertMentionLabel, shouldShowMentionMenu } from "../../utils/inputResourceMentions";
+import { InputResourceMentionMenu } from "./InputResourceMentionMenu";
 
 interface AudioNodeCardProps {
   node: GraphNode;
@@ -81,7 +83,7 @@ const AUDIO_NODE_REFERENCE_IGNORED_KEYS = new Set([
 ]);
 const AUDIO_NODE_TEXT_INPUT_KEYS = new Set(["提示词", "prompt", "text", "用户提示词"]);
 
-export type AudioNodeInputReferenceKind = "text" | "image" | "audio";
+export type AudioNodeInputReferenceKind = "text" | "image" | "video" | "audio";
 
 export interface AudioNodeInputReference {
   key: string;
@@ -109,6 +111,16 @@ function stringifyAudioInputReferenceValue(value: unknown): string {
   return "";
 }
 
+function stringifyAudioInputReferenceValues(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => stringifyAudioInputReferenceValue(item))
+      .filter((item) => item.trim().length > 0);
+  }
+  const singleValue = stringifyAudioInputReferenceValue(value);
+  return singleValue ? [singleValue] : [];
+}
+
 function inferAudioNodeInputReferenceKind(
   key: string,
   value: string
@@ -128,12 +140,16 @@ function inferAudioNodeInputReferenceKind(
   ) {
     return "audio";
   }
+  if (normalizedKey.includes("video") || /\.(mp4|mov|webm|m4v|avi)(\?.*)?$/.test(normalizedValue)) {
+    return "video";
+  }
   if (AUDIO_NODE_TEXT_INPUT_KEYS.has(key) || normalizedKey.includes("prompt")) return "text";
   return null;
 }
 
 function getAudioInputReferenceLabel(kind: AudioNodeInputReferenceKind) {
   if (kind === "image") return "图片";
+  if (kind === "video") return "视频";
   if (kind === "audio") return "音频";
   return "文本";
 }
@@ -145,17 +161,17 @@ export function getAudioNodeInputReferences(
   return Object.entries(resolvedInputs).reduce<AudioNodeInputReference[]>(
     (references, [key, rawValue]) => {
       if (AUDIO_NODE_REFERENCE_IGNORED_KEYS.has(key)) return references;
-      const value = stringifyAudioInputReferenceValue(rawValue);
-      if (!value) return references;
-      const kind = inferAudioNodeInputReferenceKind(key, value);
-      if (!kind) return references;
-      const label = getAudioInputReferenceLabel(kind);
-      references.push({
-        key,
-        kind,
-        label,
-        title: label,
-        value,
+      stringifyAudioInputReferenceValues(rawValue).forEach((value) => {
+        const kind = inferAudioNodeInputReferenceKind(key, value);
+        if (!kind) return;
+        const label = getAudioInputReferenceLabel(kind);
+        references.push({
+          key,
+          kind,
+          label,
+          title: label,
+          value,
+        });
       });
       return references;
     },
@@ -194,6 +210,8 @@ function AudioNodeCardImpl({
   const [isHovered, setIsHovered] = React.useState(false);
   const [optionMenuOpen, setOptionMenuOpen] = React.useState<AudioOptionMenu>(null);
   const uploadInputRef = React.useRef<HTMLInputElement | null>(null);
+  const promptTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
+  const [mentionMenuOpen, setMentionMenuOpen] = React.useState(false);
   const upstreamPrompt = findResolvedStringInput(resolvedInputs, [
     "prompt",
     "text",
@@ -206,7 +224,7 @@ function AudioNodeCardImpl({
   );
   const hasNonTextInputReferences = inputReferences.some((reference) => reference.kind !== "text");
 
-  const promptText = upstreamPrompt?.value || (node.properties.text as string) || "";
+  const promptText = (node.properties.text as string) || "";
   const audioUrl = (node.data?.audioUrl as string) || (node.properties.audioUrl as string) || "";
   const nodeWidth = getNodeWidth(node);
   const voiceId = (node.properties.voice_id as string) || "male-qn-qingse";
@@ -220,6 +238,30 @@ function AudioNodeCardImpl({
     if (isRunning) return;
     setOptionMenuOpen(null);
     onRun?.(node.id);
+  };
+
+  const handlePromptChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+    onUpdateProperty?.(node.id, "text", event.target.value);
+    setMentionMenuOpen(
+      inputReferences.length > 0 &&
+        shouldShowMentionMenu(event.target.value, event.target.selectionStart)
+    );
+  };
+
+  const insertResourceMention = (label: string) => {
+    const cursorIndex =
+      promptTextareaRef.current?.selectionStart ?? (node.properties.text as string)?.length ?? 0;
+    const { nextCursorIndex, nextValue } = insertMentionLabel(
+      (node.properties.text as string) || "",
+      cursorIndex,
+      label
+    );
+    onUpdateProperty?.(node.id, "text", nextValue);
+    setMentionMenuOpen(false);
+    window.requestAnimationFrame(() => {
+      promptTextareaRef.current?.focus();
+      promptTextareaRef.current?.setSelectionRange(nextCursorIndex, nextCursorIndex);
+    });
   };
 
   const downloadAudio = async () => {
@@ -272,9 +314,11 @@ function AudioNodeCardImpl({
         const metadata = await readLocalAudioMetadata(file);
         const asset = await uploadFileToOss(file);
         onUpdateProperty?.(node.id, "audioUrl", asset.url);
+        onUpdateProperty?.(node.id, "isSourceNode", true);
         onUpdateData?.(node.id, {
           audioUrl: asset.url,
           audioDuration: metadata.duration,
+          isSourceNode: true,
           uploadingAsset: false,
           status: "success",
           loading: false,
@@ -634,14 +678,6 @@ function AudioNodeCardImpl({
             <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-slate-100/22 to-transparent" />
             {inputReferences.length > 0 && (
               <div className="mb-3 rounded-2xl border border-white/6 bg-[#0d1117]/46 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-                <div className="mb-2 flex items-center justify-between">
-                  <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-violet-200/54">
-                    References
-                  </div>
-                  <div className="rounded-full border border-white/8 bg-white/[0.04] px-2 py-0.5 text-[11px] font-medium text-slate-200/68">
-                    {inputReferences.length}
-                  </div>
-                </div>
                 <div className="flex flex-wrap items-center gap-2">
                   {inputReferences.map((reference, index) => (
                     <React.Fragment key={`${reference.key}-${reference.value}-${index}`}>
@@ -651,19 +687,39 @@ function AudioNodeCardImpl({
                 </div>
               </div>
             )}
-            <textarea
-              value={upstreamPrompt ? "" : promptText}
-              onChange={(e) => onUpdateProperty?.(node.id, "text", e.target.value)}
-              disabled={!!upstreamPrompt}
-              placeholder={
-                upstreamPrompt
-                  ? `已由上游节点 (${upstreamPrompt.key}) 提供文本`
-                  : hasNonTextInputReferences
-                    ? "描述你想基于这些输入生成的音乐、语音或音效"
-                    : "输入要合成的语音文本"
-              }
-              className="h-[92px] w-full resize-none bg-transparent px-1 text-[15px] leading-7 text-slate-100/88 outline-none placeholder:text-slate-400/42 disabled:cursor-not-allowed disabled:text-slate-400/45 custom-scrollbar"
-            />
+            <div className="relative">
+              <textarea
+                ref={promptTextareaRef}
+                value={promptText}
+                onChange={handlePromptChange}
+                onFocus={(event) =>
+                  setMentionMenuOpen(
+                    inputReferences.length > 0 &&
+                      shouldShowMentionMenu(
+                        event.currentTarget.value,
+                        event.currentTarget.selectionStart
+                      )
+                  )
+                }
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") setMentionMenuOpen(false);
+                }}
+                placeholder={
+                  upstreamPrompt
+                    ? "继续补充这些输入资源要如何参与生成"
+                    : hasNonTextInputReferences
+                      ? "描述你想基于这些输入生成的音乐、语音或音效"
+                      : "输入要合成的语音文本"
+                }
+                className="h-[92px] w-full resize-none bg-transparent px-1 text-[15px] leading-7 text-slate-100/88 outline-none placeholder:text-slate-400/42 custom-scrollbar"
+              />
+              {mentionMenuOpen && (
+                <InputResourceMentionMenu
+                  resources={inputReferences}
+                  onPick={(label) => insertResourceMention(label)}
+                />
+              )}
+            </div>
             <div className="mt-3 flex items-center gap-2 border-t border-cyan-100/8 pt-3">
               <div className="flex h-10 min-w-[156px] items-center gap-2 rounded-[14px] border border-cyan-100/8 bg-slate-950/18 px-3 text-[13px] font-medium text-cyan-50/78 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]">
                 <Wand2 className="h-3.5 w-3.5 text-cyan-100/50" />

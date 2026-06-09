@@ -22,13 +22,13 @@ import { findResolvedStringInput } from "../../utils/resolvedInputs";
 import { shouldShowInlinePortHandles } from "../../utils/portHandleVisibility";
 import { getNodeWidth, VIDEO_NODE_WIDTH } from "./geometry";
 import { Tooltip } from "../common/Tooltip";
-import {
-  downloadMediaAsset,
-  extensionFromAssetUrl,
-} from "../../utils/mediaAssets";
+import { downloadMediaAsset, extensionFromAssetUrl } from "../../utils/mediaAssets";
 import { uploadFileToOss } from "../../features/resource/ossApi";
 import { getMediaNodeLoadingLabel } from "../../utils/mediaNodeLoadingState";
+import { insertMentionLabel, shouldShowMentionMenu } from "../../utils/inputResourceMentions";
 import { ImageResolutionPicker } from "./ImageResolutionPicker";
+import { InputResourceMentionMenu } from "./InputResourceMentionMenu";
+import { ReferencePreviewCard } from "./ReferencePreviewCard";
 
 interface VideoNodeCardProps {
   node: GraphNode;
@@ -69,6 +69,106 @@ interface VideoNodeCardProps {
 const RESULT_VIDEO_MAX_HEIGHT = 390;
 const DURATION_OPTIONS = ["6s", "10s"];
 const MINIMAX_VIDEO_MODEL = "MiniMax-Hailuo-2.3";
+const VIDEO_NODE_REFERENCE_IGNORED_KEYS = new Set([
+  "duration",
+  "aspect_ratio",
+  "resolution",
+  "model",
+  "audio",
+]);
+const VIDEO_NODE_TEXT_INPUT_KEYS = new Set(["prompt", "text", "user_prompt"]);
+
+export type VideoNodeInputReferenceKind = "text" | "image" | "video" | "audio";
+
+export interface VideoNodeInputReference {
+  key: string;
+  kind: VideoNodeInputReferenceKind;
+  label: string;
+  title: string;
+  value: string;
+}
+
+function stringifyVideoInputReferenceValue(value: unknown): string {
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
+    return String(value);
+  }
+  return "";
+}
+
+function stringifyVideoInputReferenceValues(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => stringifyVideoInputReferenceValue(item))
+      .filter((item) => item.trim().length > 0);
+  }
+  const singleValue = stringifyVideoInputReferenceValue(value);
+  return singleValue ? [singleValue] : [];
+}
+
+function inferVideoNodeInputReferenceKind(
+  key: string,
+  value: string
+): VideoNodeInputReferenceKind | null {
+  const normalizedKey = key.toLowerCase();
+  const normalizedValue = value.toLowerCase();
+  if (
+    normalizedKey.includes("image") ||
+    normalizedValue.startsWith("data:image/") ||
+    /\.(png|jpe?g|webp|gif|bmp|svg)(\?.*)?$/.test(normalizedValue)
+  ) {
+    return "image";
+  }
+  if (normalizedKey.includes("video") || /\.(mp4|mov|webm|m4v|avi)(\?.*)?$/.test(normalizedValue)) {
+    return "video";
+  }
+  if (
+    normalizedKey.includes("audio") ||
+    /\.(mp3|wav|m4a|aac|flac|ogg)(\?.*)?$/.test(normalizedValue)
+  ) {
+    return "audio";
+  }
+  if (VIDEO_NODE_TEXT_INPUT_KEYS.has(key) || normalizedKey.includes("prompt")) return "text";
+  return null;
+}
+
+function getVideoInputReferenceLabel(kind: VideoNodeInputReferenceKind) {
+  if (kind === "image") return "Image";
+  if (kind === "video") return "Video";
+  if (kind === "audio") return "Audio";
+  return "Text";
+}
+
+function getVideoInputReferenceTitle(key: string, kind: VideoNodeInputReferenceKind) {
+  if (kind === "image" && key === "image") return "First frame";
+  if (kind === "text" && key === "prompt") return "Prompt";
+  return getVideoInputReferenceLabel(kind);
+}
+
+export function getVideoNodeInputReferences(
+  resolvedInputs: Record<string, unknown> | undefined
+): VideoNodeInputReference[] {
+  if (!resolvedInputs) return [];
+  return Object.entries(resolvedInputs).reduce<VideoNodeInputReference[]>(
+    (references, [key, rawValue]) => {
+      if (VIDEO_NODE_REFERENCE_IGNORED_KEYS.has(key)) return references;
+      stringifyVideoInputReferenceValues(rawValue).forEach((value) => {
+        const kind = inferVideoNodeInputReferenceKind(key, value);
+        if (!kind) return;
+        const label = getVideoInputReferenceLabel(kind);
+        references.push({
+          key,
+          kind,
+          label,
+          title: getVideoInputReferenceTitle(key, kind),
+          value,
+        });
+      });
+      return references;
+    },
+    []
+  );
+}
 
 function parseAspectRatio(ratio: string): number {
   const [w, h] = ratio.split(":").map((value) => Number.parseFloat(value));
@@ -151,6 +251,8 @@ function VideoNodeCardImpl({
   const previewNodeRef = React.useRef<HTMLDivElement | null>(null);
   const mediaFrameRef = React.useRef<HTMLDivElement | null>(null);
   const uploadInputRef = React.useRef<HTMLInputElement | null>(null);
+  const textareaRef = React.useRef<HTMLTextAreaElement | null>(null);
+  const [mentionMenuOpen, setMentionMenuOpen] = React.useState(false);
   const [naturalVideoSize, setNaturalVideoSize] = React.useState<{
     width: number;
     height: number;
@@ -167,7 +269,12 @@ function VideoNodeCardImpl({
     "视频提示词",
     "用户提示词",
   ]);
-  const promptText = upstreamPrompt?.value || (node.properties.text as string) || "";
+  const inputReferences = React.useMemo(
+    () => getVideoNodeInputReferences(resolvedInputs),
+    [resolvedInputs]
+  );
+  const hasNonTextInputReferences = inputReferences.some((reference) => reference.kind !== "text");
+  const promptText = (node.properties.text as string) || "";
   const videoUrl = (node.data?.videoUrl as string) || (node.properties.videoUrl as string) || "";
   const aspectRatio = (node.properties.aspect_ratio as string) || "16:9";
   const resolution = (node.properties.resolution as string) || "1K";
@@ -234,6 +341,30 @@ function VideoNodeCardImpl({
   const handleRun = () => {
     if (isRunning) return;
     onRun?.(node.id);
+  };
+
+  const handlePromptChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+    onUpdateProperty?.(node.id, "text", event.target.value);
+    setMentionMenuOpen(
+      inputReferences.length > 0 &&
+        shouldShowMentionMenu(event.target.value, event.target.selectionStart)
+    );
+  };
+
+  const insertResourceMention = (label: string) => {
+    const cursorIndex =
+      textareaRef.current?.selectionStart ?? (node.properties.text as string)?.length ?? 0;
+    const { nextCursorIndex, nextValue } = insertMentionLabel(
+      (node.properties.text as string) || "",
+      cursorIndex,
+      label
+    );
+    onUpdateProperty?.(node.id, "text", nextValue);
+    setMentionMenuOpen(false);
+    window.requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+      textareaRef.current?.setSelectionRange(nextCursorIndex, nextCursorIndex);
+    });
   };
 
   const togglePlay = async () => {
@@ -359,6 +490,7 @@ function VideoNodeCardImpl({
         setCurrentTime(0);
         setMediaDuration(metadata.duration);
         onUpdateProperty?.(node.id, "videoUrl", asset.url);
+        onUpdateProperty?.(node.id, "isSourceNode", true);
         onUpdateData?.(node.id, {
           videoUrl: asset.url,
           videoNaturalWidth: naturalSize.width,
@@ -366,6 +498,7 @@ function VideoNodeCardImpl({
           videoDisplayWidth: displaySize.width,
           videoDisplayHeight: displaySize.height,
           videoDuration: metadata.duration,
+          isSourceNode: true,
           uploadingAsset: false,
           status: "success",
           loading: false,
@@ -418,7 +551,10 @@ function VideoNodeCardImpl({
     onUpdateData?.(node.id, { error: undefined, loading: true, status: "loading" });
     try {
       const captures = await fetchVideoFrameCapture(videoUrl);
-      if (captures.length === 0) throw new Error("\u9010\u5e27\u5206\u6790\u63a5\u53e3\u672a\u8fd4\u56de\u53ef\u7528\u5e27\u6570\u636e");
+      if (captures.length === 0)
+        throw new Error(
+          "\u9010\u5e27\u5206\u6790\u63a5\u53e3\u672a\u8fd4\u56de\u53ef\u7528\u5e27\u6570\u636e"
+        );
       await onAnalyzeVideo?.(node, captures);
       onUpdateData?.(node.id, { loading: false, status: "success", error: undefined });
     } catch (error) {
@@ -863,17 +999,52 @@ function VideoNodeCardImpl({
             className="relative node-card left-1/2 mt-5 w-[720px] -translate-x-1/2 rounded-[18px] border border-[#2b3142]/90 bg-[#121723]/88 px-5 pb-3 pt-3 shadow-[0_28px_70px_-26px_rgba(0,0,0,0.92),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl"
           >
             <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-slate-100/22 to-transparent" />
-            <textarea
-              value={upstreamPrompt ? "" : promptText}
-              onChange={(e) => onUpdateProperty?.(node.id, "text", e.target.value)}
-              disabled={!!upstreamPrompt}
-              placeholder={
-                upstreamPrompt
-                  ? `已由上游节点 (${upstreamPrompt.key}) 提供提示词`
-                  : "描述你想要生成的视频内容"
-              }
-              className="h-[92px] w-full resize-none bg-transparent px-1 text-[15px] leading-7 text-slate-100/88 outline-none placeholder:text-slate-400/42 disabled:cursor-not-allowed disabled:text-slate-400/45 custom-scrollbar"
-            />
+            {inputReferences.length > 0 && (
+              <div
+                className={`mb-3 rounded-2xl border border-white/6 bg-[#0d1117]/46 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] ${
+                  hasNonTextInputReferences ? "ring-1 ring-violet-200/8" : ""
+                }`}
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  {inputReferences.map((reference, index) => (
+                    <React.Fragment key={`${reference.key}-${reference.value}-${index}`}>
+                      <ReferencePreviewCard reference={reference} index={index} />
+                    </React.Fragment>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div className="relative">
+              <textarea
+                ref={textareaRef}
+                value={promptText}
+                onChange={handlePromptChange}
+                onFocus={(event) =>
+                  setMentionMenuOpen(
+                    inputReferences.length > 0 &&
+                      shouldShowMentionMenu(
+                        event.currentTarget.value,
+                        event.currentTarget.selectionStart
+                      )
+                  )
+                }
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") setMentionMenuOpen(false);
+                }}
+                placeholder={
+                  upstreamPrompt
+                    ? "继续补充这些输入资源要如何参与生成"
+                    : "描述你想要生成的视频内容"
+                }
+                className="h-[92px] w-full resize-none bg-transparent px-1 text-[15px] leading-7 text-slate-100/88 outline-none placeholder:text-slate-400/42 custom-scrollbar"
+              />
+              {mentionMenuOpen && (
+                <InputResourceMentionMenu
+                  resources={inputReferences}
+                  onPick={(label) => insertResourceMention(label)}
+                />
+              )}
+            </div>
             <div className="mt-3 flex flex-nowrap items-center gap-2 border-t border-cyan-100/8 pt-3">
               <div className="flex h-10 min-w-0 flex-[1_1_196px] items-center gap-2 rounded-[14px] border border-cyan-100/8 bg-slate-950/18 px-3 text-[13px] font-medium text-cyan-50/78 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]">
                 <Video className="h-3.5 w-3.5 text-cyan-100/50" />
@@ -882,6 +1053,7 @@ function VideoNodeCardImpl({
               <ImageResolutionPicker
                 resolution={resolution}
                 aspectRatio={aspectRatio}
+                panelTitle="Video Size"
                 onChange={(nextResolution, nextAspectRatio) => {
                   onUpdateProperty?.(node.id, "resolution", nextResolution);
                   onUpdateProperty?.(node.id, "aspect_ratio", nextAspectRatio);
