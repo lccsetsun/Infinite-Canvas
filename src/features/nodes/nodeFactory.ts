@@ -119,6 +119,10 @@ const NODE_BLUEPRINTS: Partial<Record<NodeClass, NodeBlueprint>> = {
     properties: {
       text: "",
       model: "deepseek-chat",
+      resolution: "1K",
+      aspect_ratio: "16:9",
+      quantity: "1张",
+      n: 1,
       status: "idle",
       response: ""
     },
@@ -138,6 +142,7 @@ const NODE_BLUEPRINTS: Partial<Record<NodeClass, NodeBlueprint>> = {
       imageUrl: "",
       text: "",
       model: "image-01",
+      resolution: "1K",
       aspect_ratio: "16:9",
       quantity: "1张",
       n: 1,
@@ -158,7 +163,7 @@ const NODE_BLUEPRINTS: Partial<Record<NodeClass, NodeBlueprint>> = {
       text: "",
       model: "MiniMax-Hailuo-2.3",
       aspect_ratio: "16:9",
-      resolution: "768P",
+      resolution: "1K",
       duration: "6s",
       audio: true,
       quantity: "1个",

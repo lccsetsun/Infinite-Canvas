@@ -13,6 +13,23 @@ describe("createNodeFromType", () => {
       { name: "source_audio", type: "AUDIO" },
       { name: "source_video", type: "VIDEO" },
     ]);
+    expect(node.properties.resolution).toBe("1K");
+  });
+
+  it("creates text nodes with image generation parameter defaults", () => {
+    const node = createNodeFromType("text_node", "text-1", 0, 0);
+
+    expect(node.properties.resolution).toBe("1K");
+    expect(node.properties.aspect_ratio).toBe("16:9");
+    expect(node.properties.quantity).toBe("1张");
+    expect(node.properties.n).toBe(1);
+  });
+
+  it("creates video nodes with the shared visual generation parameter defaults", () => {
+    const node = createNodeFromType("video_node", "video-1", 0, 0);
+
+    expect(node.properties.resolution).toBe("1K");
+    expect(node.properties.aspect_ratio).toBe("16:9");
   });
 
   it("creates audio nodes with text, image, and audio inputs", () => {

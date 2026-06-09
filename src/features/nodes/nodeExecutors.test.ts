@@ -32,6 +32,7 @@ describe("image_node MiniMax executor", () => {
       inputs: { prompt: "雨夜街道", aspect_ratio: "9:16" },
       properties: {
         model: "image-01",
+        resolution: "2K",
         quantity: "1张",
         n: 1,
         prompt_optimizer: false,
@@ -54,6 +55,7 @@ describe("image_node MiniMax executor", () => {
         body: JSON.stringify({
           model: "image-01",
           prompt: "雨夜街道",
+          resolution: "2K",
           aspect_ratio: "9:16",
           response_format: "url",
           n: 1,
@@ -109,7 +111,7 @@ describe("video_node MiniMax executor", () => {
         videoUrl: "https://example.com/minimax-video.mp4",
         taskId: "task_1",
         fileId: "file_1",
-        metadata: { duration: 6, resolution: "768P" },
+        metadata: { duration: 6, resolution: "2K" },
       }),
     } as Response);
 
@@ -119,7 +121,7 @@ describe("video_node MiniMax executor", () => {
       properties: {
         model: "MiniMax-Hailuo-2.3",
         duration: "6s",
-        resolution: "768P",
+        resolution: "2K",
         aspect_ratio: "16:9",
         prompt_optimizer: true,
       },
@@ -143,7 +145,7 @@ describe("video_node MiniMax executor", () => {
           prompt: "小狗在草地上奔跑",
           first_frame_image: "https://example.com/first-frame.png",
           duration: 6,
-          resolution: "768P",
+          resolution: "2K",
           aspect_ratio: "16:9",
           prompt_optimizer: true,
           base_url: "https://api.minimaxi.com/v1",

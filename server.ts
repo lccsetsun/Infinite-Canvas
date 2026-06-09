@@ -443,6 +443,7 @@ app.post("/api/minimax/image-generation", async (req, res) => {
     const {
       model = "image-01",
       prompt,
+      resolution = "1K",
       aspect_ratio = "16:9",
       response_format = "url",
       n = 1,
@@ -459,6 +460,7 @@ app.post("/api/minimax/image-generation", async (req, res) => {
     const payload: Record<string, unknown> = {
       model,
       prompt,
+      resolution,
       aspect_ratio,
       response_format,
       n,
@@ -503,6 +505,7 @@ app.post("/api/minimax/image-generation", async (req, res) => {
       imageUrls,
       metadata: {
         model,
+        resolution,
         aspect_ratio,
         response_format,
         n,
@@ -529,7 +532,7 @@ app.post("/api/minimax/video-generation", async (req, res) => {
       prompt,
       first_frame_image,
       duration = 6,
-      resolution = "768P",
+      resolution = "1K",
       aspect_ratio = "16:9",
       prompt_optimizer = false,
       base_url,

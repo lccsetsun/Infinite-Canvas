@@ -39,22 +39,19 @@ const renderMarkdown = (text: string) => {
   });
 };
 
-const RESOLUTIONS = ["1K", "2K", "4K"];
+const RESOLUTIONS = ["1K", "2K", "3K", "4K"];
 const RATIOS = [
-  { label: "自适应", value: "auto", icon: Square },
   { label: "1:1", value: "1:1", icon: Square },
-  { label: "9:16", value: "9:16", icon: RectangleVertical },
-  { label: "16:9", value: "16:9", icon: RectangleHorizontal },
-  { label: "3:4", value: "3:4", icon: RectangleVertical },
   { label: "4:3", value: "4:3", icon: RectangleHorizontal },
+  { label: "3:4", value: "3:4", icon: RectangleVertical },
+  { label: "16:9", value: "16:9", icon: RectangleHorizontal },
+  { label: "9:16", value: "9:16", icon: RectangleVertical },
   { label: "3:2", value: "3:2", icon: RectangleHorizontal },
   { label: "2:3", value: "2:3", icon: RectangleVertical },
-  { label: "4:5", value: "4:5", icon: RectangleVertical },
-  { label: "5:4", value: "5:4", icon: RectangleHorizontal },
   { label: "21:9", value: "21:9", icon: RectangleHorizontal },
 ];
 const QUANTITIES = ["1张", "2张", "4张"];
-const VIDEO_RESOLUTIONS = ["480P", "720P", "1080P"];
+const VIDEO_RESOLUTIONS = ["1K", "2K", "3K", "4K"];
 const VIDEO_QUANTITIES = ["1个", "2个", "4个"];
 
 function NodeCardImpl({
@@ -92,7 +89,11 @@ function NodeCardImpl({
   const videoUrl = (node.data?.videoUrl as string) || (node.properties.videoUrl as string) || "";
   const promptText = upstreamPrompt?.value || (node.properties.text as string) || "";
 
-  const activeRatio = RATIOS.find(r => r.value === (node.properties.aspect_ratio || (node.type === "video_node" ? "16:9" : "1:1"))) || (node.type === "video_node" ? RATIOS[3] : RATIOS[1]);
+  const defaultAspectRatio = node.type === "video_node" ? "16:9" : "16:9";
+  const activeRatio =
+    RATIOS.find((r) => r.value === (node.properties.aspect_ratio || defaultAspectRatio)) ||
+    RATIOS.find((r) => r.value === defaultAspectRatio) ||
+    RATIOS[0];
   const ActiveRatioIcon = activeRatio.icon;
 
   const handleCopy = (e: React.MouseEvent) => {

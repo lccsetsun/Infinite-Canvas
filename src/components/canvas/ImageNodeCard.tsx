@@ -38,6 +38,7 @@ import {
 import { uploadFileToOss } from "../../features/resource/ossApi";
 import { ReferencePreviewCard } from "./ReferencePreviewCard";
 import { getMediaNodeLoadingLabel } from "../../utils/mediaNodeLoadingState";
+import { ImageResolutionPicker } from "./ImageResolutionPicker";
 
 interface ImageNodeCardProps {
   node: GraphNode;
@@ -95,7 +96,6 @@ const SQUARE_RESULT_IMAGE_MAX_WIDTH = 520;
 const SQUARE_RESULT_IMAGE_MAX_HEIGHT = 390;
 const PLACEHOLDER_RESULT_IMAGE_MAX_WIDTH = 520;
 const PLACEHOLDER_RESULT_IMAGE_MAX_HEIGHT = 390;
-const RATIO_OPTIONS = ["16:9", "9:16", "4:3", "3:4", "1:1", "21:9"];
 const QUANTITY_OPTIONS = ["1张", "2张", "3张", "4张"];
 const MINIMAX_IMAGE_MODEL = "MiniMax Image 01";
 const VISIBLE_THUMBNAIL_COUNT = 3;
@@ -124,15 +124,6 @@ const IMAGE_NODE_TEXT_INPUT_KEYS = new Set([
   "用户提示词",
   "user_prompt",
 ]);
-const MINIMAX_RATIO_SIZE: Record<string, string> = {
-  "16:9": "1280×720",
-  "9:16": "720×1280",
-  "4:3": "1152×864",
-  "3:4": "864×1152",
-  "1:1": "1024×1024",
-  "21:9": "1344×576",
-};
-
 export function getImagePreviewFrameClassName({
   isImageLoaded,
   isSelected,
@@ -386,7 +377,7 @@ function ImageNodeCardImpl({
 }: ImageNodeCardProps) {
   const isRunning = node.data?.loading === true;
   const [isHovered, setIsHovered] = React.useState(false);
-  const [openSelect, setOpenSelect] = React.useState<"ratio" | "quantity" | null>(null);
+  const [openSelect, setOpenSelect] = React.useState<"quantity" | null>(null);
   const [gridMenuOpen, setGridMenuOpen] = React.useState(false);
   const [customGridOpen, setCustomGridOpen] = React.useState(false);
   const [hoverCustomGrid, setHoverCustomGrid] = React.useState<{
@@ -470,6 +461,7 @@ function ImageNodeCardImpl({
     imageUrl && imageLoadState.url === imageUrl && imageLoadState.status === "error"
   );
   const aspectRatio = (node.properties.aspect_ratio as string) || "16:9";
+  const resolution = (node.properties.resolution as string) || "1K";
   const quantity = (node.properties.quantity as string) || "1张";
   const isStarterPlaceholder = node.data?.isUploadPlaceholder === true;
   const nodeBadgeTitle =
@@ -1958,69 +1950,15 @@ function ImageNodeCardImpl({
                 <Wand2 className="h-3.5 w-3.5 text-cyan-100/50" />
                 <span>{MINIMAX_IMAGE_MODEL}</span>
               </div>
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setOpenSelect((current) => (current === "ratio" ? null : "ratio"));
-                  }}
-                  className={`relative inline-flex h-10 min-w-[160px] items-center justify-center gap-2 rounded-[14px] border px-3 text-[13px] font-medium transition-colors ${
-                    openSelect === "ratio"
-                      ? "border-cyan-100/34 bg-cyan-100/[0.075] text-cyan-50"
-                      : "border-cyan-100/8 bg-slate-950/18 text-cyan-50/76 hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
-                  }`}
-                >
-                  <span>
-                    {aspectRatio} · {MINIMAX_RATIO_SIZE[aspectRatio] || MINIMAX_RATIO_SIZE["16:9"]}
-                  </span>
-                  <ChevronUp
-                    className={`h-3.5 w-3.5 text-slate-300/55 transition-transform ${openSelect === "ratio" ? "" : "rotate-180"}`}
-                  />
-                </button>
-                <AnimatePresence>
-                  {openSelect === "ratio" && (
-                    <motion.div
-                      data-node-action="true"
-                      initial={{ opacity: 0, y: 8, scale: 0.98 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: 8, scale: 0.98 }}
-                      transition={{ duration: 0.15, ease: "easeOut" }}
-                      className="absolute bottom-[calc(100%+12px)] left-0 z-50 w-[226px] rounded-[16px] border border-cyan-100/12 bg-[#0d121c]/96 p-2 shadow-[0_22px_56px_-22px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-2xl"
-                      onPointerDown={(e) => e.stopPropagation()}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {RATIO_OPTIONS.map((ratio) => {
-                        const isActive = ratio === aspectRatio;
-                        return (
-                          <button
-                            key={ratio}
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onUpdateProperty?.(node.id, "aspect_ratio", ratio);
-                              setOpenSelect(null);
-                            }}
-                            className={`flex h-10 w-full items-center justify-between rounded-[12px] px-3 text-left transition-colors ${
-                              isActive
-                                ? "bg-cyan-300/[0.1] text-cyan-50"
-                                : "text-slate-300/76 hover:bg-white/[0.055] hover:text-slate-100"
-                            }`}
-                          >
-                            <span className="text-[13px] font-semibold">{ratio}</span>
-                            <span className="flex items-center gap-2 text-[12px] tabular-nums text-slate-400/82">
-                              {MINIMAX_RATIO_SIZE[ratio]}
-                              <span
-                                className={`h-1.5 w-1.5 rounded-full ${isActive ? "bg-cyan-300 shadow-[0_0_10px_rgba(103,232,249,0.9)]" : "bg-slate-500/35"}`}
-                              />
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
+              <ImageResolutionPicker
+                resolution={resolution}
+                aspectRatio={aspectRatio}
+                onChange={(nextResolution, nextAspectRatio) => {
+                  onUpdateProperty?.(node.id, "resolution", nextResolution);
+                  onUpdateProperty?.(node.id, "aspect_ratio", nextAspectRatio);
+                }}
+                buttonClassName="relative inline-flex h-10 min-w-[230px] items-center justify-center gap-2 rounded-[14px] border border-cyan-100/8 bg-slate-950/18 px-3 text-[13px] font-medium text-cyan-50/76 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
+              />
               <div className="relative">
                 <button
                   type="button"

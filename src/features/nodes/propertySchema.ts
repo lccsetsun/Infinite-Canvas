@@ -1,4 +1,5 @@
 import { NodeClass } from "../../types";
+import { IMAGE_ASPECT_RATIO_OPTIONS, IMAGE_RESOLUTION_OPTIONS } from "./imageResolutionPresets";
 
 export type PropertyEditorKind = "text" | "number" | "boolean" | "select" | "nullish";
 
@@ -59,6 +60,30 @@ const NODE_PROPERTY_SCHEMA: Partial<Record<NodeClass, Record<string, PropertySch
   },
   gemini_assistant: {
     systemInstruction: { kind: "text", placeholder: "给模型的系统指令" },
+  },
+  text_node: {
+    resolution: { kind: "select", options: IMAGE_RESOLUTION_OPTIONS, description: "目标图片分辨率" },
+    aspect_ratio: {
+      kind: "select",
+      options: IMAGE_ASPECT_RATIO_OPTIONS,
+      description: "目标图片比例",
+    },
+  },
+  image_node: {
+    resolution: { kind: "select", options: IMAGE_RESOLUTION_OPTIONS, description: "图片生成分辨率" },
+    aspect_ratio: {
+      kind: "select",
+      options: IMAGE_ASPECT_RATIO_OPTIONS,
+      description: "图片生成比例",
+    },
+  },
+  video_node: {
+    resolution: { kind: "select", options: IMAGE_RESOLUTION_OPTIONS, description: "视频生成分辨率" },
+    aspect_ratio: {
+      kind: "select",
+      options: IMAGE_ASPECT_RATIO_OPTIONS,
+      description: "视频生成比例",
+    },
   },
 };
 

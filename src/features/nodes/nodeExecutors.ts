@@ -40,6 +40,7 @@ export const MINIMAX_VIDEO_MODEL = "MiniMax-Hailuo-2.3";
 export const MINIMAX_AUDIO_MODEL = "speech-2.8-hd";
 
 const MINIMAX_ASPECT_RATIOS = new Set(["1:1", "16:9", "4:3", "3:2", "2:3", "3:4", "9:16", "21:9"]);
+const MINIMAX_IMAGE_RESOLUTIONS = new Set(["1K", "2K", "3K", "4K"]);
 const MINIMAX_IMAGE_MODELS = new Set([MINIMAX_IMAGE_MODEL]);
 const MINIMAX_VIDEO_MODELS = new Set([MINIMAX_VIDEO_MODEL, "minimax-video"]);
 const MINIMAX_AUDIO_MODELS = new Set([MINIMAX_AUDIO_MODEL, "speech-02-hd", "speech-02-turbo"]);
@@ -380,7 +381,7 @@ function normalizeMiniMaxVideoModel(model: unknown): string {
 
 function normalizeMiniMaxVideoResolution(value: unknown): string {
   const resolution = typeof value === "string" ? value.trim().toUpperCase() : "";
-  return resolution === "1080P" ? "1080P" : "768P";
+  return ["1K", "2K", "3K", "4K", "768P", "1080P"].includes(resolution) ? resolution : "1K";
 }
 
 function normalizeMiniMaxAudioModel(model: unknown): string {
@@ -415,6 +416,7 @@ async function callMiniMaxTextToImage(
   }
 
   const aspectRatio = String(aspectRatioInput || properties.aspect_ratio || "16:9");
+  const resolution = String(properties.resolution || "1K");
   const n = parseImageCount(properties.n ?? properties.quantity ?? 1);
   const response = await fetch("/api/minimax/image-generation", {
     method: "POST",
@@ -426,6 +428,7 @@ async function callMiniMaxTextToImage(
     body: JSON.stringify({
       model,
       prompt,
+      resolution: MINIMAX_IMAGE_RESOLUTIONS.has(resolution) ? resolution : "1K",
       aspect_ratio: MINIMAX_ASPECT_RATIOS.has(aspectRatio) ? aspectRatio : "16:9",
       response_format: "url",
       n,

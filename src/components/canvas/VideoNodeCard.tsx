@@ -3,7 +3,6 @@ import { AnimatePresence, motion } from "motion/react";
 import {
   ArrowUp,
   Camera,
-  ChevronUp,
   Download,
   Eye,
   Loader2,
@@ -29,6 +28,7 @@ import {
 } from "../../utils/mediaAssets";
 import { uploadFileToOss } from "../../features/resource/ossApi";
 import { getMediaNodeLoadingLabel } from "../../utils/mediaNodeLoadingState";
+import { ImageResolutionPicker } from "./ImageResolutionPicker";
 
 interface VideoNodeCardProps {
   node: GraphNode;
@@ -67,9 +67,7 @@ interface VideoNodeCardProps {
 }
 
 const RESULT_VIDEO_MAX_HEIGHT = 390;
-const RATIO_OPTIONS = ["16:9", "9:16", "4:3", "3:4", "1:1"];
 const DURATION_OPTIONS = ["6s", "10s"];
-const RESOLUTION_OPTIONS = ["768P", "1080P"];
 const MINIMAX_VIDEO_MODEL = "MiniMax-Hailuo-2.3";
 
 function parseAspectRatio(ratio: string): number {
@@ -172,7 +170,7 @@ function VideoNodeCardImpl({
   const promptText = upstreamPrompt?.value || (node.properties.text as string) || "";
   const videoUrl = (node.data?.videoUrl as string) || (node.properties.videoUrl as string) || "";
   const aspectRatio = (node.properties.aspect_ratio as string) || "16:9";
-  const resolution = (node.properties.resolution as string) || "768P";
+  const resolution = (node.properties.resolution as string) || "1K";
   const duration = (node.properties.duration as string) || "6s";
   const audioEnabled = node.properties.audio !== false;
   const nodeBadgeTitle =
@@ -862,7 +860,7 @@ function VideoNodeCardImpl({
               e.stopPropagation();
               onSelect(e);
             }}
-            className="relative node-card left-1/2 mt-5 w-[620px] -translate-x-1/2 rounded-[18px] border border-[#2b3142]/90 bg-[#121723]/88 px-4 pb-3 pt-3 shadow-[0_28px_70px_-26px_rgba(0,0,0,0.92),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl"
+            className="relative node-card left-1/2 mt-5 w-[720px] -translate-x-1/2 rounded-[18px] border border-[#2b3142]/90 bg-[#121723]/88 px-5 pb-3 pt-3 shadow-[0_28px_70px_-26px_rgba(0,0,0,0.92),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl"
           >
             <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-slate-100/22 to-transparent" />
             <textarea
@@ -876,33 +874,27 @@ function VideoNodeCardImpl({
               }
               className="h-[92px] w-full resize-none bg-transparent px-1 text-[15px] leading-7 text-slate-100/88 outline-none placeholder:text-slate-400/42 disabled:cursor-not-allowed disabled:text-slate-400/45 custom-scrollbar"
             />
-            <div className="mt-3 flex items-center gap-2 border-t border-cyan-100/8 pt-3">
-              <div className="flex h-10 min-w-[172px] items-center gap-2 rounded-[14px] border border-cyan-100/8 bg-slate-950/18 px-3 text-[13px] font-medium text-cyan-50/78 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]">
+            <div className="mt-3 flex flex-nowrap items-center gap-2 border-t border-cyan-100/8 pt-3">
+              <div className="flex h-10 min-w-0 flex-[1_1_196px] items-center gap-2 rounded-[14px] border border-cyan-100/8 bg-slate-950/18 px-3 text-[13px] font-medium text-cyan-50/78 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]">
                 <Video className="h-3.5 w-3.5 text-cyan-100/50" />
-                <span>{MINIMAX_VIDEO_MODEL}</span>
+                <span className="truncate">{MINIMAX_VIDEO_MODEL}</span>
               </div>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onUpdateProperty?.(
-                    node.id,
-                    "aspect_ratio",
-                    cycleValue(RATIO_OPTIONS, aspectRatio)
-                  );
+              <ImageResolutionPicker
+                resolution={resolution}
+                aspectRatio={aspectRatio}
+                onChange={(nextResolution, nextAspectRatio) => {
+                  onUpdateProperty?.(node.id, "resolution", nextResolution);
+                  onUpdateProperty?.(node.id, "aspect_ratio", nextAspectRatio);
                 }}
-                className="inline-flex h-10 min-w-[108px] items-center justify-center gap-2 rounded-[14px] border border-cyan-100/8 bg-slate-950/18 px-3 text-[13px] font-medium text-cyan-50/76 transition-colors hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
-              >
-                <span>{aspectRatio}</span>
-                <ChevronUp className="h-3.5 w-3.5 rotate-180 text-slate-300/55" />
-              </button>
+                buttonClassName="relative inline-flex h-10 w-[246px] shrink-0 items-center justify-center gap-2 rounded-[14px] border border-cyan-100/8 bg-slate-950/18 px-3 text-[13px] font-medium text-cyan-50/76 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
+              />
               <button
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
                   onUpdateProperty?.(node.id, "duration", cycleValue(DURATION_OPTIONS, duration));
                 }}
-                className="inline-flex h-10 min-w-[80px] items-center justify-center rounded-[14px] border border-cyan-100/8 bg-slate-950/18 px-3 text-[13px] font-medium text-cyan-50/68 transition-colors hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
+                className="inline-flex h-10 w-[82px] shrink-0 items-center justify-center rounded-[14px] border border-cyan-100/8 bg-slate-950/18 px-3 text-[13px] font-medium text-cyan-50/68 transition-colors hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
               >
                 {duration}
               </button>
@@ -910,23 +902,9 @@ function VideoNodeCardImpl({
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  onUpdateProperty?.(
-                    node.id,
-                    "resolution",
-                    cycleValue(RESOLUTION_OPTIONS, resolution)
-                  );
-                }}
-                className="inline-flex h-10 min-w-[88px] items-center justify-center rounded-[14px] border border-cyan-100/8 bg-slate-950/18 px-3 text-[13px] font-medium text-cyan-50/68 transition-colors hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
-              >
-                {resolution}
-              </button>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
                   onUpdateProperty?.(node.id, "audio", !audioEnabled);
                 }}
-                className="inline-flex h-10 min-w-[74px] items-center justify-center rounded-[14px] border border-cyan-100/8 bg-slate-950/18 px-3 text-[13px] font-medium text-cyan-50/68 transition-colors hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
+                className="inline-flex h-10 w-[86px] shrink-0 items-center justify-center rounded-[14px] border border-cyan-100/8 bg-slate-950/18 px-3 text-[13px] font-medium text-cyan-50/68 transition-colors hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
               >
                 {audioEnabled ? "音频开" : "音频关"}
               </button>
@@ -937,7 +915,7 @@ function VideoNodeCardImpl({
                   handleRun();
                 }}
                 disabled={isRunning || (!upstreamPrompt && !promptText.trim())}
-                className={`ml-auto flex h-10 w-10 items-center justify-center rounded-[14px] transition-all ${
+                className={`ml-auto flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] transition-all ${
                   isRunning || (!upstreamPrompt && !promptText.trim())
                     ? "cursor-not-allowed border border-cyan-100/6 bg-slate-200/8 text-slate-200/28"
                     : "bg-cyan-50 text-[#0f172a] shadow-[0_14px_30px_-18px_rgba(103,232,249,0.9)] hover:bg-white"
