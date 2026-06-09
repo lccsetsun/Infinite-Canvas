@@ -14,10 +14,9 @@ const useEmbeddedViteMiddleware = process.env.EMBED_VITE_MIDDLEWARE !== "false";
 app.use(
   "/dev-api",
   createProxyMiddleware({
-    target: "http://114.100.248.200:18082",
+    target: "http://114.100.248.200:18080",
     changeOrigin: true,
     ws: true,
-    pathRewrite: (path) => `/dev-api${path}`,
   })
 );
 

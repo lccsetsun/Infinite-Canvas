@@ -30,9 +30,10 @@ export default defineConfig(() => {
           changeOrigin: true,
         },
         "/dev-api": {
-          target: "http://114.100.248.200:18082",
+          target: "http://114.100.248.200:18080",
           changeOrigin: true,
           ws: true,
+          rewrite: (path) => path.replace(/^\/dev-api/, ""),
         },
       },
     },
