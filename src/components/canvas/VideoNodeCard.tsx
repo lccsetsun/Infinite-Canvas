@@ -1,8 +1,11 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
 import {
   ArrowUp,
   Camera,
+  Check,
+  ChevronDown,
   Download,
   Eye,
   Loader2,
@@ -24,15 +27,28 @@ import { getNodeWidth, VIDEO_NODE_WIDTH } from "./geometry";
 import { Tooltip } from "../common/Tooltip";
 import { downloadMediaAsset, extensionFromAssetUrl } from "../../utils/mediaAssets";
 import { uploadFileToOss } from "../../features/resource/ossApi";
-import { getMediaNodeLoadingLabel } from "../../utils/mediaNodeLoadingState";
+import { getMediaNodeLoadingLabel, isMediaNodeRunning } from "../../utils/mediaNodeLoadingState";
 import { insertMentionLabel, shouldShowMentionMenu } from "../../utils/inputResourceMentions";
 import { ImageResolutionPicker } from "./ImageResolutionPicker";
 import { InputResourceMentionMenu } from "./InputResourceMentionMenu";
 import { ReferencePreviewCard } from "./ReferencePreviewCard";
+import {
+  AI_MODEL_TYPES,
+  getModelOptionGroups,
+  type AiModelsByType,
+} from "../../features/api/aiModelCatalog";
+import {
+  getFloatingMenuPosition,
+  type FloatingMenuPosition,
+} from "../../utils/floatingMenuPosition";
 
 interface VideoNodeCardProps {
   node: GraphNode;
   selected: boolean;
+  apiConfig?: {
+    providerModels?: Partial<Record<string, string>>;
+    remoteModelsByType?: AiModelsByType;
+  };
   onSelect: (e?: React.MouseEvent) => void;
   onDelete: () => void;
   onDuplicate: () => void;
@@ -231,6 +247,7 @@ export function getVideoDurationSliderPercent(value: number): number {
 function VideoNodeCardImpl({
   node,
   selected,
+  apiConfig,
   onSelect,
   onDelete: _onDelete,
   onDuplicate: _onDuplicate,
@@ -252,7 +269,10 @@ function VideoNodeCardImpl({
   onLeaveCanvasLinkTarget,
   getCanvasLinkTargetIssue,
 }: VideoNodeCardProps) {
-  const isRunning = node.data?.loading === true;
+  const isRunning = isMediaNodeRunning({
+    data: node.data,
+    properties: node.properties,
+  });
   const isNodeUploadingAsset = node.data?.uploadingAsset === true;
   const [isHovered, setIsHovered] = React.useState(false);
   const [isPlaying, setIsPlaying] = React.useState(false);
@@ -263,6 +283,11 @@ function VideoNodeCardImpl({
   const [isAnalyzingFrames, setIsAnalyzingFrames] = React.useState(false);
   const [isUploadingVideo, setIsUploadingVideo] = React.useState(false);
   const isUploadingAsset = isNodeUploadingAsset || isUploadingVideo;
+  const modelMenuRef = React.useRef<HTMLDivElement | null>(null);
+  const modelMenuPortalRef = React.useRef<HTMLDivElement | null>(null);
+  const [modelMenuOpen, setModelMenuOpen] = React.useState(false);
+  const [modelMenuPosition, setModelMenuPosition] =
+    React.useState<FloatingMenuPosition | null>(null);
   const previewNodeRef = React.useRef<HTMLDivElement | null>(null);
   const mediaFrameRef = React.useRef<HTMLDivElement | null>(null);
   const uploadInputRef = React.useRef<HTMLInputElement | null>(null);
@@ -296,6 +321,26 @@ function VideoNodeCardImpl({
   const durationSeconds = normalizeVideoDurationSeconds(node.properties.duration);
   const durationSliderPercent = getVideoDurationSliderPercent(durationSeconds);
   const audioEnabled = node.properties.audio !== false;
+  const videoModelOptionGroups = React.useMemo(
+    () =>
+      getModelOptionGroups(
+        [MINIMAX_VIDEO_MODEL],
+        apiConfig?.remoteModelsByType?.[AI_MODEL_TYPES[2]] ?? []
+      ),
+    [apiConfig?.remoteModelsByType]
+  );
+  const videoModelOptions = React.useMemo(
+    () => [...videoModelOptionGroups.builtIn, ...videoModelOptionGroups.remote],
+    [videoModelOptionGroups]
+  );
+  const preferredVideoModel = videoModelOptions.includes(apiConfig?.providerModels?.minimax || "")
+    ? apiConfig?.providerModels?.minimax || MINIMAX_VIDEO_MODEL
+    : videoModelOptions[0] || MINIMAX_VIDEO_MODEL;
+  const selectedVideoModel =
+    typeof node.properties.model === "string" && node.properties.model.trim()
+      ? node.properties.model.trim()
+      : "";
+  const currentModel = selectedVideoModel || preferredVideoModel;
   const nodeBadgeTitle =
     node.title === "视频节点" || node.title === "视频" ? "视频节点 1" : node.title;
   const nodeBadgeMatch = nodeBadgeTitle.match(/^(.*?)(\s+\d+)$/);
@@ -316,6 +361,52 @@ function VideoNodeCardImpl({
       typeof width === "number" && typeof height === "number" ? { width, height } : null
     );
   }, [node.data?.videoNaturalHeight, node.data?.videoNaturalWidth, videoUrl]);
+
+  React.useEffect(() => {
+    if (node.properties.model !== currentModel) {
+      onUpdateProperty?.(node.id, "model", currentModel);
+    }
+  }, [currentModel, node.id, node.properties.model, onUpdateProperty]);
+
+  React.useEffect(() => {
+    if (!modelMenuOpen) return;
+    const updateModelMenuPosition = () => {
+      const rect = modelMenuRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setModelMenuPosition(
+        getFloatingMenuPosition({
+          anchorRect: rect,
+          viewportHeight: window.innerHeight,
+          viewportWidth: window.innerWidth,
+        })
+      );
+    };
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (
+        target &&
+        modelMenuRef.current &&
+        !modelMenuRef.current.contains(target) &&
+        !modelMenuPortalRef.current?.contains(target)
+      ) {
+        setModelMenuOpen(false);
+      }
+    };
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setModelMenuOpen(false);
+    };
+    updateModelMenuPosition();
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleEscape);
+    window.addEventListener("resize", updateModelMenuPosition);
+    window.addEventListener("scroll", updateModelMenuPosition, true);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleEscape);
+      window.removeEventListener("resize", updateModelMenuPosition);
+      window.removeEventListener("scroll", updateModelMenuPosition, true);
+    };
+  }, [modelMenuOpen]);
 
   React.useEffect(() => {
     if (!videoUrl || !previewNodeRef.current) return;
@@ -354,8 +445,13 @@ function VideoNodeCardImpl({
     videoUrl,
   ]);
 
+  React.useEffect(() => {
+    if (!selected) setModelMenuOpen(false);
+  }, [selected]);
+
   const handleRun = () => {
     if (isRunning) return;
+    setModelMenuOpen(false);
     onRun?.(node.id);
   };
 
@@ -506,9 +602,11 @@ function VideoNodeCardImpl({
         setCurrentTime(0);
         setMediaDuration(metadata.duration);
         onUpdateProperty?.(node.id, "videoUrl", asset.url);
+        if (asset.ossId) onUpdateProperty?.(node.id, "ossId", asset.ossId);
         onUpdateProperty?.(node.id, "isSourceNode", true);
         onUpdateData?.(node.id, {
           videoUrl: asset.url,
+          ossId: asset.ossId,
           videoNaturalWidth: naturalSize.width,
           videoNaturalHeight: naturalSize.height,
           videoDisplayWidth: displaySize.width,
@@ -1075,9 +1173,105 @@ function VideoNodeCardImpl({
               )}
             </div>
             <div className="mt-3 flex flex-nowrap items-center gap-2 border-t border-cyan-100/8 pt-3">
-              <div className="flex h-10 min-w-0 flex-[1_1_196px] items-center gap-2 rounded-[14px] border border-cyan-100/8 bg-slate-950/18 px-3 text-[13px] font-medium text-cyan-50/78 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]">
-                <Video className="h-3.5 w-3.5 text-cyan-100/50" />
-                <span className="truncate">{MINIMAX_VIDEO_MODEL}</span>
+              <div className="relative min-w-0 flex-[1_1_196px]" ref={modelMenuRef}>
+                <button
+                  type="button"
+                  data-node-action="true"
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    const rect = modelMenuRef.current?.getBoundingClientRect();
+                    if (rect) {
+                      setModelMenuPosition(
+                        getFloatingMenuPosition({
+                          anchorRect: rect,
+                          viewportHeight: window.innerHeight,
+                          viewportWidth: window.innerWidth,
+                        })
+                      );
+                    }
+                    setModelMenuOpen((open) => !open);
+                  }}
+                  className={`flex h-10 w-full min-w-0 items-center gap-2 rounded-[14px] border px-3 text-[13px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors ${
+                    modelMenuOpen
+                      ? "border-cyan-100/34 bg-cyan-100/[0.075] text-cyan-50"
+                      : "border-cyan-100/8 bg-slate-950/18 text-cyan-50/78 hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
+                  }`}
+                >
+                  <Video className="h-3.5 w-3.5 shrink-0 text-cyan-100/50" />
+                  <span className="min-w-0 flex-1 truncate text-left">{currentModel}</span>
+                  <ChevronDown
+                    className={`h-3.5 w-3.5 shrink-0 text-slate-300/56 transition-transform ${modelMenuOpen ? "rotate-180" : ""}`}
+                  />
+                </button>
+                {typeof document !== "undefined" &&
+                  createPortal(
+                    <AnimatePresence>
+                      {modelMenuOpen && modelMenuPosition && (
+                        <motion.div
+                          ref={modelMenuPortalRef}
+                          initial={{
+                            opacity: 0,
+                            y: modelMenuPosition.placement === "bottom" ? 8 : -8,
+                            scale: 0.98,
+                          }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{
+                            opacity: 0,
+                            y: modelMenuPosition.placement === "bottom" ? 8 : -8,
+                            scale: 0.98,
+                          }}
+                          transition={{ duration: 0.16, ease: "easeOut" }}
+                          className="fixed z-[160] overflow-y-auto rounded-2xl border border-cyan-100/14 bg-[#121923]/96 p-1.5 shadow-[0_28px_70px_-28px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl custom-scrollbar"
+                          style={{
+                            left: modelMenuPosition.left,
+                            maxHeight: modelMenuPosition.maxHeight,
+                            top: modelMenuPosition.top,
+                            bottom: modelMenuPosition.bottom,
+                            width: modelMenuPosition.width,
+                          }}
+                          onPointerDown={(event) => event.stopPropagation()}
+                          onClick={(event) => event.stopPropagation()}
+                          onWheel={(event) => event.stopPropagation()}
+                        >
+                          {[
+                            { label: "内置模型", models: videoModelOptionGroups.builtIn },
+                            { label: "远程模型", models: videoModelOptionGroups.remote },
+                          ]
+                            .filter((group) => group.models.length > 0)
+                            .map((group) => (
+                              <div key={group.label} className="py-0.5">
+                                <div className="px-2 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-300/44">
+                                  {group.label}
+                                </div>
+                                {group.models.map((model) => {
+                                  const isActive = currentModel === model;
+                                  return (
+                                    <button
+                                      key={`${group.label}-${model}`}
+                                      type="button"
+                                      onClick={() => {
+                                        onUpdateProperty?.(node.id, "model", model);
+                                        setModelMenuOpen(false);
+                                      }}
+                                      className={`flex h-9 w-full items-center gap-2 rounded-xl px-3 text-left text-[13px] font-medium transition-colors ${
+                                        isActive
+                                          ? "bg-cyan-300/[0.13] text-cyan-50"
+                                          : "text-slate-200/82 hover:bg-white/[0.05] hover:text-white"
+                                      }`}
+                                    >
+                                      <span className="min-w-0 flex-1 truncate">{model}</span>
+                                      {isActive && <Check className="h-3.5 w-3.5 text-cyan-100" />}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            ))}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>,
+                    document.body
+                  )}
               </div>
               <ImageResolutionPicker
                 resolution={resolution}
@@ -1156,7 +1350,11 @@ function VideoNodeCardImpl({
 
 const VideoNodeCard = React.memo(
   VideoNodeCardImpl,
-  (prev, next) => prev.node === next.node && prev.selected === next.selected
+  (prev, next) =>
+    prev.node === next.node &&
+    prev.selected === next.selected &&
+    prev.apiConfig?.providerModels?.minimax === next.apiConfig?.providerModels?.minimax &&
+    prev.apiConfig?.remoteModelsByType === next.apiConfig?.remoteModelsByType
 );
 
 export default VideoNodeCard;

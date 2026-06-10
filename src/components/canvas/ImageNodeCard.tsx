@@ -1,7 +1,9 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
 import {
   ArrowUp,
+  Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -36,14 +38,27 @@ import {
 } from "../../utils/imageCrop";
 import { uploadFileToOss } from "../../features/resource/ossApi";
 import { ReferencePreviewCard } from "./ReferencePreviewCard";
-import { getMediaNodeLoadingLabel } from "../../utils/mediaNodeLoadingState";
+import { getMediaNodeLoadingLabel, isMediaNodeRunning } from "../../utils/mediaNodeLoadingState";
 import { ImageResolutionPicker } from "./ImageResolutionPicker";
 import { insertMentionLabel, shouldShowMentionMenu } from "../../utils/inputResourceMentions";
 import { InputResourceMentionMenu } from "./InputResourceMentionMenu";
+import {
+  AI_MODEL_TYPES,
+  getModelOptionGroups,
+  type AiModelsByType,
+} from "../../features/api/aiModelCatalog";
+import {
+  getFloatingMenuPosition,
+  type FloatingMenuPosition,
+} from "../../utils/floatingMenuPosition";
 
 interface ImageNodeCardProps {
   node: GraphNode;
   selected: boolean;
+  apiConfig?: {
+    providerModels?: Partial<Record<string, string>>;
+    remoteModelsByType?: AiModelsByType;
+  };
   onSelect: (e?: React.MouseEvent) => void;
   onDelete: () => void;
   onDuplicate: () => void;
@@ -110,7 +125,8 @@ const FRAME_STRIP_TILE_MIN_WIDTH = 168;
 const FRAME_STRIP_TILE_MIN_HEIGHT = 96;
 const IMAGE_FRAME_DROP_LONG_PRESS_MS = 450;
 const QUANTITY_OPTIONS = ["1张", "2张", "3张", "4张"];
-const MINIMAX_IMAGE_MODEL = "MiniMax Image 01";
+const MINIMAX_IMAGE_MODEL = "image-01";
+const MINIMAX_IMAGE_MODEL_LABEL = "MiniMax Image 01";
 const VISIBLE_THUMBNAIL_COUNT = 3;
 const GRID_SPLIT_PRESETS = [
   { label: "4宫格 (2×2)", rows: 2, cols: 2 },
@@ -138,6 +154,10 @@ const IMAGE_NODE_TEXT_INPUT_KEYS = new Set([
   "用户提示词",
   "user_prompt",
 ]);
+function getImageModelLabel(model: string) {
+  return model === MINIMAX_IMAGE_MODEL ? MINIMAX_IMAGE_MODEL_LABEL : model;
+}
+
 export function getImagePreviewFrameClassName({
   isImageLoaded,
   isSelected,
@@ -414,6 +434,7 @@ export function resolveResultImageSize(
 function ImageNodeCardImpl({
   node,
   selected,
+  apiConfig,
   onSelect,
   onDelete: _onDelete,
   onDuplicate: _onDuplicate,
@@ -442,7 +463,10 @@ function ImageNodeCardImpl({
   onLeaveCanvasLinkTarget,
   getCanvasLinkTargetIssue,
 }: ImageNodeCardProps) {
-  const isRunning = node.data?.loading === true;
+  const isRunning = isMediaNodeRunning({
+    data: node.data,
+    properties: node.properties,
+  });
   const [isHovered, setIsHovered] = React.useState(false);
   const [openSelect, setOpenSelect] = React.useState<"quantity" | null>(null);
   const [gridMenuOpen, setGridMenuOpen] = React.useState(false);
@@ -463,6 +487,11 @@ function ImageNodeCardImpl({
   const [cropRect, setCropRect] = React.useState<CropRect | null>(null);
   const [isSavingCrop, setIsSavingCrop] = React.useState(false);
   const controlsRef = React.useRef<HTMLDivElement | null>(null);
+  const modelMenuRef = React.useRef<HTMLDivElement | null>(null);
+  const modelMenuPortalRef = React.useRef<HTMLDivElement | null>(null);
+  const [modelMenuOpen, setModelMenuOpen] = React.useState(false);
+  const [modelMenuPosition, setModelMenuPosition] =
+    React.useState<FloatingMenuPosition | null>(null);
   const gridMenuRef = React.useRef<HTMLDivElement | null>(null);
   const cropMenuRef = React.useRef<HTMLDivElement | null>(null);
   const [activeImageIndex, setActiveImageIndex] = React.useState(() => {
@@ -1109,6 +1138,26 @@ function ImageNodeCardImpl({
   const aspectRatio = (node.properties.aspect_ratio as string) || "16:9";
   const resolution = (node.properties.resolution as string) || "1K";
   const quantity = (node.properties.quantity as string) || "1张";
+  const imageModelOptionGroups = React.useMemo(
+    () =>
+      getModelOptionGroups(
+        [MINIMAX_IMAGE_MODEL],
+        apiConfig?.remoteModelsByType?.[AI_MODEL_TYPES[1]] ?? []
+      ),
+    [apiConfig?.remoteModelsByType]
+  );
+  const imageModelOptions = React.useMemo(
+    () => [...imageModelOptionGroups.builtIn, ...imageModelOptionGroups.remote],
+    [imageModelOptionGroups]
+  );
+  const preferredImageModel = imageModelOptions.includes(apiConfig?.providerModels?.minimax || "")
+    ? apiConfig?.providerModels?.minimax || MINIMAX_IMAGE_MODEL
+    : imageModelOptions[0] || MINIMAX_IMAGE_MODEL;
+  const selectedImageModel =
+    typeof node.properties.model === "string" && node.properties.model.trim()
+      ? node.properties.model.trim()
+      : "";
+  const currentModel = selectedImageModel || preferredImageModel;
   const isStarterPlaceholder = node.data?.isUploadPlaceholder === true;
   const nodeBadgeTitle =
     node.title === "图片节点" || node.title === "图片" ? "图片节点 1" : node.title;
@@ -1355,8 +1404,55 @@ function ImageNodeCardImpl({
   }, [cropAspectRatio, isCropMode, resultImageSize]);
 
   React.useEffect(() => {
+    if (node.properties.model !== currentModel) {
+      onUpdateProperty?.(node.id, "model", currentModel);
+    }
+  }, [currentModel, node.id, node.properties.model, onUpdateProperty]);
+
+  React.useEffect(() => {
+    if (!modelMenuOpen) return;
+    const updateModelMenuPosition = () => {
+      const rect = modelMenuRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setModelMenuPosition(
+        getFloatingMenuPosition({
+          anchorRect: rect,
+          viewportHeight: window.innerHeight,
+          viewportWidth: window.innerWidth,
+        })
+      );
+    };
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (
+        target &&
+        modelMenuRef.current &&
+        !modelMenuRef.current.contains(target) &&
+        !modelMenuPortalRef.current?.contains(target)
+      ) {
+        setModelMenuOpen(false);
+      }
+    };
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setModelMenuOpen(false);
+    };
+    updateModelMenuPosition();
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleEscape);
+    window.addEventListener("resize", updateModelMenuPosition);
+    window.addEventListener("scroll", updateModelMenuPosition, true);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleEscape);
+      window.removeEventListener("resize", updateModelMenuPosition);
+      window.removeEventListener("scroll", updateModelMenuPosition, true);
+    };
+  }, [modelMenuOpen]);
+
+  React.useEffect(() => {
     if (!selected) {
       setOpenSelect(null);
+      setModelMenuOpen(false);
       setGridMenuOpen(false);
       setCustomGridOpen(false);
       setHoverCustomGrid(null);
@@ -1372,6 +1468,7 @@ function ImageNodeCardImpl({
   const handleRun = () => {
     if (isRunning) return;
     setOpenSelect(null);
+    setModelMenuOpen(false);
     onRun?.(node.id);
   };
 
@@ -1441,10 +1538,12 @@ function ImageNodeCardImpl({
           setActiveImageIndex(0);
           setNaturalImageSize(naturalSize);
           onUpdateProperty?.(node.id, "imageUrl", uploadedUrl);
+          if (asset.ossId) onUpdateProperty?.(node.id, "ossId", asset.ossId);
           onUpdateProperty?.(node.id, "isSourceNode", true);
           onUpdateData?.(node.id, {
             imageUrl: uploadedUrl,
             imageUrls: [uploadedUrl],
+            ossId: asset.ossId,
             activeImageIndex: 0,
             imageNaturalWidth: naturalSize.width,
             imageNaturalHeight: naturalSize.height,
@@ -2596,10 +2695,13 @@ function ImageNodeCardImpl({
         </div>
         <div className="relative px-5 pb-5 pt-8">
           {isRunning || isUploadingNodeAsset ? (
-            <div className="flex min-h-[250px] flex-col items-center justify-center gap-5 text-slate-300/60">
-              <Loader2 className="h-10 w-10 animate-spin" />
+            <div className="flex min-h-[250px] flex-col items-center justify-center gap-4 text-slate-300/60">
+              <div className="relative flex h-[96px] w-[96px] items-center justify-center text-cyan-100/58">
+                <ImageIcon className="h-14 w-14" strokeWidth={1.55} />
+              </div>
               <div className="text-center">
-                <div className="text-[13px] text-slate-100/80">
+                <div className="inline-flex items-center gap-2 text-[13px] text-slate-100/80">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-cyan-100/72" />
                   {getMediaNodeLoadingLabel({
                     isUploading: isUploadingNodeAsset,
                     mediaType: "image",
@@ -2681,9 +2783,110 @@ function ImageNodeCardImpl({
               ref={controlsRef}
               className="mt-3 flex items-center gap-2 border-t border-cyan-100/8 pt-3"
             >
-              <div className="flex h-10 min-w-[172px] items-center gap-2 rounded-[14px] border border-cyan-100/8 bg-slate-950/18 px-3 text-[13px] font-medium text-cyan-50/78 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]">
-                <Wand2 className="h-3.5 w-3.5 text-cyan-100/50" />
-                <span>{MINIMAX_IMAGE_MODEL}</span>
+              <div className="relative min-w-[180px] flex-[1_1_190px]" ref={modelMenuRef}>
+                <button
+                  type="button"
+                  data-node-action="true"
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setOpenSelect(null);
+                    const rect = modelMenuRef.current?.getBoundingClientRect();
+                    if (rect) {
+                      setModelMenuPosition(
+                        getFloatingMenuPosition({
+                          anchorRect: rect,
+                          viewportHeight: window.innerHeight,
+                          viewportWidth: window.innerWidth,
+                        })
+                      );
+                    }
+                    setModelMenuOpen((open) => !open);
+                  }}
+                  className={`flex h-10 w-full min-w-0 items-center gap-2 rounded-[14px] border px-3 text-[13px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors ${
+                    modelMenuOpen
+                      ? "border-cyan-100/34 bg-cyan-100/[0.075] text-cyan-50"
+                      : "border-cyan-100/8 bg-slate-950/18 text-cyan-50/78 hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
+                  }`}
+                >
+                  <Wand2 className="h-3.5 w-3.5 shrink-0 text-cyan-100/50" />
+                  <span className="min-w-0 flex-1 truncate text-left">
+                    {getImageModelLabel(currentModel)}
+                  </span>
+                  <ChevronDown
+                    className={`h-3.5 w-3.5 shrink-0 text-slate-300/56 transition-transform ${modelMenuOpen ? "rotate-180" : ""}`}
+                  />
+                </button>
+                {typeof document !== "undefined" &&
+                  createPortal(
+                    <AnimatePresence>
+                      {modelMenuOpen && modelMenuPosition && (
+                        <motion.div
+                          ref={modelMenuPortalRef}
+                          initial={{
+                            opacity: 0,
+                            y: modelMenuPosition.placement === "bottom" ? 8 : -8,
+                            scale: 0.98,
+                          }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{
+                            opacity: 0,
+                            y: modelMenuPosition.placement === "bottom" ? 8 : -8,
+                            scale: 0.98,
+                          }}
+                          transition={{ duration: 0.16, ease: "easeOut" }}
+                          className="fixed z-[160] overflow-y-auto rounded-2xl border border-cyan-100/14 bg-[#121923]/96 p-1.5 shadow-[0_28px_70px_-28px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl custom-scrollbar"
+                          style={{
+                            left: modelMenuPosition.left,
+                            maxHeight: modelMenuPosition.maxHeight,
+                            top: modelMenuPosition.top,
+                            bottom: modelMenuPosition.bottom,
+                            width: modelMenuPosition.width,
+                          }}
+                          onPointerDown={(event) => event.stopPropagation()}
+                          onClick={(event) => event.stopPropagation()}
+                          onWheel={(event) => event.stopPropagation()}
+                        >
+                          {[
+                            { label: "内置模型", models: imageModelOptionGroups.builtIn },
+                            { label: "远程模型", models: imageModelOptionGroups.remote },
+                          ]
+                            .filter((group) => group.models.length > 0)
+                            .map((group) => (
+                              <div key={group.label} className="py-0.5">
+                                <div className="px-2 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-300/44">
+                                  {group.label}
+                                </div>
+                                {group.models.map((model) => {
+                                  const isActive = currentModel === model;
+                                  return (
+                                    <button
+                                      key={`${group.label}-${model}`}
+                                      type="button"
+                                      onClick={() => {
+                                        onUpdateProperty?.(node.id, "model", model);
+                                        setModelMenuOpen(false);
+                                      }}
+                                      className={`flex h-9 w-full items-center gap-2 rounded-xl px-3 text-left text-[13px] font-medium transition-colors ${
+                                        isActive
+                                          ? "bg-cyan-300/[0.13] text-cyan-50"
+                                          : "text-slate-200/82 hover:bg-white/[0.05] hover:text-white"
+                                      }`}
+                                    >
+                                      <span className="min-w-0 flex-1 truncate">
+                                        {getImageModelLabel(model)}
+                                      </span>
+                                      {isActive && <Check className="h-3.5 w-3.5 text-cyan-100" />}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            ))}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>,
+                    document.body
+                  )}
               </div>
               <ImageResolutionPicker
                 resolution={resolution}
@@ -2699,6 +2902,7 @@ function ImageNodeCardImpl({
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
+                    setModelMenuOpen(false);
                     setOpenSelect((current) => (current === "quantity" ? null : "quantity"));
                   }}
                   className={`relative inline-flex h-10 min-w-[76px] items-center justify-center gap-1.5 rounded-[14px] border px-3 text-[13px] font-medium transition-colors ${
@@ -2787,6 +2991,8 @@ const ImageNodeCard = React.memo(
   (prev, next) =>
     prev.node === next.node &&
     prev.selected === next.selected &&
+    prev.apiConfig?.providerModels?.minimax === next.apiConfig?.providerModels?.minimax &&
+    prev.apiConfig?.remoteModelsByType === next.apiConfig?.remoteModelsByType &&
     prev.resolvedInputs === next.resolvedInputs
 );
 

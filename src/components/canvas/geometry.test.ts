@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { GRID_SIZE, getOutputAnchor, snapPointToGrid, snapToGrid } from "./geometry";
+import {
+  GRID_SIZE,
+  getNodeHeight,
+  getNodeWidth,
+  getOutputAnchor,
+  snapPointToGrid,
+  snapToGrid,
+} from "./geometry";
 
 describe("grid snapping", () => {
   it("snaps scalar values to the nearest base grid line", () => {
@@ -35,5 +42,28 @@ describe("media node anchors", () => {
     };
 
     expect(getOutputAnchor(node, 0)).toEqual({ x: 1000, y: 236 });
+  });
+});
+
+describe("text node sizing", () => {
+  it("uses custom text node dimensions when present", () => {
+    const node = {
+      id: "text",
+      title: "文本节点 1",
+      type: "text_node" as const,
+      x: 120,
+      y: 80,
+      inputs: [],
+      outputs: [{ name: "文本", type: "STRING" as const }],
+      properties: {},
+      data: {
+        textNodeWidth: 560,
+        textNodeHeight: 420,
+      },
+    };
+
+    expect(getNodeWidth(node)).toBe(560);
+    expect(getNodeHeight(node)).toBe(420);
+    expect(getOutputAnchor(node, 0)).toEqual({ x: 680, y: 290 });
   });
 });

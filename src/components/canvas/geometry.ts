@@ -10,7 +10,11 @@ const AUDIO_NODE_WIDTH = 560;
 const NODE_HEIGHT = 180;
 
 export function getNodeWidth(node: GraphNode) {
-  if (node.type === "text_node") return TEXT_NODE_WIDTH;
+  if (node.type === "text_node") {
+    const nodeWidth = node.data?.textNodeWidth;
+    if (typeof nodeWidth === "number" && Number.isFinite(nodeWidth) && nodeWidth > 0) return nodeWidth;
+    return TEXT_NODE_WIDTH;
+  }
   if (node.type === "image_node") {
     const nodeWidth = node.data?.imageNodeWidth;
     if (typeof nodeWidth === "number" && Number.isFinite(nodeWidth) && nodeWidth > 0) return nodeWidth;
@@ -37,7 +41,11 @@ export function getNodeHeight(node: GraphNode) {
     if (typeof displayHeight === "number" && Number.isFinite(displayHeight) && displayHeight > 0) return displayHeight + 30;
     return GENERATIVE_NODE_HEIGHT;
   }
-  if (node.type === "text_node") return GENERATIVE_NODE_HEIGHT;
+  if (node.type === "text_node") {
+    const nodeHeight = node.data?.textNodeHeight;
+    if (typeof nodeHeight === "number" && Number.isFinite(nodeHeight) && nodeHeight > 0) return nodeHeight;
+    return GENERATIVE_NODE_HEIGHT;
+  }
   if (node.type === "video_node") {
     const nodeHeight = node.data?.videoNodeHeight;
     if (typeof nodeHeight === "number" && Number.isFinite(nodeHeight) && nodeHeight > 0) return nodeHeight;

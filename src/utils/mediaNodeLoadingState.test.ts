@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getMediaNodeLoadingLabel } from "./mediaNodeLoadingState";
+import { getMediaNodeLoadingLabel, isMediaNodeRunning } from "./mediaNodeLoadingState";
 
 describe("getMediaNodeLoadingLabel", () => {
   it("uses upload copy for source asset nodes while uploading", () => {
@@ -28,5 +28,23 @@ describe("getMediaNodeLoadingLabel", () => {
         operation: "frame-analysis",
       })
     ).toBe("正在逐帧分析");
+  });
+});
+
+describe("isMediaNodeRunning", () => {
+  it("treats data loading state as running", () => {
+    expect(isMediaNodeRunning({ data: { loading: true }, properties: {} })).toBe(true);
+    expect(isMediaNodeRunning({ data: { status: "loading" }, properties: {} })).toBe(true);
+  });
+
+  it("treats property loading state as running like text nodes do", () => {
+    expect(isMediaNodeRunning({ data: {}, properties: { status: "loading" } })).toBe(true);
+  });
+
+  it("does not treat success or idle state as running", () => {
+    expect(isMediaNodeRunning({ data: { loading: false, status: "success" }, properties: {} })).toBe(
+      false
+    );
+    expect(isMediaNodeRunning({ data: {}, properties: { status: "idle" } })).toBe(false);
   });
 });

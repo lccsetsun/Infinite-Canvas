@@ -1,5 +1,10 @@
 import { NodeClass } from "../../types";
+import type { AiModel, AiModelsByType } from "../api/aiModelCatalog";
+import { AI_MODEL_TYPES } from "../api/aiModelCatalog";
+import { parseDevApiEnvelope } from "../auth/apiEnvelope";
+import { devApiFetch } from "../auth/request";
 import { uploadFileToOss } from "../resource/ossApi";
+import { getImageResolutionPreset } from "./imageResolutionPresets";
 
 export interface ExecutorContext {
   inputs: Record<string, unknown>;
@@ -22,6 +27,7 @@ export interface ExecutorContext {
     providerApiKeys?: Partial<Record<string, string>>;
     providerBaseUrls?: Partial<Record<string, string>>;
     providerModels?: Partial<Record<string, string>>;
+    remoteModelsByType?: AiModelsByType;
   };
   signal?: AbortSignal;
   onProgress?: (percent: number) => void;
@@ -241,6 +247,26 @@ function normalizeStringArray(value: unknown): string[] {
   return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
 }
 
+function normalizeIdArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const result: string[] = [];
+  value.forEach((item) => {
+    const normalized =
+      typeof item === "string" && item.trim()
+        ? item.trim()
+        : typeof item === "number" && Number.isFinite(item)
+          ? String(Math.trunc(item))
+          : typeof item === "bigint"
+            ? String(item)
+            : "";
+    if (!normalized || seen.has(normalized)) return;
+    seen.add(normalized);
+    result.push(normalized);
+  });
+  return result;
+}
+
 function isHttpMediaUrl(value: string) {
   return /^https?:\/\//i.test(value.trim());
 }
@@ -334,6 +360,284 @@ function pickNumber(
 function normalizeTextModel(model: unknown): string {
   const value = typeof model === "string" ? model.trim() : "";
   return DEEPSEEK_MODEL_ALIASES[value] || value || TEXT_NODE_MODEL;
+}
+
+function findRemoteTextModel(
+  remoteModelsByType: AiModelsByType | undefined,
+  selectedModel: unknown
+): AiModel | undefined {
+  return findRemoteModelByType(remoteModelsByType, AI_MODEL_TYPES[0], selectedModel);
+}
+
+function findRemoteImageModel(
+  remoteModelsByType: AiModelsByType | undefined,
+  selectedModel: unknown
+): AiModel | undefined {
+  return findRemoteModelByType(remoteModelsByType, AI_MODEL_TYPES[1], selectedModel);
+}
+
+function findRemoteVideoModel(
+  remoteModelsByType: AiModelsByType | undefined,
+  selectedModel: unknown
+): AiModel | undefined {
+  return findRemoteModelByType(remoteModelsByType, AI_MODEL_TYPES[2], selectedModel);
+}
+
+function findRemoteModelByType(
+  remoteModelsByType: AiModelsByType | undefined,
+  modelType: (typeof AI_MODEL_TYPES)[number],
+  selectedModel: unknown
+): AiModel | undefined {
+  const modelId = typeof selectedModel === "string" ? selectedModel.trim() : "";
+  if (!modelId || !remoteModelsByType) return undefined;
+  return remoteModelsByType[modelType]?.find((model) => model.modelId === modelId);
+}
+
+function extractRemoteTextResponse(data: unknown): string {
+  if (typeof data === "string") return stripReasoningBlocks(data);
+  if (data && typeof data === "object") {
+    const record = data as Record<string, unknown>;
+    const textKeys = ["content", "text", "result", "answer", "message", "response", "output"];
+    for (const key of textKeys) {
+      const value = record[key];
+      if (typeof value === "string" && value.trim()) return stripReasoningBlocks(value);
+    }
+    try {
+      return JSON.stringify(data, null, 2);
+    } catch {
+      return "";
+    }
+  }
+  return "";
+}
+
+async function callRemoteVideoToText({
+  prompt,
+  ossIds,
+  model,
+  timeout,
+  signal,
+}: {
+  prompt: string;
+  ossIds: string[];
+  model: AiModel;
+  timeout?: number;
+  signal?: AbortSignal;
+}): Promise<string> {
+  const response = await devApiFetch("/system/videoTotext", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    timeoutMs: timeout ? timeout * 1000 : undefined,
+    signal,
+    body: JSON.stringify({
+      prompt,
+      ossId: ossIds,
+      model: {
+        apiId: model.apiId,
+        modelId: model.modelId,
+      },
+    }),
+  });
+  const parsed = await parseDevApiEnvelope<unknown>(response);
+  return extractRemoteTextResponse(parsed.data);
+}
+
+function extractRemoteImageUrls(data: unknown): string[] {
+  const urls: string[] = [];
+  const addUrl = (value: unknown) => {
+    if (typeof value !== "string") return;
+    const normalized = value.trim();
+    if (normalized && !urls.includes(normalized)) urls.push(normalized);
+  };
+
+  const visit = (value: unknown) => {
+    if (!value) return;
+    if (typeof value === "string") {
+      addUrl(value);
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+    if (typeof value !== "object") return;
+    const record = value as Record<string, unknown>;
+    [
+      "imageUrl",
+      "image_url",
+      "url",
+      "src",
+      "ossUrl",
+      "fileUrl",
+      "result",
+      "output",
+    ].forEach((key) => addUrl(record[key]));
+    ["imageUrls", "image_urls", "urls", "images", "data", "list", "results", "outputs"].forEach(
+      (key) => visit(record[key])
+    );
+  };
+
+  visit(data);
+  return urls;
+}
+
+function getImageCustomSize(properties: Record<string, unknown>, aspectRatio: string): string {
+  if (typeof properties.customSize === "string" && properties.customSize.trim()) {
+    return properties.customSize.trim();
+  }
+  const resolution = typeof properties.resolution === "string" ? properties.resolution : "1K";
+  const preset = getImageResolutionPreset(resolution, aspectRatio);
+  if (preset) return `${preset.width}x${preset.height}`;
+  return `${resolution} ${aspectRatio}`.trim();
+}
+
+async function callRemoteImageGeneration({
+  prompt,
+  properties,
+  aspectRatio,
+  ossIds,
+  model,
+  timeout,
+  signal,
+}: {
+  prompt: string;
+  properties: Record<string, unknown>;
+  aspectRatio: string;
+  ossIds: string[];
+  model: AiModel;
+  timeout?: number;
+  signal?: AbortSignal;
+}): Promise<{ imageUrls: string[] }> {
+  const response = await devApiFetch("/system/generator/images", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    timeoutMs: timeout ? timeout * 1000 : undefined,
+    signal,
+    body: JSON.stringify({
+      prompt,
+      n: parseImageCount(properties.n ?? properties.quantity ?? 1),
+      customSize: getImageCustomSize(properties, aspectRatio),
+      ossId: ossIds,
+      model: {
+        apiId: model.apiId,
+        modelId: model.modelId,
+      },
+    }),
+  });
+  const parsed = await parseDevApiEnvelope<unknown>(response);
+  const imageUrls = extractRemoteImageUrls(parsed.data);
+  if (imageUrls.length === 0) {
+    throw new Error("远程图片模型未返回图片链接");
+  }
+  return { imageUrls };
+}
+
+function normalizeRemoteVideoResolution(value: unknown): string {
+  const normalized = typeof value === "string" ? value.trim().toUpperCase() : "";
+  if (["P480", "P720", "P1080"].includes(normalized)) return normalized;
+  if (normalized === "480P") return "P480";
+  if (normalized === "720P") return "P720";
+  if (normalized === "1080P") return "P1080";
+  if (normalized === "2K") return "P720";
+  if (normalized === "3K" || normalized === "4K") return "P1080";
+  return "P480";
+}
+
+function normalizeRemoteVideoRatio(properties: Record<string, unknown>): string {
+  const ratio =
+    typeof properties.ratio === "string" && properties.ratio.trim()
+      ? properties.ratio.trim()
+      : typeof properties.aspect_ratio === "string" && properties.aspect_ratio.trim()
+        ? properties.aspect_ratio.trim()
+        : "";
+  return ratio || "AUTO";
+}
+
+function normalizeNumberArray(value: unknown): number[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<number>();
+  const result: number[] = [];
+  value.forEach((item) => {
+    const numberValue =
+      typeof item === "number" && Number.isFinite(item)
+        ? Math.trunc(item)
+        : typeof item === "string" && item.trim()
+          ? Number.parseInt(item, 10)
+          : Number.NaN;
+    if (!Number.isFinite(numberValue) || seen.has(numberValue)) return;
+    seen.add(numberValue);
+    result.push(numberValue);
+  });
+  return result;
+}
+
+function extractRemoteVideoUrl(data: unknown): string {
+  if (typeof data === "string") return data.trim();
+  if (!data || typeof data !== "object") return "";
+  const record = data as Record<string, unknown>;
+  const keys = ["videoUrl", "video_url", "url", "src", "fileUrl", "result", "output"];
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  const arrays = ["videos", "videoUrls", "urls", "data", "list", "results", "outputs"];
+  for (const key of arrays) {
+    const value = record[key];
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const url = extractRemoteVideoUrl(item);
+        if (url) return url;
+      }
+    } else {
+      const url = extractRemoteVideoUrl(value);
+      if (url) return url;
+    }
+  }
+  return "";
+}
+
+async function callRemoteVideoGeneration({
+  prompt,
+  properties,
+  ossIds,
+  resourceIds,
+  model,
+  timeout,
+  signal,
+}: {
+  prompt: string;
+  properties: Record<string, unknown>;
+  ossIds: string[];
+  resourceIds: number[];
+  model: AiModel;
+  timeout?: number;
+  signal?: AbortSignal;
+}): Promise<{ videoUrl: string }> {
+  const response = await devApiFetch("/system/generator/video", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    timeoutMs: timeout ? timeout * 1000 : undefined,
+    signal,
+    body: JSON.stringify({
+      prompt,
+      duration: parseDurationSeconds(properties.duration),
+      generateAudio: properties.audio !== false,
+      ratio: normalizeRemoteVideoRatio(properties),
+      resolution: normalizeRemoteVideoResolution(properties.resolution),
+      ossId: ossIds,
+      resrouceId: resourceIds,
+      model: {
+        apiId: model.apiId,
+        modelId: model.modelId,
+      },
+    }),
+  });
+  const parsed = await parseDevApiEnvelope<unknown>(response);
+  const videoUrl = extractRemoteVideoUrl(parsed.data);
+  if (!videoUrl) {
+    throw new Error("远程视频模型未返回视频链接");
+  }
+  return { videoUrl };
 }
 
 function buildTextToImageUrl(prompt: string, aspect: string): string {
@@ -570,13 +874,33 @@ async function callMiniMaxTextToAudio(
 }
 
 const executors: Partial<Record<NodeClass, NodeExecutor>> = {
-  text_node: async ({ inputs, properties, apiConfig }) => {
+  text_node: async ({ inputs, properties, apiConfig, signal }) => {
     if (properties.textMode === "plain") {
       const text = stringifyPromptValue(properties.text);
       return { outputs: { 0: text }, patch: { response: text, status: "success" } };
     }
 
     const userPrompt = composePromptLike(inputs, properties, "user_prompt", "prompt");
+    const remoteTextModel = findRemoteTextModel(apiConfig.remoteModelsByType, properties.model);
+    if (remoteTextModel) {
+      const text = await callRemoteVideoToText({
+        prompt: userPrompt,
+        ossIds: normalizeIdArray(inputs.reference_oss_ids),
+        model: remoteTextModel,
+        timeout: apiConfig.timeout,
+        signal,
+      });
+      return {
+        outputs: { 0: text },
+        patch: {
+          response: text,
+          status: "success",
+          remoteModelApiId: remoteTextModel.apiId,
+          remoteModelId: remoteTextModel.modelId,
+        },
+      };
+    }
+
     const nodeSystemPrompt = pickOptionalString(inputs, properties, "system_prompt");
     const deepseekBaseUrl =
       apiConfig.providerBaseUrls?.deepseek || apiConfig.deepseekBaseUrl || apiConfig.baseUrl;
@@ -690,11 +1014,34 @@ const executors: Partial<Record<NodeClass, NodeExecutor>> = {
     return { outputs: { 0: text }, patch: { response: text, status: "success" } };
   },
 
-  image_node: async ({ inputs, properties, apiConfig }) => {
+  image_node: async ({ inputs, properties, apiConfig, signal }) => {
     const prompt = composePromptLike(inputs, properties, "prompt");
     const model = String(properties.model || MINIMAX_IMAGE_MODEL);
+    const aspect = pickString(inputs, properties, "aspect_ratio") || "16:9";
+    const remoteImageModel = findRemoteImageModel(apiConfig.remoteModelsByType, properties.model);
+    if (remoteImageModel) {
+      const result = await callRemoteImageGeneration({
+        prompt,
+        properties,
+        aspectRatio: aspect,
+        ossIds: normalizeIdArray(inputs.reference_oss_ids),
+        model: remoteImageModel,
+        timeout: apiConfig.timeout,
+        signal,
+      });
+      return {
+        outputs: { 0: result.imageUrls[0] },
+        patch: {
+          imageUrl: result.imageUrls[0],
+          imageUrls: result.imageUrls,
+          activeImageIndex: 0,
+          status: "success",
+          remoteModelApiId: remoteImageModel.apiId,
+          remoteModelId: remoteImageModel.modelId,
+        },
+      };
+    }
     if (MINIMAX_IMAGE_MODELS.has(model)) {
-      const aspect = pickString(inputs, properties, "aspect_ratio") || "16:9";
       const minimaxApiKey = apiConfig.providerApiKeys?.minimax || apiConfig.minimaxApiKey;
       const minimaxBaseUrl = apiConfig.providerBaseUrls?.minimax || apiConfig.minimaxBaseUrl;
       const result = await callMiniMaxTextToImage(
@@ -718,14 +1065,36 @@ const executors: Partial<Record<NodeClass, NodeExecutor>> = {
       };
     }
 
-    const aspect = pickString(inputs, properties, "aspect_ratio") || "1:1";
-    const imageUrl = buildTextToImageUrl(prompt, aspect);
+    const fallbackAspect = aspect || "1:1";
+    const imageUrl = buildTextToImageUrl(prompt, fallbackAspect);
     return { outputs: { 0: imageUrl }, patch: { imageUrl, status: "success" } };
   },
 
-  video_node: async ({ inputs, properties, apiConfig }) => {
+  video_node: async ({ inputs, properties, apiConfig, signal }) => {
     const prompt = composePromptLike(inputs, properties, "prompt");
     const imageUrl = pickOptionalString(inputs, properties, "image", "首帧");
+    const remoteVideoModel = findRemoteVideoModel(apiConfig.remoteModelsByType, properties.model);
+    if (remoteVideoModel) {
+      const result = await callRemoteVideoGeneration({
+        prompt,
+        properties,
+        ossIds: normalizeIdArray(inputs.reference_oss_ids),
+        resourceIds: normalizeNumberArray(inputs.reference_resource_ids),
+        model: remoteVideoModel,
+        timeout: apiConfig.timeout,
+        signal,
+      });
+      return {
+        outputs: { 0: result.videoUrl },
+        patch: {
+          videoUrl: result.videoUrl,
+          status: "success",
+          remoteModelApiId: remoteVideoModel.apiId,
+          remoteModelId: remoteVideoModel.modelId,
+        },
+      };
+    }
+
     const model = normalizeMiniMaxVideoModel(properties.model);
     if (MINIMAX_VIDEO_MODELS.has(model)) {
       const minimaxApiKey = apiConfig.providerApiKeys?.minimax || apiConfig.minimaxApiKey;

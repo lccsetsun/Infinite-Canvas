@@ -9,6 +9,7 @@ import {
   updateNodePropertySnapshot,
   isRemoteWorkflowEcho,
   serializeRemotePersistSnapshot,
+  sanitizeNodeRuntimeState,
 } from "./useWorkflowState";
 import type { RemoteCanvasProject } from "../features/workspace/remoteCanvas";
 import type { GraphNode } from "../types";
@@ -110,6 +111,38 @@ describe("isRemoteWorkflowEcho", () => {
 });
 
 describe("serializeRemotePersistSnapshot", () => {
+  it("does not serialize interrupted loading state as persisted workflow data", () => {
+    const loadingNode: GraphNode = {
+      ...makeTextNode("node-1"),
+      properties: { status: "loading" },
+      data: {
+        loading: true,
+        status: "loading",
+        loadingOperation: "generate",
+        progress: 30,
+        error: undefined,
+      },
+    };
+
+    const serialized = serializeRemotePersistSnapshot({
+      workflowId: "canvas-1",
+      name: "Project 1",
+      tags: [],
+      nodes: [loadingNode],
+      links: [],
+      nodeOutputs: new Map(),
+      groups: [],
+    });
+
+    const parsed = JSON.parse(serialized);
+    const node = parsed.workflow.nodes[0];
+    expect(node.properties.status).toBeUndefined();
+    expect(node.data.loading).toBe(false);
+    expect(node.data.status).toBe("idle");
+    expect(node.data.loadingOperation).toBeUndefined();
+    expect(node.data.progress).toBeUndefined();
+  });
+
   it("stays stable when only local updatedAt-style metadata would change elsewhere", () => {
     const nodes = [makeTextNode("node-1")];
 
@@ -290,6 +323,63 @@ describe("source node semantics", () => {
     expect(nodes[0].inputs).toEqual([]);
     expect(nodes[0].data?.isSourceNode).toBe(true);
     expect(nodes[0].properties.isSourceNode).toBe(true);
+  });
+});
+
+describe("sanitizeNodeRuntimeState", () => {
+  it("clears stale loading state for every runnable node type after refresh", () => {
+    const nodeTypes: Array<GraphNode["type"]> = [
+      "text_node",
+      "image_node",
+      "video_node",
+      "audio_node",
+    ];
+
+    nodeTypes.forEach((type) => {
+      const loadingNode: GraphNode = {
+        ...makeTextNode(`${type}-1`),
+        type,
+        properties: { status: "loading" },
+        data: {
+          loading: true,
+          status: "loading",
+          loadingOperation: "generate",
+          progress: 60,
+        },
+      };
+
+      const sanitized = sanitizeNodeRuntimeState(loadingNode);
+
+      expect(sanitized.properties.status, type).toBeUndefined();
+      expect(sanitized.data?.loading, type).toBe(false);
+      expect(sanitized.data?.status, type).toBe("idle");
+      expect(sanitized.data?.loadingOperation, type).toBeUndefined();
+      expect(sanitized.data?.progress, type).toBeUndefined();
+    });
+  });
+
+  it("clears stale upload state after refresh", () => {
+    const uploadingImageNode: GraphNode = {
+      id: "image-1",
+      type: "image_node",
+      title: "图片节点 1",
+      x: 0,
+      y: 0,
+      inputs: [],
+      outputs: [],
+      properties: {},
+      data: {
+        uploadingAsset: true,
+        status: "uploading",
+        uploadedAssetName: "demo.png",
+      },
+    };
+
+    const sanitized = sanitizeNodeRuntimeState(uploadingImageNode);
+
+    expect(sanitized.data?.uploadingAsset).toBeUndefined();
+    expect(sanitized.data?.status).toBe("idle");
+    expect(sanitized.data?.uploadedAssetName).toBe("demo.png");
   });
 });
 

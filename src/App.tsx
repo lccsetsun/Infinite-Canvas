@@ -45,6 +45,11 @@ import {
   loadApiSettings,
   saveApiSettings,
 } from "./features/api/apiSettings";
+import {
+  fetchAiModelCatalog,
+  makeEmptyAiModelsByType,
+  type AiModelsByType,
+} from "./features/api/aiModelCatalog";
 import { clearAuthSession } from "./features/auth/authStorage";
 import { logout } from "./features/auth/authApi";
 import { performOptimisticLogout } from "./features/auth/logoutFlow";
@@ -97,6 +102,9 @@ export default function App({ onLoggedOut }: AppProps) {
   const [remoteProject, setRemoteProject] = React.useState<RemoteCanvasProject | null>(null);
   const [isProjectLoading, setIsProjectLoading] = React.useState(Boolean(requestedWorkflowId));
   const [projectLoadError, setProjectLoadError] = React.useState("");
+  const [remoteModelsByType, setRemoteModelsByType] = React.useState<AiModelsByType>(() =>
+    makeEmptyAiModelsByType()
+  );
 
   const refreshRemoteProject = React.useCallback(
     (showLoading = true) => {
@@ -212,6 +220,7 @@ export default function App({ onLoggedOut }: AppProps) {
         deepseek: deepseekApiProfile?.model || "",
         minimax: minimaxApiProfile?.model || "",
       },
+      remoteModelsByType,
     },
     remoteProject,
     onRemotePersist: async (project) => {
@@ -257,6 +266,24 @@ export default function App({ onLoggedOut }: AppProps) {
     runNotice,
     showNotice,
   } = useAppUiState();
+
+  React.useEffect(() => {
+    let cancelled = false;
+
+    void fetchAiModelCatalog()
+      .then((catalog) => {
+        if (!cancelled) setRemoteModelsByType(catalog);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          console.warn("Failed to load remote AI model catalog", error);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const [workflowName, setWorkflowName] = React.useState("榛樿椤圭洰");
   const [autoSaveWorkflow, setAutoSaveWorkflow] = React.useState(true);
@@ -1392,6 +1419,7 @@ export default function App({ onLoggedOut }: AppProps) {
                 deepseek: deepseekApiProfile?.model || "",
                 minimax: minimaxApiProfile?.model || "",
               },
+              remoteModelsByType,
             }}
             isLinkingOnCanvas={isLinkingOnCanvas}
             linkFromNodeId={linkFromNodeId}

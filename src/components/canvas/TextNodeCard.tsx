@@ -8,11 +8,11 @@ import {
   ChevronDown,
   Clapperboard,
   Copy,
-  Cpu,
   Eye,
   FileText,
   Image,
   Loader2,
+  Maximize2,
   MessageSquareText,
   Music4,
   Plus,
@@ -20,7 +20,7 @@ import {
   Wand2,
 } from "lucide-react";
 import { GraphNode } from "../../types";
-import { getNodeWidth } from "./geometry";
+import { getNodeHeight, getNodeWidth } from "./geometry";
 import { findResolvedStringInput } from "../../utils/resolvedInputs";
 import { shouldShowInlinePortHandles } from "../../utils/portHandleVisibility";
 import { TEXT_NODE_MODEL } from "../../features/nodes/nodeExecutors";
@@ -28,15 +28,25 @@ import { getTextNodeViewState } from "../../utils/textNodeViewState";
 import { getTextNodeInteractionState } from "../../utils/textNodeInteractionState";
 import type { TextNodeReferenceItem } from "../../utils/textNodeReferences";
 import { PROVIDER_PRESETS } from "../../features/api/apiSettings";
+import {
+  getModelOptionGroups,
+  type AiModelsByType,
+} from "../../features/api/aiModelCatalog";
+import {
+  getFloatingMenuPosition,
+  type FloatingMenuPosition,
+} from "../../utils/floatingMenuPosition";
 import { ReferencePreviewCard } from "./ReferencePreviewCard";
 import { insertMentionLabel, shouldShowMentionMenu } from "../../utils/inputResourceMentions";
 import { InputResourceMentionMenu } from "./InputResourceMentionMenu";
+import { calculateTextNodeResize } from "../../utils/textNodeResize";
 
 interface TextNodeCardProps {
   node: GraphNode;
   selected: boolean;
   apiConfig?: {
     providerModels?: Partial<Record<string, string>>;
+    remoteModelsByType?: AiModelsByType;
   };
   onSelect: (e?: React.MouseEvent) => void;
   onDelete: () => void;
@@ -78,6 +88,12 @@ interface TextNodeCardProps {
 
 type StarterAction = "write" | "video" | "image-prompt" | "music";
 
+const MINIMAX_MULTIMODAL_MODELS = ["MiniMax-M3"];
+const TEXT_NODE_MIN_WIDTH = 360;
+const TEXT_NODE_MIN_HEIGHT = 250;
+const TEXT_NODE_MAX_WIDTH = 860;
+const TEXT_NODE_MAX_HEIGHT = 760;
+
 function renderMarkdown(text: string) {
   if (!text) return null;
   const parts = text.split(/(\*\*.*?\*\*)/g);
@@ -109,18 +125,11 @@ function stripReasoningBlocks(text: string) {
   return text.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
 }
 
-function TextSkeleton({ active }: { active: boolean }) {
+function TextSkeleton({ active: _active }: { active: boolean }) {
   return (
     <div className="flex w-full items-center justify-center">
-      <div
-        className={`relative flex h-[96px] w-[96px] items-center justify-center overflow-hidden text-cyan-100/58 ${
-          active ? "animate-[text-node-skeleton-glow_2.8s_ease-in-out_infinite]" : ""
-        }`}
-      >
+      <div className="relative flex h-[96px] w-[96px] items-center justify-center text-cyan-100/58">
         <FileText className="h-14 w-14" strokeWidth={1.55} />
-        {active && (
-          <span className="absolute inset-0 -translate-x-full animate-[text-node-shimmer_1.7s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-amber-100/16 to-transparent" />
-        )}
       </div>
     </div>
   );
@@ -143,7 +152,7 @@ function TextNodeCardImpl({
   onDuplicate: _onDuplicate,
   onDragStart,
   onUpdateProperty,
-  onUpdateData: _onUpdateData,
+  onUpdateData,
   onPreview,
   onReverseSegmentAnalysis,
   resolvedInputs,
@@ -164,7 +173,6 @@ function TextNodeCardImpl({
   getCanvasLinkTargetIssue,
 }: TextNodeCardProps) {
   const deepseekTextModels = PROVIDER_PRESETS.deepseek.models;
-  const minimaxMultimodalModels = ["MiniMax-M3"];
   const starterActions = React.useMemo<
     Array<{ icon: typeof SquarePen; label: string; action: StarterAction }>
   >(
@@ -185,10 +193,22 @@ function TextNodeCardImpl({
   const [forceComposerOpen, setForceComposerOpen] = React.useState(false);
   const textareaRef = React.useRef<HTMLTextAreaElement | null>(null);
   const inlineTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
+  const responseTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
+  const rootRef = React.useRef<HTMLDivElement | null>(null);
+  const cardRef = React.useRef<HTMLDivElement | null>(null);
+  const [responseEditing, setResponseEditing] = React.useState(false);
+  const [isResizingTextNode, setIsResizingTextNode] = React.useState(false);
+  const [resizeDraftSize, setResizeDraftSize] = React.useState<{
+    width: number;
+    height: number;
+  } | null>(null);
   const [mentionMenuOpen, setMentionMenuOpen] = React.useState(false);
   const inputPortRef = React.useRef<HTMLDivElement | null>(null);
   const outputPortRef = React.useRef<HTMLDivElement | null>(null);
   const modelMenuRef = React.useRef<HTMLDivElement | null>(null);
+  const modelMenuPortalRef = React.useRef<HTMLDivElement | null>(null);
+  const [modelMenuPosition, setModelMenuPosition] =
+    React.useState<FloatingMenuPosition | null>(null);
   const [inlineEditing, setInlineEditing] = React.useState(
     () => node.data?.forceInlineEditing === true
   );
@@ -266,10 +286,24 @@ function TextNodeCardImpl({
     0,
     node.inputs.findIndex((input) => input.name === "user_prompt")
   );
-  const modelOptions = isMultimodalMode ? minimaxMultimodalModels : deepseekTextModels;
-  const providerLabel = isMultimodalMode ? "MiniMax" : "DeepSeek";
+  const modelOptionGroups = React.useMemo(
+    () =>
+      getModelOptionGroups(
+        isMultimodalMode ? MINIMAX_MULTIMODAL_MODELS : deepseekTextModels,
+        apiConfig?.remoteModelsByType?.文本 ?? []
+      ),
+    [
+      apiConfig?.remoteModelsByType?.文本,
+      deepseekTextModels,
+      isMultimodalMode,
+    ]
+  );
+  const modelOptions = React.useMemo(
+    () => [...modelOptionGroups.builtIn, ...modelOptionGroups.remote],
+    [modelOptionGroups]
+  );
   const rawPreferredProviderModel = isMultimodalMode
-    ? apiConfig?.providerModels?.minimax || minimaxMultimodalModels[0]
+    ? apiConfig?.providerModels?.minimax || MINIMAX_MULTIMODAL_MODELS[0]
     : apiConfig?.providerModels?.deepseek || deepseekTextModels[0];
   const preferredProviderModel = modelOptions.includes(rawPreferredProviderModel)
     ? rawPreferredProviderModel
@@ -285,6 +319,11 @@ function TextNodeCardImpl({
     responseText,
   });
   const contentViewKey = interactionState.contentViewKey || viewState.kind;
+  const nodeWidth = getNodeWidth(node);
+  const nodeHeight = getNodeHeight(node);
+  const renderedNodeWidth = resizeDraftSize?.width ?? nodeWidth;
+  const renderedNodeHeight = resizeDraftSize?.height ?? nodeHeight;
+  const responseAreaMaxHeight = Math.max(132, renderedNodeHeight - 72);
   const nodeBadgeTitle = node.title === "文本" ? "文本节点 1" : node.title;
   const nodeBadgeMatch = nodeBadgeTitle.match(/^(.*?)(\s+\d+)$/);
   const showPortHandles = shouldShowInlinePortHandles({ isHovered, isLinkingOnCanvas, selected });
@@ -294,6 +333,13 @@ function TextNodeCardImpl({
     typeof node.properties.frameAnalysisVideoUrl === "string" &&
     Array.isArray(node.properties.frameAnalysisSegments) &&
     node.properties.frameAnalysisSegments.length > 0;
+
+  React.useEffect(() => {
+    if (!resizeDraftSize) return;
+    if (nodeWidth === resizeDraftSize.width && nodeHeight === resizeDraftSize.height) {
+      setResizeDraftSize(null);
+    }
+  }, [nodeHeight, nodeWidth, resizeDraftSize]);
 
   const handleRun = () => {
     if (isRunning) return;
@@ -306,6 +352,18 @@ function TextNodeCardImpl({
       mentionableReferences.length > 0 &&
         shouldShowMentionMenu(event.target.value, event.target.selectionStart)
     );
+  };
+
+  const enterResponseEditMode = () => {
+    if (!responseText) return;
+    setForceComposerOpen(false);
+    setOutputMenuPos(null);
+    setResponseEditing(true);
+    window.requestAnimationFrame(() => responseTextareaRef.current?.focus());
+  };
+
+  const handleResponseTextChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+    onUpdateData?.(node.id, { response: event.target.value, status: "success" });
   };
 
   const insertResourceMention = (label: string) => {
@@ -375,6 +433,7 @@ function TextNodeCardImpl({
   };
 
   const handleOutputContextMenu = (e: React.MouseEvent) => {
+    if (responseEditing) return;
     if (!responseText) return;
     e.preventDefault();
     e.stopPropagation();
@@ -383,6 +442,90 @@ function TextNodeCardImpl({
       x: Math.min(e.clientX + 8, window.innerWidth - 156),
       y: Math.min(e.clientY + 8, window.innerHeight - 96),
     });
+  };
+
+  const applyTextNodeResizeSize = (size: { width: number; height: number }) => {
+    const width = `${size.width}px`;
+    const height = `${size.height}px`;
+    const responseHeight = `${Math.max(132, size.height - 72)}px`;
+
+    if (rootRef.current) {
+      rootRef.current.style.width = width;
+    }
+    if (cardRef.current) {
+      cardRef.current.style.width = width;
+      cardRef.current.style.height = height;
+      cardRef.current.style.setProperty("--text-node-response-height", responseHeight);
+    }
+  };
+
+  const handleResizePointerDown = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    onSelect();
+    setIsResizingTextNode(true);
+
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const startWidth = renderedNodeWidth;
+    const startHeight = renderedNodeHeight;
+    const rect = cardRef.current?.getBoundingClientRect();
+    const scale = rect?.width ? rect.width / startWidth : 1;
+    let latestSize = { width: Math.round(startWidth), height: Math.round(startHeight) };
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+    const previousCardTransition = cardRef.current?.style.transition ?? "";
+
+    document.body.style.cursor = "nwse-resize";
+    document.body.style.userSelect = "none";
+    if (cardRef.current) {
+      cardRef.current.style.transition = "none";
+    }
+    applyTextNodeResizeSize(latestSize);
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      moveEvent.preventDefault();
+      latestSize = calculateTextNodeResize(
+        {
+          startClientX: startX,
+          startClientY: startY,
+          currentClientX: moveEvent.clientX,
+          currentClientY: moveEvent.clientY,
+          startWidth,
+          startHeight,
+          scale,
+        },
+        {
+          minWidth: TEXT_NODE_MIN_WIDTH,
+          minHeight: TEXT_NODE_MIN_HEIGHT,
+          maxWidth: TEXT_NODE_MAX_WIDTH,
+          maxHeight: TEXT_NODE_MAX_HEIGHT,
+        }
+      );
+      applyTextNodeResizeSize(latestSize);
+    };
+
+    const finishResize = () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", finishResize);
+      window.removeEventListener("pointercancel", finishResize);
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+      if (cardRef.current) {
+        cardRef.current.style.transition = previousCardTransition;
+      }
+      setResizeDraftSize(latestSize);
+      onUpdateData?.(node.id, {
+        textNodeWidth: latestSize.width,
+        textNodeHeight: latestSize.height,
+      });
+      setIsResizingTextNode(false);
+    };
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", finishResize, { once: true });
+    window.addEventListener("pointercancel", finishResize, { once: true });
   };
 
   React.useEffect(() => {
@@ -411,22 +554,23 @@ function TextNodeCardImpl({
     if (!selected) {
       setForceComposerOpen(false);
       setInlineEditing(false);
+      setResponseEditing(false);
     }
   }, [selected]);
 
   React.useEffect(() => {
     if (node.data?.forceComposerOpen !== true) return;
     setForceComposerOpen(true);
-    _onUpdateData?.(node.id, { forceComposerOpen: false });
+    onUpdateData?.(node.id, { forceComposerOpen: false });
     window.requestAnimationFrame(() => textareaRef.current?.focus());
-  }, [node.data?.forceComposerOpen, node.id, _onUpdateData]);
+  }, [node.data?.forceComposerOpen, node.id, onUpdateData]);
 
   React.useEffect(() => {
     if (node.data?.forceInlineEditing !== true) return;
     setInlineEditing(true);
-    _onUpdateData?.(node.id, { forceInlineEditing: false });
+    onUpdateData?.(node.id, { forceInlineEditing: false });
     window.requestAnimationFrame(() => inlineTextareaRef.current?.focus());
-  }, [node.data?.forceInlineEditing, node.id, _onUpdateData]);
+  }, [node.data?.forceInlineEditing, node.id, onUpdateData]);
 
   React.useEffect(() => {
     if (showInlineEditor) inlineTextareaRef.current?.focus();
@@ -434,20 +578,41 @@ function TextNodeCardImpl({
 
   React.useEffect(() => {
     if (!modelMenuOpen) return;
+    const updateModelMenuPosition = () => {
+      const rect = modelMenuRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setModelMenuPosition(
+        getFloatingMenuPosition({
+          anchorRect: rect,
+          viewportHeight: window.innerHeight,
+          viewportWidth: window.innerWidth,
+        })
+      );
+    };
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target as Node | null;
-      if (modelMenuRef.current && target && !modelMenuRef.current.contains(target)) {
+      if (
+        target &&
+        modelMenuRef.current &&
+        !modelMenuRef.current.contains(target) &&
+        !modelMenuPortalRef.current?.contains(target)
+      ) {
         setModelMenuOpen(false);
       }
     };
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") setModelMenuOpen(false);
     };
+    updateModelMenuPosition();
     window.addEventListener("pointerdown", handlePointerDown);
     window.addEventListener("keydown", handleEscape);
+    window.addEventListener("resize", updateModelMenuPosition);
+    window.addEventListener("scroll", updateModelMenuPosition, true);
     return () => {
       window.removeEventListener("pointerdown", handlePointerDown);
       window.removeEventListener("keydown", handleEscape);
+      window.removeEventListener("resize", updateModelMenuPosition);
+      window.removeEventListener("scroll", updateModelMenuPosition, true);
     };
   }, [modelMenuOpen]);
 
@@ -485,17 +650,19 @@ function TextNodeCardImpl({
 
   return (
     <motion.div
+      ref={rootRef}
       initial={{ scale: 0.96, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
       exit={{ scale: 0.96, opacity: 0 }}
       transition={{ type: "spring", damping: 22, stiffness: 280 }}
       className="absolute text-left"
-      style={{ width: getNodeWidth(node) }}
+      style={{ width: renderedNodeWidth }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseMove={updatePortMagnet}
       onMouseLeave={resetPortMagnet}
     >
       <motion.div
+        ref={cardRef}
         onPointerDown={(e) => {
           if (e.button !== 0) {
             e.stopPropagation();
@@ -525,7 +692,11 @@ function TextNodeCardImpl({
             return;
           e.stopPropagation();
           onSelect(e);
-          enterInlineEditMode();
+          if (responseText) {
+            enterResponseEditMode();
+          } else {
+            enterInlineEditMode();
+          }
         }}
         onContextMenu={handleOutputContextMenu}
         className={`group node-card relative rounded-[18px] border bg-[#121723]/88 shadow-[0_28px_80px_-26px_rgba(0,0,0,0.92),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl transition-all duration-300 cursor-grab active:cursor-grabbing ${
@@ -533,10 +704,15 @@ function TextNodeCardImpl({
             ? "border-violet-300/26 -translate-y-[1px] shadow-[0_40px_100px_-34px_rgba(0,0,0,0.98),0_0_0_1px_rgba(196,181,253,0.2),0_0_0_7px_rgba(139,92,246,0.08),0_0_48px_rgba(109,40,217,0.18)]"
             : "border-[#2b3142]/90 hover:border-slate-300/35"
         }`}
-        style={{ width: getNodeWidth(node), minHeight: 290 }}
+        style={{
+          width: renderedNodeWidth,
+          height: renderedNodeHeight,
+          minHeight: TEXT_NODE_MIN_HEIGHT,
+          "--text-node-response-height": `${responseAreaMaxHeight}px`,
+        } as React.CSSProperties}
       >
         <AnimatePresence>
-          {selected && responseText && (
+          {selected && responseText && !responseEditing && (
             <motion.div
               data-node-action="true"
               initial={{ opacity: 0, y: 8, scale: 0.96 }}
@@ -731,7 +907,7 @@ function TextNodeCardImpl({
           )}
 
         <div
-          className={`relative flex min-h-[250px] flex-col ${hasCompactContent ? "px-5 py-5" : "px-5 pb-5 pt-8"}`}
+          className={`relative flex h-full min-h-[250px] flex-col ${hasCompactContent ? "px-5 py-5" : "px-5 pb-5 pt-8"}`}
         >
           <AnimatePresence mode="wait">
             <motion.div
@@ -754,21 +930,54 @@ function TextNodeCardImpl({
                       <AlertTriangle className="mt-1 h-4 w-4 shrink-0 text-amber-200" />
                       <span className="line-clamp-6">{errorText}</span>
                     </div>
-                  ) : responseText ? (
-                    <div
-                      data-canvas-passthrough="true"
-                      className="custom-scrollbar max-h-[250px] w-full overflow-y-auto pr-2 text-[14px] leading-[1.78] text-slate-100/82"
-                      onPointerDown={(e) => {
-                        if (isPointerOnVerticalScrollbar(e)) e.stopPropagation();
-                      }}
-                      onWheel={(e) => e.stopPropagation()}
-                    >
-                      <div className="whitespace-pre-wrap">{renderMarkdown(responseText)}</div>
-                    </div>
+                  ) : responseText || responseEditing ? (
+                    responseEditing ? (
+                      <textarea
+                        ref={responseTextareaRef}
+                        data-node-action="true"
+                        data-canvas-passthrough="true"
+                        value={responseText}
+                        onChange={handleResponseTextChange}
+                        onBlur={() => setResponseEditing(false)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Escape") {
+                            event.preventDefault();
+                            setResponseEditing(false);
+                          }
+                        }}
+                        onWheel={(event) => event.stopPropagation()}
+                        className="custom-scrollbar w-full resize-none bg-transparent pr-2 text-[14px] leading-[1.78] text-slate-100/88 outline-none"
+                        style={{ height: "var(--text-node-response-height)" }}
+                      />
+                    ) : (
+                      <div
+                        data-canvas-passthrough="true"
+                        role="button"
+                        tabIndex={0}
+                        className="custom-scrollbar w-full overflow-y-auto pr-2 text-[14px] leading-[1.78] text-slate-100/82 outline-none"
+                        style={{ maxHeight: "var(--text-node-response-height)" }}
+                        onDoubleClick={(event) => {
+                          event.stopPropagation();
+                          enterResponseEditMode();
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key !== "Enter") return;
+                          event.preventDefault();
+                          enterResponseEditMode();
+                        }}
+                        onPointerDown={(e) => {
+                          if (isPointerOnVerticalScrollbar(e)) e.stopPropagation();
+                        }}
+                        onWheel={(e) => e.stopPropagation()}
+                      >
+                        <div className="whitespace-pre-wrap">{renderMarkdown(responseText)}</div>
+                      </div>
+                    )
                   ) : showInlineEditor ? (
                     <textarea
                       ref={inlineTextareaRef}
                       data-node-action="true"
+                      data-canvas-passthrough="true"
                       value={promptText}
                       onChange={(e) => onUpdateProperty?.(node.id, "text", e.target.value)}
                       onBlur={() => setInlineEditing(false)}
@@ -779,10 +988,12 @@ function TextNodeCardImpl({
                         }
                       }}
                       placeholder="直接写下文本内容，完成后点击空白处退出编辑。"
+                      onWheel={(event) => event.stopPropagation()}
                       className="custom-scrollbar min-h-[210px] w-full resize-none bg-transparent text-[15px] leading-7 text-slate-100/88 outline-none placeholder:text-slate-400/38"
                     />
                   ) : isPlainMode ? (
                     <div
+                      data-canvas-passthrough="true"
                       role="button"
                       tabIndex={0}
                       onDoubleClick={(event) => {
@@ -795,6 +1006,7 @@ function TextNodeCardImpl({
                         enterInlineEditMode();
                       }}
                       className="custom-scrollbar min-h-[210px] w-full overflow-y-auto pr-2 text-[15px] leading-7 text-slate-100/82 outline-none"
+                      onWheel={(event) => event.stopPropagation()}
                     >
                       {displayPromptText.trim() ? (
                         <div className="whitespace-pre-wrap">{displayPromptText}</div>
@@ -862,10 +1074,20 @@ function TextNodeCardImpl({
             </motion.div>
           </AnimatePresence>
         </div>
+        <button
+          type="button"
+          data-node-action="true"
+          aria-label="调整文本节点大小"
+          title="拖拽调整文本节点大小"
+          onPointerDown={handleResizePointerDown}
+          className="absolute bottom-2 right-2 z-30 flex h-8 w-8 cursor-nwse-resize items-center justify-center rounded-[10px] border border-slate-300/10 bg-[#0b111c]/80 text-slate-300/52 shadow-[0_10px_22px_-16px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.05)] transition-colors hover:border-cyan-200/24 hover:bg-[#101827] hover:text-cyan-100/78"
+        >
+          <Maximize2 className="h-3.5 w-3.5" />
+        </button>
       </motion.div>
 
       <AnimatePresence>
-        {showPromptComposer && (
+        {showPromptComposer && !responseEditing && !isResizingTextNode && (
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -876,7 +1098,7 @@ function TextNodeCardImpl({
               e.stopPropagation();
               onSelect(e);
             }}
-            className="relative node-card left-1/2 mt-5 w-[690px] -translate-x-1/2 overflow-hidden rounded-[18px] border border-[#2b3142]/90 bg-[#121723]/88 px-5 pb-3 pt-4 shadow-[0_28px_70px_-26px_rgba(0,0,0,0.92),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl"
+            className="relative node-card left-1/2 mt-5 w-[690px] -translate-x-1/2 overflow-visible rounded-[18px] border border-[#2b3142]/90 bg-[#121723]/88 px-5 pb-3 pt-4 shadow-[0_28px_70px_-26px_rgba(0,0,0,0.92),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl"
           >
             <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-slate-100/22 to-transparent" />
             {composerReferences.length > 0 && (
@@ -893,6 +1115,7 @@ function TextNodeCardImpl({
             <div className="relative">
               <textarea
                 ref={textareaRef}
+                data-canvas-passthrough="true"
                 value={promptText}
                 onChange={handleComposerPromptChange}
                 onFocus={(event) =>
@@ -907,6 +1130,7 @@ function TextNodeCardImpl({
                 onKeyDown={(event) => {
                   if (event.key === "Escape") setMentionMenuOpen(false);
                 }}
+                onWheel={(event) => event.stopPropagation()}
                 placeholder={
                   upstreamTextPrompt
                     ? "输入你想如何处理上游内容，例如：总结、改写或回答它。"
@@ -933,66 +1157,94 @@ function TextNodeCardImpl({
                     onPointerDown={(e) => e.stopPropagation()}
                     onClick={(e) => {
                       e.stopPropagation();
+                      const rect = modelMenuRef.current?.getBoundingClientRect();
+                      if (rect) {
+                        setModelMenuPosition(
+                          getFloatingMenuPosition({
+                            anchorRect: rect,
+                            viewportHeight: window.innerHeight,
+                            viewportWidth: window.innerWidth,
+                          })
+                        );
+                      }
                       setModelMenuOpen((open) => !open);
                     }}
                     className="flex h-9 w-full min-w-0 items-center gap-2 rounded-xl border border-slate-200/10 bg-[#0d1117]/42 px-3 text-[13px] font-medium text-slate-100/76 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] transition-colors hover:border-slate-200/16 hover:bg-[#101723]/64"
                   >
-                    <Cpu
-                      className={`h-3.5 w-3.5 ${isMultimodalMode ? "text-violet-200/56" : "text-slate-200/42"}`}
-                    />
-                    <span>{providerLabel}</span>
-                    <span className="truncate text-slate-300/54">{currentModel}</span>
-                    <span
-                      className={`ml-auto rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] ${
-                        isMultimodalMode
-                          ? "border-violet-300/22 bg-violet-300/10 text-violet-100/76"
-                          : "border-emerald-300/22 bg-emerald-300/10 text-emerald-100/76"
-                      }`}
-                    >
-                      {isMultimodalMode ? "multi" : "text"}
+                    <span className="min-w-0 flex-1 truncate text-left text-slate-300/72">
+                      {currentModel}
                     </span>
                     <ChevronDown
                       className={`h-3.5 w-3.5 text-slate-300/56 transition-transform ${modelMenuOpen ? "rotate-180" : ""}`}
                     />
                   </button>
-                  <AnimatePresence>
-                    {modelMenuOpen && (
-                      <motion.div
-                        initial={{ opacity: 0, y: 8, scale: 0.98 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: 8, scale: 0.98 }}
-                        transition={{ duration: 0.16, ease: "easeOut" }}
-                        className="absolute left-0 top-[calc(100%+10px)] z-50 min-w-full overflow-hidden rounded-2xl border border-slate-400/16 bg-[#121923]/96 p-1.5 shadow-[0_28px_70px_-28px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl"
-                        onPointerDown={(e) => e.stopPropagation()}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <div className="px-2 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-300/44">
-                          {providerLabel}
-                        </div>
-                        {modelOptions.map((model) => {
-                          const isActive = currentModel === model;
-                          return (
-                            <button
-                              key={model}
-                              type="button"
-                              onClick={() => {
-                                onUpdateProperty?.(node.id, "model", model);
-                                setModelMenuOpen(false);
-                              }}
-                              className={`flex h-9 w-full items-center rounded-xl px-3 text-left text-[13px] font-medium transition-colors ${
-                                isActive
-                                  ? "bg-violet-500/[0.12] text-violet-50"
-                                  : "text-slate-200/82 hover:bg-white/[0.05] hover:text-white"
-                              }`}
-                            >
-                              <span className="truncate">{model}</span>
-                            </button>
-                          );
-                        })}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
                 </div>
+                {typeof document !== "undefined" &&
+                  createPortal(
+                    <AnimatePresence>
+                      {modelMenuOpen && modelMenuPosition && (
+                        <motion.div
+                          ref={modelMenuPortalRef}
+                          initial={{
+                            opacity: 0,
+                            y: modelMenuPosition.placement === "bottom" ? 8 : -8,
+                            scale: 0.98,
+                          }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{
+                            opacity: 0,
+                            y: modelMenuPosition.placement === "bottom" ? 8 : -8,
+                            scale: 0.98,
+                          }}
+                          transition={{ duration: 0.16, ease: "easeOut" }}
+                          className="fixed z-[160] overflow-y-auto rounded-2xl border border-slate-400/16 bg-[#121923]/96 p-1.5 shadow-[0_28px_70px_-28px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl custom-scrollbar"
+                          style={{
+                            left: modelMenuPosition.left,
+                            maxHeight: modelMenuPosition.maxHeight,
+                            top: modelMenuPosition.top,
+                            bottom: modelMenuPosition.bottom,
+                            width: modelMenuPosition.width,
+                          }}
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {[
+                            { label: "内置模型", models: modelOptionGroups.builtIn },
+                            { label: "远程模型", models: modelOptionGroups.remote },
+                          ]
+                            .filter((group) => group.models.length > 0)
+                            .map((group) => (
+                              <div key={group.label} className="py-0.5">
+                                <div className="px-2 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-300/44">
+                                  {group.label}
+                                </div>
+                                {group.models.map((model) => {
+                                  const isActive = currentModel === model;
+                                  return (
+                                    <button
+                                      key={`${group.label}-${model}`}
+                                      type="button"
+                                      onClick={() => {
+                                        onUpdateProperty?.(node.id, "model", model);
+                                        setModelMenuOpen(false);
+                                      }}
+                                      className={`flex h-9 w-full items-center rounded-xl px-3 text-left text-[13px] font-medium transition-colors ${
+                                        isActive
+                                          ? "bg-violet-500/[0.12] text-violet-50"
+                                          : "text-slate-200/82 hover:bg-white/[0.05] hover:text-white"
+                                      }`}
+                                    >
+                                      <span className="truncate">{model}</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            ))}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>,
+                    document.body
+                  )}
                 <input type="hidden" value={TEXT_NODE_MODEL} readOnly />
               </div>
               <button
@@ -1024,7 +1276,12 @@ function TextNodeCardImpl({
 
 const TextNodeCard = React.memo(
   TextNodeCardImpl,
-  (prev, next) => prev.node === next.node && prev.selected === next.selected
+  (prev, next) =>
+    prev.node === next.node &&
+    prev.selected === next.selected &&
+    prev.apiConfig?.providerModels?.deepseek === next.apiConfig?.providerModels?.deepseek &&
+    prev.apiConfig?.providerModels?.minimax === next.apiConfig?.providerModels?.minimax &&
+    prev.apiConfig?.remoteModelsByType === next.apiConfig?.remoteModelsByType
 );
 
 export default TextNodeCard;

@@ -188,7 +188,8 @@ export function buildInitialCanvasFileNodeData(
 function buildUploadedNodeData(
   assetKind: UploadedAssetKind,
   propKey: string,
-  assetUrl: string
+  assetUrl: string,
+  ossId?: string
 ): Partial<GraphNode["data"]> {
   const data: Partial<GraphNode["data"]> = {
     uploadingAsset: false,
@@ -197,6 +198,7 @@ function buildUploadedNodeData(
   };
 
   (data as Record<string, unknown>)[propKey] = assetUrl;
+  if (ossId) data.ossId = ossId;
 
   if (assetKind === "image") {
     data.imageUrls = [assetUrl];
@@ -260,9 +262,10 @@ export async function uploadCanvasFileAsNode({
     void uploadFileToOss(file)
       .then((asset) => {
         onUpdateNodeProperty?.(nodeId, expectedNode.propKey, asset.url);
+        if (asset.ossId) onUpdateNodeProperty?.(nodeId, "ossId", asset.ossId);
         onUpdateNodeData?.(
           nodeId,
-          buildUploadedNodeData(expectedNode.assetKind, expectedNode.propKey, asset.url)
+          buildUploadedNodeData(expectedNode.assetKind, expectedNode.propKey, asset.url, asset.ossId)
         );
         window.setTimeout(() => URL.revokeObjectURL(localUrl), 0);
         onNotice?.("文件已上传到 OSS");

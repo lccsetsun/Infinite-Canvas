@@ -10,12 +10,14 @@ import { GraphLink, GraphNode } from "../../types";
 import type { VideoFrameCaptureItem } from "../../features/video/frameCapture";
 import type { TextNodeReferenceItem } from "../../utils/textNodeReferences";
 import { getCanvasNodeZIndex } from "../../utils/canvasNodeLayering";
+import type { AiModelsByType } from "../../features/api/aiModelCatalog";
 
 interface CanvasNodeLayerProps {
   apiConfig: {
     apiKey: string;
     baseUrl: string;
     providerModels?: Partial<Record<string, string>>;
+    remoteModelsByType?: AiModelsByType;
   };
   isLinkingOnCanvas: boolean;
   linkFromNodeId: string;
@@ -196,6 +198,7 @@ export default function CanvasNodeLayer({
                 <ImageNodeCard
                   node={node}
                   selected={selectedNodeId === node.id}
+                  apiConfig={apiConfig}
                   onSelect={(e) => onSelectNode(node.id, e)}
                   onDelete={() => onDeleteNode(node.id)}
                   onDuplicate={() => onDuplicateNode(node.id)}
@@ -236,6 +239,7 @@ export default function CanvasNodeLayer({
                 <VideoNodeCard
                   node={node}
                   selected={selectedNodeId === node.id}
+                  apiConfig={apiConfig}
                   onSelect={(e) => onSelectNode(node.id, e)}
                   onDelete={() => onDeleteNode(node.id)}
                   onDuplicate={() => onDuplicateNode(node.id)}

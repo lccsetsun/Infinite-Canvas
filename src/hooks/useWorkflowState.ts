@@ -1,6 +1,7 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createNodeFromType } from "../features/nodes/nodeFactory";
 import { getExecutor } from "../features/nodes/nodeExecutors";
+import type { AiModelsByType } from "../features/api/aiModelCatalog";
 import { WORKFLOW_TEMPLATES } from "../features/templates/workflowTemplates";
 import {
   ExecutionLog,
@@ -242,11 +243,12 @@ export type UploadedAssetKind = "image" | "video" | "audio";
 export function markUploadedAssetNodeAsSource(
   node: GraphNode,
   assetKind: UploadedAssetKind,
-  assetUrl: string
+  assetUrl: string,
+  ossId?: string
 ): GraphNode {
   const propertyKey =
     assetKind === "image" ? "imageUrl" : assetKind === "video" ? "videoUrl" : "audioUrl";
-  return markNodeAsSource(node, { [propertyKey]: assetUrl });
+  return markNodeAsSource(node, { [propertyKey]: assetUrl, ossId });
 }
 
 export function updateNodePropertySnapshot(
@@ -364,6 +366,7 @@ export function addNodeToWorkflowSnapshot({
       __uploadedAssetUrl,
       __uploadedAssetKind,
       __uploadedAssetName,
+      __uploadedOssId,
       ...restProps
     } = initialProps;
     node.properties = { ...node.properties, ...restProps };
@@ -371,19 +374,43 @@ export function addNodeToWorkflowSnapshot({
       node.title = __nodeTitle.trim();
     }
     if (__uploadedAssetKind === "image" && typeof __uploadedAssetUrl === "string") {
-      Object.assign(node, markUploadedAssetNodeAsSource(node, "image", __uploadedAssetUrl));
+      Object.assign(
+        node,
+        markUploadedAssetNodeAsSource(
+          node,
+          "image",
+          __uploadedAssetUrl,
+          typeof __uploadedOssId === "string" ? __uploadedOssId : undefined
+        )
+      );
       if (typeof __uploadedAssetName === "string" && __uploadedAssetName.trim()) {
         node.title = getNextNumberedNodeTitle(nodes, "image_node") || node.title;
       }
     }
     if (__uploadedAssetKind === "video" && typeof __uploadedAssetUrl === "string") {
-      Object.assign(node, markUploadedAssetNodeAsSource(node, "video", __uploadedAssetUrl));
+      Object.assign(
+        node,
+        markUploadedAssetNodeAsSource(
+          node,
+          "video",
+          __uploadedAssetUrl,
+          typeof __uploadedOssId === "string" ? __uploadedOssId : undefined
+        )
+      );
       if (typeof __uploadedAssetName === "string" && __uploadedAssetName.trim()) {
         node.title = getNextNumberedNodeTitle(nodes, "video_node") || node.title;
       }
     }
     if (__uploadedAssetKind === "audio" && typeof __uploadedAssetUrl === "string") {
-      Object.assign(node, markUploadedAssetNodeAsSource(node, "audio", __uploadedAssetUrl));
+      Object.assign(
+        node,
+        markUploadedAssetNodeAsSource(
+          node,
+          "audio",
+          __uploadedAssetUrl,
+          typeof __uploadedOssId === "string" ? __uploadedOssId : undefined
+        )
+      );
       if (typeof __uploadedAssetName === "string" && __uploadedAssetName.trim()) {
         node.title = getNextNumberedNodeTitle(nodes, "audio_node") || node.title;
       }
@@ -538,7 +565,7 @@ export function serializeRemotePersistSnapshot(snapshot: {
     category: snapshot.category || "",
     tags: snapshot.tags,
     workflow: {
-      nodes: snapshot.nodes,
+      nodes: sanitizeNodesRuntimeState(snapshot.nodes),
       links: snapshot.links,
       nodeOutputs: mapToOutputs(snapshot.nodeOutputs),
       groups: snapshot.groups,
@@ -584,8 +611,48 @@ function mapToOutputs(map: NodeOutputMap): SerializedNodeOutput[] {
   return Array.from(map.entries()).map(([k, v]) => [k, Array.from(v.entries())]);
 }
 
+export function sanitizeNodeRuntimeState(node: GraphNode): GraphNode {
+  const data = node.data || {};
+  const hasInterruptedRuntimeState =
+    data.loading === true ||
+    data.status === "loading" ||
+    data.status === "uploading" ||
+    data.uploadingAsset === true ||
+    node.properties.status === "loading";
+
+  if (!hasInterruptedRuntimeState) return node;
+
+  const {
+    loading: _loading,
+    loadingOperation: _loadingOperation,
+    progress: _progress,
+    uploadingAsset: _uploadingAsset,
+    ...restData
+  } = data;
+  const { status: propertyStatus, ...restProperties } = node.properties;
+
+  return {
+    ...node,
+    properties: propertyStatus === "loading" ? restProperties : node.properties,
+    data: {
+      ...restData,
+      loading: false,
+      status:
+        data.status === "loading" || data.status === "uploading" || propertyStatus === "loading"
+          ? "idle"
+          : typeof data.status === "string"
+            ? data.status
+            : undefined,
+    },
+  };
+}
+
+function sanitizeNodesRuntimeState(nodes: GraphNode[]): GraphNode[] {
+  return nodes.map(sanitizeNodeRuntimeState);
+}
+
 function normalizeNodePorts(node: GraphNode): GraphNode {
-  let nextNode = normalizeSourceNode(node);
+  let nextNode = normalizeSourceNode(sanitizeNodeRuntimeState(node));
   if (isSourceNode(nextNode)) return nextNode;
 
   if (nextNode.type === "text_node") {
@@ -710,6 +777,7 @@ export interface UseWorkflowStateOptions {
     providerApiKeys?: Partial<Record<string, string>>;
     providerBaseUrls?: Partial<Record<string, string>>;
     providerModels?: Partial<Record<string, string>>;
+    remoteModelsByType?: AiModelsByType;
   };
   remoteProject?: RemoteCanvasProject | null;
   onRemotePersist?: (project: RemoteCanvasProject) => void | Promise<void>;
@@ -1609,11 +1677,23 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       const imageUrls: string[] = [];
       const videoUrls: string[] = [];
       const audioUrls: string[] = [];
+      const ossIds: string[] = [];
+
+      const addOssId = (value: unknown) => {
+        const normalized =
+          typeof value === "string" && value.trim()
+            ? value.trim()
+            : typeof value === "number" && Number.isFinite(value)
+              ? String(Math.trunc(value))
+              : "";
+        if (normalized && !ossIds.includes(normalized)) ossIds.push(normalized);
+      };
 
       links.forEach((link) => {
         if (link.toNodeId !== nodeId) return;
         const sourceNode = nodes.find((candidate) => candidate.id === link.fromNodeId);
         if (!sourceNode) return;
+        addOssId(sourceNode.data?.ossId ?? sourceNode.properties.ossId);
 
         if (sourceNode.type === "image_node") {
           const outputValue = nodeOutputs.get(link.fromNodeId)?.get(link.fromOutputIndex);
@@ -1643,7 +1723,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         }
       });
 
-      return { imageUrls, videoUrls, audioUrls };
+      return { imageUrls, videoUrls, audioUrls, ossIds };
     },
     [links, nodeOutputs, nodes]
   );
@@ -1659,11 +1739,12 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       }
 
       const inputs = resolveNodeInputs(node, links, nodeOutputs, nodes);
-      if (node.type === "text_node") {
-        const { imageUrls, videoUrls, audioUrls } = collectTextNodeMediaReferences(nodeId);
+      if (["text_node", "image_node", "video_node", "audio_node"].includes(node.type)) {
+        const { imageUrls, videoUrls, audioUrls, ossIds } = collectTextNodeMediaReferences(nodeId);
         if (imageUrls.length > 0) inputs.reference_images = imageUrls;
         if (videoUrls.length > 0) inputs.reference_videos = videoUrls;
         if (audioUrls.length > 0) inputs.reference_audios = audioUrls;
+        if (ossIds.length > 0) inputs.reference_oss_ids = ossIds;
       }
       updateNodeData(nodeId, {
         loading: true,
@@ -2399,8 +2480,9 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
+      const persistableNodes = sanitizeNodesRuntimeState(nodes);
       const nextData = {
-        nodes,
+        nodes: persistableNodes,
         links,
         nodeOutputs: mapToOutputs(nodeOutputs),
         groups,
@@ -2435,7 +2517,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
           name: currentWorkflowSummary.name,
           category: currentWorkflowSummary.category,
           tags: currentWorkflowSummary.tags ?? [],
-          nodes,
+          nodes: persistableNodes,
           links,
           nodeOutputs,
           groups,

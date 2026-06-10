@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { AI_MODEL_TYPES, makeEmptyAiModelsByType } from "../api/aiModelCatalog";
+import { devApiFetch } from "../auth/request";
 import { uploadFileToOss } from "../resource/ossApi";
 import { assertApiKey, getExecutor, normalizeApiKey } from "./nodeExecutors";
+
+vi.mock("../auth/request", () => ({
+  devApiFetch: vi.fn(),
+}));
 
 vi.mock("../resource/ossApi", () => ({
   uploadFileToOss: vi.fn(),
@@ -19,6 +25,74 @@ describe("normalizeApiKey", () => {
 describe("image_node MiniMax executor", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.mocked(devApiFetch).mockReset();
+  });
+
+  it("sends remote image models to the generator images API with upstream oss ids", async () => {
+    vi.mocked(devApiFetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          code: 200,
+          msg: "ok",
+          data: {
+            imageUrls: ["https://example.com/remote-image.png"],
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    const remoteModelsByType = makeEmptyAiModelsByType();
+    remoteModelsByType[AI_MODEL_TYPES[1]] = [
+      {
+        id: "image-remote-1",
+        apiId: "2062435940867551234",
+        modelId: "wan2.7-image-pro",
+        modelType: AI_MODEL_TYPES[1],
+      },
+    ];
+
+    const executor = getExecutor("image_node");
+    const result = await executor?.({
+      inputs: {
+        prompt: "Generate a poster",
+        reference_oss_ids: ["2064712536372035585"],
+      },
+      properties: {
+        model: "wan2.7-image-pro",
+        aspect_ratio: "16:9",
+        resolution: "1K",
+        n: 2,
+      },
+      apiConfig: {
+        baseUrl: "",
+        apiKey: "",
+        remoteModelsByType,
+      },
+    });
+
+    expect(devApiFetch).toHaveBeenCalledWith(
+      "/system/generator/images",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ "Content-Type": "application/json" }),
+        body: JSON.stringify({
+          prompt: "Generate a poster",
+          n: 2,
+          customSize: "1408x792",
+          ossId: ["2064712536372035585"],
+          model: {
+            apiId: "2062435940867551234",
+            modelId: "wan2.7-image-pro",
+          },
+        }),
+      })
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result?.outputs[0]).toBe("https://example.com/remote-image.png");
+    expect(result?.patch?.imageUrl).toBe("https://example.com/remote-image.png");
+    expect(result?.patch?.imageUrls).toEqual(["https://example.com/remote-image.png"]);
+    expect(result?.patch?.remoteModelId).toBe("wan2.7-image-pro");
   });
 
   it("sends MiniMax-native text-to-image parameters", async () => {
@@ -131,6 +205,80 @@ describe("image_node MiniMax executor", () => {
 describe("video_node MiniMax executor", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.mocked(devApiFetch).mockReset();
+  });
+
+  it("sends remote video models to the generator video API with upstream oss ids", async () => {
+    vi.mocked(devApiFetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          code: 200,
+          msg: "ok",
+          data: {
+            videoUrl: "https://example.com/remote-video.mp4",
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    const remoteModelsByType = makeEmptyAiModelsByType();
+    remoteModelsByType[AI_MODEL_TYPES[2]] = [
+      {
+        id: "video-remote-1",
+        apiId: "2062435940867551234",
+        modelId: "wan2.7-video-pro",
+        modelType: AI_MODEL_TYPES[2],
+      },
+    ];
+
+    const executor = getExecutor("video_node");
+    const result = await executor?.({
+      inputs: {
+        prompt: "Generate a short cinematic clip",
+        reference_oss_ids: ["2064712536372035585"],
+      },
+      properties: {
+        model: "wan2.7-video-pro",
+        duration: "6s",
+        audio: true,
+        aspect_ratio: "16:9",
+        resolution: "1K",
+      },
+      apiConfig: {
+        baseUrl: "",
+        apiKey: "",
+        remoteModelsByType,
+      },
+    });
+
+    expect(devApiFetch).toHaveBeenCalledWith(
+      "/system/generator/video",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ "Content-Type": "application/json" }),
+        body: JSON.stringify({
+          prompt: "Generate a short cinematic clip",
+          duration: 6,
+          generateAudio: true,
+          ratio: "16:9",
+          resolution: "P480",
+          ossId: ["2064712536372035585"],
+          resrouceId: [],
+          model: {
+            apiId: "2062435940867551234",
+            modelId: "wan2.7-video-pro",
+          },
+        }),
+      })
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result?.outputs[0]).toBe("https://example.com/remote-video.mp4");
+    expect(result?.patch).toMatchObject({
+      videoUrl: "https://example.com/remote-video.mp4",
+      remoteModelId: "wan2.7-video-pro",
+      status: "success",
+    });
   });
 
   it("requests MiniMax video generation with node video settings", async () => {
@@ -299,6 +447,8 @@ describe("audio_node MiniMax executor", () => {
     } as Response);
     vi.mocked(uploadFileToOss).mockResolvedValue({
       url: "https://oss.example.com/generated-audio.mp3",
+      ossId: "generated-audio-oss-id",
+      fileName: "generated-audio.mp3",
       raw: { url: "https://oss.example.com/generated-audio.mp3" },
     });
 
@@ -388,6 +538,103 @@ describe("text_node executor", () => {
     expect(JSON.parse(String((init as RequestInit).body))).toMatchObject({
       model: "deepseek-chat",
     });
+  });
+
+  it("sends remote text models to the media-to-text API with upstream oss ids", async () => {
+    vi.mocked(devApiFetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          code: 200,
+          msg: "ok",
+          data: { content: "remote analysis" },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    const remoteModelsByType = makeEmptyAiModelsByType();
+    remoteModelsByType[AI_MODEL_TYPES[0]] = [
+      {
+        id: "1",
+        apiId: "2062435940867551234",
+        modelId: "qwen3.7-plus",
+        modelType: AI_MODEL_TYPES[0],
+      },
+    ];
+
+    const executor = getExecutor("text_node");
+    const result = await executor?.({
+      inputs: {
+        user_prompt: "Analyze these images",
+        reference_oss_ids: ["2064712536372035585", "2064712536372035586"],
+      },
+      properties: { model: "qwen3.7-plus" },
+      apiConfig: {
+        baseUrl: "https://api.deepseek.com",
+        apiKey: "sk-test",
+        model: "deepseek-chat",
+        remoteModelsByType,
+      },
+    });
+
+    expect(devApiFetch).toHaveBeenCalledWith(
+      "/system/videoTotext",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ "Content-Type": "application/json" }),
+        body: JSON.stringify({
+          prompt: "Analyze these images",
+          ossId: ["2064712536372035585", "2064712536372035586"],
+          model: {
+            apiId: "2062435940867551234",
+            modelId: "qwen3.7-plus",
+          },
+        }),
+      })
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result?.outputs[0]).toBe("remote analysis");
+    expect(result?.patch?.response).toBe("remote analysis");
+  });
+
+  it("does not use qwen3.7-plus envelope msg as response text when data is empty", async () => {
+    vi.mocked(devApiFetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          code: 200,
+          msg: "操作成功",
+          data: null,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+    const remoteModelsByType = makeEmptyAiModelsByType();
+    remoteModelsByType[AI_MODEL_TYPES[0]] = [
+      {
+        id: "1",
+        apiId: "2062435940867551234",
+        modelId: "qwen3.7-plus",
+        modelType: AI_MODEL_TYPES[0],
+      },
+    ];
+
+    const executor = getExecutor("text_node");
+    const result = await executor?.({
+      inputs: {
+        user_prompt: "Analyze this image",
+        reference_oss_ids: ["2064712536372035585"],
+      },
+      properties: { model: "qwen3.7-plus" },
+      apiConfig: {
+        baseUrl: "https://api.deepseek.com",
+        apiKey: "sk-test",
+        model: "deepseek-chat",
+        remoteModelsByType,
+      },
+    });
+
+    expect(result?.outputs[0]).toBe("");
+    expect(result?.patch?.response).toBe("");
   });
 
   it("maps the legacy deepseek-v4-flash model to deepseek-chat before request", async () => {

@@ -1,6 +1,20 @@
 export type MediaNodeLoadingType = "image" | "video" | "audio";
 export type MediaNodeLoadingOperation = "generate" | "frame-analysis";
 
+export function isMediaNodeRunning({
+  data,
+  properties,
+}: {
+  data?: Record<string, unknown> | null;
+  properties?: Record<string, unknown> | null;
+}) {
+  return (
+    data?.loading === true ||
+    data?.status === "loading" ||
+    properties?.status === "loading"
+  );
+}
+
 export function getMediaNodeLoadingLabel({
   isUploading,
   mediaType,

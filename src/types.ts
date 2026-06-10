@@ -45,8 +45,12 @@ export interface GraphNode {
     text?: string;
     number?: number;
     response?: string;
+    textNodeWidth?: number;
+    textNodeHeight?: number;
     imageUrl?: string;
     imageUrls?: string[];
+    ossId?: string;
+    ossIds?: string[];
     activeImageIndex?: number;
     imageNodeWidth?: number;
     imageNodeHeight?: number;

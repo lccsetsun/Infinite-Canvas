@@ -3,6 +3,7 @@ import type { GraphNode } from "../types";
 type SourceMediaUrls = {
   audioUrl?: string;
   imageUrl?: string;
+  ossId?: string;
   videoUrl?: string;
 };
 
@@ -53,6 +54,7 @@ export function markNodeAsSource(node: GraphNode, sourceUrls: SourceMediaUrls = 
   const imageUrl = sourceUrls.imageUrl || inferredUrls.imageUrl;
   const videoUrl = sourceUrls.videoUrl || inferredUrls.videoUrl;
   const audioUrl = sourceUrls.audioUrl || inferredUrls.audioUrl;
+  const ossId = sourceUrls.ossId || firstString(node.data?.ossId, node.properties.ossId);
   const nextProperties: GraphNode["properties"] = {
     ...node.properties,
     isSourceNode: true,
@@ -84,6 +86,10 @@ export function markNodeAsSource(node: GraphNode, sourceUrls: SourceMediaUrls = 
   if (audioUrl) {
     nextProperties.audioUrl = audioUrl;
     nextData.audioUrl = audioUrl;
+  }
+  if (ossId) {
+    nextProperties.ossId = ossId;
+    nextData.ossId = ossId;
   }
 
   return {

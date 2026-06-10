@@ -19,7 +19,7 @@ import { Tooltip } from "../common/Tooltip";
 import { downloadMediaAsset, extensionFromAssetUrl } from "../../utils/mediaAssets";
 import { uploadFileToOss } from "../../features/resource/ossApi";
 import { ReferencePreviewCard } from "./ReferencePreviewCard";
-import { getMediaNodeLoadingLabel } from "../../utils/mediaNodeLoadingState";
+import { getMediaNodeLoadingLabel, isMediaNodeRunning } from "../../utils/mediaNodeLoadingState";
 import { insertMentionLabel, shouldShowMentionMenu } from "../../utils/inputResourceMentions";
 import { InputResourceMentionMenu } from "./InputResourceMentionMenu";
 
@@ -204,7 +204,10 @@ function AudioNodeCardImpl({
   onLeaveCanvasLinkTarget,
   getCanvasLinkTargetIssue,
 }: AudioNodeCardProps) {
-  const isRunning = node.data?.loading === true;
+  const isRunning = isMediaNodeRunning({
+    data: node.data,
+    properties: node.properties,
+  });
   const [isUploadingAudio, setIsUploadingAudio] = React.useState(false);
   const isUploadingAsset = node.data?.uploadingAsset === true || isUploadingAudio;
   const [isHovered, setIsHovered] = React.useState(false);
@@ -314,9 +317,11 @@ function AudioNodeCardImpl({
         const metadata = await readLocalAudioMetadata(file);
         const asset = await uploadFileToOss(file);
         onUpdateProperty?.(node.id, "audioUrl", asset.url);
+        if (asset.ossId) onUpdateProperty?.(node.id, "ossId", asset.ossId);
         onUpdateProperty?.(node.id, "isSourceNode", true);
         onUpdateData?.(node.id, {
           audioUrl: asset.url,
+          ossId: asset.ossId,
           audioDuration: metadata.duration,
           isSourceNode: true,
           uploadingAsset: false,
