@@ -1078,6 +1078,14 @@ export default function App({ onLoggedOut }: AppProps) {
       >
         <CanvasHeader
           projectName={remoteProject?.name}
+          onProjectRenamed={(name) => {
+            setRemoteProject((project) => (project ? { ...project, name } : project));
+            setWorkflowName(name);
+            if (currentWorkflowSummary) {
+              renameWorkflow(currentWorkflowSummary.id, name);
+            }
+          }}
+          onNotice={showNotice}
           onOpenApiSettings={() => {
             setApiSettingsOpen(true);
           }}

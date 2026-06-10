@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { getCanvasHeaderProjectName } from "./CanvasHeader";
+import { getCanvasHeaderProjectName, resolveCanvasProjectRename } from "./CanvasHeader";
 
 describe("getCanvasHeaderProjectName", () => {
   it("uses the project name supplied by the parent canvas loader", () => {
@@ -18,5 +18,32 @@ describe("CanvasHeader remote project loading", () => {
     const source = readFileSync(new URL("./CanvasHeader.tsx", import.meta.url), "utf8");
 
     expect(source).not.toContain("getRemoteProjectDetail");
+  });
+});
+
+describe("resolveCanvasProjectRename", () => {
+  it("trims a new project name and marks it as changed", () => {
+    expect(resolveCanvasProjectRename("项目 9", "  新名字  ")).toEqual({
+      ok: true,
+      name: "新名字",
+      changed: true,
+    });
+  });
+
+  it("rejects empty names", () => {
+    expect(resolveCanvasProjectRename("项目 9", "   ")).toEqual({
+      ok: false,
+      name: "项目 9",
+      changed: false,
+      error: "项目名称不能为空",
+    });
+  });
+
+  it("accepts unchanged names without saving", () => {
+    expect(resolveCanvasProjectRename("项目 9", "项目 9")).toEqual({
+      ok: true,
+      name: "项目 9",
+      changed: false,
+    });
   });
 });
