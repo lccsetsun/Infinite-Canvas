@@ -30,6 +30,20 @@ function makeImageNode(id: string, imageUrl: string): GraphNode {
   };
 }
 
+function makeImageGroupNode(id: string, imageUrls: string[]): GraphNode {
+  return {
+    id,
+    type: "image_node",
+    title: id,
+    x: 0,
+    y: 0,
+    inputs: [],
+    outputs: [{ name: "image", type: "IMAGE" }],
+    properties: { imageUrl: imageUrls[0] },
+    data: { imageUrl: imageUrls[0], imageUrls },
+  };
+}
+
 describe("resolveNodeInputs", () => {
   it("falls back to source text node properties when the source has not been executed", () => {
     const source = makeTextNode("source", "Cats, dogs, and pigs");
@@ -122,5 +136,77 @@ describe("resolveNodeInputs", () => {
       "https://oss.example.com/a.png",
       "https://oss.example.com/b.png",
     ]);
+  });
+
+  it("falls back to the full image group from source node data", () => {
+    const frameImages = Array.from(
+      { length: 7 },
+      (_, index) => `https://oss.example.com/frame-${index + 1}.png`
+    );
+    const frameGrid = makeImageGroupNode("frame-grid", frameImages);
+    const target: GraphNode = {
+      id: "image-target",
+      type: "image_node",
+      title: "image target",
+      x: 0,
+      y: 0,
+      inputs: [{ name: "source_image", type: "IMAGE" }],
+      outputs: [{ name: "image", type: "IMAGE" }],
+      properties: {},
+      data: {},
+    };
+
+    const inputs = resolveNodeInputs(
+      target,
+      [
+        {
+          id: "link-frames",
+          fromNodeId: frameGrid.id,
+          fromOutputIndex: 0,
+          toNodeId: target.id,
+          toInputIndex: 0,
+        },
+      ],
+      new Map(),
+      [frameGrid, target]
+    );
+
+    expect(inputs.source_image).toEqual(frameImages);
+  });
+
+  it("prefers the full image group when stale outputs only contain the first image", () => {
+    const frameImages = Array.from(
+      { length: 7 },
+      (_, index) => `https://oss.example.com/frame-${index + 1}.png`
+    );
+    const frameGrid = makeImageGroupNode("frame-grid", frameImages);
+    const target: GraphNode = {
+      id: "audio-target",
+      type: "audio_node",
+      title: "audio target",
+      x: 0,
+      y: 0,
+      inputs: [{ name: "source_image", type: "IMAGE" }],
+      outputs: [{ name: "audio", type: "AUDIO" }],
+      properties: {},
+      data: {},
+    };
+
+    const inputs = resolveNodeInputs(
+      target,
+      [
+        {
+          id: "link-frames",
+          fromNodeId: frameGrid.id,
+          fromOutputIndex: 0,
+          toNodeId: target.id,
+          toInputIndex: 0,
+        },
+      ],
+      new Map([[frameGrid.id, new Map([[0, frameImages[0]]])]]),
+      [frameGrid, target]
+    );
+
+    expect(inputs.source_image).toEqual(frameImages);
   });
 });

@@ -27,13 +27,18 @@ describe("createVideoFrameCaptureSnapshot", () => {
     const result = createVideoFrameCaptureSnapshot({
       nodes: [makeSourceNode()],
       links: [],
-      nodeOutputs: new Map([["source-video", new Map([[0, "https://oss.example.com/source.mp4"]])]]),
+      nodeOutputs: new Map([
+        ["source-video", new Map([[0, "https://oss.example.com/source.mp4"]])],
+      ]),
       sourceNodeId: "source-video",
       captures: [
         {
           index: 0,
           videoUrl: "https://oss.example.com/segment.mp4",
-          frameImages: Array.from({ length: 8 }, (_, index) => `https://oss.example.com/${index + 1}.png`),
+          frameImages: Array.from(
+            { length: 8 },
+            (_, index) => `https://oss.example.com/${index + 1}.png`
+          ),
         },
       ],
       makeId: (prefix) => `${prefix}-${Math.random().toString(36).slice(2, 8)}`,
@@ -55,6 +60,9 @@ describe("createVideoFrameCaptureSnapshot", () => {
     expect(frameGrid?.data?.imageUrls).toHaveLength(8);
     expect(frameGrid?.data?.isFrameStrip).toBe(true);
     expect(frameGrid?.data?.frameGridColumns).toBe(5);
+    expect(result?.nodeOutputs.get(frameGrid?.id || "")?.get(0)).toEqual(
+      frameGrid?.data?.imageUrls
+    );
 
     expect(result?.links).toEqual([
       {
@@ -162,6 +170,8 @@ describe("createVideoFrameCaptureSnapshot", () => {
     expect(result?.nodeOutputs.has(staleFrame.id)).toBe(false);
     expect(result?.nodeOutputs.has(unrelatedNode.id)).toBe(true);
     expect(result?.createdNodes).toHaveLength(2);
-    expect(result?.createdNodes.every((node) => node.data?.frameCaptureSourceNodeId === sourceNode.id)).toBe(true);
+    expect(
+      result?.createdNodes.every((node) => node.data?.frameCaptureSourceNodeId === sourceNode.id)
+    ).toBe(true);
   });
 });

@@ -222,6 +222,63 @@ describe("video_node MiniMax executor", () => {
       "Local video direction\n\nUpstream input content:\nUpstream text reference"
     );
   });
+
+  it("sends freeform video duration in the supported 1-15 second range", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        videoUrl: "https://example.com/minimax-12s-video.mp4",
+      }),
+    } as Response);
+
+    const executor = getExecutor("video_node");
+    await executor?.({
+      inputs: { prompt: "城市夜景延时摄影" },
+      properties: {
+        model: "MiniMax-Hailuo-2.3",
+        duration: "12s",
+        resolution: "1K",
+        aspect_ratio: "16:9",
+      },
+      apiConfig: {
+        baseUrl: "",
+        apiKey: "",
+        minimaxApiKey: "mini-test-key",
+        minimaxBaseUrl: "https://api.minimaxi.com/v1",
+      },
+    });
+
+    const request = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body));
+    expect(request.duration).toBe(12);
+  });
+
+  it("defaults video duration to five seconds when unset", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        videoUrl: "https://example.com/minimax-default-duration-video.mp4",
+      }),
+    } as Response);
+
+    const executor = getExecutor("video_node");
+    await executor?.({
+      inputs: { prompt: "清晨森林薄雾" },
+      properties: {
+        model: "MiniMax-Hailuo-2.3",
+        resolution: "1K",
+        aspect_ratio: "16:9",
+      },
+      apiConfig: {
+        baseUrl: "",
+        apiKey: "",
+        minimaxApiKey: "mini-test-key",
+        minimaxBaseUrl: "https://api.minimaxi.com/v1",
+      },
+    });
+
+    const request = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body));
+    expect(request.duration).toBe(5);
+  });
 });
 
 describe("audio_node MiniMax executor", () => {
@@ -513,6 +570,46 @@ describe("text_node executor", () => {
       { type: "image_url", image_url: { url: "https://example.com/a.png", detail: "default" } },
       { type: "image_url", image_url: { url: "https://example.com/b.png", detail: "default" } },
     ]);
+  });
+
+  it("does not treat grouped image reference arrays as prompt text", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: "multimodal ok" } }] }),
+    } as Response);
+    const frameImages = Array.from(
+      { length: 7 },
+      (_, index) => `https://example.com/frame-${index + 1}.png`
+    );
+
+    const executor = getExecutor("text_node");
+    await executor?.({
+      inputs: {
+        user_prompt: frameImages,
+        reference_images: frameImages,
+      },
+      properties: { text: "分析这些逐帧画面", model: "MiniMax-M3" },
+      apiConfig: {
+        baseUrl: "https://api.deepseek.com",
+        apiKey: "sk-test",
+        providerApiKeys: {
+          deepseek: "sk-deepseek",
+          minimax: "mini-key",
+        },
+        providerBaseUrls: {
+          deepseek: "https://api.deepseek.com",
+          minimax: "https://api.minimaxi.com/v1",
+        },
+      },
+    });
+
+    const [, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse(String((init as RequestInit).body));
+    expect(body.messages[1].content[0]).toEqual({
+      type: "text",
+      text: "分析这些逐帧画面",
+    });
+    expect(body.messages[1].content).toHaveLength(9);
   });
 
   it("rejects non-OSS blob references instead of converting them to base64", async () => {

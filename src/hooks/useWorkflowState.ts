@@ -33,6 +33,7 @@ import {
   topologicalLevels,
 } from "../runtime/dataflow";
 import { createVideoFrameCaptureSnapshot } from "../utils/videoFrameCaptureLayout";
+import { collectImageReferenceUrls } from "../utils/textNodeReferences";
 import type {
   RemoteCanvasProject,
   RemoteCanvasWorkflowData,
@@ -1518,12 +1519,10 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         if (!sourceNode) return;
 
         if (sourceNode.type === "image_node") {
-          const imageUrl =
-            (typeof sourceNode.data?.imageUrl === "string" && sourceNode.data.imageUrl.trim()) ||
-            (typeof sourceNode.properties.imageUrl === "string" &&
-              sourceNode.properties.imageUrl.trim()) ||
-            "";
-          if (imageUrl && !imageUrls.includes(imageUrl)) imageUrls.push(imageUrl);
+          const outputValue = nodeOutputs.get(link.fromNodeId)?.get(link.fromOutputIndex);
+          collectImageReferenceUrls(sourceNode, outputValue).forEach((imageUrl) => {
+            if (!imageUrls.includes(imageUrl)) imageUrls.push(imageUrl);
+          });
           return;
         }
 
@@ -1549,7 +1548,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
 
       return { imageUrls, videoUrls, audioUrls };
     },
-    [links, nodes]
+    [links, nodeOutputs, nodes]
   );
 
   const runNode = useCallback(

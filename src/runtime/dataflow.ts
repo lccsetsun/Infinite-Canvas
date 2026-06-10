@@ -72,11 +72,13 @@ export function resolveNodeInputs(
     const inputName = getResolvedInputName(target, input.name);
     const values = inputLinks
       .map((link) => {
+        const sourceNode = nodeById.get(link.fromNodeId);
+        const groupedSourceOutput = sourceNode ? getGroupedNodeOutput(sourceNode) : undefined;
+        if (groupedSourceOutput !== undefined) return groupedSourceOutput;
         const sourceOutputs = nodeOutputs.get(link.fromNodeId);
         if (sourceOutputs?.has(link.fromOutputIndex)) {
           return sourceOutputs.get(link.fromOutputIndex);
         }
-        const sourceNode = nodeById.get(link.fromNodeId);
         return sourceNode ? getNodePropertyOutputFallback(sourceNode) : undefined;
       })
       .filter((value) => value !== undefined);
@@ -110,6 +112,21 @@ function pickFirstValue(...values: unknown[]): unknown {
   return undefined;
 }
 
+function pickStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const items = value
+    .map((item) => (typeof item === "string" ? item.trim() : ""))
+    .filter((item) => item.length > 0);
+  return items.length > 0 ? items : undefined;
+}
+
+function getGroupedNodeOutput(node: GraphNode): unknown {
+  if (node.type === "image_node" || node.type === "load_image") {
+    return pickStringArray(node.data?.imageUrls) || pickStringArray(node.properties.imageUrls);
+  }
+  return undefined;
+}
+
 function getNodePropertyOutputFallback(node: GraphNode): unknown {
   if (node.type === "text_node") {
     return pickFirstValue(
@@ -121,6 +138,8 @@ function getNodePropertyOutputFallback(node: GraphNode): unknown {
   }
 
   if (node.type === "image_node" || node.type === "load_image") {
+    const imageUrls = getGroupedNodeOutput(node);
+    if (imageUrls) return imageUrls;
     return pickFirstValue(
       node.data?.imageUrl,
       node.properties.imageUrl,

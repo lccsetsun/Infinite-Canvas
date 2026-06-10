@@ -67,7 +67,9 @@ interface VideoNodeCardProps {
 }
 
 const RESULT_VIDEO_MAX_HEIGHT = 390;
-const DURATION_OPTIONS = ["6s", "10s"];
+const VIDEO_DURATION_MIN_SECONDS = 1;
+const VIDEO_DURATION_MAX_SECONDS = 15;
+const VIDEO_DURATION_DEFAULT_SECONDS = 5;
 const MINIMAX_VIDEO_MODEL = "MiniMax-Hailuo-2.3";
 const VIDEO_NODE_REFERENCE_IGNORED_KEYS = new Set([
   "duration",
@@ -208,9 +210,22 @@ function formatTime(seconds: number): string {
   return `${minutes}:${String(rest).padStart(2, "0")}`;
 }
 
-function cycleValue<T>(values: T[], current: T): T {
-  const index = values.indexOf(current);
-  return values[(index + 1) % values.length] ?? values[0];
+export function normalizeVideoDurationSeconds(value: unknown): number {
+  const raw = typeof value === "string" ? Number.parseInt(value, 10) : Number(value);
+  if (!Number.isFinite(raw)) return VIDEO_DURATION_DEFAULT_SECONDS;
+  return Math.min(
+    VIDEO_DURATION_MAX_SECONDS,
+    Math.max(VIDEO_DURATION_MIN_SECONDS, Math.trunc(raw))
+  );
+}
+
+export function getVideoDurationSliderPercent(value: number): number {
+  const normalized = normalizeVideoDurationSeconds(value);
+  return Math.round(
+    ((normalized - VIDEO_DURATION_MIN_SECONDS) /
+      (VIDEO_DURATION_MAX_SECONDS - VIDEO_DURATION_MIN_SECONDS)) *
+      100
+  );
 }
 
 function VideoNodeCardImpl({
@@ -278,7 +293,9 @@ function VideoNodeCardImpl({
   const videoUrl = (node.data?.videoUrl as string) || (node.properties.videoUrl as string) || "";
   const aspectRatio = (node.properties.aspect_ratio as string) || "16:9";
   const resolution = (node.properties.resolution as string) || "1K";
-  const duration = (node.properties.duration as string) || "6s";
+  const durationSeconds = normalizeVideoDurationSeconds(node.properties.duration);
+  const duration = `${durationSeconds}s`;
+  const durationSliderPercent = getVideoDurationSliderPercent(durationSeconds);
   const audioEnabled = node.properties.audio !== false;
   const nodeBadgeTitle =
     node.title === "视频节点" || node.title === "视频" ? "视频节点 1" : node.title;
@@ -1032,9 +1049,7 @@ function VideoNodeCardImpl({
                   if (event.key === "Escape") setMentionMenuOpen(false);
                 }}
                 placeholder={
-                  upstreamPrompt
-                    ? "继续补充这些输入资源要如何参与生成"
-                    : "描述你想要生成的视频内容"
+                  upstreamPrompt ? "继续补充这些输入资源要如何参与生成" : "描述你想要生成的视频内容"
                 }
                 className="h-[92px] w-full resize-none bg-transparent px-1 text-[15px] leading-7 text-slate-100/88 outline-none placeholder:text-slate-400/42 custom-scrollbar"
               />
@@ -1060,16 +1075,34 @@ function VideoNodeCardImpl({
                 }}
                 buttonClassName="relative inline-flex h-10 w-[246px] shrink-0 items-center justify-center gap-2 rounded-[14px] border border-cyan-100/8 bg-slate-950/18 px-3 text-[13px] font-medium text-cyan-50/76 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
               />
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onUpdateProperty?.(node.id, "duration", cycleValue(DURATION_OPTIONS, duration));
-                }}
-                className="inline-flex h-10 w-[82px] shrink-0 items-center justify-center rounded-[14px] border border-cyan-100/8 bg-slate-950/18 px-3 text-[13px] font-medium text-cyan-50/68 transition-colors hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
+              <div
+                data-node-action="true"
+                className="flex h-10 w-[168px] shrink-0 items-center gap-3 rounded-[14px] border border-cyan-100/8 bg-slate-950/18 px-3 text-cyan-50/72 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => e.stopPropagation()}
               >
-                {duration}
-              </button>
+                <div className="flex w-10 shrink-0 items-baseline justify-end gap-0.5 tabular-nums">
+                  <span className="text-[14px] font-semibold text-cyan-50/86">
+                    {durationSeconds}
+                  </span>
+                  <span className="text-[10px] font-medium text-cyan-50/45">s</span>
+                </div>
+                <input
+                  type="range"
+                  min={VIDEO_DURATION_MIN_SECONDS}
+                  max={VIDEO_DURATION_MAX_SECONDS}
+                  step={1}
+                  value={durationSeconds}
+                  aria-label="视频时长"
+                  onChange={(event) => {
+                    onUpdateProperty?.(node.id, "duration", `${event.currentTarget.value}s`);
+                  }}
+                  className="h-1.5 min-w-0 flex-1 cursor-pointer appearance-none rounded-full bg-slate-700/70 accent-cyan-100 outline-none transition"
+                  style={{
+                    background: `linear-gradient(90deg, rgba(207,250,254,0.88) ${durationSliderPercent}%, rgba(51,65,85,0.78) ${durationSliderPercent}%)`,
+                  }}
+                />
+              </div>
               <button
                 type="button"
                 onClick={(e) => {

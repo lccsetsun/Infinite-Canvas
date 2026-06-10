@@ -29,7 +29,6 @@ import { getTextNodeInteractionState } from "../../utils/textNodeInteractionStat
 import type { TextNodeReferenceItem } from "../../utils/textNodeReferences";
 import { PROVIDER_PRESETS } from "../../features/api/apiSettings";
 import { ReferencePreviewCard } from "./ReferencePreviewCard";
-import { ImageResolutionPicker } from "./ImageResolutionPicker";
 import { insertMentionLabel, shouldShowMentionMenu } from "../../utils/inputResourceMentions";
 import { InputResourceMentionMenu } from "./InputResourceMentionMenu";
 
@@ -78,7 +77,6 @@ interface TextNodeCardProps {
 }
 
 type StarterAction = "write" | "video" | "image-prompt" | "music";
-const QUANTITY_OPTIONS = ["1张", "2张", "3张", "4张"];
 
 function renderMarkdown(text: string) {
   if (!text) return null;
@@ -184,7 +182,6 @@ function TextNodeCardImpl({
   const [isReversingSegments, setIsReversingSegments] = React.useState(false);
   const [outputMenuPos, setOutputMenuPos] = React.useState<{ x: number; y: number } | null>(null);
   const [modelMenuOpen, setModelMenuOpen] = React.useState(false);
-  const [quantityMenuOpen, setQuantityMenuOpen] = React.useState(false);
   const [forceComposerOpen, setForceComposerOpen] = React.useState(false);
   const textareaRef = React.useRef<HTMLTextAreaElement | null>(null);
   const inlineTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
@@ -192,7 +189,6 @@ function TextNodeCardImpl({
   const inputPortRef = React.useRef<HTMLDivElement | null>(null);
   const outputPortRef = React.useRef<HTMLDivElement | null>(null);
   const modelMenuRef = React.useRef<HTMLDivElement | null>(null);
-  const quantityMenuRef = React.useRef<HTMLDivElement | null>(null);
   const [inlineEditing, setInlineEditing] = React.useState(
     () => node.data?.forceInlineEditing === true
   );
@@ -282,9 +278,6 @@ function TextNodeCardImpl({
     typeof node.properties.model === "string" && modelOptions.includes(node.properties.model)
       ? node.properties.model
       : preferredProviderModel;
-  const imageResolution = (node.properties.resolution as string) || "1K";
-  const imageAspectRatio = (node.properties.aspect_ratio as string) || "16:9";
-  const quantity = (node.properties.quantity as string) || "1张";
   const viewState = getTextNodeViewState({
     errorText,
     isRunning,
@@ -457,25 +450,6 @@ function TextNodeCardImpl({
       window.removeEventListener("keydown", handleEscape);
     };
   }, [modelMenuOpen]);
-
-  React.useEffect(() => {
-    if (!quantityMenuOpen) return;
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target as Node | null;
-      if (quantityMenuRef.current && target && !quantityMenuRef.current.contains(target)) {
-        setQuantityMenuOpen(false);
-      }
-    };
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setQuantityMenuOpen(false);
-    };
-    window.addEventListener("pointerdown", handlePointerDown);
-    window.addEventListener("keydown", handleEscape);
-    return () => {
-      window.removeEventListener("pointerdown", handlePointerDown);
-      window.removeEventListener("keydown", handleEscape);
-    };
-  }, [quantityMenuOpen]);
 
   const updatePortMagnet = (event: React.MouseEvent) => {
     const radius = 136;
@@ -1019,77 +993,6 @@ function TextNodeCardImpl({
                   </AnimatePresence>
                 </div>
                 <input type="hidden" value={TEXT_NODE_MODEL} readOnly />
-              </div>
-              <ImageResolutionPicker
-                resolution={imageResolution}
-                aspectRatio={imageAspectRatio}
-                panelAlign="right"
-                onChange={(nextResolution, nextAspectRatio) => {
-                  onUpdateProperty?.(node.id, "resolution", nextResolution);
-                  onUpdateProperty?.(node.id, "aspect_ratio", nextAspectRatio);
-                }}
-                buttonClassName="flex h-9 w-[230px] shrink-0 items-center gap-2 rounded-xl border border-slate-200/10 bg-[#0d1117]/42 px-3 text-[12px] font-medium text-slate-100/72 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] transition-colors hover:border-slate-200/16 hover:bg-[#101723]/64"
-              />
-              <div className="relative" ref={quantityMenuRef}>
-                <button
-                  type="button"
-                  data-node-action="true"
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setQuantityMenuOpen((open) => !open);
-                  }}
-                  className={`flex h-9 w-[82px] shrink-0 items-center justify-center gap-1.5 rounded-xl border px-3 text-[12px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] transition-colors ${
-                    quantityMenuOpen
-                      ? "border-cyan-100/28 bg-cyan-100/[0.075] text-cyan-50"
-                      : "border-slate-200/10 bg-[#0d1117]/42 text-slate-100/72 hover:border-slate-200/16 hover:bg-[#101723]/64"
-                  }`}
-                >
-                  <span>{quantity.replace("张", "")}</span>
-                  <span className="text-[11px] text-slate-300/52">张</span>
-                  <ChevronDown
-                    className={`h-3.5 w-3.5 shrink-0 text-slate-300/56 transition-transform ${quantityMenuOpen ? "rotate-180" : ""}`}
-                  />
-                </button>
-                <AnimatePresence>
-                  {quantityMenuOpen && (
-                    <motion.div
-                      data-node-action="true"
-                      initial={{ opacity: 0, y: 8, scale: 0.98 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: 8, scale: 0.98 }}
-                      transition={{ duration: 0.16, ease: "easeOut" }}
-                      className="absolute bottom-[calc(100%+10px)] right-0 z-50 w-[112px] overflow-hidden rounded-2xl border border-slate-400/16 bg-[#121923]/96 p-1.5 shadow-[0_28px_70px_-28px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl"
-                      onPointerDown={(e) => e.stopPropagation()}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {QUANTITY_OPTIONS.map((option) => {
-                        const isActive = option === quantity;
-                        return (
-                          <button
-                            key={option}
-                            type="button"
-                            onClick={() => {
-                              onUpdateProperty?.(node.id, "quantity", option);
-                              onUpdateProperty?.(node.id, "n", Number.parseInt(option, 10));
-                              setQuantityMenuOpen(false);
-                            }}
-                            className={`flex h-9 w-full items-center justify-between rounded-xl px-3 text-left text-[12px] font-semibold transition-colors ${
-                              isActive
-                                ? "bg-cyan-500/[0.12] text-cyan-50"
-                                : "text-slate-200/80 hover:bg-white/[0.05] hover:text-white"
-                            }`}
-                          >
-                            <span>{option}</span>
-                            <span
-                              className={`h-1.5 w-1.5 rounded-full ${isActive ? "bg-cyan-300 shadow-[0_0_10px_rgba(103,232,249,0.9)]" : "bg-slate-500/35"}`}
-                            />
-                          </button>
-                        );
-                      })}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
               </div>
               <button
                 type="button"

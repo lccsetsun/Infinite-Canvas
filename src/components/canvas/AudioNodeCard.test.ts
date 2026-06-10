@@ -5,11 +5,11 @@ describe("getAudioNodeInputReferences", () => {
   it("collects text, image, and audio inputs for the prompt composer", () => {
     expect(
       getAudioNodeInputReferences({
-        "提示词": "温暖的钢琴背景音乐",
+        提示词: "温暖的钢琴背景音乐",
         source_image: "https://oss.example.com/scene.webp",
         source_audio: "https://oss.example.com/reference.wav",
-        "时长": 30,
-      }),
+        时长: 30,
+      })
     ).toEqual([
       {
         key: "提示词",
@@ -38,10 +38,10 @@ describe("getAudioNodeInputReferences", () => {
   it("ignores duration and empty values", () => {
     expect(
       getAudioNodeInputReferences({
-        "提示词": " ",
-        "时长": 30,
+        提示词: " ",
+        时长: 30,
         speed: 1,
-      }),
+      })
     ).toEqual([]);
   });
 
@@ -52,10 +52,23 @@ describe("getAudioNodeInputReferences", () => {
           "https://oss.example.com/reference-a.mp4",
           "https://oss.example.com/reference-b.mp4",
         ],
-      }).map((reference) => reference.value),
+      }).map((reference) => reference.value)
     ).toEqual([
       "https://oss.example.com/reference-a.mp4",
       "https://oss.example.com/reference-b.mp4",
     ]);
+  });
+
+  it("expands a frame-analysis image group into individual references", () => {
+    const frameImages = Array.from(
+      { length: 7 },
+      (_, index) => `https://oss.example.com/frame-${index + 1}.png`
+    );
+
+    const references = getAudioNodeInputReferences({ source_image: frameImages });
+
+    expect(references).toHaveLength(7);
+    expect(references.map((reference) => reference.kind)).toEqual(Array(7).fill("image"));
+    expect(references.map((reference) => reference.value)).toEqual(frameImages);
   });
 });

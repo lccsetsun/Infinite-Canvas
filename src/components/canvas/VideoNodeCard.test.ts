@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { fitVideoSize, getVideoNodeInputReferences } from "./VideoNodeCard";
+import {
+  fitVideoSize,
+  getVideoDurationSliderPercent,
+  getVideoNodeInputReferences,
+  normalizeVideoDurationSeconds,
+} from "./VideoNodeCard";
 
 describe("fitVideoSize", () => {
   it("keeps portrait videos wide enough for the playback controls", () => {
@@ -48,5 +53,35 @@ describe("getVideoNodeInputReferences", () => {
       "https://oss.example.com/first-frame.png",
       "https://oss.example.com/second-frame.png",
     ]);
+  });
+
+  it("expands a frame-analysis image group into individual first-frame references", () => {
+    const frameImages = Array.from(
+      { length: 7 },
+      (_, index) => `https://oss.example.com/frame-${index + 1}.png`
+    );
+
+    const references = getVideoNodeInputReferences({ image: frameImages });
+
+    expect(references).toHaveLength(7);
+    expect(references.map((reference) => reference.kind)).toEqual(Array(7).fill("image"));
+    expect(references.map((reference) => reference.value)).toEqual(frameImages);
+  });
+});
+
+describe("normalizeVideoDurationSeconds", () => {
+  it("defaults to five seconds and clamps values to the slider range", () => {
+    expect(normalizeVideoDurationSeconds(undefined)).toBe(5);
+    expect(normalizeVideoDurationSeconds("12s")).toBe(12);
+    expect(normalizeVideoDurationSeconds(0)).toBe(1);
+    expect(normalizeVideoDurationSeconds("30s")).toBe(15);
+  });
+});
+
+describe("getVideoDurationSliderPercent", () => {
+  it("maps the 1-15 second range to a percentage", () => {
+    expect(getVideoDurationSliderPercent(1)).toBe(0);
+    expect(getVideoDurationSliderPercent(8)).toBe(50);
+    expect(getVideoDurationSliderPercent(15)).toBe(100);
   });
 });

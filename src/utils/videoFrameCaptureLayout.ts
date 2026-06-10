@@ -159,7 +159,7 @@ export function createVideoFrameCaptureSnapshot({
       };
       nextNodes.push(frameNode);
       createdNodes.push(frameNode);
-      nextOutputs.set(frameNodeId, new Map([[0, frameImages[0]]]));
+      nextOutputs.set(frameNodeId, new Map([[0, frameImages]]));
       nextLinks.push({
         id: makeId("link"),
         fromNodeId: videoId,

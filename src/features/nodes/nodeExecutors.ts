@@ -382,8 +382,8 @@ function parseImageCount(value: unknown): number {
 
 function parseDurationSeconds(value: unknown): number {
   const raw = typeof value === "string" ? Number.parseInt(value, 10) : Number(value);
-  if (!Number.isFinite(raw)) return 6;
-  return raw <= 6 ? 6 : 10;
+  if (!Number.isFinite(raw)) return 5;
+  return Math.min(15, Math.max(1, Math.trunc(raw)));
 }
 
 function normalizeMiniMaxVideoModel(model: unknown): string {

@@ -18,7 +18,7 @@ describe("getImageNodeInputReferences", () => {
         source_audio: "https://oss.example.com/mood.mp3",
         source_video: "https://oss.example.com/motion.mp4",
         aspect_ratio: "16:9",
-      }),
+      })
     ).toEqual([
       {
         key: "prompt",
@@ -58,7 +58,7 @@ describe("getImageNodeInputReferences", () => {
         negative_prompt: "low quality",
         aspect_ratio: "16:9",
         quantity: 1,
-      }),
+      })
     ).toEqual([]);
   });
 
@@ -69,11 +69,24 @@ describe("getImageNodeInputReferences", () => {
           "https://oss.example.com/reference-a.png",
           "https://oss.example.com/reference-b.png",
         ],
-      }).map((reference) => reference.value),
+      }).map((reference) => reference.value)
     ).toEqual([
       "https://oss.example.com/reference-a.png",
       "https://oss.example.com/reference-b.png",
     ]);
+  });
+
+  it("expands a frame-analysis image group into individual references", () => {
+    const frameImages = Array.from(
+      { length: 7 },
+      (_, index) => `https://oss.example.com/frame-${index + 1}.png`
+    );
+
+    const references = getImageNodeInputReferences({ source_image: frameImages });
+
+    expect(references).toHaveLength(7);
+    expect(references.map((reference) => reference.kind)).toEqual(Array(7).fill("image"));
+    expect(references.map((reference) => reference.value)).toEqual(frameImages);
   });
 });
 
@@ -99,8 +112,8 @@ describe("getResultImageBounds", () => {
           imageDisplayWidth: 260,
           imageDisplayHeight: 469,
         },
-        "16:9",
-      ),
+        "16:9"
+      )
     ).toEqual({
       width: 260,
       height: 469,
@@ -139,7 +152,7 @@ describe("shouldShowImageUploadButton", () => {
         isImageLoaded: false,
         isImageLoadFailed: false,
         isUploadingNodeAsset: false,
-      }),
+      })
     ).toBe(false);
   });
 
@@ -150,7 +163,7 @@ describe("shouldShowImageUploadButton", () => {
         isImageLoaded: true,
         isImageLoadFailed: false,
         isUploadingNodeAsset: false,
-      }),
+      })
     ).toBe(true);
     expect(
       shouldShowImageUploadButton({
@@ -158,7 +171,7 @@ describe("shouldShowImageUploadButton", () => {
         isImageLoaded: false,
         isImageLoadFailed: true,
         isUploadingNodeAsset: false,
-      }),
+      })
     ).toBe(true);
   });
 
@@ -169,7 +182,7 @@ describe("shouldShowImageUploadButton", () => {
         isImageLoaded: true,
         isImageLoadFailed: false,
         isUploadingNodeAsset: true,
-      }),
+      })
     ).toBe(false);
   });
 });
