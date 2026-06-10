@@ -33,7 +33,6 @@ import {
   getInitialCropRect,
   type CropRatioPreset,
   type CropRect,
-  type CropSize,
 } from "../../utils/imageCrop";
 import { uploadFileToOss } from "../../features/resource/ossApi";
 import { ReferencePreviewCard } from "./ReferencePreviewCard";

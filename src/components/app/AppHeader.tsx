@@ -8,7 +8,7 @@ interface AppHeaderProps {
   workflowName?: string;
   workflowCount?: number;
   username?: string;
-  onOpenWorkflowManager?: () => void;
+  onOpenProjectSwitcher?: () => void;
   onOpenApiSettings?: () => void;
   onRun: () => void;
   onLogout?: () => void;
@@ -19,7 +19,7 @@ export default function AppHeader({
   workflowName,
   workflowCount,
   username = "lccsetsun",
-  onOpenWorkflowManager,
+  onOpenProjectSwitcher,
   onOpenApiSettings,
   onRun: _onRun,
   onLogout,
@@ -47,7 +47,7 @@ export default function AppHeader({
               type="button"
               onClick={(event) => {
                 event.stopPropagation();
-                onOpenWorkflowManager?.();
+                onOpenProjectSwitcher?.();
               }}
               className="group flex min-w-[156px] max-w-[240px] cursor-pointer items-center gap-2.5 rounded-2xl border border-white/[0.06] bg-[linear-gradient(180deg,rgba(17,22,33,0.88),rgba(11,15,24,0.82))] py-2 pl-2.5 pr-3 shadow-[0_10px_30px_-24px_rgba(0,0,0,0.9)] transition-all duration-200 hover:border-indigo-500/35 hover:bg-[#0d1117]"
               aria-label="椤圭洰鍒楄〃"

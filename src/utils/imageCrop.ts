@@ -101,18 +101,8 @@ export function buildCropAssetProxyUrl(imageUrl: string) {
   return `/api/download-asset?url=${encodeURIComponent(imageUrl)}&filename=${encodeURIComponent("crop-source.png")}`;
 }
 
-export function canProxyCropSource(imageUrl: string) {
+function canProxyCropSource(imageUrl: string) {
   return imageUrl.startsWith("http://") || imageUrl.startsWith("https://");
-}
-
-export async function cropImageRegion(
-  imageUrl: string,
-  crop: CropRect,
-  displaySize: CropSize,
-  naturalSize?: CropSize | null
-): Promise<{ dataUrl: string; crop: NaturalCropRect }> {
-  const image = await loadImage(imageUrl);
-  return cropLoadedImageElement(image, crop, displaySize, naturalSize);
 }
 
 export async function cropImageRegionViaAssetProxy(

@@ -143,7 +143,6 @@ export default function App({ onLoggedOut }: AppProps) {
     isRunning,
     setSelectedNodeId,
     clearCanvas,
-    runWorkflow,
     runNode,
     addNode,
     createImagePromptStarter,
@@ -254,7 +253,6 @@ export default function App({ onLoggedOut }: AppProps) {
     setShowMiniMap,
     currentView,
     setCurrentView,
-    activeQuickTool,
     setActiveQuickTool,
     runNotice,
     showNotice,
@@ -790,17 +788,28 @@ export default function App({ onLoggedOut }: AppProps) {
     [ungroup, selectedGroupId]
   );
 
-  const runNow = () => {
-    runWorkflow();
-    showNotice(`Run triggered at ${new Date().toLocaleTimeString()}.`);
-  };
-
   const clearMenuCloseTimer = React.useCallback(() => {
     if (menuCloseTimerRef.current !== null) {
       window.clearTimeout(menuCloseTimerRef.current);
       menuCloseTimerRef.current = null;
     }
   }, []);
+
+  const closeFloatingMenus = React.useCallback(() => {
+    clearMenuCloseTimer();
+    setMenuPos(null);
+    setIsMenuFromToolbar(false);
+    setPendingLinkMenuDraft(null);
+    setNodeContextMenu(null);
+  }, [clearMenuCloseTimer, setIsMenuFromToolbar]);
+
+  const handleNodeDragStart = React.useCallback(
+    (event: React.PointerEvent, node: GraphNode) => {
+      closeFloatingMenus();
+      onNodeDragStart(event, node);
+    },
+    [closeFloatingMenus, onNodeDragStart]
+  );
 
   const openQuickMenu = React.useCallback(() => {
     clearMenuCloseTimer();
@@ -1396,7 +1405,7 @@ export default function App({ onLoggedOut }: AppProps) {
             onHoverCanvasLinkTarget={hoverCanvasLinkTarget}
             onLeaveCanvasLinkTarget={leaveCanvasLinkTarget}
             onNodeContextMenu={handleNodeContextMenu}
-            onNodeDragStart={onNodeDragStart}
+            onNodeDragStart={handleNodeDragStart}
             onPreview={(content, title, nodeId, items, currentIndex) =>
               setPreviewContent({
                 title: title || "棰勮鍐呭",

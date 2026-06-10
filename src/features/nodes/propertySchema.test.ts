@@ -3,20 +3,13 @@ import { getPropertySchema } from "./propertySchema";
 
 describe("getPropertySchema", () => {
   it("returns node-specific schema when configured", () => {
-    const schema = getPropertySchema("ksampler", "steps");
+    const schema = getPropertySchema("slider_input", "step");
     expect(schema?.kind).toBe("number");
-    expect(schema?.integer).toBe(true);
-    expect(schema?.min).toBe(1);
-  });
-
-  it("falls back to global schema for shared keys", () => {
-    const schema = getPropertySchema("clip_text", "sampler");
-    expect(schema?.kind).toBe("select");
-    expect(schema?.options?.includes("euler")).toBe(true);
+    expect(schema?.min).toBe(0);
   });
 
   it("returns undefined for unknown keys", () => {
-    const schema = getPropertySchema("clip_text", "not_exists");
+    const schema = getPropertySchema("string_input", "not_exists");
     expect(schema).toBeUndefined();
   });
 });

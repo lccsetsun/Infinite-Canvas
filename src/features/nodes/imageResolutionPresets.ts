@@ -89,7 +89,7 @@ export function getImageResolutionPreset(
   );
 }
 
-export function getFallbackImageResolutionPreset() {
+function getFallbackImageResolutionPreset() {
   return getImageResolutionPreset("1K", "16:9") ?? IMAGE_RESOLUTION_PRESETS[0];
 }
 

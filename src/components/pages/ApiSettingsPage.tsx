@@ -737,7 +737,7 @@ function _ParametersTab({ active, onChange }: { active: ApiProfile; onChange: (p
           <ul className="text-[11px] leading-relaxed text-gray-400 space-y-1 list-disc list-inside">
             <li>Temperature 与 Top-P 通常只调节其中一个即可，建议保持默认或小幅微调。</li>
             <li>Max Tokens 设置过小可能导致回复被强行截断，设置过大则可能导致 Token 消耗过快。</li>
-            <li>部分服务商(如 Gemini)在特定模式下可能会忽略这些参数。</li>
+            <li>部分服务商在特定模式下可能会忽略这些参数。</li>
           </ul>
         </div>
       </div>

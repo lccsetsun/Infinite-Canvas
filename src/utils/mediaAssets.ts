@@ -1,4 +1,4 @@
-export function isLocalBrowserAsset(url: string) {
+function isLocalBrowserAsset(url: string) {
   return url.startsWith("blob:") || url.startsWith("data:");
 }
 

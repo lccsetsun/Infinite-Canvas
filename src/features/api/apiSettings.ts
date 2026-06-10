@@ -85,7 +85,7 @@ export function makeDefaultProfile(): ApiProfile {
   };
 }
 
-export function makeProviderProfile(provider: ApiProvider): ApiProfile {
+function makeProviderProfile(provider: ApiProvider): ApiProfile {
   const preset = PROVIDER_PRESETS[provider];
   const now = Date.now();
   return {
@@ -111,20 +111,8 @@ export function makeDefaultSettings(): ApiSettings {
   };
 }
 
-export function cloneProfile(p: ApiProfile, overrides: Partial<ApiProfile> = {}): ApiProfile {
-  const now = Date.now();
-  return {
-    ...p,
-    ...overrides,
-    id: makeId("api"),
-    name: overrides.name ?? `${p.name} 副本`,
-    createdAt: now,
-    updatedAt: now,
-  };
-}
-
 export const API_SETTINGS_STORAGE_KEY = "aicanvas_api_settings_v2";
-export const API_SETTINGS_LEGACY_KEYS = ["aicanvas_api_settings"];
+const API_SETTINGS_LEGACY_KEYS = ["aicanvas_api_settings"];
 
 export function loadApiSettings(): ApiSettings {
   try {

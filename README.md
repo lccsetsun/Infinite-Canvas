@@ -41,8 +41,6 @@ npm install
 
 ### 4. 配置环境变量
 
-项目启动前必须配置 Gemini API Key。
-
 先复制一份环境变量模板：
 
 ```bash
@@ -55,15 +53,19 @@ cp .env.example .env
 Copy-Item .env.example .env
 ```
 
-然后编辑项目根目录下的 `.env` 文件，至少需要填写：
+然后编辑项目根目录下的 `.env` 文件。本地开发可以先不填密钥，应用内的 API 设置页支持保存 DeepSeek 和 MiniMax 配置；如果希望服务端代理使用默认密钥，可以填写：
 
 ```env
-GEMINI_API_KEY="你的 Gemini API Key"
+DEEPSEEK_API_KEY="你的 DeepSeek API Key"
+DEEPSEEK_BASE_URL="https://api.deepseek.com"
+MINIMAX_API_KEY="你的 MiniMax API Key"
 ```
 
 说明：
 
-- `GEMINI_API_KEY`：必填，不填的话后端接口无法调用 Gemini
+- `DEEPSEEK_API_KEY`：可选，DeepSeek 代理接口的服务端默认密钥
+- `DEEPSEEK_BASE_URL`：可选，DeepSeek 兼容接口地址
+- `MINIMAX_API_KEY`：可选，MiniMax 图片、视频、音频接口的服务端默认密钥
 - `APP_URL`：本地开发时可以先不改，通常不是必须
 
 注意：这个项目当前实际读取的是根目录下的 `.env` 文件，不是 `.env.local`。
@@ -116,14 +118,9 @@ npm run lint
 
 ## 常见问题
 
-### 1. 启动时报 `GEMINI_API_KEY environment variable is required`
+### 1. 接口提示 API key 未填写
 
-说明你还没有正确配置 `.env` 文件。
-
-请检查：
-
-- 项目根目录下是否存在 `.env`
-- `.env` 里是否已填写正确的 `GEMINI_API_KEY`
+说明当前服务商没有可用密钥。请在应用内 API 设置页保存对应服务商的 API Key，或在 `.env` 中配置服务端默认密钥。
 
 ### 2. 执行 `npm install` 失败
 
@@ -149,7 +146,7 @@ npm install
 cp .env.example .env
 ```
 
-把 `.env` 里的 `GEMINI_API_KEY` 改好后，再执行：
+如需服务端默认密钥，先编辑 `.env`，然后执行：
 
 ```bash
 npm run dev

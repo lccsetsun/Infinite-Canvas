@@ -1,13 +1,13 @@
 import { GraphNode } from "../../types";
 
-export const NODE_WIDTH = 240;
-export const TEXT_NODE_WIDTH = 392;
-export const MEDIA_NODE_WIDTH = 520;
-export const GENERATIVE_NODE_HEIGHT = 290;
-export const IMAGE_NODE_WIDTH = MEDIA_NODE_WIDTH;
+const NODE_WIDTH = 240;
+const TEXT_NODE_WIDTH = 392;
+const MEDIA_NODE_WIDTH = 520;
+const GENERATIVE_NODE_HEIGHT = 290;
+const IMAGE_NODE_WIDTH = MEDIA_NODE_WIDTH;
 export const VIDEO_NODE_WIDTH = MEDIA_NODE_WIDTH;
-export const AUDIO_NODE_WIDTH = 560;
-export const NODE_HEIGHT = 180;
+const AUDIO_NODE_WIDTH = 560;
+const NODE_HEIGHT = 180;
 
 export function getNodeWidth(node: GraphNode) {
   if (node.type === "text_node") return TEXT_NODE_WIDTH;
@@ -49,7 +49,7 @@ export function getNodeHeight(node: GraphNode) {
   if (node.type === "group") return 0;
   return NODE_HEIGHT;
 }
-export const NODE_HEADER_HEIGHT = 40;
+const NODE_HEADER_HEIGHT = 40;
 export const GRID_SIZE = 24;
 
 export function snapToGrid(value: number, gridSize = GRID_SIZE) {

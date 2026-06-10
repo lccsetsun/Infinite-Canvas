@@ -52,7 +52,7 @@ describe("compatible index helpers", () => {
   const to = mockNode({
     id: "t",
     title: "to",
-    type: "gemini_assistant",
+    type: "text_node",
     inputs: [
       { name: "in0", type: "IMAGE" },
       { name: "in1", type: "STRING" },
@@ -130,7 +130,7 @@ describe("getLinkDraftIssue", () => {
   const to = mockNode({
     id: "n2",
     title: "to",
-    type: "gemini_assistant",
+    type: "text_node",
     inputs: [{ name: "in", type: "STRING" }],
   });
 
@@ -173,7 +173,7 @@ describe("getLinkDraftIssue", () => {
     const toImage = mockNode({
       id: "n3",
       title: "toImage",
-      type: "image_filter",
+      type: "image_node",
       inputs: [{ name: "in", type: "IMAGE" }],
     });
     expect(
@@ -218,7 +218,7 @@ describe("getLinkDraftIssue", () => {
     const fromEmpty = mockNode({
       id: "empty",
       title: "empty",
-      type: "vae_decode",
+      type: "video_viewer",
       outputs: [],
     });
     expect(
@@ -244,7 +244,7 @@ describe("getLinkDraftIssueDetail", () => {
   const to = mockNode({
     id: "n2",
     title: "to",
-    type: "gemini_assistant",
+    type: "text_node",
     inputs: [{ name: "in", type: "STRING" }],
   });
 

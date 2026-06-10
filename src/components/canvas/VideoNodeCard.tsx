@@ -294,7 +294,6 @@ function VideoNodeCardImpl({
   const aspectRatio = (node.properties.aspect_ratio as string) || "16:9";
   const resolution = (node.properties.resolution as string) || "1K";
   const durationSeconds = normalizeVideoDurationSeconds(node.properties.duration);
-  const duration = `${durationSeconds}s`;
   const durationSliderPercent = getVideoDurationSliderPercent(durationSeconds);
   const audioEnabled = node.properties.audio !== false;
   const nodeBadgeTitle =

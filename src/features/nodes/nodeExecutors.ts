@@ -35,9 +35,9 @@ export interface ExecutorResult {
 export type NodeExecutor = (ctx: ExecutorContext) => Promise<ExecutorResult>;
 
 export const TEXT_NODE_MODEL = "deepseek-chat";
-export const MINIMAX_IMAGE_MODEL = "image-01";
-export const MINIMAX_VIDEO_MODEL = "MiniMax-Hailuo-2.3";
-export const MINIMAX_AUDIO_MODEL = "speech-2.8-hd";
+const MINIMAX_IMAGE_MODEL = "image-01";
+const MINIMAX_VIDEO_MODEL = "MiniMax-Hailuo-2.3";
+const MINIMAX_AUDIO_MODEL = "speech-2.8-hd";
 
 const MINIMAX_ASPECT_RATIOS = new Set(["1:1", "16:9", "4:3", "3:2", "2:3", "3:4", "9:16", "21:9"]);
 const MINIMAX_IMAGE_RESOLUTIONS = new Set(["1K", "2K", "3K", "4K"]);
@@ -112,27 +112,6 @@ export function assertApiKey(apiKey: string, providerLabel: string): string {
     throw new Error(`${providerLabel} API key 未填写，请先到 API 设置里保存访问密钥`);
   }
   return normalizedApiKey;
-}
-
-async function callGeminiProxy(
-  body: { model?: string; contents: string; config?: Record<string, unknown> },
-  apiKey: string
-): Promise<{ text: string }> {
-  const normalizedApiKey = assertApiKey(apiKey, "DeepSeek");
-  const r = await fetch("/api/gemini/proxy", {
-    method: "POST",
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      ...(normalizedApiKey ? { "X-Api-Key": normalizedApiKey } : {}),
-    },
-    body: JSON.stringify(body),
-  });
-  if (!r.ok) {
-    const errText = await r.text().catch(() => "");
-    throw new Error(`AI 调用失败 (${r.status}): ${errText || r.statusText}`);
-  }
-  return r.json();
 }
 
 async function callOpenAICompatible(
@@ -590,7 +569,7 @@ async function callMiniMaxTextToAudio(
   };
 }
 
-export const executors: Partial<Record<NodeClass, NodeExecutor>> = {
+const executors: Partial<Record<NodeClass, NodeExecutor>> = {
   text_node: async ({ inputs, properties, apiConfig }) => {
     if (properties.textMode === "plain") {
       const text = stringifyPromptValue(properties.text);
@@ -613,7 +592,6 @@ export const executors: Partial<Record<NodeClass, NodeExecutor>> = {
     const referenceImages = normalizeStringArray(inputs.reference_images);
     const referenceVideos = normalizeStringArray(inputs.reference_videos);
     const hasVisualReferences = referenceImages.length > 0 || referenceVideos.length > 0;
-    const isGemini = (deepseekBaseUrl || "").includes("generativelanguage.googleapis.com");
 
     let text = "";
     if (hasVisualReferences) {
@@ -691,12 +669,6 @@ export const executors: Partial<Record<NodeClass, NodeExecutor>> = {
           multimodalContent
         )
       ).text;
-    } else if (isGemini) {
-      const result = await callGeminiProxy(
-        { model, contents: userPrompt, config: { systemInstruction: nodeSystemPrompt } },
-        deepseekApiKey
-      );
-      text = result.text;
     } else {
       text = (
         await callOpenAICompatible(
@@ -820,58 +792,9 @@ export const executors: Partial<Record<NodeClass, NodeExecutor>> = {
     return { outputs: { 0: result } };
   },
 
-  prompt_enhancer: async ({ inputs }) => {
-    const text = pickString(inputs, {}, "原始提示词", "prompt");
-    return { outputs: { 0: text } };
-  },
-
-  image_filter: async ({ inputs }) => {
-    const url = pickOptionalString(inputs, {}, "输入图像", "image");
-    return { outputs: { 0: url } };
-  },
-
-  vae_decode: async ({ inputs }) => {
-    const url = pickOptionalString(inputs, {}, "核心图像", "image");
-    return { outputs: { 0: url } };
-  },
-
   video_viewer: async ({ inputs }) => {
     const url = pickOptionalString(inputs, {}, "视频输入", "video");
     return { outputs: { 0: url, 1: url } };
-  },
-
-  gemini_assistant: async ({ inputs }) => {
-    const prompt = pickString(inputs, {}, "用户提示词", "prompt");
-    return { outputs: { 0: prompt } };
-  },
-
-  clip_text: async ({ properties }) => {
-    return { outputs: { 0: (properties.text as string) ?? "" } };
-  },
-
-  ksampler: async ({ inputs }) => {
-    const prompt = pickString(inputs, {}, "正向提示词", "prompt");
-    return { outputs: { 0: prompt } };
-  },
-
-  text_to_video: async ({ inputs }) => {
-    const prompt = pickString(inputs, {}, "视频提示词", "prompt");
-    return { outputs: { 0: prompt } };
-  },
-
-  ai_text_node: async ({ inputs, properties }) => {
-    const prompt = pickString(inputs, properties, "text", "prompt");
-    return { outputs: { 0: prompt } };
-  },
-
-  ai_image_node: async ({ inputs, properties }) => {
-    const prompt = pickString(inputs, properties, "text", "prompt");
-    return { outputs: { 0: prompt } };
-  },
-
-  ai_video_node: async ({ inputs, properties }) => {
-    const prompt = pickString(inputs, properties, "text", "prompt");
-    return { outputs: { 0: prompt } };
   },
 
   audio_node: async ({ inputs, properties, apiConfig }) => {

@@ -123,7 +123,7 @@ function extractWorkflowData(payload: Record<string, unknown>): RemoteCanvasWork
   return normalizeWorkflowData(payload);
 }
 
-export function mapRemoteProjectToCard(item: RemoteCanvasListItem): HomeProjectCard {
+function mapRemoteProjectToCard(item: RemoteCanvasListItem): HomeProjectCard {
   return {
     id: String(item.id || item.canvasId || ""),
     name: String(item.canvasName || item.projectName || item.name || "未命名项目"),

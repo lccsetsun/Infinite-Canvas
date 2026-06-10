@@ -47,7 +47,6 @@ function buildGrid(group: Group, pan: { x: number; y: number }, zoom: number, wi
   if (width <= 0 || height <= 0 || zoom <= 0) return;
 
   const worldStep = getAdaptiveGridStep(zoom);
-  const screenStep = worldStep * zoom;
   const startWorldX = Math.floor((-pan.x / zoom) / worldStep) * worldStep;
   const startWorldY = Math.floor((-pan.y / zoom) / worldStep) * worldStep;
   const endWorldX = ((width - pan.x) / zoom) + worldStep;

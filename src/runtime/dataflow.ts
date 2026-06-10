@@ -2,62 +2,6 @@ import { GraphLink, GraphNode } from "../types";
 
 export type NodeOutputMap = Map<string, Map<number, unknown>>;
 
-export interface TopoSortResult {
-  sorted: GraphNode[];
-  hasCycle: boolean;
-  cyclePath: string[];
-}
-
-export function topologicalSort(nodes: GraphNode[], links: GraphLink[]): TopoSortResult {
-  const inDegree = new Map<string, number>();
-  const adjacency = new Map<string, string[]>();
-  const nodeById = new Map<string, GraphNode>();
-
-  nodes.forEach((node) => {
-    inDegree.set(node.id, 0);
-    adjacency.set(node.id, []);
-    nodeById.set(node.id, node);
-  });
-
-  links.forEach((link) => {
-    if (!nodeById.has(link.fromNodeId) || !nodeById.has(link.toNodeId)) return;
-    adjacency.get(link.fromNodeId)!.push(link.toNodeId);
-    inDegree.set(link.toNodeId, (inDegree.get(link.toNodeId) || 0) + 1);
-  });
-
-  const queue: string[] = [];
-  inDegree.forEach((degree, id) => {
-    if (degree === 0) queue.push(id);
-  });
-
-  const sorted: GraphNode[] = [];
-  const visited = new Set<string>();
-
-  while (queue.length) {
-    const id = queue.shift()!;
-    if (visited.has(id)) continue;
-    visited.add(id);
-    const node = nodeById.get(id);
-    if (node) sorted.push(node);
-    adjacency.get(id)!.forEach((next) => {
-      const nextDegree = (inDegree.get(next) || 0) - 1;
-      inDegree.set(next, nextDegree);
-      if (nextDegree === 0) queue.push(next);
-    });
-  }
-
-  if (sorted.length === nodes.length) {
-    return { sorted, hasCycle: false, cyclePath: [] };
-  }
-
-  const cyclePath: string[] = [];
-  inDegree.forEach((degree, id) => {
-    if (degree > 0) cyclePath.push(id);
-  });
-
-  return { sorted, hasCycle: true, cyclePath };
-}
-
 export function resolveNodeInputs(
   target: GraphNode,
   links: GraphLink[],
