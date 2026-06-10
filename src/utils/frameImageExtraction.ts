@@ -2,6 +2,35 @@ import { createNodeFromType } from "../features/nodes/nodeFactory";
 import type { NodeOutputMap } from "../runtime/dataflow";
 import type { GraphLink, GraphNode } from "../types";
 
+const EXTRACTED_FRAME_CHILD_MAX_WIDTH = 360;
+const EXTRACTED_FRAME_CHILD_MAX_HEIGHT = 270;
+
+function fitExtractedFrameChildSize(sourceNode: GraphNode) {
+  const width =
+    typeof sourceNode.data?.imageNaturalWidth === "number" && sourceNode.data.imageNaturalWidth > 0
+      ? sourceNode.data.imageNaturalWidth
+      : typeof sourceNode.data?.imageDisplayWidth === "number" && sourceNode.data.imageDisplayWidth > 0
+        ? sourceNode.data.imageDisplayWidth
+        : 16;
+  const height =
+    typeof sourceNode.data?.imageNaturalHeight === "number" && sourceNode.data.imageNaturalHeight > 0
+      ? sourceNode.data.imageNaturalHeight
+      : typeof sourceNode.data?.imageDisplayHeight === "number" && sourceNode.data.imageDisplayHeight > 0
+        ? sourceNode.data.imageDisplayHeight
+        : 9;
+  const ratio = width / height;
+  if (ratio >= EXTRACTED_FRAME_CHILD_MAX_WIDTH / EXTRACTED_FRAME_CHILD_MAX_HEIGHT) {
+    return {
+      width: EXTRACTED_FRAME_CHILD_MAX_WIDTH,
+      height: Math.round(EXTRACTED_FRAME_CHILD_MAX_WIDTH / ratio),
+    };
+  }
+  return {
+    width: Math.round(EXTRACTED_FRAME_CHILD_MAX_HEIGHT * ratio),
+    height: EXTRACTED_FRAME_CHILD_MAX_HEIGHT,
+  };
+}
+
 function getImageUrls(node: GraphNode): string[] {
   const raw = Array.isArray(node.data?.imageUrls)
     ? node.data.imageUrls
@@ -26,12 +55,14 @@ export function createFrameImageChildSnapshot({
   links,
   makeId,
   nodes,
+  position,
   sourceNodeId,
 }: {
   frameIndex: number;
   links: GraphLink[];
   makeId: (prefix: string) => string;
   nodes: GraphNode[];
+  position?: { x: number; y: number };
   sourceNodeId: string;
 }): { nodes: GraphNode[]; links: GraphLink[]; createdNode: GraphNode } | null {
   const sourceNode = nodes.find((node) => node.id === sourceNodeId && node.type === "image_node");
@@ -49,9 +80,10 @@ export function createFrameImageChildSnapshot({
   const childNode = createNodeFromType(
     "image_node",
     id,
-    sourceNode.x + sourceWidth + 120,
-    sourceNode.y
+    position?.x ?? sourceNode.x + sourceWidth + 120,
+    position?.y ?? sourceNode.y
   );
+  const childDisplaySize = fitExtractedFrameChildSize(sourceNode);
   childNode.title = `${sourceNode.title} · 第 ${frameIndex + 1} 帧`;
   childNode.properties = {
     ...childNode.properties,
@@ -67,6 +99,8 @@ export function createFrameImageChildSnapshot({
     extractedFrameIndex: frameIndex,
     imageNaturalWidth: sourceNode.data?.imageNaturalWidth,
     imageNaturalHeight: sourceNode.data?.imageNaturalHeight,
+    imageDisplayWidth: childDisplaySize.width,
+    imageDisplayHeight: childDisplaySize.height,
     isSourceNode: true,
     status: "success",
     loading: false,

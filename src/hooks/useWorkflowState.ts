@@ -1313,12 +1313,13 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
   );
 
   const extractFrameImageNode = useCallback(
-    (sourceNodeId: string, frameIndex: number) => {
+    (sourceNodeId: string, frameIndex: number, position?: { x: number; y: number }) => {
       const snapshot = createFrameImageChildSnapshot({
         nodes,
         links,
         sourceNodeId,
         frameIndex,
+        position,
         makeId,
       });
       if (!snapshot) {

@@ -52,7 +52,11 @@ interface ImageNodeCardProps {
   onUpdateProperty?: (nodeId: string, key: string, value: unknown) => void;
   onUpdateData?: (nodeId: string, data: Partial<GraphNode["data"]>) => void;
   onSetPrimaryImageResult?: (nodeId: string, imageUrl: string, imageIndex: number) => void;
-  onExtractFrameImage?: (nodeId: string, frameIndex: number) => void;
+  onExtractFrameImage?: (
+    nodeId: string,
+    frameIndex: number,
+    clientPoint?: { clientX: number; clientY: number }
+  ) => void;
   onReplaceExtractedFrame?: (nodeId: string) => void;
   onSyncImagePromptStarterLayout?: (nodeId: string, imageNodeWidth: number) => void;
   onSplitImageGrid?: (
@@ -100,6 +104,8 @@ const SQUARE_RESULT_IMAGE_MAX_WIDTH = 520;
 const SQUARE_RESULT_IMAGE_MAX_HEIGHT = 390;
 const PLACEHOLDER_RESULT_IMAGE_MAX_WIDTH = 520;
 const PLACEHOLDER_RESULT_IMAGE_MAX_HEIGHT = 390;
+const EXTRACTED_FRAME_IMAGE_MAX_WIDTH = 360;
+const EXTRACTED_FRAME_IMAGE_MAX_HEIGHT = 270;
 const QUANTITY_OPTIONS = ["1张", "2张", "3张", "4张"];
 const MINIMAX_IMAGE_MODEL = "MiniMax Image 01";
 const VISIBLE_THUMBNAIL_COUNT = 3;
@@ -113,6 +119,7 @@ const CUSTOM_GRID_MAX_ROWS = 5;
 const CUSTOM_GRID_MAX_COLS = 5;
 const CROP_HANDLES = ["nw", "n", "ne", "e", "se", "s", "sw", "w"] as const;
 const EMPTY_IMAGE_NODE_MAIN_CARD_CENTER_Y = 145;
+const FRAME_EXTRACTION_DRAG_THRESHOLD_PX = 8;
 const IMAGE_NODE_REFERENCE_IGNORED_KEYS = new Set([
   "negative_prompt",
   "aspect_ratio",
@@ -162,6 +169,22 @@ export function shouldShowImageUploadButton({
 }) {
   if (isUploadingNodeAsset) return false;
   return !hasImageUrl || isImageLoaded || isImageLoadFailed;
+}
+
+export function hasFrameExtractionDragStarted({
+  clientX,
+  clientY,
+  startClientX,
+  startClientY,
+  threshold = FRAME_EXTRACTION_DRAG_THRESHOLD_PX,
+}: {
+  clientX: number;
+  clientY: number;
+  startClientX: number;
+  startClientY: number;
+  threshold?: number;
+}) {
+  return Math.hypot(clientX - startClientX, clientY - startClientY) >= threshold;
 }
 
 export function getImageNodePortTopStyle({
@@ -301,7 +324,18 @@ function isFinitePositiveNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
 }
 
-export function getResultImageBounds(aspectRatio: string, isUploadPlaceholder = false) {
+export function getResultImageBounds(
+  aspectRatio: string,
+  isUploadPlaceholder = false,
+  isExtractedFrameNode = false
+) {
+  if (isExtractedFrameNode) {
+    return {
+      maxWidth: EXTRACTED_FRAME_IMAGE_MAX_WIDTH,
+      maxHeight: EXTRACTED_FRAME_IMAGE_MAX_HEIGHT,
+    };
+  }
+
   if (isUploadPlaceholder) {
     return {
       maxWidth: PLACEHOLDER_RESULT_IMAGE_MAX_WIDTH,
@@ -330,9 +364,10 @@ export function resolveResultImageSize(
     imageDisplayHeight?: number;
   },
   aspectRatio: string,
-  isUploadPlaceholder = false
+  isUploadPlaceholder = false,
+  isExtractedFrameNode = false
 ) {
-  const bounds = getResultImageBounds(aspectRatio, isUploadPlaceholder);
+  const bounds = getResultImageBounds(aspectRatio, isUploadPlaceholder, isExtractedFrameNode);
   if (
     isFinitePositiveNumber(dimensions.imageNaturalWidth) &&
     isFinitePositiveNumber(dimensions.imageNaturalHeight)
@@ -431,6 +466,25 @@ function ImageNodeCardImpl({
   const imageElementRef = React.useRef<HTMLImageElement | null>(null);
   const uploadInputRef = React.useRef<HTMLInputElement | null>(null);
   const promptTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
+  const frameExtractionDragRef = React.useRef<{
+    element: HTMLElement;
+    frameIndex: number;
+    originClientX: number;
+    originClientY: number;
+    pointerId: number;
+    startClientX: number;
+    startClientY: number;
+    url: string;
+    dragging: boolean;
+  } | null>(null);
+  const frameExtractionDragCleanupRef = React.useRef<(() => void) | null>(null);
+  const frameExtractionOverlayRef = React.useRef<{
+    ghost: HTMLDivElement;
+    label: HTMLDivElement;
+    line: SVGLineElement;
+    origin: SVGCircleElement;
+    root: HTMLDivElement;
+  } | null>(null);
   const [mentionMenuOpen, setMentionMenuOpen] = React.useState(false);
   const [isUploadingAsset, setIsUploadingAsset] = React.useState(false);
   const isUploadingNodeAsset = node.data?.uploadingAsset === true || isUploadingAsset;
@@ -472,6 +526,317 @@ function ImageNodeCardImpl({
     1,
     Math.ceil(Math.max(1, resolvedImageUrls.length) / frameGridColumns)
   );
+  const cleanupFrameExtractionDragListeners = React.useCallback(() => {
+    frameExtractionDragCleanupRef.current?.();
+    frameExtractionDragCleanupRef.current = null;
+  }, []);
+  const destroyFrameExtractionOverlay = React.useCallback(() => {
+    frameExtractionOverlayRef.current?.root.remove();
+    frameExtractionOverlayRef.current = null;
+  }, []);
+  const createFrameExtractionOverlay = React.useCallback(
+    (drag: NonNullable<typeof frameExtractionDragRef.current>, clientX: number, clientY: number) => {
+      destroyFrameExtractionOverlay();
+
+      const root = document.createElement("div");
+      root.setAttribute("data-frame-drag-overlay", "true");
+      Object.assign(root.style, {
+        inset: "0",
+        pointerEvents: "none",
+        position: "fixed",
+        zIndex: "2147483647",
+      });
+
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      Object.assign(svg.style, {
+        height: "100vh",
+        inset: "0",
+        overflow: "visible",
+        position: "fixed",
+        width: "100vw",
+      });
+      const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+      const filter = document.createElementNS("http://www.w3.org/2000/svg", "filter");
+      filter.setAttribute("id", `frame-drag-native-glow-${node.id}`);
+      filter.setAttribute("x", "-40%");
+      filter.setAttribute("y", "-40%");
+      filter.setAttribute("width", "180%");
+      filter.setAttribute("height", "180%");
+      const blur = document.createElementNS("http://www.w3.org/2000/svg", "feGaussianBlur");
+      blur.setAttribute("stdDeviation", "3.2");
+      blur.setAttribute("result", "blur");
+      const merge = document.createElementNS("http://www.w3.org/2000/svg", "feMerge");
+      const blurNode = document.createElementNS("http://www.w3.org/2000/svg", "feMergeNode");
+      blurNode.setAttribute("in", "blur");
+      const sourceNode = document.createElementNS("http://www.w3.org/2000/svg", "feMergeNode");
+      sourceNode.setAttribute("in", "SourceGraphic");
+      merge.append(blurNode, sourceNode);
+      filter.append(blur, merge);
+      defs.append(filter);
+
+      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      line.setAttribute("x1", String(drag.originClientX));
+      line.setAttribute("y1", String(drag.originClientY));
+      line.setAttribute("x2", String(clientX));
+      line.setAttribute("y2", String(clientY));
+      line.setAttribute("stroke", "rgba(165,180,252,0.96)");
+      line.setAttribute("stroke-width", "2.5");
+      line.setAttribute("stroke-dasharray", "8 8");
+      line.setAttribute("stroke-linecap", "round");
+      line.setAttribute("filter", `url(#frame-drag-native-glow-${node.id})`);
+      const origin = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      origin.setAttribute("cx", String(drag.originClientX));
+      origin.setAttribute("cy", String(drag.originClientY));
+      origin.setAttribute("r", "4.5");
+      origin.setAttribute("fill", "rgba(103,232,249,0.98)");
+      origin.setAttribute("filter", `url(#frame-drag-native-glow-${node.id})`);
+      svg.append(defs, line, origin);
+
+      const ghost = document.createElement("div");
+      ghost.setAttribute("data-frame-drag-ghost", "true");
+      Object.assign(ghost.style, {
+        background: "rgba(11,18,32,0.46)",
+        border: "1px solid rgba(221,214,254,0.32)",
+        borderRadius: "22px",
+        boxShadow:
+          "0 24px 62px -28px rgba(129,140,248,0.95), inset 0 1px 0 rgba(255,255,255,0.08)",
+        boxSizing: "border-box",
+        padding: "8px",
+        position: "fixed",
+        width: "224px",
+        left: `${clientX + 32}px`,
+        top: `${clientY + 28}px`,
+      });
+      const ghostImageFrame = document.createElement("div");
+      Object.assign(ghostImageFrame.style, {
+        background: "rgba(2,6,23,0.72)",
+        border: "1px solid rgba(207,250,254,0.18)",
+        borderRadius: "16px",
+        overflow: "hidden",
+      });
+      const ghostImageRatio = document.createElement("div");
+      Object.assign(ghostImageRatio.style, {
+        aspectRatio: "16 / 9",
+        background: "rgba(2,6,23,0.72)",
+      });
+      const ghostImage = document.createElement("img");
+      ghostImage.src = drag.url;
+      ghostImage.alt = "";
+      ghostImage.draggable = false;
+      Object.assign(ghostImage.style, {
+        display: "block",
+        height: "100%",
+        objectFit: "cover",
+        opacity: "0.72",
+        width: "100%",
+      });
+      ghostImageRatio.appendChild(ghostImage);
+      ghostImageFrame.appendChild(ghostImageRatio);
+      const ghostInput = document.createElement("div");
+      Object.assign(ghostInput.style, {
+        background: "rgba(2,6,23,0.42)",
+        border: "1px solid rgba(207,250,254,0.1)",
+        borderRadius: "12px",
+        height: "36px",
+        marginTop: "8px",
+      });
+      ghost.append(ghostImageFrame, ghostInput);
+
+      const label = document.createElement("div");
+      label.setAttribute("data-frame-drag-label", "true");
+      Object.assign(label.style, {
+        alignItems: "center",
+        background: "rgba(13,20,33,0.94)",
+        border: "1px solid rgba(207,250,254,0.24)",
+        borderRadius: "14px",
+        boxShadow: "0 18px 42px -18px rgba(0,0,0,0.9)",
+        color: "rgba(240,249,255,0.96)",
+        display: "flex",
+        fontSize: "11px",
+        fontWeight: "700",
+        gap: "8px",
+        padding: "8px",
+        position: "fixed",
+        whiteSpace: "nowrap",
+        left: `${clientX + 14}px`,
+        top: `${clientY + 14}px`,
+      });
+      const labelImage = document.createElement("img");
+      labelImage.src = drag.url;
+      labelImage.alt = "";
+      labelImage.draggable = false;
+      Object.assign(labelImage.style, {
+        borderRadius: "8px",
+        display: "block",
+        height: "44px",
+        objectFit: "cover",
+        width: "64px",
+      });
+      const labelText = document.createElement("span");
+      labelText.textContent = `拖出第 ${drag.frameIndex + 1} 帧`;
+      label.append(labelImage, labelText);
+
+      root.append(svg, ghost, label);
+      document.body.appendChild(root);
+      frameExtractionOverlayRef.current = { ghost, label, line, origin, root };
+    },
+    [destroyFrameExtractionOverlay, node.id]
+  );
+  const updateFrameExtractionOverlay = React.useCallback((clientX: number, clientY: number) => {
+    const overlay = frameExtractionOverlayRef.current;
+    if (!overlay) return;
+    overlay.line.setAttribute("x2", String(clientX));
+    overlay.line.setAttribute("y2", String(clientY));
+    overlay.ghost.style.left = `${clientX + 32}px`;
+    overlay.ghost.style.top = `${clientY + 28}px`;
+    overlay.label.style.left = `${clientX + 14}px`;
+    overlay.label.style.top = `${clientY + 14}px`;
+  }, []);
+  const updateFrameExtractionDragPreview = React.useCallback((pointerId: number, clientX: number, clientY: number) => {
+    const drag = frameExtractionDragRef.current;
+    if (!drag || drag.pointerId !== pointerId) return;
+    if (
+      !drag.dragging &&
+      hasFrameExtractionDragStarted({
+        clientX,
+        clientY,
+        startClientX: drag.startClientX,
+        startClientY: drag.startClientY,
+      })
+    ) {
+      drag.dragging = true;
+    }
+    if (!frameExtractionOverlayRef.current) {
+      createFrameExtractionOverlay(drag, clientX, clientY);
+      return;
+    }
+    updateFrameExtractionOverlay(clientX, clientY);
+  }, [createFrameExtractionOverlay, updateFrameExtractionOverlay]);
+  const finishFrameExtractionDrag = React.useCallback(
+    (pointerId: number, clientX: number, clientY: number, canceled = false) => {
+      const drag = frameExtractionDragRef.current;
+      if (!drag || drag.pointerId !== pointerId) return;
+      cleanupFrameExtractionDragListeners();
+      if (drag.element.hasPointerCapture(pointerId)) {
+        drag.element.releasePointerCapture(pointerId);
+      }
+      frameExtractionDragRef.current = null;
+      destroyFrameExtractionOverlay();
+      if (canceled) return;
+      if (drag.dragging) {
+        onExtractFrameImage?.(node.id, drag.frameIndex, {
+          clientX,
+          clientY,
+        });
+        return;
+      }
+      setActiveImageIndex(drag.frameIndex);
+      onSetPrimaryImageResult?.(node.id, drag.url, drag.frameIndex);
+    },
+    [
+      cleanupFrameExtractionDragListeners,
+      destroyFrameExtractionOverlay,
+      node.id,
+      onExtractFrameImage,
+      onSetPrimaryImageResult,
+    ]
+  );
+  const beginFrameExtractionDrag = React.useCallback(
+    (event: React.PointerEvent<HTMLElement>, frameIndex: number, url: string) => {
+      if (!onExtractFrameImage || event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      cleanupFrameExtractionDragListeners();
+      event.currentTarget.setPointerCapture(event.pointerId);
+      const rect = event.currentTarget.getBoundingClientRect();
+      frameExtractionDragRef.current = {
+        element: event.currentTarget,
+        frameIndex,
+        originClientX: rect.left + rect.width / 2,
+        originClientY: rect.top + rect.height / 2,
+        pointerId: event.pointerId,
+        startClientX: event.clientX,
+        startClientY: event.clientY,
+        url,
+        dragging: false,
+      };
+      updateFrameExtractionDragPreview(event.pointerId, event.clientX, event.clientY);
+
+      const handleWindowPointerMove = (moveEvent: PointerEvent) => {
+        if (moveEvent.pointerId !== event.pointerId) return;
+        moveEvent.preventDefault();
+        moveEvent.stopPropagation();
+        updateFrameExtractionDragPreview(moveEvent.pointerId, moveEvent.clientX, moveEvent.clientY);
+      };
+      const handleWindowPointerUp = (upEvent: PointerEvent) => {
+        if (upEvent.pointerId !== event.pointerId) return;
+        upEvent.preventDefault();
+        upEvent.stopPropagation();
+        finishFrameExtractionDrag(upEvent.pointerId, upEvent.clientX, upEvent.clientY);
+      };
+      const handleWindowPointerCancel = (cancelEvent: PointerEvent) => {
+        if (cancelEvent.pointerId !== event.pointerId) return;
+        cancelEvent.preventDefault();
+        cancelEvent.stopPropagation();
+        finishFrameExtractionDrag(
+          cancelEvent.pointerId,
+          cancelEvent.clientX,
+          cancelEvent.clientY,
+          true
+        );
+      };
+
+      window.addEventListener("pointermove", handleWindowPointerMove, true);
+      window.addEventListener("pointerup", handleWindowPointerUp, true);
+      window.addEventListener("pointercancel", handleWindowPointerCancel, true);
+      frameExtractionDragCleanupRef.current = () => {
+        window.removeEventListener("pointermove", handleWindowPointerMove, true);
+        window.removeEventListener("pointerup", handleWindowPointerUp, true);
+        window.removeEventListener("pointercancel", handleWindowPointerCancel, true);
+      };
+    },
+    [
+      cleanupFrameExtractionDragListeners,
+      finishFrameExtractionDrag,
+      onExtractFrameImage,
+      updateFrameExtractionDragPreview,
+    ]
+  );
+  const moveFrameExtractionDrag = React.useCallback((event: React.PointerEvent<HTMLElement>) => {
+    const drag = frameExtractionDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    updateFrameExtractionDragPreview(event.pointerId, event.clientX, event.clientY);
+  }, [updateFrameExtractionDragPreview]);
+  const endFrameExtractionDrag = React.useCallback(
+    (event: React.PointerEvent<HTMLElement>, fallbackFrameIndex: number, fallbackUrl: string) => {
+      const drag = frameExtractionDragRef.current;
+      if (!drag || drag.pointerId !== event.pointerId) {
+        setActiveImageIndex(fallbackFrameIndex);
+        onSetPrimaryImageResult?.(node.id, fallbackUrl, fallbackFrameIndex);
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      finishFrameExtractionDrag(event.pointerId, event.clientX, event.clientY);
+    },
+    [finishFrameExtractionDrag, node.id, onSetPrimaryImageResult]
+  );
+  const cancelFrameExtractionDrag = React.useCallback((event: React.PointerEvent<HTMLElement>) => {
+    const drag = frameExtractionDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    finishFrameExtractionDrag(event.pointerId, event.clientX, event.clientY, true);
+  }, [finishFrameExtractionDrag]);
+  React.useEffect(
+    () => () => {
+      cleanupFrameExtractionDragListeners();
+      destroyFrameExtractionOverlay();
+    },
+    [cleanupFrameExtractionDragListeners, destroyFrameExtractionOverlay]
+  );
   const isImageLoaded = Boolean(
     imageUrl && imageLoadState.url === imageUrl && imageLoadState.status === "loaded"
   );
@@ -488,7 +853,8 @@ function ImageNodeCardImpl({
   const nodeWidth = getNodeWidth(node);
   const resultImageBounds = getResultImageBounds(
     aspectRatio,
-    node.data?.isUploadPlaceholder === true
+    node.data?.isUploadPlaceholder === true,
+    isExtractedFrameNode
   );
   const resultImageSize = React.useMemo(
     () =>
@@ -500,7 +866,8 @@ function ImageNodeCardImpl({
           imageDisplayHeight: node.data?.imageDisplayHeight,
         },
         aspectRatio,
-        node.data?.isUploadPlaceholder === true
+        node.data?.isUploadPlaceholder === true,
+        isExtractedFrameNode
       ),
     [
       aspectRatio,
@@ -509,6 +876,7 @@ function ImageNodeCardImpl({
       node.data?.imageDisplayHeight,
       node.data?.imageDisplayWidth,
       node.data?.isUploadPlaceholder,
+      isExtractedFrameNode,
     ]
   );
   const frameStripSize = {
@@ -1634,17 +2002,18 @@ function ImageNodeCardImpl({
                         role="button"
                         tabIndex={0}
                         data-node-action="true"
-                        onClick={() => {
-                          setActiveImageIndex(index);
-                          onSetPrimaryImageResult?.(node.id, url, index);
-                        }}
+                        aria-label={`第 ${index + 1} 帧，拖拽到画布生成图片子节点`}
+                        onPointerDown={(event) => beginFrameExtractionDrag(event, index, url)}
+                        onPointerMove={moveFrameExtractionDrag}
+                        onPointerUp={(event) => endFrameExtractionDrag(event, index, url)}
+                        onPointerCancel={cancelFrameExtractionDrag}
                         onKeyDown={(event) => {
                           if (event.key !== "Enter" && event.key !== " ") return;
                           event.preventDefault();
                           setActiveImageIndex(index);
                           onSetPrimaryImageResult?.(node.id, url, index);
                         }}
-                        className="group/frame relative min-h-0 min-w-0 overflow-hidden border border-black/45 bg-slate-950 transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300/70"
+                        className={`group/frame relative min-h-0 min-w-0 overflow-hidden border border-black/45 bg-slate-950 transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300/70 ${onExtractFrameImage ? "cursor-grab active:cursor-grabbing" : ""}`}
                       >
                         <img
                           src={url}
@@ -1653,18 +2022,8 @@ function ImageNodeCardImpl({
                           draggable={false}
                         />
                         {onExtractFrameImage && (
-                          <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-slate-950/0 opacity-0 transition-all group-hover/frame:bg-slate-950/36 group-hover/frame:opacity-100">
-                            <button
-                              type="button"
-                              data-node-action="true"
-                              className="pointer-events-auto rounded-full border border-cyan-100/22 bg-[#101827]/90 px-2.5 py-1 text-[11px] font-semibold text-cyan-50 shadow-[0_10px_24px_-14px_rgba(34,211,238,0.9)] transition hover:border-cyan-100/36 hover:bg-cyan-100/[0.16]"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                onExtractFrameImage(node.id, index);
-                              }}
-                            >
-                              提取
-                            </button>
+                          <span className="pointer-events-none absolute inset-x-2 bottom-2 rounded-full border border-cyan-100/16 bg-[#101827]/72 px-2 py-1 text-center text-[10px] font-semibold text-cyan-50/86 opacity-0 shadow-[0_10px_24px_-14px_rgba(34,211,238,0.9)] backdrop-blur-sm transition-opacity group-hover/frame:opacity-100">
+                            拖出生成子节点
                           </span>
                         )}
                       </div>
@@ -2040,16 +2399,17 @@ function ImageNodeCardImpl({
   }
 
   return (
-    <motion.div
-      initial={{ scale: 0.96, opacity: 0 }}
-      animate={{ scale: 1, opacity: 1 }}
-      exit={{ scale: 0.96, opacity: 0 }}
-      transition={{ type: "spring", damping: 22, stiffness: 280 }}
-      className="absolute text-left"
-      style={{ width: nodeWidth }}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-    >
+    <>
+      <motion.div
+        initial={{ scale: 0.96, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.96, opacity: 0 }}
+        transition={{ type: "spring", damping: 22, stiffness: 280 }}
+        className="absolute text-left"
+        style={{ width: nodeWidth }}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+      >
       {portHandles}
       <motion.div
         onPointerDown={(e) => {
@@ -2287,7 +2647,8 @@ function ImageNodeCardImpl({
           </motion.div>
         )}
       </AnimatePresence>
-    </motion.div>
+      </motion.div>
+    </>
   );
 }
 

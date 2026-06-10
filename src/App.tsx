@@ -1411,7 +1411,13 @@ export default function App({ onLoggedOut }: AppProps) {
             onUpdateNodeData={updateNodeData}
             onUpdateNodeProperty={updateNodeProperty}
             onSetPrimaryImageResult={setPrimaryImageResult}
-            onExtractFrameImage={extractFrameImageNode}
+            onExtractFrameImage={(nodeId, frameIndex, clientPoint) =>
+              extractFrameImageNode(
+                nodeId,
+                frameIndex,
+                clientPoint ? toWorld(clientPoint.clientX, clientPoint.clientY) : undefined
+              )
+            }
             onReplaceExtractedFrame={replaceExtractedFrameImage}
             onSyncImagePromptStarterLayout={syncImagePromptStarterLayout}
             onSplitImageGrid={handleSplitImageGrid}

@@ -5,6 +5,7 @@ import {
   getImageNodePortTopStyle,
   getSettledImageLoadStatus,
   getResultImageBounds,
+  hasFrameExtractionDragStarted,
   resolveResultImageSize,
   shouldShowImageUploadButton,
 } from "./ImageNodeCard";
@@ -98,6 +99,13 @@ describe("getResultImageBounds", () => {
     });
   });
 
+  it("uses compact bounds for extracted frame child nodes", () => {
+    expect(getResultImageBounds("16:9", false, true)).toEqual({
+      maxWidth: 360,
+      maxHeight: 270,
+    });
+  });
+
   it("keeps large bounds for regular non-square image nodes", () => {
     expect(getResultImageBounds("16:9")).toEqual({
       maxWidth: 780,
@@ -184,6 +192,27 @@ describe("shouldShowImageUploadButton", () => {
         isUploadingNodeAsset: true,
       })
     ).toBe(false);
+  });
+});
+
+describe("hasFrameExtractionDragStarted", () => {
+  it("waits until the pointer has moved past the drag threshold", () => {
+    expect(
+      hasFrameExtractionDragStarted({
+        startClientX: 100,
+        startClientY: 100,
+        clientX: 104,
+        clientY: 105,
+      })
+    ).toBe(false);
+    expect(
+      hasFrameExtractionDragStarted({
+        startClientX: 100,
+        startClientY: 100,
+        clientX: 108,
+        clientY: 100,
+      })
+    ).toBe(true);
   });
 });
 

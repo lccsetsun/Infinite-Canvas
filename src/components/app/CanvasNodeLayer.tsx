@@ -56,7 +56,11 @@ interface CanvasNodeLayerProps {
   onUpdateNodeData: (nodeId: string, data: any) => void;
   onUpdateNodeProperty: (nodeId: string, key: string, value: unknown) => void;
   onSetPrimaryImageResult?: (nodeId: string, imageUrl: string, imageIndex: number) => void;
-  onExtractFrameImage?: (nodeId: string, frameIndex: number) => void;
+  onExtractFrameImage?: (
+    nodeId: string,
+    frameIndex: number,
+    clientPoint?: { clientX: number; clientY: number }
+  ) => void;
   onReplaceExtractedFrame?: (nodeId: string) => void;
   onSyncImagePromptStarterLayout?: (nodeId: string, imageNodeWidth: number) => void;
   onSplitImageGrid?: (

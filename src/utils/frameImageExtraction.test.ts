@@ -47,6 +47,8 @@ describe("createFrameImageChildSnapshot", () => {
       activeImageIndex: 0,
       extractedFrameSourceNodeId: "frames",
       extractedFrameIndex: 1,
+      imageDisplayWidth: 360,
+      imageDisplayHeight: 203,
       isSourceNode: true,
       status: "success",
       loading: false,
@@ -61,6 +63,20 @@ describe("createFrameImageChildSnapshot", () => {
         locked: true,
       },
     ]);
+  });
+
+  it("uses the requested drop position when one is provided", () => {
+    const result = createFrameImageChildSnapshot({
+      nodes: [makeFrameNode(["https://oss.example.com/1.png"])],
+      links: [],
+      sourceNodeId: "frames",
+      frameIndex: 0,
+      position: { x: 420, y: 260 },
+      makeId: (prefix) => (prefix === "link" ? "link-child" : "child"),
+    });
+
+    expect(result?.createdNode.x).toBe(420);
+    expect(result?.createdNode.y).toBe(260);
   });
 });
 
