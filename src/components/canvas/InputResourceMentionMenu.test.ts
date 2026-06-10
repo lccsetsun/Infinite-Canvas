@@ -35,4 +35,17 @@ describe("getMentionMenuLayout", () => {
       }).maxHeight
     ).toBeLessThanOrEqual(360);
   });
+
+  it("keeps the compact default menu inside the viewport horizontally", () => {
+    expect(
+      getMentionMenuLayout({
+        anchorTop: 120,
+        anchorBottom: 148,
+        anchorLeft: 760,
+        viewportHeight: 640,
+        viewportWidth: 800,
+        menuHeight: 220,
+      }).left
+    ).toBe(564);
+  });
 });

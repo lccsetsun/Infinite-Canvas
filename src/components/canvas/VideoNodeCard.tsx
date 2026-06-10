@@ -1057,6 +1057,7 @@ function VideoNodeCardImpl({
                 <InputResourceMentionMenu
                   resources={inputReferences}
                   onPick={(label) => insertResourceMention(label)}
+                  onRequestClose={() => setMentionMenuOpen(false)}
                 />
               )}
             </div>

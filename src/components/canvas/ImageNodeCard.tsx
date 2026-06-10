@@ -52,6 +52,8 @@ interface ImageNodeCardProps {
   onUpdateProperty?: (nodeId: string, key: string, value: unknown) => void;
   onUpdateData?: (nodeId: string, data: Partial<GraphNode["data"]>) => void;
   onSetPrimaryImageResult?: (nodeId: string, imageUrl: string, imageIndex: number) => void;
+  onExtractFrameImage?: (nodeId: string, frameIndex: number) => void;
+  onReplaceExtractedFrame?: (nodeId: string) => void;
   onSyncImagePromptStarterLayout?: (nodeId: string, imageNodeWidth: number) => void;
   onSplitImageGrid?: (
     nodeId: string,
@@ -369,6 +371,8 @@ function ImageNodeCardImpl({
   onUpdateProperty,
   onUpdateData,
   onSetPrimaryImageResult,
+  onExtractFrameImage,
+  onReplaceExtractedFrame,
   onSyncImagePromptStarterLayout,
   onSplitImageGrid,
   onCropImage,
@@ -460,6 +464,9 @@ function ImageNodeCardImpl({
       : [];
   const imageUrl = resolvedImageUrls[activeImageIndex] || resolvedImageUrls[0] || "";
   const isFrameStrip = node.data?.isFrameStrip === true;
+  const isExtractedFrameNode =
+    typeof node.data?.extractedFrameSourceNodeId === "string" &&
+    typeof node.data?.extractedFrameIndex === "number";
   const frameGridColumns = Math.max(1, Math.min(8, Math.round(node.data?.frameGridColumns ?? 5)));
   const frameGridRows = Math.max(
     1,
@@ -1352,6 +1359,21 @@ function ImageNodeCardImpl({
                         <Download className="h-5 w-5" />
                       </button>
                     </Tooltip>
+                    {isExtractedFrameNode && onReplaceExtractedFrame && (
+                      <Tooltip
+                        content={`回填第 ${(node.data?.extractedFrameIndex ?? 0) + 1} 帧`}
+                        position="top"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => onReplaceExtractedFrame(node.id)}
+                          className="flex h-9 min-w-[104px] items-center justify-center gap-2 rounded-[12px] border border-cyan-100/14 bg-cyan-100/[0.08] px-3 text-[13px] font-semibold text-cyan-50 transition-colors hover:border-cyan-100/26 hover:bg-cyan-100/[0.14]"
+                        >
+                          <Undo2 className="h-4 w-4" />
+                          <span>回填原帧</span>
+                        </button>
+                      </Tooltip>
+                    )}
                     {onCropImage && imageUrl && isImageLoaded && (
                       <Tooltip content="裁剪图片" position="top">
                         <button
@@ -1607,15 +1629,22 @@ function ImageNodeCardImpl({
                     }}
                   >
                     {resolvedImageUrls.map((url, index) => (
-                      <button
+                      <div
                         key={`${url}-${index}`}
-                        type="button"
+                        role="button"
+                        tabIndex={0}
                         data-node-action="true"
                         onClick={() => {
                           setActiveImageIndex(index);
                           onSetPrimaryImageResult?.(node.id, url, index);
                         }}
-                        className="relative min-h-0 min-w-0 overflow-hidden border border-black/45 bg-slate-950 transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300/70"
+                        onKeyDown={(event) => {
+                          if (event.key !== "Enter" && event.key !== " ") return;
+                          event.preventDefault();
+                          setActiveImageIndex(index);
+                          onSetPrimaryImageResult?.(node.id, url, index);
+                        }}
+                        className="group/frame relative min-h-0 min-w-0 overflow-hidden border border-black/45 bg-slate-950 transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300/70"
                       >
                         <img
                           src={url}
@@ -1623,7 +1652,22 @@ function ImageNodeCardImpl({
                           className="h-full w-full object-cover"
                           draggable={false}
                         />
-                      </button>
+                        {onExtractFrameImage && (
+                          <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-slate-950/0 opacity-0 transition-all group-hover/frame:bg-slate-950/36 group-hover/frame:opacity-100">
+                            <button
+                              type="button"
+                              data-node-action="true"
+                              className="pointer-events-auto rounded-full border border-cyan-100/22 bg-[#101827]/90 px-2.5 py-1 text-[11px] font-semibold text-cyan-50 shadow-[0_10px_24px_-14px_rgba(34,211,238,0.9)] transition hover:border-cyan-100/36 hover:bg-cyan-100/[0.16]"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                onExtractFrameImage(node.id, index);
+                              }}
+                            >
+                              提取
+                            </button>
+                          </span>
+                        )}
+                      </div>
                     ))}
                   </div>
                 ) : (
@@ -1839,6 +1883,158 @@ function ImageNodeCardImpl({
             )}
           </div>
         </motion.div>
+
+        <AnimatePresence>
+          {isExtractedFrameNode && (isHovered || selected) && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              data-node-action="true"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelect(e);
+              }}
+              className="relative node-card left-1/2 mt-5 w-[620px] -translate-x-1/2 rounded-[18px] border border-[#2b3142]/90 bg-[#121723]/88 px-4 pb-3 pt-3 shadow-[0_28px_70px_-26px_rgba(0,0,0,0.92),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl"
+            >
+              <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-slate-100/22 to-transparent" />
+              {inputReferences.length > 0 && (
+                <div className="mb-3 rounded-2xl border border-white/6 bg-[#0d1117]/46 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {inputReferences.map((reference, index) => (
+                      <React.Fragment key={`${reference.key}-${reference.value}-${index}`}>
+                        <ReferencePreviewCard reference={reference} index={index} />
+                      </React.Fragment>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="relative">
+                <textarea
+                  ref={promptTextareaRef}
+                  value={promptText}
+                  onChange={handlePromptChange}
+                  onFocus={(event) =>
+                    setMentionMenuOpen(
+                      inputReferences.length > 0 &&
+                        shouldShowMentionMenu(
+                          event.currentTarget.value,
+                          event.currentTarget.selectionStart
+                        )
+                    )
+                  }
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") setMentionMenuOpen(false);
+                  }}
+                  placeholder="描述你想如何修改这张帧图"
+                  className="h-[92px] w-full resize-none bg-transparent px-1 text-[15px] leading-7 text-slate-100/88 outline-none placeholder:text-slate-400/42 custom-scrollbar"
+                />
+                {mentionMenuOpen && (
+                  <InputResourceMentionMenu
+                    resources={inputReferences}
+                    onPick={(label) => insertResourceMention(label)}
+                    onRequestClose={() => setMentionMenuOpen(false)}
+                  />
+                )}
+              </div>
+              <div
+                ref={controlsRef}
+                className="mt-3 flex items-center gap-2 border-t border-cyan-100/8 pt-3"
+              >
+                <div className="flex h-10 min-w-[172px] items-center gap-2 rounded-[14px] border border-cyan-100/8 bg-slate-950/18 px-3 text-[13px] font-medium text-cyan-50/78 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]">
+                  <Wand2 className="h-3.5 w-3.5 text-cyan-100/50" />
+                  <span>{MINIMAX_IMAGE_MODEL}</span>
+                </div>
+                <ImageResolutionPicker
+                  resolution={resolution}
+                  aspectRatio={aspectRatio}
+                  onChange={(nextResolution, nextAspectRatio) => {
+                    onUpdateProperty?.(node.id, "resolution", nextResolution);
+                    onUpdateProperty?.(node.id, "aspect_ratio", nextAspectRatio);
+                  }}
+                  buttonClassName="relative inline-flex h-10 min-w-[230px] items-center justify-center gap-2 rounded-[14px] border border-cyan-100/8 bg-slate-950/18 px-3 text-[13px] font-medium text-cyan-50/76 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
+                />
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setOpenSelect((current) => (current === "quantity" ? null : "quantity"));
+                    }}
+                    className={`relative inline-flex h-10 min-w-[76px] items-center justify-center gap-1.5 rounded-[14px] border px-3 text-[13px] font-medium transition-colors ${
+                      openSelect === "quantity"
+                        ? "border-cyan-100/34 bg-cyan-100/[0.075] text-cyan-50"
+                        : "border-cyan-100/8 bg-slate-950/14 text-cyan-50/62 hover:border-cyan-100/18 hover:bg-cyan-100/[0.045] hover:text-cyan-50"
+                    }`}
+                  >
+                    <span>{quantity.replace("张", "")}</span>
+                    <span className="text-[12px] text-cyan-50/45">张</span>
+                    <ChevronUp
+                      className={`h-3.5 w-3.5 text-slate-300/55 transition-transform ${openSelect === "quantity" ? "" : "rotate-180"}`}
+                    />
+                  </button>
+                  <AnimatePresence>
+                    {openSelect === "quantity" && (
+                      <motion.div
+                        data-node-action="true"
+                        initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                        transition={{ duration: 0.15, ease: "easeOut" }}
+                        className="absolute bottom-[calc(100%+12px)] left-0 z-50 w-[112px] rounded-[16px] border border-cyan-100/12 bg-[#0d121c]/96 p-2 shadow-[0_22px_56px_-22px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-2xl"
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {QUANTITY_OPTIONS.map((option) => {
+                          const isActive = option === quantity;
+                          return (
+                            <button
+                              key={option}
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onUpdateProperty?.(node.id, "quantity", option);
+                                onUpdateProperty?.(node.id, "n", Number.parseInt(option, 10));
+                                setOpenSelect(null);
+                              }}
+                              className={`flex h-10 w-full items-center justify-between rounded-[12px] px-3 text-left transition-colors ${
+                                isActive
+                                  ? "bg-cyan-300/[0.1] text-cyan-50"
+                                  : "text-slate-300/76 hover:bg-white/[0.055] hover:text-slate-100"
+                              }`}
+                            >
+                              <span className="text-[13px] font-semibold">{option}</span>
+                            </button>
+                          );
+                        })}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleRun();
+                  }}
+                  disabled={isRunning || !promptText.trim()}
+                  className={`ml-auto flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] transition-all ${
+                    isRunning || !promptText.trim()
+                      ? "cursor-not-allowed border border-cyan-100/6 bg-slate-200/8 text-slate-200/28"
+                      : "bg-cyan-50 text-[#0f172a] shadow-[0_14px_30px_-18px_rgba(103,232,249,0.9)] hover:bg-white"
+                  }`}
+                >
+                  {isRunning ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <ArrowUp className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </motion.div>
     );
   }
@@ -1987,6 +2183,7 @@ function ImageNodeCardImpl({
                 <InputResourceMentionMenu
                   resources={inputReferences}
                   onPick={(label) => insertResourceMention(label)}
+                  onRequestClose={() => setMentionMenuOpen(false)}
                 />
               )}
             </div>

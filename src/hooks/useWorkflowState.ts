@@ -34,6 +34,10 @@ import {
 } from "../runtime/dataflow";
 import { createVideoFrameCaptureSnapshot } from "../utils/videoFrameCaptureLayout";
 import { collectImageReferenceUrls } from "../utils/textNodeReferences";
+import {
+  createFrameImageChildSnapshot,
+  replaceFrameImageFromChildSnapshot,
+} from "../utils/frameImageExtraction";
 import type {
   RemoteCanvasProject,
   RemoteCanvasWorkflowData,
@@ -1308,6 +1312,69 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     []
   );
 
+  const extractFrameImageNode = useCallback(
+    (sourceNodeId: string, frameIndex: number) => {
+      const snapshot = createFrameImageChildSnapshot({
+        nodes,
+        links,
+        sourceNodeId,
+        frameIndex,
+        makeId,
+      });
+      if (!snapshot) {
+        appendLog("warning", "无法提取该帧图片");
+        return null;
+      }
+
+      setNodes(snapshot.nodes);
+      setLinks(snapshot.links);
+      setSelectedNodeId(snapshot.createdNode.id);
+      setNodeOutputs((prev) => {
+        const next = new Map(prev);
+        next.set(
+          snapshot.createdNode.id,
+          new Map([[0, snapshot.createdNode.data?.imageUrl || ""]])
+        );
+        return next;
+      });
+      syncCurrentWorkflowMeta((wf) => ({
+        ...wf,
+        summary: { ...wf.summary, updatedAt: Date.now() },
+        data: { ...wf.data, nodes: snapshot.nodes, links: snapshot.links },
+      }));
+      pushHistory({ nodes: snapshot.nodes, links: snapshot.links });
+      appendLog("success", `已提取第 ${frameIndex + 1} 帧为图片节点`);
+      return snapshot.createdNode.id;
+    },
+    [appendLog, links, nodes, pushHistory, syncCurrentWorkflowMeta]
+  );
+
+  const replaceExtractedFrameImage = useCallback(
+    (childNodeId: string) => {
+      const snapshot = replaceFrameImageFromChildSnapshot({
+        nodes,
+        nodeOutputs,
+        childNodeId,
+      });
+      if (!snapshot) {
+        appendLog("warning", "无法回填该图片节点");
+        return false;
+      }
+
+      setNodes(snapshot.nodes);
+      setNodeOutputs(snapshot.nodeOutputs);
+      syncCurrentWorkflowMeta((wf) => ({
+        ...wf,
+        summary: { ...wf.summary, updatedAt: Date.now() },
+        data: { ...wf.data, nodes: snapshot.nodes, links },
+      }));
+      pushHistory({ nodes: snapshot.nodes, links });
+      appendLog("success", `已回填第 ${snapshot.frameIndex + 1} 帧`);
+      return true;
+    },
+    [appendLog, links, nodeOutputs, nodes, pushHistory, syncCurrentWorkflowMeta]
+  );
+
   const addVideoFrameAnalysis = useCallback(
     (videoNodeId: string, captures: VideoFrameCaptureItem[]) => {
       const snapshot = createVideoFrameCaptureSnapshot({
@@ -2405,6 +2472,8 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     updateNodeProperty,
     updateNodeData,
     setPrimaryImageResult,
+    extractFrameImageNode,
+    replaceExtractedFrameImage,
     addVideoFrameAnalysis,
     addSegmentVideoAnalyses,
     clearCanvas,

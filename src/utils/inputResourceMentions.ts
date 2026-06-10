@@ -13,6 +13,7 @@ export interface MentionResource {
 
 export interface MentionOption<T extends MentionResource = MentionResource> {
   label: string;
+  mentionText: string;
   resource: T;
 }
 
@@ -21,6 +22,13 @@ const RESOURCE_LABELS: Record<MentionResourceKind, string> = {
   image: "图片",
   text: "文本",
   video: "视频",
+};
+
+const RESOURCE_MENTION_LABELS: Record<MentionResourceKind, string> = {
+  audio: "Audio",
+  image: "Image",
+  text: "Text",
+  video: "Video",
 };
 
 export function buildMentionOptions<T extends MentionResource>(resources: T[]): MentionOption<T>[] {
@@ -37,6 +45,7 @@ export function buildMentionOptions<T extends MentionResource>(resources: T[]): 
       counts[resource.kind] += 1;
       return {
         label: `${RESOURCE_LABELS[resource.kind]}${counts[resource.kind]}`,
+        mentionText: `{{ ${RESOURCE_MENTION_LABELS[resource.kind]}${counts[resource.kind]} }}`,
         resource,
       };
     });
@@ -53,7 +62,7 @@ export function shouldShowMentionMenu(value: string, cursorIndex: number): boole
 export function insertMentionLabel(
   value: string,
   cursorIndex: number,
-  label: string
+  mentionText: string
 ): { nextValue: string; nextCursorIndex: number } {
   const beforeCursor = value.slice(0, cursorIndex);
   const atIndex = beforeCursor.lastIndexOf("@");
@@ -61,7 +70,7 @@ export function insertMentionLabel(
     atIndex >= 0 && !/\s/.test(beforeCursor.slice(atIndex + 1)) ? atIndex : cursorIndex;
   const before = value.slice(0, replaceStart);
   const after = value.slice(cursorIndex);
-  const insertion = `@${label}`;
+  const insertion = mentionText;
   const needsSpace = after.length > 0 && !/^\s/.test(after);
   const nextValue = `${before}${insertion}${needsSpace ? " " : ""}${after}`;
   return {

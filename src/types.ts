@@ -87,6 +87,8 @@ export interface GraphNode {
     frameGridColumns?: number;
     frameGridRows?: number;
     frameCaptureSourceNodeId?: string;
+    extractedFrameSourceNodeId?: string;
+    extractedFrameIndex?: number;
     audioUrl?: string;
     audioDuration?: number;
     uploadingAsset?: boolean;

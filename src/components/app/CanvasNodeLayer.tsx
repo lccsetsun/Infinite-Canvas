@@ -56,6 +56,8 @@ interface CanvasNodeLayerProps {
   onUpdateNodeData: (nodeId: string, data: any) => void;
   onUpdateNodeProperty: (nodeId: string, key: string, value: unknown) => void;
   onSetPrimaryImageResult?: (nodeId: string, imageUrl: string, imageIndex: number) => void;
+  onExtractFrameImage?: (nodeId: string, frameIndex: number) => void;
+  onReplaceExtractedFrame?: (nodeId: string) => void;
   onSyncImagePromptStarterLayout?: (nodeId: string, imageNodeWidth: number) => void;
   onSplitImageGrid?: (
     nodeId: string,
@@ -107,6 +109,8 @@ export default function CanvasNodeLayer({
   onUpdateNodeData,
   onUpdateNodeProperty,
   onSetPrimaryImageResult,
+  onExtractFrameImage,
+  onReplaceExtractedFrame,
   onSyncImagePromptStarterLayout,
   onSplitImageGrid,
   onCropImage,
@@ -200,6 +204,8 @@ export default function CanvasNodeLayer({
                   onUpdateProperty={onUpdateNodeProperty}
                   onUpdateData={onUpdateNodeData}
                   onSetPrimaryImageResult={onSetPrimaryImageResult}
+                  onExtractFrameImage={onExtractFrameImage}
+                  onReplaceExtractedFrame={onReplaceExtractedFrame}
                   onSyncImagePromptStarterLayout={onSyncImagePromptStarterLayout}
                   onSplitImageGrid={onSplitImageGrid}
                   onCropImage={onCropImage}

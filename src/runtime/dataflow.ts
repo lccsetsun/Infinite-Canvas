@@ -73,6 +73,10 @@ export function resolveNodeInputs(
     const values = inputLinks
       .map((link) => {
         const sourceNode = nodeById.get(link.fromNodeId);
+        const extractedFrameInput = sourceNode
+          ? getExtractedFrameInputOutput(target, sourceNode)
+          : undefined;
+        if (extractedFrameInput !== undefined) return extractedFrameInput;
         const groupedSourceOutput = sourceNode ? getGroupedNodeOutput(sourceNode) : undefined;
         if (groupedSourceOutput !== undefined) return groupedSourceOutput;
         const sourceOutputs = nodeOutputs.get(link.fromNodeId);
@@ -125,6 +129,17 @@ function getGroupedNodeOutput(node: GraphNode): unknown {
     return pickStringArray(node.data?.imageUrls) || pickStringArray(node.properties.imageUrls);
   }
   return undefined;
+}
+
+function getExtractedFrameInputOutput(target: GraphNode, sourceNode: GraphNode): unknown {
+  if (target.type !== "image_node" || sourceNode.type !== "image_node") return undefined;
+  if (target.data?.extractedFrameSourceNodeId !== sourceNode.id) return undefined;
+  const frameIndex =
+    typeof target.data?.extractedFrameIndex === "number" ? target.data.extractedFrameIndex : -1;
+  if (frameIndex < 0) return undefined;
+  const urls =
+    pickStringArray(sourceNode.data?.imageUrls) || pickStringArray(sourceNode.properties.imageUrls);
+  return urls?.[frameIndex];
 }
 
 function getNodePropertyOutputFallback(node: GraphNode): unknown {

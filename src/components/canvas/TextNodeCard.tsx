@@ -920,6 +920,7 @@ function TextNodeCardImpl({
                 <InputResourceMentionMenu
                   resources={mentionableReferences}
                   onPick={(label) => insertResourceMention(label)}
+                  onRequestClose={() => setMentionMenuOpen(false)}
                 />
               )}
             </div>

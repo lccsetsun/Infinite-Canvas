@@ -717,6 +717,7 @@ function AudioNodeCardImpl({
                 <InputResourceMentionMenu
                   resources={inputReferences}
                   onPick={(label) => insertResourceMention(label)}
+                  onRequestClose={() => setMentionMenuOpen(false)}
                 />
               )}
             </div>

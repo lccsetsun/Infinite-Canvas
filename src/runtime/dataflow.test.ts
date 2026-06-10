@@ -209,4 +209,40 @@ describe("resolveNodeInputs", () => {
 
     expect(inputs.source_image).toEqual(frameImages);
   });
+
+  it("resolves extracted frame child inputs to only the source frame", () => {
+    const frameImages = Array.from(
+      { length: 7 },
+      (_, index) => `https://oss.example.com/frame-${index + 1}.png`
+    );
+    const frameGrid = makeImageGroupNode("frame-grid", frameImages);
+    const child: GraphNode = {
+      ...makeImageNode("child", frameImages[3]),
+      inputs: [{ name: "source_image", type: "IMAGE" }],
+      data: {
+        imageUrl: frameImages[3],
+        imageUrls: [frameImages[3]],
+        extractedFrameSourceNodeId: frameGrid.id,
+        extractedFrameIndex: 3,
+      },
+    };
+
+    const inputs = resolveNodeInputs(
+      child,
+      [
+        {
+          id: "locked-frame-link",
+          fromNodeId: frameGrid.id,
+          fromOutputIndex: 0,
+          toNodeId: child.id,
+          toInputIndex: 0,
+          locked: true,
+        },
+      ],
+      new Map([[frameGrid.id, new Map([[0, frameImages]])]]),
+      [frameGrid, child]
+    );
+
+    expect(inputs.source_image).toBe(frameImages[3]);
+  });
 });

@@ -36,11 +36,7 @@ import {
 } from "./utils/canvasFileUpload";
 import { collectTextNodeReferences } from "./utils/textNodeReferences";
 import { ConfigProvider, theme } from "antd";
-import {
-  GraphNode,
-  NodeClass,
-  VideoSegmentTextAnalysis,
-} from "./types";
+import { GraphNode, NodeClass, VideoSegmentTextAnalysis } from "./types";
 import type { VideoFrameCaptureItem } from "./features/video/frameCapture";
 import {
   ApiSettings,
@@ -160,6 +156,8 @@ export default function App({ onLoggedOut }: AppProps) {
     updateNodeProperty,
     updateNodeData,
     setPrimaryImageResult,
+    extractFrameImageNode,
+    replaceExtractedFrameImage,
     addVideoFrameAnalysis,
     addSegmentVideoAnalyses,
     linkFromNodeId,
@@ -685,12 +683,16 @@ export default function App({ onLoggedOut }: AppProps) {
   const handleAnalyzeVideo = React.useCallback(
     async (node: GraphNode, captures: VideoFrameCaptureItem[]) => {
       if (captures.length === 0) {
-        showNotice("\u9010\u5e27\u5206\u6790\u63a5\u53e3\u6ca1\u6709\u8fd4\u56de\u53ef\u7528\u6570\u636e\u3002");
+        showNotice(
+          "\u9010\u5e27\u5206\u6790\u63a5\u53e3\u6ca1\u6709\u8fd4\u56de\u53ef\u7528\u6570\u636e\u3002"
+        );
         return;
       }
 
       addVideoFrameAnalysis(node.id, captures);
-      showNotice(`\u5df2\u751f\u6210 ${captures.length} \u7ec4\u9010\u5e27\u5206\u6790\u8282\u70b9\u3002`);
+      showNotice(
+        `\u5df2\u751f\u6210 ${captures.length} \u7ec4\u9010\u5e27\u5206\u6790\u8282\u70b9\u3002`
+      );
     },
     [addVideoFrameAnalysis, showNotice]
   );
@@ -1409,6 +1411,8 @@ export default function App({ onLoggedOut }: AppProps) {
             onUpdateNodeData={updateNodeData}
             onUpdateNodeProperty={updateNodeProperty}
             onSetPrimaryImageResult={setPrimaryImageResult}
+            onExtractFrameImage={extractFrameImageNode}
+            onReplaceExtractedFrame={replaceExtractedFrameImage}
             onSyncImagePromptStarterLayout={syncImagePromptStarterLayout}
             onSplitImageGrid={handleSplitImageGrid}
             onCropImage={handleCropImage}
