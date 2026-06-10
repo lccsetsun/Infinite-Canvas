@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+﻿﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createNodeFromType } from "../features/nodes/nodeFactory";
 import { getExecutor } from "../features/nodes/nodeExecutors";
 import { WORKFLOW_TEMPLATES } from "../features/templates/workflowTemplates";
@@ -37,6 +37,7 @@ import { collectImageReferenceUrls } from "../utils/textNodeReferences";
 import {
   createFrameImageChildSnapshot,
   replaceFrameImageFromChildSnapshot,
+  replaceFrameImageUrlSnapshot,
 } from "../utils/frameImageExtraction";
 import type {
   RemoteCanvasProject,
@@ -1376,6 +1377,34 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     [appendLog, links, nodeOutputs, nodes, pushHistory, syncCurrentWorkflowMeta]
   );
 
+  const replaceFrameImageUrl = useCallback(
+    (sourceNodeId: string, frameIndex: number, replacementUrl: string) => {
+      const snapshot = replaceFrameImageUrlSnapshot({
+        nodes,
+        nodeOutputs,
+        sourceNodeId,
+        frameIndex,
+        replacementUrl,
+      });
+      if (!snapshot) {
+        appendLog("warning", "无法覆盖该帧图片");
+        return false;
+      }
+
+      setNodes(snapshot.nodes);
+      setNodeOutputs(snapshot.nodeOutputs);
+      syncCurrentWorkflowMeta((wf) => ({
+        ...wf,
+        summary: { ...wf.summary, updatedAt: Date.now() },
+        data: { ...wf.data, nodes: snapshot.nodes, links },
+      }));
+      pushHistory({ nodes: snapshot.nodes, links });
+      appendLog("success", `已覆盖第 ${snapshot.frameIndex + 1} 帧`);
+      return true;
+    },
+    [appendLog, links, nodeOutputs, nodes, pushHistory, syncCurrentWorkflowMeta]
+  );
+
   const addVideoFrameAnalysis = useCallback(
     (videoNodeId: string, captures: VideoFrameCaptureItem[]) => {
       const snapshot = createVideoFrameCaptureSnapshot({
@@ -2475,6 +2504,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     setPrimaryImageResult,
     extractFrameImageNode,
     replaceExtractedFrameImage,
+    replaceFrameImageUrl,
     addVideoFrameAnalysis,
     addSegmentVideoAnalyses,
     clearCanvas,

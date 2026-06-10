@@ -4,6 +4,7 @@ import type { NodeOutputMap } from "../runtime/dataflow";
 import {
   createFrameImageChildSnapshot,
   replaceFrameImageFromChildSnapshot,
+  replaceFrameImageUrlSnapshot,
 } from "./frameImageExtraction";
 
 function makeFrameNode(imageUrls: string[]): GraphNode {
@@ -123,6 +124,38 @@ describe("replaceFrameImageFromChildSnapshot", () => {
       "https://oss.example.com/1.png",
       "https://oss.example.com/edited.png",
       "https://oss.example.com/3.png",
+    ]);
+    expect(result?.nodeOutputs.get(frameNode.id)?.get(0)).toEqual(
+      updatedFrameNode?.data?.imageUrls
+    );
+  });
+});
+
+describe("replaceFrameImageUrlSnapshot", () => {
+  it("replaces a target frame from an external image url without changing order", () => {
+    const imageUrls = [
+      "https://oss.example.com/1.png",
+      "https://oss.example.com/2.png",
+      "https://oss.example.com/3.png",
+    ];
+    const frameNode = makeFrameNode(imageUrls);
+    const nodeOutputs: NodeOutputMap = new Map<string, Map<number, unknown>>([
+      [frameNode.id, new Map<number, unknown>([[0, imageUrls]])],
+    ]);
+
+    const result = replaceFrameImageUrlSnapshot({
+      nodes: [frameNode],
+      nodeOutputs,
+      sourceNodeId: frameNode.id,
+      frameIndex: 2,
+      replacementUrl: "https://oss.example.com/replacement.png",
+    });
+
+    const updatedFrameNode = result?.nodes.find((node) => node.id === frameNode.id);
+    expect(updatedFrameNode?.data?.imageUrls).toEqual([
+      "https://oss.example.com/1.png",
+      "https://oss.example.com/2.png",
+      "https://oss.example.com/replacement.png",
     ]);
     expect(result?.nodeOutputs.get(frameNode.id)?.get(0)).toEqual(
       updatedFrameNode?.data?.imageUrls

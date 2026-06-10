@@ -58,6 +58,7 @@ interface ImageNodeCardProps {
     clientPoint?: { clientX: number; clientY: number }
   ) => void;
   onReplaceExtractedFrame?: (nodeId: string) => void;
+  onReplaceFrameImage?: (nodeId: string, frameIndex: number, replacementUrl: string) => void;
   onSyncImagePromptStarterLayout?: (nodeId: string, imageNodeWidth: number) => void;
   onSplitImageGrid?: (
     nodeId: string,
@@ -106,6 +107,9 @@ const PLACEHOLDER_RESULT_IMAGE_MAX_WIDTH = 520;
 const PLACEHOLDER_RESULT_IMAGE_MAX_HEIGHT = 390;
 const EXTRACTED_FRAME_IMAGE_MAX_WIDTH = 360;
 const EXTRACTED_FRAME_IMAGE_MAX_HEIGHT = 270;
+const FRAME_STRIP_TILE_MIN_WIDTH = 168;
+const FRAME_STRIP_TILE_MIN_HEIGHT = 96;
+const IMAGE_FRAME_DROP_LONG_PRESS_MS = 450;
 const QUANTITY_OPTIONS = ["1张", "2张", "3张", "4张"];
 const MINIMAX_IMAGE_MODEL = "MiniMax Image 01";
 const VISIBLE_THUMBNAIL_COUNT = 3;
@@ -407,7 +411,8 @@ function ImageNodeCardImpl({
   onUpdateData,
   onSetPrimaryImageResult,
   onExtractFrameImage,
-  onReplaceExtractedFrame,
+  onReplaceExtractedFrame: _onReplaceExtractedFrame,
+  onReplaceFrameImage,
   onSyncImagePromptStarterLayout,
   onSplitImageGrid,
   onCropImage,
@@ -479,12 +484,30 @@ function ImageNodeCardImpl({
   } | null>(null);
   const frameExtractionDragCleanupRef = React.useRef<(() => void) | null>(null);
   const frameExtractionOverlayRef = React.useRef<{
-    ghost: HTMLDivElement;
-    label: HTMLDivElement;
     line: SVGLineElement;
     origin: SVGCircleElement;
     root: HTMLDivElement;
+    thumb: HTMLDivElement;
   } | null>(null);
+  const frameExtractionLongPressTimerRef = React.useRef<number | null>(null);
+  const imageFrameDropDragRef = React.useRef<{
+    dragging: boolean;
+    element: HTMLElement;
+    originClientX: number;
+    originClientY: number;
+    pointerId: number;
+    startClientX: number;
+    startClientY: number;
+    url: string;
+  } | null>(null);
+  const imageFrameDropCleanupRef = React.useRef<(() => void) | null>(null);
+  const imageFrameDropOverlayRef = React.useRef<{
+    line: SVGLineElement;
+    root: HTMLDivElement;
+    thumb: HTMLDivElement;
+  } | null>(null);
+  const imageFrameDropHotTargetRef = React.useRef<HTMLElement | null>(null);
+  const imageFrameDropLongPressTimerRef = React.useRef<number | null>(null);
   const [mentionMenuOpen, setMentionMenuOpen] = React.useState(false);
   const [isUploadingAsset, setIsUploadingAsset] = React.useState(false);
   const isUploadingNodeAsset = node.data?.uploadingAsset === true || isUploadingAsset;
@@ -529,6 +552,10 @@ function ImageNodeCardImpl({
   const cleanupFrameExtractionDragListeners = React.useCallback(() => {
     frameExtractionDragCleanupRef.current?.();
     frameExtractionDragCleanupRef.current = null;
+    if (frameExtractionLongPressTimerRef.current !== null) {
+      window.clearTimeout(frameExtractionLongPressTimerRef.current);
+      frameExtractionLongPressTimerRef.current = null;
+    }
   }, []);
   const destroyFrameExtractionOverlay = React.useCallback(() => {
     frameExtractionOverlayRef.current?.root.remove();
@@ -592,93 +619,54 @@ function ImageNodeCardImpl({
       origin.setAttribute("filter", `url(#frame-drag-native-glow-${node.id})`);
       svg.append(defs, line, origin);
 
-      const ghost = document.createElement("div");
-      ghost.setAttribute("data-frame-drag-ghost", "true");
-      Object.assign(ghost.style, {
-        background: "rgba(11,18,32,0.46)",
-        border: "1px solid rgba(221,214,254,0.32)",
-        borderRadius: "22px",
-        boxShadow:
-          "0 24px 62px -28px rgba(129,140,248,0.95), inset 0 1px 0 rgba(255,255,255,0.08)",
-        boxSizing: "border-box",
-        padding: "8px",
-        position: "fixed",
-        width: "224px",
-        left: `${clientX + 32}px`,
-        top: `${clientY + 28}px`,
-      });
-      const ghostImageFrame = document.createElement("div");
-      Object.assign(ghostImageFrame.style, {
-        background: "rgba(2,6,23,0.72)",
-        border: "1px solid rgba(207,250,254,0.18)",
-        borderRadius: "16px",
+      const thumb = document.createElement("div");
+      thumb.setAttribute("data-frame-drag-thumb", "true");
+      Object.assign(thumb.style, {
+        background: "rgba(13,20,33,0.9)",
+        border: "1px solid rgba(207,250,254,0.28)",
+        borderRadius: "12px",
+        boxShadow: "0 16px 34px -18px rgba(0,0,0,0.95), 0 0 24px rgba(129,140,248,0.2)",
+        height: "58px",
+        left: `${clientX + 14}px`,
         overflow: "hidden",
+        position: "fixed",
+        top: `${clientY + 14}px`,
+        width: "88px",
       });
-      const ghostImageRatio = document.createElement("div");
-      Object.assign(ghostImageRatio.style, {
-        aspectRatio: "16 / 9",
-        background: "rgba(2,6,23,0.72)",
-      });
-      const ghostImage = document.createElement("img");
-      ghostImage.src = drag.url;
-      ghostImage.alt = "";
-      ghostImage.draggable = false;
-      Object.assign(ghostImage.style, {
+      const thumbImage = document.createElement("img");
+      thumbImage.src = drag.url;
+      thumbImage.alt = "";
+      thumbImage.draggable = false;
+      Object.assign(thumbImage.style, {
         display: "block",
         height: "100%",
         objectFit: "cover",
-        opacity: "0.72",
         width: "100%",
       });
-      ghostImageRatio.appendChild(ghostImage);
-      ghostImageFrame.appendChild(ghostImageRatio);
-      const ghostInput = document.createElement("div");
-      Object.assign(ghostInput.style, {
-        background: "rgba(2,6,23,0.42)",
-        border: "1px solid rgba(207,250,254,0.1)",
-        borderRadius: "12px",
-        height: "36px",
-        marginTop: "8px",
-      });
-      ghost.append(ghostImageFrame, ghostInput);
-
-      const label = document.createElement("div");
-      label.setAttribute("data-frame-drag-label", "true");
-      Object.assign(label.style, {
+      const indexBadge = document.createElement("div");
+      indexBadge.textContent = String(drag.frameIndex + 1);
+      Object.assign(indexBadge.style, {
         alignItems: "center",
-        background: "rgba(13,20,33,0.94)",
-        border: "1px solid rgba(207,250,254,0.24)",
-        borderRadius: "14px",
-        boxShadow: "0 18px 42px -18px rgba(0,0,0,0.9)",
-        color: "rgba(240,249,255,0.96)",
+        background: "rgba(15,23,42,0.9)",
+        border: "1px solid rgba(255,255,255,0.18)",
+        borderRadius: "999px",
+        color: "white",
         display: "flex",
-        fontSize: "11px",
-        fontWeight: "700",
-        gap: "8px",
-        padding: "8px",
-        position: "fixed",
-        whiteSpace: "nowrap",
-        left: `${clientX + 14}px`,
-        top: `${clientY + 14}px`,
+        fontSize: "12px",
+        fontWeight: "800",
+        height: "24px",
+        justifyContent: "center",
+        minWidth: "24px",
+        padding: "0 6px",
+        position: "absolute",
+        right: "5px",
+        top: "5px",
       });
-      const labelImage = document.createElement("img");
-      labelImage.src = drag.url;
-      labelImage.alt = "";
-      labelImage.draggable = false;
-      Object.assign(labelImage.style, {
-        borderRadius: "8px",
-        display: "block",
-        height: "44px",
-        objectFit: "cover",
-        width: "64px",
-      });
-      const labelText = document.createElement("span");
-      labelText.textContent = `拖出第 ${drag.frameIndex + 1} 帧`;
-      label.append(labelImage, labelText);
+      thumb.append(thumbImage, indexBadge);
 
-      root.append(svg, ghost, label);
+      root.append(svg, thumb);
       document.body.appendChild(root);
-      frameExtractionOverlayRef.current = { ghost, label, line, origin, root };
+      frameExtractionOverlayRef.current = { line, origin, root, thumb };
     },
     [destroyFrameExtractionOverlay, node.id]
   );
@@ -687,25 +675,13 @@ function ImageNodeCardImpl({
     if (!overlay) return;
     overlay.line.setAttribute("x2", String(clientX));
     overlay.line.setAttribute("y2", String(clientY));
-    overlay.ghost.style.left = `${clientX + 32}px`;
-    overlay.ghost.style.top = `${clientY + 28}px`;
-    overlay.label.style.left = `${clientX + 14}px`;
-    overlay.label.style.top = `${clientY + 14}px`;
+    overlay.thumb.style.left = `${clientX + 14}px`;
+    overlay.thumb.style.top = `${clientY + 14}px`;
   }, []);
   const updateFrameExtractionDragPreview = React.useCallback((pointerId: number, clientX: number, clientY: number) => {
     const drag = frameExtractionDragRef.current;
     if (!drag || drag.pointerId !== pointerId) return;
-    if (
-      !drag.dragging &&
-      hasFrameExtractionDragStarted({
-        clientX,
-        clientY,
-        startClientX: drag.startClientX,
-        startClientY: drag.startClientY,
-      })
-    ) {
-      drag.dragging = true;
-    }
+    if (!drag.dragging) return;
     if (!frameExtractionOverlayRef.current) {
       createFrameExtractionOverlay(drag, clientX, clientY);
       return;
@@ -760,12 +736,41 @@ function ImageNodeCardImpl({
         url,
         dragging: false,
       };
-      updateFrameExtractionDragPreview(event.pointerId, event.clientX, event.clientY);
+      let lastClientX = event.clientX;
+      let lastClientY = event.clientY;
+      frameExtractionLongPressTimerRef.current = window.setTimeout(() => {
+        const drag = frameExtractionDragRef.current;
+        if (!drag || drag.pointerId !== event.pointerId) return;
+        drag.dragging = true;
+        frameExtractionLongPressTimerRef.current = null;
+        updateFrameExtractionDragPreview(event.pointerId, lastClientX, lastClientY);
+      }, IMAGE_FRAME_DROP_LONG_PRESS_MS);
 
       const handleWindowPointerMove = (moveEvent: PointerEvent) => {
         if (moveEvent.pointerId !== event.pointerId) return;
         moveEvent.preventDefault();
         moveEvent.stopPropagation();
+        lastClientX = moveEvent.clientX;
+        lastClientY = moveEvent.clientY;
+        const drag = frameExtractionDragRef.current;
+        if (
+          drag &&
+          !drag.dragging &&
+          hasFrameExtractionDragStarted({
+            clientX: moveEvent.clientX,
+            clientY: moveEvent.clientY,
+            startClientX: drag.startClientX,
+            startClientY: drag.startClientY,
+          })
+        ) {
+          if (drag.element.hasPointerCapture(moveEvent.pointerId)) {
+            drag.element.releasePointerCapture(moveEvent.pointerId);
+          }
+          cleanupFrameExtractionDragListeners();
+          frameExtractionDragRef.current = null;
+          destroyFrameExtractionOverlay();
+          return;
+        }
         updateFrameExtractionDragPreview(moveEvent.pointerId, moveEvent.clientX, moveEvent.clientY);
       };
       const handleWindowPointerUp = (upEvent: PointerEvent) => {
@@ -837,6 +842,253 @@ function ImageNodeCardImpl({
     },
     [cleanupFrameExtractionDragListeners, destroyFrameExtractionOverlay]
   );
+  const cleanupImageFrameDropListeners = React.useCallback(() => {
+    imageFrameDropCleanupRef.current?.();
+    imageFrameDropCleanupRef.current = null;
+    if (imageFrameDropLongPressTimerRef.current !== null) {
+      window.clearTimeout(imageFrameDropLongPressTimerRef.current);
+      imageFrameDropLongPressTimerRef.current = null;
+    }
+  }, []);
+  const clearImageFrameDropHotTarget = React.useCallback(() => {
+    const target = imageFrameDropHotTargetRef.current;
+    if (!target) return;
+    target.removeAttribute("data-frame-drop-hot");
+    target.style.outline = "";
+    target.style.outlineOffset = "";
+    target.style.boxShadow = "";
+    target.style.filter = "";
+    imageFrameDropHotTargetRef.current = null;
+  }, []);
+  const destroyImageFrameDropOverlay = React.useCallback(() => {
+    imageFrameDropOverlayRef.current?.root.remove();
+    imageFrameDropOverlayRef.current = null;
+    clearImageFrameDropHotTarget();
+  }, [clearImageFrameDropHotTarget]);
+  const createImageFrameDropOverlay = React.useCallback(
+    (drag: NonNullable<typeof imageFrameDropDragRef.current>, clientX: number, clientY: number) => {
+      destroyImageFrameDropOverlay();
+      const root = document.createElement("div");
+      root.setAttribute("data-image-frame-drop-overlay", "true");
+      Object.assign(root.style, {
+        inset: "0",
+        pointerEvents: "none",
+        position: "fixed",
+        zIndex: "2147483647",
+      });
+
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      Object.assign(svg.style, {
+        height: "100vh",
+        inset: "0",
+        overflow: "visible",
+        position: "fixed",
+        width: "100vw",
+      });
+      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      line.setAttribute("x1", String(drag.originClientX));
+      line.setAttribute("y1", String(drag.originClientY));
+      line.setAttribute("x2", String(clientX));
+      line.setAttribute("y2", String(clientY));
+      line.setAttribute("stroke", "rgba(165,180,252,0.96)");
+      line.setAttribute("stroke-width", "2.5");
+      line.setAttribute("stroke-dasharray", "8 8");
+      line.setAttribute("stroke-linecap", "round");
+      svg.appendChild(line);
+
+      const thumb = document.createElement("div");
+      thumb.setAttribute("data-image-frame-drop-thumb", "true");
+      Object.assign(thumb.style, {
+        background: "rgba(13,20,33,0.9)",
+        border: "1px solid rgba(207,250,254,0.28)",
+        borderRadius: "12px",
+        boxShadow: "0 16px 34px -18px rgba(0,0,0,0.95), 0 0 24px rgba(129,140,248,0.2)",
+        height: "58px",
+        left: `${clientX + 14}px`,
+        overflow: "hidden",
+        position: "fixed",
+        top: `${clientY + 14}px`,
+        width: "88px",
+      });
+      const thumbImage = document.createElement("img");
+      thumbImage.src = drag.url;
+      thumbImage.alt = "";
+      thumbImage.draggable = false;
+      Object.assign(thumbImage.style, {
+        display: "block",
+        height: "100%",
+        objectFit: "cover",
+        width: "100%",
+      });
+      thumb.appendChild(thumbImage);
+      root.append(svg, thumb);
+      document.body.appendChild(root);
+      imageFrameDropOverlayRef.current = { line, root, thumb };
+    },
+    [destroyImageFrameDropOverlay]
+  );
+  const setImageFrameDropHotTarget = React.useCallback(
+    (target: HTMLElement | null) => {
+      if (imageFrameDropHotTargetRef.current === target) return;
+      clearImageFrameDropHotTarget();
+      if (!target) return;
+      target.setAttribute("data-frame-drop-hot", "true");
+      target.style.outline = "2px solid rgba(125, 211, 252, 0.96)";
+      target.style.outlineOffset = "-2px";
+      target.style.boxShadow =
+        "0 0 0 2px rgba(125,211,252,0.52), 0 0 34px rgba(103,232,249,0.36), inset 0 0 0 1px rgba(236,254,255,0.38)";
+      target.style.filter = "brightness(1.12) saturate(1.1)";
+      imageFrameDropHotTargetRef.current = target;
+    },
+    [clearImageFrameDropHotTarget]
+  );
+  const updateImageFrameDropOverlay = React.useCallback(
+    (clientX: number, clientY: number) => {
+      const overlay = imageFrameDropOverlayRef.current;
+      if (!overlay) return;
+      overlay.line.setAttribute("x2", String(clientX));
+      overlay.line.setAttribute("y2", String(clientY));
+      overlay.thumb.style.left = `${clientX + 14}px`;
+      overlay.thumb.style.top = `${clientY + 14}px`;
+
+      const element = document.elementFromPoint(clientX, clientY) as HTMLElement | null;
+      const target = element?.closest("[data-frame-strip-cell='true']") as HTMLElement | null;
+      setImageFrameDropHotTarget(target);
+    },
+    [setImageFrameDropHotTarget]
+  );
+  const updateImageFrameDropDrag = React.useCallback(
+    (pointerId: number, clientX: number, clientY: number) => {
+      const drag = imageFrameDropDragRef.current;
+      if (!drag || drag.pointerId !== pointerId) return;
+      if (
+        !drag.dragging &&
+        hasFrameExtractionDragStarted({
+          clientX,
+          clientY,
+          startClientX: drag.startClientX,
+          startClientY: drag.startClientY,
+        })
+      ) {
+        drag.dragging = true;
+      }
+      if (!imageFrameDropOverlayRef.current) {
+        createImageFrameDropOverlay(drag, clientX, clientY);
+        return;
+      }
+      updateImageFrameDropOverlay(clientX, clientY);
+    },
+    [createImageFrameDropOverlay, updateImageFrameDropOverlay]
+  );
+  const finishImageFrameDropDrag = React.useCallback(
+    (pointerId: number, canceled = false) => {
+      const drag = imageFrameDropDragRef.current;
+      if (!drag || drag.pointerId !== pointerId) return;
+      const hotTarget = imageFrameDropHotTargetRef.current;
+      cleanupImageFrameDropListeners();
+      if (drag.element.hasPointerCapture(pointerId)) {
+        drag.element.releasePointerCapture(pointerId);
+      }
+      imageFrameDropDragRef.current = null;
+      destroyImageFrameDropOverlay();
+      if (canceled || !drag.dragging || !hotTarget) return;
+      const targetNodeId = hotTarget.getAttribute("data-frame-node-id") || "";
+      const targetFrameIndex = Number.parseInt(hotTarget.getAttribute("data-frame-index") || "-1", 10);
+      if (targetNodeId && Number.isInteger(targetFrameIndex) && targetFrameIndex >= 0) {
+        onReplaceFrameImage?.(targetNodeId, targetFrameIndex, drag.url);
+      }
+    },
+    [cleanupImageFrameDropListeners, destroyImageFrameDropOverlay, onReplaceFrameImage]
+  );
+  const beginImageFrameDropDrag = React.useCallback(
+    (event: React.PointerEvent<HTMLElement>) => {
+      if (!onReplaceFrameImage || isFrameStrip || isCropMode || !imageUrl || event.button !== 0) return;
+      cleanupImageFrameDropListeners();
+      const rect = event.currentTarget.getBoundingClientRect();
+      const element = event.currentTarget;
+      const pointerId = event.pointerId;
+      const startClientX = event.clientX;
+      const startClientY = event.clientY;
+      let lastClientX = event.clientX;
+      let lastClientY = event.clientY;
+      let activated = false;
+
+      imageFrameDropLongPressTimerRef.current = window.setTimeout(() => {
+        activated = true;
+        imageFrameDropLongPressTimerRef.current = null;
+        imageFrameDropDragRef.current = {
+          dragging: true,
+          element,
+          originClientX: rect.left + rect.width / 2,
+          originClientY: rect.top + rect.height / 2,
+          pointerId,
+          startClientX,
+          startClientY,
+          url: imageUrl,
+        };
+        updateImageFrameDropDrag(pointerId, lastClientX, lastClientY);
+      }, IMAGE_FRAME_DROP_LONG_PRESS_MS);
+
+      const handleWindowPointerMove = (moveEvent: PointerEvent) => {
+        if (moveEvent.pointerId !== pointerId) return;
+        lastClientX = moveEvent.clientX;
+        lastClientY = moveEvent.clientY;
+        if (!activated) {
+          if (
+            hasFrameExtractionDragStarted({
+              clientX: moveEvent.clientX,
+              clientY: moveEvent.clientY,
+              startClientX,
+              startClientY,
+            })
+          ) {
+            cleanupImageFrameDropListeners();
+          }
+          return;
+        }
+        moveEvent.preventDefault();
+        moveEvent.stopPropagation();
+        updateImageFrameDropDrag(moveEvent.pointerId, moveEvent.clientX, moveEvent.clientY);
+      };
+      const handleWindowPointerUp = (upEvent: PointerEvent) => {
+        if (upEvent.pointerId !== pointerId) return;
+        if (!activated) {
+          cleanupImageFrameDropListeners();
+          return;
+        }
+        finishImageFrameDropDrag(upEvent.pointerId);
+      };
+      const handleWindowPointerCancel = (cancelEvent: PointerEvent) => {
+        if (cancelEvent.pointerId !== pointerId) return;
+        finishImageFrameDropDrag(cancelEvent.pointerId, true);
+      };
+
+      window.addEventListener("pointermove", handleWindowPointerMove, true);
+      window.addEventListener("pointerup", handleWindowPointerUp, true);
+      window.addEventListener("pointercancel", handleWindowPointerCancel, true);
+      imageFrameDropCleanupRef.current = () => {
+        window.removeEventListener("pointermove", handleWindowPointerMove, true);
+        window.removeEventListener("pointerup", handleWindowPointerUp, true);
+        window.removeEventListener("pointercancel", handleWindowPointerCancel, true);
+      };
+    },
+    [
+      cleanupImageFrameDropListeners,
+      finishImageFrameDropDrag,
+      imageUrl,
+      isCropMode,
+      isFrameStrip,
+      onReplaceFrameImage,
+      updateImageFrameDropDrag,
+    ]
+  );
+  React.useEffect(
+    () => () => {
+      cleanupImageFrameDropListeners();
+      destroyImageFrameDropOverlay();
+    },
+    [cleanupImageFrameDropListeners, destroyImageFrameDropOverlay]
+  );
   const isImageLoaded = Boolean(
     imageUrl && imageLoadState.url === imageUrl && imageLoadState.status === "loaded"
   );
@@ -880,14 +1132,18 @@ function ImageNodeCardImpl({
     ]
   );
   const frameStripSize = {
-    width:
+    width: Math.max(
+      frameGridColumns * FRAME_STRIP_TILE_MIN_WIDTH,
       typeof node.data?.imageDisplayWidth === "number" && node.data.imageDisplayWidth > 0
         ? Math.round(node.data.imageDisplayWidth)
-        : frameGridColumns * 108,
-    height:
+        : 0
+    ),
+    height: Math.max(
+      frameGridRows * FRAME_STRIP_TILE_MIN_HEIGHT,
       typeof node.data?.imageDisplayHeight === "number" && node.data.imageDisplayHeight > 0
         ? Math.round(node.data.imageDisplayHeight)
-        : frameGridRows * 122,
+        : 0
+    ),
   };
   const mediaFrameSize = isFrameStrip ? frameStripSize : resultImageSize;
   const imageSetKey = React.useMemo(() => resolvedImageUrls.join("||"), [resolvedImageUrls]);
@@ -1612,7 +1868,7 @@ function ImageNodeCardImpl({
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
           >
-            {shouldShowUploadButton && !isCropMode ? uploadControl : null}
+            {shouldShowUploadButton && !isCropMode && !isExtractedFrameNode ? uploadControl : null}
           </div>
           <AnimatePresence>
             {selected && (
@@ -1727,21 +1983,6 @@ function ImageNodeCardImpl({
                         <Download className="h-5 w-5" />
                       </button>
                     </Tooltip>
-                    {isExtractedFrameNode && onReplaceExtractedFrame && (
-                      <Tooltip
-                        content={`回填第 ${(node.data?.extractedFrameIndex ?? 0) + 1} 帧`}
-                        position="top"
-                      >
-                        <button
-                          type="button"
-                          onClick={() => onReplaceExtractedFrame(node.id)}
-                          className="flex h-9 min-w-[104px] items-center justify-center gap-2 rounded-[12px] border border-cyan-100/14 bg-cyan-100/[0.08] px-3 text-[13px] font-semibold text-cyan-50 transition-colors hover:border-cyan-100/26 hover:bg-cyan-100/[0.14]"
-                        >
-                          <Undo2 className="h-4 w-4" />
-                          <span>回填原帧</span>
-                        </button>
-                      </Tooltip>
-                    )}
                     {onCropImage && imageUrl && isImageLoaded && (
                       <Tooltip content="裁剪图片" position="top">
                         <button
@@ -1991,7 +2232,7 @@ function ImageNodeCardImpl({
                 )}
                 {isFrameStrip ? (
                   <div
-                    className="grid h-full w-full overflow-hidden rounded-[inherit] bg-slate-950"
+                    className="group/framegrid grid h-full w-full gap-px overflow-hidden rounded-[inherit] bg-slate-700/32 p-px shadow-[inset_0_0_0_1px_rgba(148,163,184,0.14)]"
                     style={{
                       gridTemplateColumns: `repeat(${frameGridColumns}, minmax(0, 1fr))`,
                     }}
@@ -2002,6 +2243,9 @@ function ImageNodeCardImpl({
                         role="button"
                         tabIndex={0}
                         data-node-action="true"
+                        data-frame-strip-cell="true"
+                        data-frame-node-id={node.id}
+                        data-frame-index={index}
                         aria-label={`第 ${index + 1} 帧，拖拽到画布生成图片子节点`}
                         onPointerDown={(event) => beginFrameExtractionDrag(event, index, url)}
                         onPointerMove={moveFrameExtractionDrag}
@@ -2013,30 +2257,49 @@ function ImageNodeCardImpl({
                           setActiveImageIndex(index);
                           onSetPrimaryImageResult?.(node.id, url, index);
                         }}
-                        className={`group/frame relative min-h-0 min-w-0 overflow-hidden border border-black/45 bg-slate-950 transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300/70 ${onExtractFrameImage ? "cursor-grab active:cursor-grabbing" : ""}`}
+                        className={`group/frame relative min-h-0 min-w-0 overflow-hidden bg-[#050914] shadow-[inset_0_0_0_1px_rgba(15,23,42,0.92),inset_0_0_32px_rgba(15,23,42,0.3)] transition-all duration-200 group-hover/framegrid:opacity-70 hover:z-10 hover:scale-[1.018] hover:opacity-100 hover:shadow-[0_0_0_2px_rgba(125,211,252,0.88),0_18px_44px_-22px_rgba(34,211,238,0.78),inset_0_0_0_1px_rgba(236,254,255,0.34)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300/70 ${onExtractFrameImage ? "cursor-grab active:cursor-grabbing" : ""}`}
                       >
                         <img
                           src={url}
                           alt={`\u9010\u5e27\u5206\u6790 ${index + 1}`}
-                          className="h-full w-full object-cover"
+                          className="h-full w-full object-cover transition-all duration-200 group-hover/frame:brightness-110 group-hover/frame:saturate-110"
                           draggable={false}
                         />
+                        <span className="pointer-events-none absolute right-2 top-2 z-10 flex h-6 min-w-[24px] items-center justify-center rounded-full border border-white/18 bg-[#0b1018]/82 px-1.5 text-[11px] font-bold tabular-nums text-white shadow-[0_8px_18px_-12px_rgba(0,0,0,0.95)] transition-all duration-200 group-hover/frame:border-cyan-100/42 group-hover/frame:bg-cyan-100/18 group-hover/frame:text-cyan-50 group-hover/frame:shadow-[0_0_20px_rgba(103,232,249,0.26)]">
+                          {index + 1}
+                        </span>
                         {onExtractFrameImage && (
-                          <span className="pointer-events-none absolute inset-x-2 bottom-2 rounded-full border border-cyan-100/16 bg-[#101827]/72 px-2 py-1 text-center text-[10px] font-semibold text-cyan-50/86 opacity-0 shadow-[0_10px_24px_-14px_rgba(34,211,238,0.9)] backdrop-blur-sm transition-opacity group-hover/frame:opacity-100">
-                            拖出生成子节点
-                          </span>
+                          <>
+                            <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(236,254,255,0.1)_0%,rgba(236,254,255,0.04)_38%,rgba(2,12,22,0.62)_100%)] opacity-0 transition-opacity duration-200 group-hover/frame:opacity-100" />
+                            <span className="pointer-events-none absolute inset-0 opacity-0 shadow-[inset_0_0_0_1px_rgba(236,254,255,0.42)] transition-opacity duration-200 group-hover/frame:opacity-100" />
+                            <button
+                              type="button"
+                              data-node-action="true"
+                              className="absolute bottom-3 left-1/2 z-20 flex h-8 -translate-x-1/2 translate-y-1 items-center justify-center rounded-full border border-cyan-100/18 bg-[#0b1320]/82 px-3.5 text-[12px] font-semibold text-cyan-50/92 opacity-0 shadow-[0_12px_28px_-18px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-md transition-all duration-200 hover:border-cyan-100/32 hover:bg-[#101b2b]/92 hover:text-white group-hover/frame:translate-y-0 group-hover/frame:opacity-100"
+                              onPointerDown={(event) => {
+                                event.stopPropagation();
+                              }}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                onExtractFrameImage(node.id, index);
+                              }}
+                            >
+                              提取
+                            </button>
+                          </>
                         )}
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <img
-                    ref={imageElementRef}
-                    src={imageUrl}
-                    alt="\u751f\u6210\u56fe\u7247"
-                    className={`block h-full w-full transition-opacity duration-200 ${isStarterPlaceholder || isImageLoaded ? "opacity-100" : "opacity-0"} ${isStarterPlaceholder ? "object-cover" : "object-contain"}`}
-                    draggable={false}
-                    onLoad={(e) => {
+                        <img
+                          ref={imageElementRef}
+                          src={imageUrl}
+                          alt="\u751f\u6210\u56fe\u7247"
+                          className={`block h-full w-full transition-opacity duration-200 ${isStarterPlaceholder || isImageLoaded ? "opacity-100" : "opacity-0"} ${isStarterPlaceholder ? "object-cover" : "object-contain"}`}
+                          draggable={false}
+                          onPointerDown={beginImageFrameDropDrag}
+                          onLoad={(e) => {
                       const img = e.currentTarget;
                       setImageLoadState({ status: "loaded", url: imageUrl });
                       const naturalSize = {
@@ -2243,157 +2506,6 @@ function ImageNodeCardImpl({
           </div>
         </motion.div>
 
-        <AnimatePresence>
-          {isExtractedFrameNode && (isHovered || selected) && (
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              data-node-action="true"
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={(e) => {
-                e.stopPropagation();
-                onSelect(e);
-              }}
-              className="relative node-card left-1/2 mt-5 w-[620px] -translate-x-1/2 rounded-[18px] border border-[#2b3142]/90 bg-[#121723]/88 px-4 pb-3 pt-3 shadow-[0_28px_70px_-26px_rgba(0,0,0,0.92),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl"
-            >
-              <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-slate-100/22 to-transparent" />
-              {inputReferences.length > 0 && (
-                <div className="mb-3 rounded-2xl border border-white/6 bg-[#0d1117]/46 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-                  <div className="flex flex-wrap items-center gap-2">
-                    {inputReferences.map((reference, index) => (
-                      <React.Fragment key={`${reference.key}-${reference.value}-${index}`}>
-                        <ReferencePreviewCard reference={reference} index={index} />
-                      </React.Fragment>
-                    ))}
-                  </div>
-                </div>
-              )}
-              <div className="relative">
-                <textarea
-                  ref={promptTextareaRef}
-                  value={promptText}
-                  onChange={handlePromptChange}
-                  onFocus={(event) =>
-                    setMentionMenuOpen(
-                      inputReferences.length > 0 &&
-                        shouldShowMentionMenu(
-                          event.currentTarget.value,
-                          event.currentTarget.selectionStart
-                        )
-                    )
-                  }
-                  onKeyDown={(event) => {
-                    if (event.key === "Escape") setMentionMenuOpen(false);
-                  }}
-                  placeholder="描述你想如何修改这张帧图"
-                  className="h-[92px] w-full resize-none bg-transparent px-1 text-[15px] leading-7 text-slate-100/88 outline-none placeholder:text-slate-400/42 custom-scrollbar"
-                />
-                {mentionMenuOpen && (
-                  <InputResourceMentionMenu
-                    resources={inputReferences}
-                    onPick={(label) => insertResourceMention(label)}
-                    onRequestClose={() => setMentionMenuOpen(false)}
-                  />
-                )}
-              </div>
-              <div
-                ref={controlsRef}
-                className="mt-3 flex items-center gap-2 border-t border-cyan-100/8 pt-3"
-              >
-                <div className="flex h-10 min-w-[172px] items-center gap-2 rounded-[14px] border border-cyan-100/8 bg-slate-950/18 px-3 text-[13px] font-medium text-cyan-50/78 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]">
-                  <Wand2 className="h-3.5 w-3.5 text-cyan-100/50" />
-                  <span>{MINIMAX_IMAGE_MODEL}</span>
-                </div>
-                <ImageResolutionPicker
-                  resolution={resolution}
-                  aspectRatio={aspectRatio}
-                  onChange={(nextResolution, nextAspectRatio) => {
-                    onUpdateProperty?.(node.id, "resolution", nextResolution);
-                    onUpdateProperty?.(node.id, "aspect_ratio", nextAspectRatio);
-                  }}
-                  buttonClassName="relative inline-flex h-10 min-w-[230px] items-center justify-center gap-2 rounded-[14px] border border-cyan-100/8 bg-slate-950/18 px-3 text-[13px] font-medium text-cyan-50/76 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
-                />
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setOpenSelect((current) => (current === "quantity" ? null : "quantity"));
-                    }}
-                    className={`relative inline-flex h-10 min-w-[76px] items-center justify-center gap-1.5 rounded-[14px] border px-3 text-[13px] font-medium transition-colors ${
-                      openSelect === "quantity"
-                        ? "border-cyan-100/34 bg-cyan-100/[0.075] text-cyan-50"
-                        : "border-cyan-100/8 bg-slate-950/14 text-cyan-50/62 hover:border-cyan-100/18 hover:bg-cyan-100/[0.045] hover:text-cyan-50"
-                    }`}
-                  >
-                    <span>{quantity.replace("张", "")}</span>
-                    <span className="text-[12px] text-cyan-50/45">张</span>
-                    <ChevronUp
-                      className={`h-3.5 w-3.5 text-slate-300/55 transition-transform ${openSelect === "quantity" ? "" : "rotate-180"}`}
-                    />
-                  </button>
-                  <AnimatePresence>
-                    {openSelect === "quantity" && (
-                      <motion.div
-                        data-node-action="true"
-                        initial={{ opacity: 0, y: 8, scale: 0.98 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: 8, scale: 0.98 }}
-                        transition={{ duration: 0.15, ease: "easeOut" }}
-                        className="absolute bottom-[calc(100%+12px)] left-0 z-50 w-[112px] rounded-[16px] border border-cyan-100/12 bg-[#0d121c]/96 p-2 shadow-[0_22px_56px_-22px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-2xl"
-                        onPointerDown={(e) => e.stopPropagation()}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {QUANTITY_OPTIONS.map((option) => {
-                          const isActive = option === quantity;
-                          return (
-                            <button
-                              key={option}
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onUpdateProperty?.(node.id, "quantity", option);
-                                onUpdateProperty?.(node.id, "n", Number.parseInt(option, 10));
-                                setOpenSelect(null);
-                              }}
-                              className={`flex h-10 w-full items-center justify-between rounded-[12px] px-3 text-left transition-colors ${
-                                isActive
-                                  ? "bg-cyan-300/[0.1] text-cyan-50"
-                                  : "text-slate-300/76 hover:bg-white/[0.055] hover:text-slate-100"
-                              }`}
-                            >
-                              <span className="text-[13px] font-semibold">{option}</span>
-                            </button>
-                          );
-                        })}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleRun();
-                  }}
-                  disabled={isRunning || !promptText.trim()}
-                  className={`ml-auto flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] transition-all ${
-                    isRunning || !promptText.trim()
-                      ? "cursor-not-allowed border border-cyan-100/6 bg-slate-200/8 text-slate-200/28"
-                      : "bg-cyan-50 text-[#0f172a] shadow-[0_14px_30px_-18px_rgba(103,232,249,0.9)] hover:bg-white"
-                  }`}
-                >
-                  {isRunning ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <ArrowUp className="h-4 w-4" />
-                  )}
-                </button>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
       </motion.div>
     );
   }

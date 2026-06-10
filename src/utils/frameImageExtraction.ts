@@ -195,3 +195,74 @@ export function replaceFrameImageFromChildSnapshot({
     frameIndex,
   };
 }
+
+export function replaceFrameImageUrlSnapshot({
+  frameIndex,
+  nodeOutputs,
+  nodes,
+  replacementUrl,
+  sourceNodeId,
+}: {
+  frameIndex: number;
+  nodeOutputs: NodeOutputMap;
+  nodes: GraphNode[];
+  replacementUrl: string;
+  sourceNodeId: string;
+}): {
+  nodes: GraphNode[];
+  nodeOutputs: NodeOutputMap;
+  sourceNodeId: string;
+  frameIndex: number;
+} | null {
+  const sourceNode = nodes.find((node) => node.id === sourceNodeId && node.type === "image_node");
+  const sourceImageUrls = sourceNode ? getImageUrls(sourceNode) : [];
+  if (
+    !sourceNode ||
+    sourceNode.data?.isFrameStrip !== true ||
+    !replacementUrl.trim() ||
+    frameIndex < 0 ||
+    frameIndex >= sourceImageUrls.length
+  ) {
+    return null;
+  }
+
+  const nextImageUrls = sourceImageUrls.map((url, index) =>
+    index === frameIndex ? replacementUrl : url
+  );
+  const activeImageIndex =
+    typeof sourceNode.data?.activeImageIndex === "number" ? sourceNode.data.activeImageIndex : 0;
+  const shouldUpdatePrimary = frameIndex === 0 || activeImageIndex === frameIndex;
+
+  const nextNodes = nodes.map((node) =>
+    node.id === sourceNode.id
+      ? {
+          ...node,
+          properties: {
+            ...node.properties,
+            ...(frameIndex === 0 ? { imageUrl: replacementUrl } : {}),
+            imageUrls: nextImageUrls,
+          },
+          data: {
+            ...(node.data || {}),
+            imageUrls: nextImageUrls,
+            ...(shouldUpdatePrimary ? { imageUrl: replacementUrl } : {}),
+          },
+        }
+      : node
+  );
+
+  const nextOutputs: NodeOutputMap = new Map(nodeOutputs);
+  const existingOutputs = nextOutputs.get(sourceNode.id);
+  const sourceOutputs = new Map<number, unknown>(
+    existingOutputs instanceof Map ? existingOutputs : []
+  );
+  sourceOutputs.set(0, nextImageUrls);
+  nextOutputs.set(sourceNode.id, sourceOutputs);
+
+  return {
+    nodes: nextNodes,
+    nodeOutputs: nextOutputs,
+    sourceNodeId,
+    frameIndex,
+  };
+}

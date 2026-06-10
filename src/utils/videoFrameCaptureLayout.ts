@@ -4,8 +4,8 @@ import type { GraphLink, GraphNode } from "../types";
 import type { VideoFrameCaptureItem } from "../features/video/frameCapture";
 
 const FRAME_GRID_COLUMNS = 5;
-const FRAME_TILE_WIDTH = 108;
-const FRAME_TILE_HEIGHT = 122;
+const FRAME_TILE_WIDTH = 168;
+const FRAME_TILE_HEIGHT = 96;
 const CAPTURE_VIDEO_NODE_WIDTH = 520;
 const CAPTURE_VERTICAL_GAP = 96;
 

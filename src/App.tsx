@@ -158,6 +158,7 @@ export default function App({ onLoggedOut }: AppProps) {
     setPrimaryImageResult,
     extractFrameImageNode,
     replaceExtractedFrameImage,
+    replaceFrameImageUrl,
     addVideoFrameAnalysis,
     addSegmentVideoAnalyses,
     linkFromNodeId,
@@ -1419,6 +1420,7 @@ export default function App({ onLoggedOut }: AppProps) {
               )
             }
             onReplaceExtractedFrame={replaceExtractedFrameImage}
+            onReplaceFrameImage={replaceFrameImageUrl}
             onSyncImagePromptStarterLayout={syncImagePromptStarterLayout}
             onSplitImageGrid={handleSplitImageGrid}
             onCropImage={handleCropImage}
