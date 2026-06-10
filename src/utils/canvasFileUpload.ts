@@ -144,7 +144,7 @@ function assertLocalMediaDimensions(assetKind: UploadedAssetKind, metadata: Loca
 export function buildInitialCanvasFileNodeData(
   assetKind: UploadedAssetKind,
   propKey: string,
-  localUrl: string,
+  _localUrl: string,
   fileName: string,
   metadata: LocalMediaMetadata
 ): Partial<GraphNode["data"]> {
@@ -154,10 +154,7 @@ export function buildInitialCanvasFileNodeData(
     uploadedAssetName: fileName,
   };
 
-  (data as Record<string, unknown>)[propKey] = localUrl;
-
   if (assetKind === "image") {
-    data.imageUrls = [localUrl];
     data.activeImageIndex = 0;
     if (
       isFinitePositiveNumber(metadata.imageNaturalWidth) &&
@@ -243,10 +240,8 @@ export async function uploadCanvasFileAsNode({
     const metadata = await readLocalMediaMetadata(file, localUrl, expectedNode.assetKind);
     assertLocalMediaDimensions(expectedNode.assetKind, metadata);
     const nodeId = addNode(expectedNode.nodeType, position.clientX, position.clientY, {
-      [expectedNode.propKey]: localUrl,
       __uploadedAssetKind: expectedNode.assetKind,
       __uploadedAssetName: file.name,
-      __uploadedAssetUrl: localUrl,
       __nodeData: buildInitialCanvasFileNodeData(
         expectedNode.assetKind,
         expectedNode.propKey,

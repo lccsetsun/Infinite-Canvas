@@ -84,6 +84,7 @@ export interface GraphNode {
     uploadingAsset?: boolean;
     uploadedAssetName?: string;
     loading?: boolean;
+    loadingOperation?: "generate" | "frame-analysis";
     progress?: number;
     status?: string;
     error?: string;

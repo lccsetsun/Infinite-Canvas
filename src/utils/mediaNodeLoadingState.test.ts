@@ -19,4 +19,14 @@ describe("getMediaNodeLoadingLabel", () => {
       "正在生成音频"
     );
   });
+
+  it("uses frame analysis copy for video frame extraction", () => {
+    expect(
+      getMediaNodeLoadingLabel({
+        mediaType: "video",
+        isUploading: false,
+        operation: "frame-analysis",
+      })
+    ).toBe("正在逐帧分析");
+  });
 });

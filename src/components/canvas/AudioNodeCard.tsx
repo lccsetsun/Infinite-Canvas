@@ -368,7 +368,7 @@ function AudioNodeCardImpl({
   const hasInputPorts = node.inputs.length > 0;
   const portHandles = (
     <AnimatePresence>
-      {shouldShowInlinePortHandles({ isHovered, isLinkingOnCanvas, selected }) && (
+      {!isUploadingAsset && shouldShowInlinePortHandles({ isHovered, isLinkingOnCanvas, selected }) && (
         <>
           {hasInputPorts && (
             <motion.div
@@ -444,7 +444,7 @@ function AudioNodeCardImpl({
     </AnimatePresence>
   );
 
-  if (audioUrl && !isRunning) {
+  if (audioUrl && !isRunning && !isUploadingAsset) {
     return (
       <motion.div
         initial={{ scale: 0.96, opacity: 0 }}
@@ -611,20 +611,22 @@ function AudioNodeCardImpl({
       >
         <div className="pointer-events-none absolute inset-x-0 top-0 h-px rounded-t-[18px] bg-gradient-to-r from-transparent via-slate-100/25 to-transparent" />
         <div className="pointer-events-none absolute inset-0 rounded-[18px] bg-[radial-gradient(circle_at_28%_0%,rgba(34,211,238,0.08),transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.035),transparent_34%)]" />
-        {isRunning && (
+        {(isRunning || isUploadingAsset) && (
           <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-[18px]">
             <div className="absolute inset-0 -translate-x-full animate-[text-node-shimmer_1.8s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-cyan-200/12 to-transparent" />
           </div>
         )}
         {portHandles}
-        <div
-          data-node-action="true"
-          className="absolute right-3 top-3 z-30"
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {uploadControl}
-        </div>
+        {!isUploadingAsset && (
+          <div
+            data-node-action="true"
+            className="absolute right-3 top-3 z-30"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {uploadControl}
+          </div>
+        )}
         <div className="absolute -top-8 left-0 z-30 flex items-center gap-1.5 text-slate-300/82 drop-shadow-[0_1px_10px_rgba(15,23,42,0.9)]">
           <Music2 className="h-4 w-4 text-cyan-100/58" />
           <span className="text-[15px] font-medium tracking-tight">
@@ -662,7 +664,7 @@ function AudioNodeCardImpl({
       </motion.div>
 
       <AnimatePresence>
-        {(isHovered || selected) && !audioUrl && (
+        {(isHovered || selected) && !audioUrl && !isUploadingAsset && (
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}

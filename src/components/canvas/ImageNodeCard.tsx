@@ -201,6 +201,18 @@ export function getImageNodePortTopStyle({
   return imagePortCenterY ?? "50%";
 }
 
+export function getImagePreviewNodeWidth({
+  frameStripWidth,
+  isFrameStrip,
+  resultImageWidth,
+}: {
+  frameStripWidth: number;
+  isFrameStrip: boolean;
+  resultImageWidth: number;
+}) {
+  return isFrameStrip ? frameStripWidth : resultImageWidth;
+}
+
 export function getSettledImageLoadStatus({
   complete,
   naturalWidth,
@@ -1145,6 +1157,11 @@ function ImageNodeCardImpl({
     ),
   };
   const mediaFrameSize = isFrameStrip ? frameStripSize : resultImageSize;
+  const previewNodeWidth = getImagePreviewNodeWidth({
+    frameStripWidth: frameStripSize.width,
+    isFrameStrip,
+    resultImageWidth: resultImageSize.width,
+  });
   const imageSetKey = React.useMemo(() => resolvedImageUrls.join("||"), [resolvedImageUrls]);
   const naturalSizeLabel = isFrameStrip
     ? `${resolvedImageUrls.length} \u5e27`
@@ -1222,8 +1239,8 @@ function ImageNodeCardImpl({
     node.id,
     onUpdateData,
     resolvedImageUrls.length,
-    resultImageSize.height,
-    resultImageSize.width,
+    mediaFrameSize.height,
+    mediaFrameSize.width,
   ]);
 
   React.useEffect(() => {
@@ -1752,7 +1769,7 @@ function ImageNodeCardImpl({
   });
   const portHandles = (
     <AnimatePresence>
-      {shouldShowInlinePortHandles({ isHovered, isLinkingOnCanvas, selected }) && (
+      {!isUploadingNodeAsset && shouldShowInlinePortHandles({ isHovered, isLinkingOnCanvas, selected }) && (
         <>
           {hasInputPorts && (
             <motion.div
@@ -1830,7 +1847,7 @@ function ImageNodeCardImpl({
     </AnimatePresence>
   );
 
-  if (imageUrl && !isRunning) {
+  if (imageUrl && !isRunning && !isUploadingNodeAsset) {
     return (
       <motion.div
         initial={{ scale: 0.96, opacity: 0 }}
@@ -1838,7 +1855,7 @@ function ImageNodeCardImpl({
         exit={{ scale: 0.96, opacity: 0 }}
         transition={{ type: "spring", damping: 22, stiffness: 280 }}
         className="absolute text-left"
-        style={{ width: resultImageSize.width }}
+        style={{ width: previewNodeWidth }}
         ref={previewNodeRef}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
@@ -1858,7 +1875,7 @@ function ImageNodeCardImpl({
             onSelect(e);
           }}
           className="group relative cursor-grab active:cursor-grabbing"
-          style={{ width: resultImageSize.width }}
+          style={{ width: previewNodeWidth }}
         >
           {portHandles}
           <div
@@ -2549,19 +2566,21 @@ function ImageNodeCardImpl({
       >
         <div className="pointer-events-none absolute inset-x-0 top-0 h-px rounded-t-[18px] bg-gradient-to-r from-transparent via-slate-100/25 to-transparent" />
         <div className="pointer-events-none absolute inset-0 rounded-[18px] bg-[radial-gradient(circle_at_28%_0%,rgba(34,211,238,0.08),transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.035),transparent_34%)]" />
-        {isRunning && (
+        {(isRunning || isUploadingNodeAsset) && (
           <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-[18px]">
             <div className="absolute inset-0 -translate-x-full animate-[text-node-shimmer_1.8s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-cyan-200/12 to-transparent" />
           </div>
         )}
-        <div
-          data-node-action="true"
-          className="absolute right-5 top-5 z-30"
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {shouldShowUploadButton ? uploadControl : null}
-        </div>
+        {!isUploadingNodeAsset && (
+          <div
+            data-node-action="true"
+            className="absolute right-5 top-5 z-30"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {shouldShowUploadButton ? uploadControl : null}
+          </div>
+        )}
         <div className="absolute -top-8 left-0 z-30 flex items-center gap-1.5 text-slate-300/82 drop-shadow-[0_1px_10px_rgba(15,23,42,0.9)]">
           <ImageIcon className="h-4 w-4 text-cyan-100/58" />
           <span className="text-[15px] font-medium tracking-tight">
@@ -2599,7 +2618,7 @@ function ImageNodeCardImpl({
       </motion.div>
 
       <AnimatePresence>
-        {(isHovered || selected) && !imageUrl && (
+        {(isHovered || selected) && !imageUrl && !isUploadingNodeAsset && (
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}

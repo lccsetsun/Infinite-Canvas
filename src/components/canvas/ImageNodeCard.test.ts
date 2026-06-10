@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   getImageNodeInputReferences,
   getImagePreviewFrameClassName,
+  getImagePreviewNodeWidth,
   getImageNodePortTopStyle,
   getSettledImageLoadStatus,
   getResultImageBounds,
@@ -149,6 +150,28 @@ describe("getImageNodePortTopStyle", () => {
 
   it("uses the measured image media center after an image is loaded", () => {
     expect(getImageNodePortTopStyle({ hasImageUrl: true, imagePortCenterY: 220 })).toBe(220);
+  });
+});
+
+describe("getImagePreviewNodeWidth", () => {
+  it("uses the frame-strip width for frame analysis previews", () => {
+    expect(
+      getImagePreviewNodeWidth({
+        frameStripWidth: 1006,
+        isFrameStrip: true,
+        resultImageWidth: 780,
+      })
+    ).toBe(1006);
+  });
+
+  it("keeps regular image previews on the resolved image width", () => {
+    expect(
+      getImagePreviewNodeWidth({
+        frameStripWidth: 1006,
+        isFrameStrip: false,
+        resultImageWidth: 780,
+      })
+    ).toBe(780);
   });
 });
 
