@@ -418,6 +418,13 @@ export function addNodeToWorkflowSnapshot({
     if (__nodeData && typeof __nodeData === "object" && !Array.isArray(__nodeData)) {
       node.data = { ...(node.data || {}), ...(__nodeData as GraphNode["data"]) };
     }
+    if (
+      __uploadedAssetKind === "image" ||
+      __uploadedAssetKind === "video" ||
+      __uploadedAssetKind === "audio"
+    ) {
+      Object.assign(node, markNodeAsSource(node));
+    }
   }
 
   const nextNodes = [...nodes, node];
@@ -587,11 +594,23 @@ export function isRemoteWorkflowEcho(
   return (
     serializeWorkflowDataForComparison(remoteProject.workflow) ===
     serializeWorkflowDataForComparison({
-      nodes: current.nodes,
+      nodes: sanitizeNodesRuntimeState(current.nodes),
       links: current.links,
       nodeOutputs: mapToOutputs(current.nodeOutputs),
       groups: current.groups,
     })
+  );
+}
+
+export function shouldApplyRemoteWorkflowSnapshot({
+  incomingRemotePersistSignature,
+  pendingLocalPersistSignature,
+}: {
+  incomingRemotePersistSignature: string;
+  pendingLocalPersistSignature: string;
+}): boolean {
+  return (
+    !pendingLocalPersistSignature || incomingRemotePersistSignature === pendingLocalPersistSignature
   );
 }
 
@@ -611,16 +630,20 @@ function mapToOutputs(map: NodeOutputMap): SerializedNodeOutput[] {
   return Array.from(map.entries()).map(([k, v]) => [k, Array.from(v.entries())]);
 }
 
-export function sanitizeNodeRuntimeState(node: GraphNode): GraphNode {
+export function hasNodeRuntimeState(node: GraphNode): boolean {
   const data = node.data || {};
-  const hasInterruptedRuntimeState =
+  return (
     data.loading === true ||
     data.status === "loading" ||
     data.status === "uploading" ||
     data.uploadingAsset === true ||
-    node.properties.status === "loading";
+    node.properties.status === "loading"
+  );
+}
 
-  if (!hasInterruptedRuntimeState) return node;
+export function sanitizeNodeRuntimeState(node: GraphNode): GraphNode {
+  const data = node.data || {};
+  if (!hasNodeRuntimeState(node)) return node;
 
   const {
     loading: _loading,
@@ -821,6 +844,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
   );
   const skipNextRemotePersistRef = useRef(false);
   const lastRemotePersistSignatureRef = useRef("");
+  const pendingLocalPersistSignatureRef = useRef("");
   const currentWorkflowIdRef = useRef(initial.currentId);
   const currentNodesRef = useRef(initialNodes);
   const currentLinksRef = useRef(initialWf?.data.links ?? []);
@@ -908,6 +932,28 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       return { ...prev, workflows: { ...prev.workflows, [wf.summary.id]: next } };
     });
   }, []);
+
+  const markLocalRemotePersistPending = useCallback(
+    (snapshot: {
+      groups?: GroupBox[];
+      links?: GraphLink[];
+      nodeOutputs?: NodeOutputMap;
+      nodes?: GraphNode[];
+    }) => {
+      if (!isRemoteMode || !currentWorkflowSummary?.id) return;
+      pendingLocalPersistSignatureRef.current = serializeRemotePersistSnapshot({
+        workflowId: currentWorkflowSummary.id,
+        name: currentWorkflowSummary.name,
+        category: currentWorkflowSummary.category,
+        tags: currentWorkflowSummary.tags ?? [],
+        nodes: sanitizeNodesRuntimeState(snapshot.nodes ?? currentNodesRef.current),
+        links: snapshot.links ?? currentLinksRef.current,
+        nodeOutputs: snapshot.nodeOutputs ?? currentNodeOutputsRef.current,
+        groups: snapshot.groups ?? currentGroupsRef.current,
+      });
+    },
+    [currentWorkflowSummary, isRemoteMode]
+  );
 
   const pushHistory = useCallback((snapshot: HistorySnapshot) => {
     setHistoryState((prev) => {
@@ -1088,6 +1134,34 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
 
   useEffect(() => {
     if (!remoteProject) return;
+    if (currentNodesRef.current.some(hasNodeRuntimeState)) return;
+    const nextWorkspace = buildWorkspaceFromRemoteProject(remoteProject);
+    const nextWorkflow = nextWorkspace.workflows[nextWorkspace.currentId];
+    const nextNodes = normalizeNodes(nextWorkflow.data.nodes);
+    const nextLinks = nextWorkflow.data.links;
+    const nextGroups = nextWorkflow.data.groups ?? [];
+    const nextNodeOutputs = outputsToMap(nextWorkflow.data.nodeOutputs);
+    const incomingRemotePersistSignature = serializeRemotePersistSnapshot({
+      workflowId: remoteProject.id,
+      name: remoteProject.name,
+      category: remoteProject.category,
+      tags: remoteProject.tags,
+      nodes: nextNodes,
+      links: nextLinks,
+      nodeOutputs: nextNodeOutputs,
+      groups: nextGroups,
+    });
+    if (
+      !shouldApplyRemoteWorkflowSnapshot({
+        incomingRemotePersistSignature,
+        pendingLocalPersistSignature: pendingLocalPersistSignatureRef.current,
+      })
+    ) {
+      return;
+    }
+    if (incomingRemotePersistSignature === pendingLocalPersistSignatureRef.current) {
+      pendingLocalPersistSignatureRef.current = "";
+    }
     if (
       isRemoteWorkflowEcho(remoteProject, {
         workflowId: currentWorkflowIdRef.current,
@@ -1100,24 +1174,8 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       return;
     }
 
-    const nextWorkspace = buildWorkspaceFromRemoteProject(remoteProject);
-    const nextWorkflow = nextWorkspace.workflows[nextWorkspace.currentId];
-    const nextNodes = normalizeNodes(nextWorkflow.data.nodes);
-    const nextLinks = nextWorkflow.data.links;
-    const nextGroups = nextWorkflow.data.groups ?? [];
-    const nextNodeOutputs = outputsToMap(nextWorkflow.data.nodeOutputs);
-
     skipNextRemotePersistRef.current = true;
-    lastRemotePersistSignatureRef.current = serializeRemotePersistSnapshot({
-      workflowId: remoteProject.id,
-      name: remoteProject.name,
-      category: remoteProject.category,
-      tags: remoteProject.tags,
-      nodes: nextNodes,
-      links: nextLinks,
-      nodeOutputs: nextNodeOutputs,
-      groups: nextGroups,
-    });
+    lastRemotePersistSignatureRef.current = incomingRemotePersistSignature;
     setWorkspace(nextWorkspace);
     setNodes(nextNodes);
     setLinks(nextLinks);
@@ -1344,12 +1402,23 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
   );
 
   const updateNodeProperty = (nodeId: string, key: string, value: unknown) => {
-    setNodes((prev) => updateNodePropertySnapshot(prev, nodeId, key, value));
+    setNodes((prev) => {
+      const next = updateNodePropertySnapshot(prev, nodeId, key, value);
+      markLocalRemotePersistPending({ nodes: next });
+      return next;
+    });
   };
 
-  const updateNodeData = useCallback((nodeId: string, data: Partial<GraphNode["data"]>) => {
-    setNodes((prev) => updateNodeDataSnapshot(prev, nodeId, data));
-  }, []);
+  const updateNodeData = useCallback(
+    (nodeId: string, data: Partial<GraphNode["data"]>) => {
+      setNodes((prev) => {
+        const next = updateNodeDataSnapshot(prev, nodeId, data);
+        markLocalRemotePersistPending({ nodes: next });
+        return next;
+      });
+    },
+    [markLocalRemotePersistPending]
+  );
 
   const setPrimaryImageResult = useCallback(
     (nodeId: string, imageUrl: string, imageIndex: number) => {
@@ -2480,6 +2549,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
+      if (nodes.some(hasNodeRuntimeState)) return;
       const persistableNodes = sanitizeNodesRuntimeState(nodes);
       const nextData = {
         nodes: persistableNodes,
@@ -2525,6 +2595,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         if (persistSignature === lastRemotePersistSignatureRef.current) return;
 
         lastRemotePersistSignatureRef.current = persistSignature;
+        pendingLocalPersistSignatureRef.current = persistSignature;
 
         void onRemotePersist(
           buildRemoteProjectSnapshot(currentWorkflowSummary, {

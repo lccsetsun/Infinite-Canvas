@@ -23,6 +23,7 @@ import type { VideoFrameCaptureItem } from "../../features/video/frameCapture";
 import { fetchVideoFrameCapture } from "../../features/video/frameCapture";
 import { findResolvedStringInput } from "../../utils/resolvedInputs";
 import { shouldShowInlinePortHandles } from "../../utils/portHandleVisibility";
+import { isSourceNode } from "../../utils/sourceNodes";
 import { getNodeWidth, VIDEO_NODE_WIDTH } from "./geometry";
 import { Tooltip } from "../common/Tooltip";
 import { downloadMediaAsset, extensionFromAssetUrl } from "../../utils/mediaAssets";
@@ -286,8 +287,9 @@ function VideoNodeCardImpl({
   const modelMenuRef = React.useRef<HTMLDivElement | null>(null);
   const modelMenuPortalRef = React.useRef<HTMLDivElement | null>(null);
   const [modelMenuOpen, setModelMenuOpen] = React.useState(false);
-  const [modelMenuPosition, setModelMenuPosition] =
-    React.useState<FloatingMenuPosition | null>(null);
+  const [modelMenuPosition, setModelMenuPosition] = React.useState<FloatingMenuPosition | null>(
+    null
+  );
   const previewNodeRef = React.useRef<HTMLDivElement | null>(null);
   const mediaFrameRef = React.useRef<HTMLDivElement | null>(null);
   const uploadInputRef = React.useRef<HTMLInputElement | null>(null);
@@ -693,84 +695,86 @@ function VideoNodeCardImpl({
     }
   };
 
-  const hasInputPorts = node.inputs.length > 0;
+  const isSourceAssetNode = isSourceNode(node);
+  const hasInputPorts = !isSourceAssetNode && node.inputs.length > 0;
   const portHandles = (
     <AnimatePresence>
-      {!isUploadingAsset && shouldShowInlinePortHandles({ isHovered, isLinkingOnCanvas, selected }) && (
-        <>
-          {hasInputPorts && (
+      {!isUploadingAsset &&
+        shouldShowInlinePortHandles({ isHovered, isLinkingOnCanvas, selected }) && (
+          <>
+            {hasInputPorts && (
+              <motion.div
+                initial={{ opacity: 0, x: 10 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 10 }}
+                className="absolute -left-11 z-10 -translate-y-1/2"
+                style={{ top: node.data?.videoPortCenterY ?? "50%" }}
+              >
+                <div
+                  role="button"
+                  tabIndex={-1}
+                  data-node-action="true"
+                  data-port-role="input"
+                  data-node-id={node.id}
+                  data-port-index={0}
+                  className={`canvas-port-handle flex h-9 w-9 items-center justify-center rounded-full border transition-all duration-200 hover:scale-110 ${
+                    isLinkingOnCanvas && linkToNodeId === node.id && linkToInputIndex === 0
+                      ? "canvas-port-input canvas-port-hot scale-110"
+                      : "canvas-port-input"
+                  }`}
+                  onPointerEnter={() => onHoverCanvasLinkTarget?.(node.id, 0)}
+                  onPointerLeave={() => onLeaveCanvasLinkTarget?.(node.id, 0)}
+                  onPointerUp={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    onFinishCanvasLink?.(node.id, 0);
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                  }}
+                  title={getCanvasLinkTargetIssue?.(node.id, 0) || "输入端口: 点击此处完成连线"}
+                >
+                  <Plus className="h-4 w-4 pointer-events-none" />
+                </div>
+              </motion.div>
+            )}
             <motion.div
-              initial={{ opacity: 0, x: 10 }}
+              initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 10 }}
-              className="absolute -left-11 z-10 -translate-y-1/2"
+              exit={{ opacity: 0, x: -10 }}
+              className="absolute -right-11 z-10 -translate-y-1/2"
               style={{ top: node.data?.videoPortCenterY ?? "50%" }}
             >
               <div
                 role="button"
                 tabIndex={-1}
                 data-node-action="true"
-                data-port-role="input"
+                data-port-role="output"
                 data-node-id={node.id}
                 data-port-index={0}
                 className={`canvas-port-handle flex h-9 w-9 items-center justify-center rounded-full border transition-all duration-200 hover:scale-110 ${
-                  isLinkingOnCanvas && linkToNodeId === node.id && linkToInputIndex === 0
-                    ? "canvas-port-input canvas-port-hot scale-110"
-                    : "canvas-port-input"
+                  isLinkingOnCanvas && linkFromNodeId === node.id && linkFromOutputIndex === 0
+                    ? "canvas-port-output canvas-port-active scale-110"
+                    : "canvas-port-output"
                 }`}
-                onPointerEnter={() => onHoverCanvasLinkTarget?.(node.id, 0)}
-                onPointerLeave={() => onLeaveCanvasLinkTarget?.(node.id, 0)}
-                onPointerUp={(e) => {
+                onPointerDown={(e) => {
                   e.stopPropagation();
                   e.preventDefault();
-                  onFinishCanvasLink?.(node.id, 0);
+                  (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+                  onBeginCanvasLink?.(node.id, 0, e.clientX, e.clientY);
                 }}
                 onClick={(e) => {
                   e.stopPropagation();
                   e.preventDefault();
                 }}
-                title={getCanvasLinkTargetIssue?.(node.id, 0) || "输入端口: 点击此处完成连线"}
+                title="输出端口: 按住并拖拽进行连线 (支持多条输出)"
               >
                 <Plus className="h-4 w-4 pointer-events-none" />
               </div>
             </motion.div>
-          )}
-          <motion.div
-            initial={{ opacity: 0, x: -10 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -10 }}
-            className="absolute -right-11 z-10 -translate-y-1/2"
-            style={{ top: node.data?.videoPortCenterY ?? "50%" }}
-          >
-            <div
-              role="button"
-              tabIndex={-1}
-              data-node-action="true"
-              data-port-role="output"
-              data-node-id={node.id}
-              data-port-index={0}
-              className={`canvas-port-handle flex h-9 w-9 items-center justify-center rounded-full border transition-all duration-200 hover:scale-110 ${
-                isLinkingOnCanvas && linkFromNodeId === node.id && linkFromOutputIndex === 0
-                  ? "canvas-port-output canvas-port-active scale-110"
-                  : "canvas-port-output"
-              }`}
-              onPointerDown={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-                onBeginCanvasLink?.(node.id, 0, e.clientX, e.clientY);
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-              }}
-              title="输出端口: 按住并拖拽进行连线 (支持多条输出)"
-            >
-              <Plus className="h-4 w-4 pointer-events-none" />
-            </div>
-          </motion.div>
-        </>
-      )}
+          </>
+        )}
     </AnimatePresence>
   );
 
@@ -1113,7 +1117,7 @@ function VideoNodeCardImpl({
       </motion.div>
 
       <AnimatePresence>
-        {(isHovered || selected) && !videoUrl && !isUploadingAsset && (
+        {!isSourceAssetNode && (isHovered || selected) && !videoUrl && !isUploadingAsset && (
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}

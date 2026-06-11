@@ -28,10 +28,7 @@ import { getTextNodeViewState } from "../../utils/textNodeViewState";
 import { getTextNodeInteractionState } from "../../utils/textNodeInteractionState";
 import type { TextNodeReferenceItem } from "../../utils/textNodeReferences";
 import { PROVIDER_PRESETS } from "../../features/api/apiSettings";
-import {
-  getModelOptionGroups,
-  type AiModelsByType,
-} from "../../features/api/aiModelCatalog";
+import { getModelOptionGroups, type AiModelsByType } from "../../features/api/aiModelCatalog";
 import {
   getFloatingMenuPosition,
   type FloatingMenuPosition,
@@ -207,8 +204,9 @@ function TextNodeCardImpl({
   const outputPortRef = React.useRef<HTMLDivElement | null>(null);
   const modelMenuRef = React.useRef<HTMLDivElement | null>(null);
   const modelMenuPortalRef = React.useRef<HTMLDivElement | null>(null);
-  const [modelMenuPosition, setModelMenuPosition] =
-    React.useState<FloatingMenuPosition | null>(null);
+  const [modelMenuPosition, setModelMenuPosition] = React.useState<FloatingMenuPosition | null>(
+    null
+  );
   const [inlineEditing, setInlineEditing] = React.useState(
     () => node.data?.forceInlineEditing === true
   );
@@ -292,11 +290,7 @@ function TextNodeCardImpl({
         isMultimodalMode ? MINIMAX_MULTIMODAL_MODELS : deepseekTextModels,
         apiConfig?.remoteModelsByType?.文本 ?? []
       ),
-    [
-      apiConfig?.remoteModelsByType?.文本,
-      deepseekTextModels,
-      isMultimodalMode,
-    ]
+    [apiConfig?.remoteModelsByType?.文本, deepseekTextModels, isMultimodalMode]
   );
   const modelOptions = React.useMemo(
     () => [...modelOptionGroups.builtIn, ...modelOptionGroups.remote],
@@ -326,7 +320,8 @@ function TextNodeCardImpl({
   const responseAreaMaxHeight = Math.max(132, renderedNodeHeight - 72);
   const nodeBadgeTitle = node.title === "文本" ? "文本节点 1" : node.title;
   const nodeBadgeMatch = nodeBadgeTitle.match(/^(.*?)(\s+\d+)$/);
-  const showPortHandles = shouldShowInlinePortHandles({ isHovered, isLinkingOnCanvas, selected });
+  const showPortHandles =
+    !isRunning && shouldShowInlinePortHandles({ isHovered, isLinkingOnCanvas, selected });
   const hasCompactContent = Boolean(responseText || errorText || isPlainMode);
   const canReverseSegments =
     node.properties.isFullVideoAnalysisText === true &&
@@ -559,6 +554,16 @@ function TextNodeCardImpl({
   }, [selected]);
 
   React.useEffect(() => {
+    if (!isRunning) return;
+    setForceComposerOpen(false);
+    setInlineEditing(false);
+    setMentionMenuOpen(false);
+    setModelMenuOpen(false);
+    setOutputMenuPos(null);
+    setResponseEditing(false);
+  }, [isRunning]);
+
+  React.useEffect(() => {
     if (node.data?.forceComposerOpen !== true) return;
     setForceComposerOpen(true);
     onUpdateData?.(node.id, { forceComposerOpen: false });
@@ -704,15 +709,17 @@ function TextNodeCardImpl({
             ? "border-violet-300/26 -translate-y-[1px] shadow-[0_40px_100px_-34px_rgba(0,0,0,0.98),0_0_0_1px_rgba(196,181,253,0.2),0_0_0_7px_rgba(139,92,246,0.08),0_0_48px_rgba(109,40,217,0.18)]"
             : "border-[#2b3142]/90 hover:border-slate-300/35"
         }`}
-        style={{
-          width: renderedNodeWidth,
-          height: renderedNodeHeight,
-          minHeight: TEXT_NODE_MIN_HEIGHT,
-          "--text-node-response-height": `${responseAreaMaxHeight}px`,
-        } as React.CSSProperties}
+        style={
+          {
+            width: renderedNodeWidth,
+            height: renderedNodeHeight,
+            minHeight: TEXT_NODE_MIN_HEIGHT,
+            "--text-node-response-height": `${responseAreaMaxHeight}px`,
+          } as React.CSSProperties
+        }
       >
         <AnimatePresence>
-          {selected && responseText && !responseEditing && (
+          {selected && responseText && !responseEditing && !isRunning && (
             <motion.div
               data-node-action="true"
               initial={{ opacity: 0, y: 8, scale: 0.96 }}
@@ -925,7 +932,17 @@ function TextNodeCardImpl({
                 <div
                   className={`relative flex flex-1 ${hasCompactContent ? "items-start" : "items-center"}`}
                 >
-                  {viewState.kind === "error" ? (
+                  {isRunning ? (
+                    <div className="flex min-h-[210px] w-full flex-col items-center justify-center gap-5 text-slate-300/60">
+                      <div className="w-[96px]">
+                        <TextSkeleton active />
+                      </div>
+                      <div className="flex items-center gap-2 text-[13px] font-medium text-slate-100/80">
+                        <Loader2 className="h-4 w-4 animate-spin text-cyan-100/72" />
+                        <span>正在请求大模型</span>
+                      </div>
+                    </div>
+                  ) : viewState.kind === "error" ? (
                     <div className="flex items-start gap-3 text-[13px] leading-6 text-amber-100/86">
                       <AlertTriangle className="mt-1 h-4 w-4 shrink-0 text-amber-200" />
                       <span className="line-clamp-6">{errorText}</span>
@@ -1074,20 +1091,22 @@ function TextNodeCardImpl({
             </motion.div>
           </AnimatePresence>
         </div>
-        <button
-          type="button"
-          data-node-action="true"
-          aria-label="调整文本节点大小"
-          title="拖拽调整文本节点大小"
-          onPointerDown={handleResizePointerDown}
-          className="absolute bottom-2 right-2 z-30 flex h-8 w-8 cursor-nwse-resize items-center justify-center rounded-[10px] border border-slate-300/10 bg-[#0b111c]/80 text-slate-300/52 shadow-[0_10px_22px_-16px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.05)] transition-colors hover:border-cyan-200/24 hover:bg-[#101827] hover:text-cyan-100/78"
-        >
-          <Maximize2 className="h-3.5 w-3.5" />
-        </button>
+        {!isRunning && (
+          <button
+            type="button"
+            data-node-action="true"
+            aria-label="调整文本节点大小"
+            title="拖拽调整文本节点大小"
+            onPointerDown={handleResizePointerDown}
+            className="absolute bottom-2 right-2 z-30 flex h-8 w-8 cursor-nwse-resize items-center justify-center rounded-[10px] border border-slate-300/10 bg-[#0b111c]/80 text-slate-300/52 shadow-[0_10px_22px_-16px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.05)] transition-colors hover:border-cyan-200/24 hover:bg-[#101827] hover:text-cyan-100/78"
+          >
+            <Maximize2 className="h-3.5 w-3.5" />
+          </button>
+        )}
       </motion.div>
 
       <AnimatePresence>
-        {showPromptComposer && !responseEditing && !isResizingTextNode && (
+        {showPromptComposer && !responseEditing && !isResizingTextNode && !isRunning && (
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}

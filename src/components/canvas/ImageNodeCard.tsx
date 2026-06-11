@@ -23,6 +23,7 @@ import {
 import { GraphNode } from "../../types";
 import { findResolvedStringInput } from "../../utils/resolvedInputs";
 import { shouldShowInlinePortHandles } from "../../utils/portHandleVisibility";
+import { isSourceNode } from "../../utils/sourceNodes";
 import { getNodeWidth } from "./geometry";
 import { Tooltip } from "../common/Tooltip";
 import { downloadMediaAsset, extensionFromAssetUrl } from "../../utils/mediaAssets";
@@ -490,8 +491,9 @@ function ImageNodeCardImpl({
   const modelMenuRef = React.useRef<HTMLDivElement | null>(null);
   const modelMenuPortalRef = React.useRef<HTMLDivElement | null>(null);
   const [modelMenuOpen, setModelMenuOpen] = React.useState(false);
-  const [modelMenuPosition, setModelMenuPosition] =
-    React.useState<FloatingMenuPosition | null>(null);
+  const [modelMenuPosition, setModelMenuPosition] = React.useState<FloatingMenuPosition | null>(
+    null
+  );
   const gridMenuRef = React.useRef<HTMLDivElement | null>(null);
   const cropMenuRef = React.useRef<HTMLDivElement | null>(null);
   const [activeImageIndex, setActiveImageIndex] = React.useState(() => {
@@ -580,6 +582,7 @@ function ImageNodeCardImpl({
       ? [fallbackImageUrl]
       : [];
   const imageUrl = resolvedImageUrls[activeImageIndex] || resolvedImageUrls[0] || "";
+  const isSourceAssetNode = isSourceNode(node);
   const isFrameStrip = node.data?.isFrameStrip === true;
   const isExtractedFrameNode =
     typeof node.data?.extractedFrameSourceNodeId === "string" &&
@@ -602,7 +605,11 @@ function ImageNodeCardImpl({
     frameExtractionOverlayRef.current = null;
   }, []);
   const createFrameExtractionOverlay = React.useCallback(
-    (drag: NonNullable<typeof frameExtractionDragRef.current>, clientX: number, clientY: number) => {
+    (
+      drag: NonNullable<typeof frameExtractionDragRef.current>,
+      clientX: number,
+      clientY: number
+    ) => {
       destroyFrameExtractionOverlay();
 
       const root = document.createElement("div");
@@ -718,16 +725,19 @@ function ImageNodeCardImpl({
     overlay.thumb.style.left = `${clientX + 14}px`;
     overlay.thumb.style.top = `${clientY + 14}px`;
   }, []);
-  const updateFrameExtractionDragPreview = React.useCallback((pointerId: number, clientX: number, clientY: number) => {
-    const drag = frameExtractionDragRef.current;
-    if (!drag || drag.pointerId !== pointerId) return;
-    if (!drag.dragging) return;
-    if (!frameExtractionOverlayRef.current) {
-      createFrameExtractionOverlay(drag, clientX, clientY);
-      return;
-    }
-    updateFrameExtractionOverlay(clientX, clientY);
-  }, [createFrameExtractionOverlay, updateFrameExtractionOverlay]);
+  const updateFrameExtractionDragPreview = React.useCallback(
+    (pointerId: number, clientX: number, clientY: number) => {
+      const drag = frameExtractionDragRef.current;
+      if (!drag || drag.pointerId !== pointerId) return;
+      if (!drag.dragging) return;
+      if (!frameExtractionOverlayRef.current) {
+        createFrameExtractionOverlay(drag, clientX, clientY);
+        return;
+      }
+      updateFrameExtractionOverlay(clientX, clientY);
+    },
+    [createFrameExtractionOverlay, updateFrameExtractionOverlay]
+  );
   const finishFrameExtractionDrag = React.useCallback(
     (pointerId: number, clientX: number, clientY: number, canceled = false) => {
       const drag = frameExtractionDragRef.current;
@@ -847,13 +857,16 @@ function ImageNodeCardImpl({
       updateFrameExtractionDragPreview,
     ]
   );
-  const moveFrameExtractionDrag = React.useCallback((event: React.PointerEvent<HTMLElement>) => {
-    const drag = frameExtractionDragRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    event.preventDefault();
-    event.stopPropagation();
-    updateFrameExtractionDragPreview(event.pointerId, event.clientX, event.clientY);
-  }, [updateFrameExtractionDragPreview]);
+  const moveFrameExtractionDrag = React.useCallback(
+    (event: React.PointerEvent<HTMLElement>) => {
+      const drag = frameExtractionDragRef.current;
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      event.preventDefault();
+      event.stopPropagation();
+      updateFrameExtractionDragPreview(event.pointerId, event.clientX, event.clientY);
+    },
+    [updateFrameExtractionDragPreview]
+  );
   const endFrameExtractionDrag = React.useCallback(
     (event: React.PointerEvent<HTMLElement>, fallbackFrameIndex: number, fallbackUrl: string) => {
       const drag = frameExtractionDragRef.current;
@@ -868,13 +881,16 @@ function ImageNodeCardImpl({
     },
     [finishFrameExtractionDrag, node.id, onSetPrimaryImageResult]
   );
-  const cancelFrameExtractionDrag = React.useCallback((event: React.PointerEvent<HTMLElement>) => {
-    const drag = frameExtractionDragRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    event.preventDefault();
-    event.stopPropagation();
-    finishFrameExtractionDrag(event.pointerId, event.clientX, event.clientY, true);
-  }, [finishFrameExtractionDrag]);
+  const cancelFrameExtractionDrag = React.useCallback(
+    (event: React.PointerEvent<HTMLElement>) => {
+      const drag = frameExtractionDragRef.current;
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      event.preventDefault();
+      event.stopPropagation();
+      finishFrameExtractionDrag(event.pointerId, event.clientX, event.clientY, true);
+    },
+    [finishFrameExtractionDrag]
+  );
   React.useEffect(
     () => () => {
       cleanupFrameExtractionDragListeners();
@@ -1033,7 +1049,10 @@ function ImageNodeCardImpl({
       destroyImageFrameDropOverlay();
       if (canceled || !drag.dragging || !hotTarget) return;
       const targetNodeId = hotTarget.getAttribute("data-frame-node-id") || "";
-      const targetFrameIndex = Number.parseInt(hotTarget.getAttribute("data-frame-index") || "-1", 10);
+      const targetFrameIndex = Number.parseInt(
+        hotTarget.getAttribute("data-frame-index") || "-1",
+        10
+      );
       if (targetNodeId && Number.isInteger(targetFrameIndex) && targetFrameIndex >= 0) {
         onReplaceFrameImage?.(targetNodeId, targetFrameIndex, drag.url);
       }
@@ -1042,7 +1061,8 @@ function ImageNodeCardImpl({
   );
   const beginImageFrameDropDrag = React.useCallback(
     (event: React.PointerEvent<HTMLElement>) => {
-      if (!onReplaceFrameImage || isFrameStrip || isCropMode || !imageUrl || event.button !== 0) return;
+      if (!onReplaceFrameImage || isFrameStrip || isCropMode || !imageUrl || event.button !== 0)
+        return;
       cleanupImageFrameDropListeners();
       const rect = event.currentTarget.getBoundingClientRect();
       const element = event.currentTarget;
@@ -1861,769 +1881,756 @@ function ImageNodeCardImpl({
     window.addEventListener("pointerup", handlePointerUp);
   };
 
-  const hasInputPorts = node.inputs.length > 0;
+  const hasInputPorts = !isSourceAssetNode && node.inputs.length > 0;
   const portTopStyle = getImageNodePortTopStyle({
     hasImageUrl: Boolean(imageUrl),
     imagePortCenterY: node.data?.imagePortCenterY,
   });
   const portHandles = (
     <AnimatePresence>
-      {!isUploadingNodeAsset && shouldShowInlinePortHandles({ isHovered, isLinkingOnCanvas, selected }) && (
-        <>
-          {hasInputPorts && (
+      {!isUploadingNodeAsset &&
+        shouldShowInlinePortHandles({ isHovered, isLinkingOnCanvas, selected }) && (
+          <>
+            {hasInputPorts && (
+              <motion.div
+                initial={{ opacity: 0, x: 10 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 10 }}
+                className="absolute -left-11 z-10 -translate-y-1/2"
+                style={{ top: portTopStyle }}
+              >
+                <div
+                  role="button"
+                  tabIndex={-1}
+                  data-node-action="true"
+                  data-port-role="input"
+                  data-node-id={node.id}
+                  data-port-index={0}
+                  className={`canvas-port-handle flex h-9 w-9 items-center justify-center rounded-full border transition-all duration-200 hover:scale-110 ${
+                    isLinkingOnCanvas && linkToNodeId === node.id && linkToInputIndex === 0
+                      ? "canvas-port-input canvas-port-hot scale-110"
+                      : "canvas-port-input"
+                  }`}
+                  onPointerEnter={() => onHoverCanvasLinkTarget?.(node.id, 0)}
+                  onPointerLeave={() => onLeaveCanvasLinkTarget?.(node.id, 0)}
+                  onPointerUp={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    onFinishCanvasLink?.(node.id, 0);
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                  }}
+                  title={getCanvasLinkTargetIssue?.(node.id, 0) || "输入端口: 点击此处完成连线"}
+                >
+                  <Plus className="h-4 w-4 pointer-events-none" />
+                </div>
+              </motion.div>
+            )}
             <motion.div
-              initial={{ opacity: 0, x: 10 }}
+              initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 10 }}
-              className="absolute -left-11 z-10 -translate-y-1/2"
+              exit={{ opacity: 0, x: -10 }}
+              className="absolute -right-11 z-10 -translate-y-1/2"
               style={{ top: portTopStyle }}
             >
               <div
                 role="button"
                 tabIndex={-1}
                 data-node-action="true"
-                data-port-role="input"
+                data-port-role="output"
                 data-node-id={node.id}
                 data-port-index={0}
                 className={`canvas-port-handle flex h-9 w-9 items-center justify-center rounded-full border transition-all duration-200 hover:scale-110 ${
-                  isLinkingOnCanvas && linkToNodeId === node.id && linkToInputIndex === 0
-                    ? "canvas-port-input canvas-port-hot scale-110"
-                    : "canvas-port-input"
+                  isLinkingOnCanvas && linkFromNodeId === node.id && linkFromOutputIndex === 0
+                    ? "canvas-port-output canvas-port-active scale-110"
+                    : "canvas-port-output"
                 }`}
-                onPointerEnter={() => onHoverCanvasLinkTarget?.(node.id, 0)}
-                onPointerLeave={() => onLeaveCanvasLinkTarget?.(node.id, 0)}
-                onPointerUp={(e) => {
+                onPointerDown={(e) => {
                   e.stopPropagation();
                   e.preventDefault();
-                  onFinishCanvasLink?.(node.id, 0);
+                  (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+                  onBeginCanvasLink?.(node.id, 0, e.clientX, e.clientY);
                 }}
                 onClick={(e) => {
                   e.stopPropagation();
                   e.preventDefault();
                 }}
-                title={getCanvasLinkTargetIssue?.(node.id, 0) || "输入端口: 点击此处完成连线"}
+                title="输出端口: 按住并拖拽进行连线 (支持多条输出)"
               >
                 <Plus className="h-4 w-4 pointer-events-none" />
               </div>
             </motion.div>
-          )}
-          <motion.div
-            initial={{ opacity: 0, x: -10 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -10 }}
-            className="absolute -right-11 z-10 -translate-y-1/2"
-            style={{ top: portTopStyle }}
-          >
-            <div
-              role="button"
-              tabIndex={-1}
-              data-node-action="true"
-              data-port-role="output"
-              data-node-id={node.id}
-              data-port-index={0}
-              className={`canvas-port-handle flex h-9 w-9 items-center justify-center rounded-full border transition-all duration-200 hover:scale-110 ${
-                isLinkingOnCanvas && linkFromNodeId === node.id && linkFromOutputIndex === 0
-                  ? "canvas-port-output canvas-port-active scale-110"
-                  : "canvas-port-output"
-              }`}
-              onPointerDown={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-                onBeginCanvasLink?.(node.id, 0, e.clientX, e.clientY);
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-              }}
-              title="输出端口: 按住并拖拽进行连线 (支持多条输出)"
-            >
-              <Plus className="h-4 w-4 pointer-events-none" />
-            </div>
-          </motion.div>
-        </>
-      )}
+          </>
+        )}
     </AnimatePresence>
   );
 
-  if (imageUrl && !isRunning && !isUploadingNodeAsset) {
-    return (
+  const showImagePromptComposer =
+    !isSourceAssetNode && (isHovered || selected) && !isUploadingNodeAsset && !isRunning;
+  const imagePreviewContent =
+    imageUrl && !isRunning && !isUploadingNodeAsset ? (
       <motion.div
-        initial={{ scale: 0.96, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.96, opacity: 0 }}
-        transition={{ type: "spring", damping: 22, stiffness: 280 }}
-        className="absolute text-left"
-        style={{ width: previewNodeWidth }}
-        ref={previewNodeRef}
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
-      >
-        <motion.div
-          onPointerDown={(e) => {
-            if (e.button !== 0) {
-              e.stopPropagation();
-              return;
-            }
-            const target = e.target as HTMLElement;
-            if (!target.closest("[data-node-action='true']")) onDragStart(e, node);
-            else e.stopPropagation();
-          }}
-          onClick={(e) => {
+        onPointerDown={(e) => {
+          if (e.button !== 0) {
             e.stopPropagation();
-            onSelect(e);
-          }}
-          className="group relative cursor-grab active:cursor-grabbing"
-          style={{ width: previewNodeWidth }}
+            return;
+          }
+          const target = e.target as HTMLElement;
+          if (!target.closest("[data-node-action='true']")) onDragStart(e, node);
+          else e.stopPropagation();
+        }}
+        onClick={(e) => {
+          e.stopPropagation();
+          onSelect(e);
+        }}
+        className="group relative cursor-grab active:cursor-grabbing"
+        style={{ width: previewNodeWidth }}
+      >
+        {portHandles}
+        <div
+          data-node-action="true"
+          className="absolute right-2 top-8 z-30"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
         >
-          {portHandles}
-          <div
-            data-node-action="true"
-            className="absolute right-2 top-8 z-30"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {shouldShowUploadButton && !isCropMode && !isExtractedFrameNode ? uploadControl : null}
-          </div>
-          <AnimatePresence>
-            {selected && (
-              <motion.div
-                data-node-action="true"
-                initial={{ opacity: 0, y: 8, scale: 0.96 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: 8, scale: 0.96 }}
-                transition={{ duration: 0.16, ease: "easeOut" }}
-                className="absolute left-1/2 top-0 z-40 flex h-14 -translate-x-1/2 -translate-y-[calc(100%+18px)] items-center gap-2 rounded-[20px] border border-slate-500/18 bg-[#121923]/95 px-4 shadow-[0_18px_44px_-24px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-2xl"
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={(e) => e.stopPropagation()}
-              >
-                {isCropMode ? (
-                  <>
-                    <Tooltip content="取消裁剪" position="top">
-                      <button
-                        type="button"
-                        onClick={handleExitCropMode}
-                        disabled={isSavingCrop}
-                        className="flex h-9 w-9 items-center justify-center rounded-[12px] text-slate-200 transition-colors hover:bg-white/[0.06] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        <X className="h-5 w-5" />
-                      </button>
-                    </Tooltip>
-                    <div className="mx-1 h-7 w-px bg-slate-500/22" />
-                    <div className="relative" ref={cropMenuRef}>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (isSavingCrop) return;
-                          setCropRatioMenuOpen((value) => !value);
-                        }}
-                        className="flex h-9 min-w-[124px] items-center justify-center gap-2 whitespace-nowrap rounded-[12px] bg-white/[0.08] px-3 text-[14px] font-semibold text-white transition-colors hover:bg-white/[0.12]"
-                      >
-                        <CropIcon className="h-[18px] w-[18px]" />
-                        <span>{selectedCropRatioLabel}</span>
-                        <ChevronDown
-                          className={`h-4 w-4 transition-transform ${cropRatioMenuOpen ? "rotate-180" : ""}`}
-                        />
-                      </button>
-                      <AnimatePresence>
-                        {cropRatioMenuOpen && (
-                          <motion.div
-                            initial={{ opacity: 0, y: 8, scale: 0.98 }}
-                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                            exit={{ opacity: 0, y: 8, scale: 0.98 }}
-                            transition={{ duration: 0.16, ease: "easeOut" }}
-                            className="absolute left-0 top-[calc(100%+12px)] z-50 w-[154px] rounded-[18px] border border-slate-300/14 bg-[#242424]/96 p-2 text-white shadow-[0_26px_62px_-26px_rgba(0,0,0,0.92),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-2xl"
-                            onPointerDown={(e) => e.stopPropagation()}
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            {CROP_RATIO_OPTIONS.map((option) => (
-                              <button
-                                key={option.value}
-                                type="button"
-                                onClick={() => handleSelectCropRatio(option.value)}
-                                className={`mb-1 flex h-10 w-full items-center gap-3 rounded-[12px] px-3 text-left text-[14px] font-semibold transition-colors last:mb-0 ${
-                                  cropRatio === option.value
-                                    ? "bg-white/[0.12] text-white"
-                                    : "text-slate-200/74 hover:bg-white/[0.08] hover:text-white"
-                                }`}
-                              >
-                                <CropIcon className="h-4 w-4 text-slate-200/76" />
-                                <span>{option.label}</span>
-                              </button>
-                            ))}
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </div>
+          {shouldShowUploadButton && !isCropMode && !isExtractedFrameNode ? uploadControl : null}
+        </div>
+        <AnimatePresence>
+          {selected && (
+            <motion.div
+              data-node-action="true"
+              initial={{ opacity: 0, y: 8, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 8, scale: 0.96 }}
+              transition={{ duration: 0.16, ease: "easeOut" }}
+              className="absolute left-1/2 top-0 z-40 flex h-14 -translate-x-1/2 -translate-y-[calc(100%+18px)] items-center gap-2 rounded-[20px] border border-slate-500/18 bg-[#121923]/95 px-4 shadow-[0_18px_44px_-24px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-2xl"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {isCropMode ? (
+                <>
+                  <Tooltip content="取消裁剪" position="top">
                     <button
                       type="button"
-                      onClick={handleConfirmCrop}
+                      onClick={handleExitCropMode}
                       disabled={isSavingCrop}
-                      className="flex h-10 min-w-[86px] items-center justify-center gap-2 rounded-[12px] bg-white px-4 text-[14px] font-semibold text-slate-950 shadow-[0_16px_34px_-24px_rgba(255,255,255,0.85)] transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:bg-white/70"
+                      className="flex h-9 w-9 items-center justify-center rounded-[12px] text-slate-200 transition-colors hover:bg-white/[0.06] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      {isSavingCrop && <Loader2 className="h-4 w-4 animate-spin" />}
-                      <span>{isSavingCrop ? "保存中" : "确认"}</span>
+                      <X className="h-5 w-5" />
                     </button>
-                  </>
-                ) : activeGridSelection ? (
-                  <>
-                    <Tooltip content="退出宫格切分" position="top">
-                      <button
-                        type="button"
-                        onClick={handleExitGridSplitMode}
-                        className="flex h-9 w-9 items-center justify-center rounded-[12px] text-slate-300 transition-colors hover:bg-white/[0.06] hover:text-white"
-                      >
-                        <Undo2 className="h-5 w-5" />
-                      </button>
-                    </Tooltip>
-                    <div className="mx-1 h-7 w-px bg-slate-500/22" />
-                    <div className="flex h-9 min-w-[208px] shrink-0 items-center gap-2 rounded-[12px] px-1 text-[13px] font-medium text-slate-200/88">
-                      <Grid3X3 className="h-[18px] w-[18px] text-violet-300/88" />
-                      <span className="block whitespace-nowrap leading-none">
-                        {selectedGridCells.length > 0
-                          ? `已选 ${selectedGridCells.length} 个宫格`
-                          : "请选择宫格"}
-                      </span>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <Tooltip content="下载图片" position="top">
-                      <button
-                        type="button"
-                        onClick={downloadImage}
-                        className="flex h-9 w-9 items-center justify-center rounded-[12px] text-slate-400 transition-colors hover:bg-white/[0.06] hover:text-slate-100"
-                      >
-                        <Download className="h-5 w-5" />
-                      </button>
-                    </Tooltip>
-                    {onCropImage && imageUrl && isImageLoaded && (
-                      <Tooltip content="裁剪图片" position="top">
-                        <button
-                          type="button"
-                          onClick={handleEnterCropMode}
-                          className="flex h-9 w-9 items-center justify-center rounded-[12px] text-slate-400 transition-colors hover:bg-white/[0.06] hover:text-slate-100"
+                  </Tooltip>
+                  <div className="mx-1 h-7 w-px bg-slate-500/22" />
+                  <div className="relative" ref={cropMenuRef}>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (isSavingCrop) return;
+                        setCropRatioMenuOpen((value) => !value);
+                      }}
+                      className="flex h-9 min-w-[124px] items-center justify-center gap-2 whitespace-nowrap rounded-[12px] bg-white/[0.08] px-3 text-[14px] font-semibold text-white transition-colors hover:bg-white/[0.12]"
+                    >
+                      <CropIcon className="h-[18px] w-[18px]" />
+                      <span>{selectedCropRatioLabel}</span>
+                      <ChevronDown
+                        className={`h-4 w-4 transition-transform ${cropRatioMenuOpen ? "rotate-180" : ""}`}
+                      />
+                    </button>
+                    <AnimatePresence>
+                      {cropRatioMenuOpen && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                          transition={{ duration: 0.16, ease: "easeOut" }}
+                          className="absolute left-0 top-[calc(100%+12px)] z-50 w-[154px] rounded-[18px] border border-slate-300/14 bg-[#242424]/96 p-2 text-white shadow-[0_26px_62px_-26px_rgba(0,0,0,0.92),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-2xl"
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onClick={(e) => e.stopPropagation()}
                         >
-                          <CropIcon className="h-5 w-5" />
-                        </button>
-                      </Tooltip>
-                    )}
-                    <div className="relative" ref={gridMenuRef}>
+                          {CROP_RATIO_OPTIONS.map((option) => (
+                            <button
+                              key={option.value}
+                              type="button"
+                              onClick={() => handleSelectCropRatio(option.value)}
+                              className={`mb-1 flex h-10 w-full items-center gap-3 rounded-[12px] px-3 text-left text-[14px] font-semibold transition-colors last:mb-0 ${
+                                cropRatio === option.value
+                                  ? "bg-white/[0.12] text-white"
+                                  : "text-slate-200/74 hover:bg-white/[0.08] hover:text-white"
+                              }`}
+                            >
+                              <CropIcon className="h-4 w-4 text-slate-200/76" />
+                              <span>{option.label}</span>
+                            </button>
+                          ))}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleConfirmCrop}
+                    disabled={isSavingCrop}
+                    className="flex h-10 min-w-[86px] items-center justify-center gap-2 rounded-[12px] bg-white px-4 text-[14px] font-semibold text-slate-950 shadow-[0_16px_34px_-24px_rgba(255,255,255,0.85)] transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:bg-white/70"
+                  >
+                    {isSavingCrop && <Loader2 className="h-4 w-4 animate-spin" />}
+                    <span>{isSavingCrop ? "保存中" : "确认"}</span>
+                  </button>
+                </>
+              ) : activeGridSelection ? (
+                <>
+                  <Tooltip content="退出宫格切分" position="top">
+                    <button
+                      type="button"
+                      onClick={handleExitGridSplitMode}
+                      className="flex h-9 w-9 items-center justify-center rounded-[12px] text-slate-300 transition-colors hover:bg-white/[0.06] hover:text-white"
+                    >
+                      <Undo2 className="h-5 w-5" />
+                    </button>
+                  </Tooltip>
+                  <div className="mx-1 h-7 w-px bg-slate-500/22" />
+                  <div className="flex h-9 min-w-[208px] shrink-0 items-center gap-2 rounded-[12px] px-1 text-[13px] font-medium text-slate-200/88">
+                    <Grid3X3 className="h-[18px] w-[18px] text-violet-300/88" />
+                    <span className="block whitespace-nowrap leading-none">
+                      {selectedGridCells.length > 0
+                        ? `已选 ${selectedGridCells.length} 个宫格`
+                        : "请选择宫格"}
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <Tooltip content="下载图片" position="top">
+                    <button
+                      type="button"
+                      onClick={downloadImage}
+                      className="flex h-9 w-9 items-center justify-center rounded-[12px] text-slate-400 transition-colors hover:bg-white/[0.06] hover:text-slate-100"
+                    >
+                      <Download className="h-5 w-5" />
+                    </button>
+                  </Tooltip>
+                  {onCropImage && imageUrl && isImageLoaded && (
+                    <Tooltip content="裁剪图片" position="top">
                       <button
                         type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setGridMenuOpen((value) => !value);
-                          setCustomGridOpen(false);
-                          setHoverCustomGrid(null);
-                        }}
-                        className={`flex h-9 min-w-[114px] items-center justify-center gap-2 whitespace-nowrap rounded-[12px] border px-3 text-[13px] font-semibold transition-colors ${
-                          gridMenuOpen || activeGridSelection
-                            ? "border-violet-400/28 bg-violet-500/[0.12] text-violet-50"
-                            : "border-slate-500/18 bg-transparent text-slate-300 hover:bg-white/[0.06] hover:text-slate-100"
-                        }`}
-                      >
-                        <Grid3X3 className="h-[18px] w-[18px]" />
-                        <span className="whitespace-nowrap">宫格切分</span>
-                        <ChevronDown
-                          className={`h-4 w-4 transition-transform ${gridMenuOpen ? "rotate-180" : ""}`}
-                        />
-                      </button>
-                      <AnimatePresence>
-                        {gridMenuOpen && (
-                          <motion.div
-                            initial={{ opacity: 0, y: 8, scale: 0.98 }}
-                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                            exit={{ opacity: 0, y: 8, scale: 0.98 }}
-                            transition={{ duration: 0.16, ease: "easeOut" }}
-                            className="absolute left-0 top-[calc(100%+12px)] z-50 flex items-start gap-3"
-                            onPointerDown={(e) => e.stopPropagation()}
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <div className="w-[220px] rounded-[20px] border border-slate-400/16 bg-[#121923]/96 p-3 text-white shadow-[0_28px_70px_-28px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl">
-                              <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-slate-100/18 to-transparent" />
-                              {GRID_SPLIT_PRESETS.map((option) => {
-                                const isActive =
-                                  activeGridSelection?.rows === option.rows &&
-                                  activeGridSelection?.cols === option.cols;
-                                return (
-                                  <button
-                                    key={`${option.rows}x${option.cols}`}
-                                    type="button"
-                                    onClick={() =>
-                                      handleActivatePresetGrid(option.rows, option.cols)
-                                    }
-                                    className={`mb-1 flex h-12 w-full items-center rounded-[14px] px-4 text-left text-[14px] font-semibold transition-colors ${
-                                      isActive
-                                        ? "bg-violet-500/[0.16] text-violet-50 shadow-[inset_0_0_0_1px_rgba(139,92,246,0.26)]"
-                                        : "text-slate-100/92 hover:bg-white/[0.055] hover:text-white"
-                                    }`}
-                                  >
-                                    {option.label}
-                                  </button>
-                                );
-                              })}
-                              <div className="my-2 h-px bg-slate-400/12" />
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setCustomGridOpen((value) => !value);
-                                  setHoverCustomGrid(activeGridSelection ?? { rows: 2, cols: 2 });
-                                }}
-                                className={`flex h-12 w-full items-center justify-between rounded-[14px] border px-4 text-left text-[14px] font-semibold transition-colors ${
-                                  customGridOpen
-                                    ? "border-violet-400/28 bg-violet-500/[0.12] text-violet-50"
-                                    : "border-slate-400/16 text-slate-100/92 hover:bg-white/[0.055] hover:text-white"
-                                }`}
-                              >
-                                <span>自定义</span>
-                                <ChevronRight className="h-4 w-4" />
-                              </button>
-                            </div>
-                            <AnimatePresence>
-                              {customGridOpen && (
-                                <motion.div
-                                  initial={{ opacity: 0, x: -6, scale: 0.98 }}
-                                  animate={{ opacity: 1, x: 0, scale: 1 }}
-                                  exit={{ opacity: 0, x: -6, scale: 0.98 }}
-                                  transition={{ duration: 0.16, ease: "easeOut" }}
-                                  className="w-[308px] rounded-[20px] border border-slate-400/16 bg-[#121923]/96 p-5 text-white shadow-[0_28px_70px_-28px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl"
-                                >
-                                  <div className="mb-4 flex items-center justify-between">
-                                    <div className="text-[14px] font-semibold text-slate-100/62">
-                                      自定义宫格
-                                    </div>
-                                    <div className="text-[14px] font-semibold text-slate-100/88 tabular-nums">
-                                      {
-                                        (
-                                          hoverCustomGrid ??
-                                          activeGridSelection ?? { rows: 2, cols: 2 }
-                                        ).rows
-                                      }{" "}
-                                      x{" "}
-                                      {
-                                        (
-                                          hoverCustomGrid ??
-                                          activeGridSelection ?? { rows: 2, cols: 2 }
-                                        ).cols
-                                      }
-                                    </div>
-                                  </div>
-                                  <div className="grid grid-cols-5 gap-2">
-                                    {Array.from(
-                                      { length: CUSTOM_GRID_MAX_ROWS * CUSTOM_GRID_MAX_COLS },
-                                      (_, index) => {
-                                        const row = Math.floor(index / CUSTOM_GRID_MAX_COLS) + 1;
-                                        const col = (index % CUSTOM_GRID_MAX_COLS) + 1;
-                                        const previewGrid = hoverCustomGrid ??
-                                          activeGridSelection ?? { rows: 2, cols: 2 };
-                                        const isIncluded =
-                                          row <= previewGrid.rows && col <= previewGrid.cols;
-                                        return (
-                                          <button
-                                            key={`custom-grid-${row}-${col}`}
-                                            type="button"
-                                            onMouseEnter={() =>
-                                              setHoverCustomGrid({ rows: row, cols: col })
-                                            }
-                                            onFocus={() =>
-                                              setHoverCustomGrid({ rows: row, cols: col })
-                                            }
-                                            onClick={() => handleApplyCustomGrid(row, col)}
-                                            className={`aspect-square rounded-[8px] border transition-colors ${
-                                              isIncluded
-                                                ? "border-violet-400/34 bg-violet-500/[0.24] shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_0_0_1px_rgba(109,40,217,0.14)]"
-                                                : "border-slate-400/10 bg-slate-200/[0.08] hover:border-slate-300/18 hover:bg-slate-200/[0.12]"
-                                            }`}
-                                            title={`${row} x ${col}`}
-                                          />
-                                        );
-                                      }
-                                    )}
-                                  </div>
-                                </motion.div>
-                              )}
-                            </AnimatePresence>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </div>
-                    <Tooltip content="全屏预览" position="top">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          onPreview?.(
-                            imageUrl,
-                            "图片节点预览",
-                            node.id,
-                            resolvedImageUrls,
-                            activeImageIndex
-                          )
-                        }
+                        onClick={handleEnterCropMode}
                         className="flex h-9 w-9 items-center justify-center rounded-[12px] text-slate-400 transition-colors hover:bg-white/[0.06] hover:text-slate-100"
                       >
-                        <Eye className="h-5 w-5" />
+                        <CropIcon className="h-5 w-5" />
                       </button>
                     </Tooltip>
-                  </>
-                )}
-              </motion.div>
-            )}
-          </AnimatePresence>
-          {isStarterPlaceholder ? (
-            <>
-              <div className="absolute -top-8 left-0 z-30 flex items-center gap-1.5 text-slate-300/82 drop-shadow-[0_1px_10px_rgba(15,23,42,0.9)]">
-                <ImageIcon className="h-4 w-4 shrink-0 text-slate-300/72" />
-                <span className="truncate text-[15px] font-medium tracking-tight">
-                  {nodeBadgeMatch ? (
-                    <>
-                      <span>{nodeBadgeMatch[1]}</span>
-                      <span className="text-slate-200/72">{nodeBadgeMatch[2]}</span>
-                    </>
-                  ) : (
-                    nodeBadgeTitle
                   )}
-                </span>
-              </div>
-              <div className="absolute -top-8 right-0 z-30 flex shrink-0 items-center gap-3 text-[12px] font-medium tabular-nums text-slate-400/72 drop-shadow-[0_1px_10px_rgba(15,23,42,0.9)]">
-                <span>{naturalSizeLabel}</span>
-              </div>
-            </>
-          ) : (
-            <div className="mb-2 flex items-center justify-between gap-4 text-slate-300/82 drop-shadow-[0_1px_10px_rgba(15,23,42,0.9)]">
-              <div className="flex min-w-0 items-center gap-1.5">
-                <ImageIcon className="h-4 w-4 shrink-0 text-slate-300/72" />
-                <span className="truncate text-[15px] font-medium tracking-tight">
-                  {nodeBadgeMatch ? (
-                    <>
-                      <span>{nodeBadgeMatch[1]}</span>
-                      <span className="text-slate-200/72">{nodeBadgeMatch[2]}</span>
-                    </>
-                  ) : (
-                    nodeBadgeTitle
-                  )}
-                </span>
-              </div>
-              <div className="flex shrink-0 items-center gap-3">
-                {!isFrameStrip && resolvedImageUrls.length > 1 && (
-                  <span className="rounded-full border border-slate-400/18 bg-slate-900/46 px-2.5 py-1 text-[11px] font-semibold text-slate-300/72">
-                    {activeImageIndex + 1}/{resolvedImageUrls.length}
-                  </span>
-                )}
-                <span className="text-[12px] font-medium tabular-nums text-slate-400/72">
-                  {naturalSizeLabel}
-                </span>
-              </div>
-            </div>
-          )}
-          <div className="flex w-full flex-col items-center">
-            <div
-              ref={mediaFrameRef}
-              className={getImagePreviewFrameClassName({
-                isImageLoaded: isFrameStrip || isImageLoaded,
-                isSelected: selected,
-                isStarterPlaceholder,
-              })}
-              style={{ width: mediaFrameSize.width, height: mediaFrameSize.height }}
-            >
-              <div className="relative h-full w-full">
-                {!isFrameStrip && !isStarterPlaceholder && !isImageLoaded && (
-                  <div
-                    aria-hidden="true"
-                    className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center overflow-hidden bg-[linear-gradient(135deg,rgba(15,23,42,0.96),rgba(17,24,39,0.92)_48%,rgba(30,41,59,0.96))]"
-                  >
-                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_28%_18%,rgba(129,140,248,0.16),transparent_32%),radial-gradient(circle_at_74%_72%,rgba(34,211,238,0.08),transparent_38%)]" />
-                    <div className="animate-shimmer absolute inset-y-0 left-[-45%] w-1/2 bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.08),transparent)]" />
-                    <div className="relative flex items-center gap-2 rounded-full border border-cyan-100/12 bg-[#0b1220]/72 px-3 py-1.5 text-[12px] font-semibold text-slate-200/72 shadow-[0_16px_42px_-24px_rgba(0,0,0,0.9),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-md">
-                      {isImageLoadFailed ? (
-                        <ImageIcon className="h-3.5 w-3.5 text-rose-200/72" />
-                      ) : (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin text-cyan-200/72" />
-                      )}
-                      <span>{isImageLoadFailed ? "图片加载失败" : "图片加载中"}</span>
-                    </div>
-                  </div>
-                )}
-                {isFrameStrip ? (
-                  <div
-                    className="group/framegrid grid h-full w-full gap-px overflow-hidden rounded-[inherit] bg-slate-700/32 p-px shadow-[inset_0_0_0_1px_rgba(148,163,184,0.14)]"
-                    style={{
-                      gridTemplateColumns: `repeat(${frameGridColumns}, minmax(0, 1fr))`,
-                    }}
-                  >
-                    {resolvedImageUrls.map((url, index) => (
-                      <div
-                        key={`${url}-${index}`}
-                        role="button"
-                        tabIndex={0}
-                        data-node-action="true"
-                        data-frame-strip-cell="true"
-                        data-frame-node-id={node.id}
-                        data-frame-index={index}
-                        aria-label={`第 ${index + 1} 帧，拖拽到画布生成图片子节点`}
-                        onPointerDown={(event) => beginFrameExtractionDrag(event, index, url)}
-                        onPointerMove={moveFrameExtractionDrag}
-                        onPointerUp={(event) => endFrameExtractionDrag(event, index, url)}
-                        onPointerCancel={cancelFrameExtractionDrag}
-                        onKeyDown={(event) => {
-                          if (event.key !== "Enter" && event.key !== " ") return;
-                          event.preventDefault();
-                          setActiveImageIndex(index);
-                          onSetPrimaryImageResult?.(node.id, url, index);
-                        }}
-                        className={`group/frame relative min-h-0 min-w-0 overflow-hidden bg-[#050914] shadow-[inset_0_0_0_1px_rgba(15,23,42,0.92),inset_0_0_32px_rgba(15,23,42,0.3)] transition-all duration-200 group-hover/framegrid:opacity-70 hover:z-10 hover:scale-[1.018] hover:opacity-100 hover:shadow-[0_0_0_2px_rgba(125,211,252,0.88),0_18px_44px_-22px_rgba(34,211,238,0.78),inset_0_0_0_1px_rgba(236,254,255,0.34)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300/70 ${onExtractFrameImage ? "cursor-grab active:cursor-grabbing" : ""}`}
-                      >
-                        <img
-                          src={url}
-                          alt={`\u9010\u5e27\u5206\u6790 ${index + 1}`}
-                          className="h-full w-full object-cover transition-all duration-200 group-hover/frame:brightness-110 group-hover/frame:saturate-110"
-                          draggable={false}
-                        />
-                        <span className="pointer-events-none absolute right-2 top-2 z-10 flex h-6 min-w-[24px] items-center justify-center rounded-full border border-white/18 bg-[#0b1018]/82 px-1.5 text-[11px] font-bold tabular-nums text-white shadow-[0_8px_18px_-12px_rgba(0,0,0,0.95)] transition-all duration-200 group-hover/frame:border-cyan-100/42 group-hover/frame:bg-cyan-100/18 group-hover/frame:text-cyan-50 group-hover/frame:shadow-[0_0_20px_rgba(103,232,249,0.26)]">
-                          {index + 1}
-                        </span>
-                        {onExtractFrameImage && (
-                          <>
-                            <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(236,254,255,0.1)_0%,rgba(236,254,255,0.04)_38%,rgba(2,12,22,0.62)_100%)] opacity-0 transition-opacity duration-200 group-hover/frame:opacity-100" />
-                            <span className="pointer-events-none absolute inset-0 opacity-0 shadow-[inset_0_0_0_1px_rgba(236,254,255,0.42)] transition-opacity duration-200 group-hover/frame:opacity-100" />
+                  <div className="relative" ref={gridMenuRef}>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setGridMenuOpen((value) => !value);
+                        setCustomGridOpen(false);
+                        setHoverCustomGrid(null);
+                      }}
+                      className={`flex h-9 min-w-[114px] items-center justify-center gap-2 whitespace-nowrap rounded-[12px] border px-3 text-[13px] font-semibold transition-colors ${
+                        gridMenuOpen || activeGridSelection
+                          ? "border-violet-400/28 bg-violet-500/[0.12] text-violet-50"
+                          : "border-slate-500/18 bg-transparent text-slate-300 hover:bg-white/[0.06] hover:text-slate-100"
+                      }`}
+                    >
+                      <Grid3X3 className="h-[18px] w-[18px]" />
+                      <span className="whitespace-nowrap">宫格切分</span>
+                      <ChevronDown
+                        className={`h-4 w-4 transition-transform ${gridMenuOpen ? "rotate-180" : ""}`}
+                      />
+                    </button>
+                    <AnimatePresence>
+                      {gridMenuOpen && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                          transition={{ duration: 0.16, ease: "easeOut" }}
+                          className="absolute left-0 top-[calc(100%+12px)] z-50 flex items-start gap-3"
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <div className="w-[220px] rounded-[20px] border border-slate-400/16 bg-[#121923]/96 p-3 text-white shadow-[0_28px_70px_-28px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl">
+                            <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-slate-100/18 to-transparent" />
+                            {GRID_SPLIT_PRESETS.map((option) => {
+                              const isActive =
+                                activeGridSelection?.rows === option.rows &&
+                                activeGridSelection?.cols === option.cols;
+                              return (
+                                <button
+                                  key={`${option.rows}x${option.cols}`}
+                                  type="button"
+                                  onClick={() => handleActivatePresetGrid(option.rows, option.cols)}
+                                  className={`mb-1 flex h-12 w-full items-center rounded-[14px] px-4 text-left text-[14px] font-semibold transition-colors ${
+                                    isActive
+                                      ? "bg-violet-500/[0.16] text-violet-50 shadow-[inset_0_0_0_1px_rgba(139,92,246,0.26)]"
+                                      : "text-slate-100/92 hover:bg-white/[0.055] hover:text-white"
+                                  }`}
+                                >
+                                  {option.label}
+                                </button>
+                              );
+                            })}
+                            <div className="my-2 h-px bg-slate-400/12" />
                             <button
                               type="button"
-                              data-node-action="true"
-                              className="absolute bottom-3 left-1/2 z-20 flex h-8 -translate-x-1/2 translate-y-1 items-center justify-center rounded-full border border-cyan-100/18 bg-[#0b1320]/82 px-3.5 text-[12px] font-semibold text-cyan-50/92 opacity-0 shadow-[0_12px_28px_-18px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-md transition-all duration-200 hover:border-cyan-100/32 hover:bg-[#101b2b]/92 hover:text-white group-hover/frame:translate-y-0 group-hover/frame:opacity-100"
-                              onPointerDown={(event) => {
-                                event.stopPropagation();
+                              onClick={() => {
+                                setCustomGridOpen((value) => !value);
+                                setHoverCustomGrid(activeGridSelection ?? { rows: 2, cols: 2 });
                               }}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                onExtractFrameImage(node.id, index);
-                              }}
+                              className={`flex h-12 w-full items-center justify-between rounded-[14px] border px-4 text-left text-[14px] font-semibold transition-colors ${
+                                customGridOpen
+                                  ? "border-violet-400/28 bg-violet-500/[0.12] text-violet-50"
+                                  : "border-slate-400/16 text-slate-100/92 hover:bg-white/[0.055] hover:text-white"
+                              }`}
                             >
-                              提取
+                              <span>自定义</span>
+                              <ChevronRight className="h-4 w-4" />
                             </button>
-                          </>
-                        )}
-                      </div>
-                    ))}
+                          </div>
+                          <AnimatePresence>
+                            {customGridOpen && (
+                              <motion.div
+                                initial={{ opacity: 0, x: -6, scale: 0.98 }}
+                                animate={{ opacity: 1, x: 0, scale: 1 }}
+                                exit={{ opacity: 0, x: -6, scale: 0.98 }}
+                                transition={{ duration: 0.16, ease: "easeOut" }}
+                                className="w-[308px] rounded-[20px] border border-slate-400/16 bg-[#121923]/96 p-5 text-white shadow-[0_28px_70px_-28px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl"
+                              >
+                                <div className="mb-4 flex items-center justify-between">
+                                  <div className="text-[14px] font-semibold text-slate-100/62">
+                                    自定义宫格
+                                  </div>
+                                  <div className="text-[14px] font-semibold text-slate-100/88 tabular-nums">
+                                    {
+                                      (
+                                        hoverCustomGrid ??
+                                        activeGridSelection ?? { rows: 2, cols: 2 }
+                                      ).rows
+                                    }{" "}
+                                    x{" "}
+                                    {
+                                      (
+                                        hoverCustomGrid ??
+                                        activeGridSelection ?? { rows: 2, cols: 2 }
+                                      ).cols
+                                    }
+                                  </div>
+                                </div>
+                                <div className="grid grid-cols-5 gap-2">
+                                  {Array.from(
+                                    { length: CUSTOM_GRID_MAX_ROWS * CUSTOM_GRID_MAX_COLS },
+                                    (_, index) => {
+                                      const row = Math.floor(index / CUSTOM_GRID_MAX_COLS) + 1;
+                                      const col = (index % CUSTOM_GRID_MAX_COLS) + 1;
+                                      const previewGrid = hoverCustomGrid ??
+                                        activeGridSelection ?? { rows: 2, cols: 2 };
+                                      const isIncluded =
+                                        row <= previewGrid.rows && col <= previewGrid.cols;
+                                      return (
+                                        <button
+                                          key={`custom-grid-${row}-${col}`}
+                                          type="button"
+                                          onMouseEnter={() =>
+                                            setHoverCustomGrid({ rows: row, cols: col })
+                                          }
+                                          onFocus={() =>
+                                            setHoverCustomGrid({ rows: row, cols: col })
+                                          }
+                                          onClick={() => handleApplyCustomGrid(row, col)}
+                                          className={`aspect-square rounded-[8px] border transition-colors ${
+                                            isIncluded
+                                              ? "border-violet-400/34 bg-violet-500/[0.24] shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_0_0_1px_rgba(109,40,217,0.14)]"
+                                              : "border-slate-400/10 bg-slate-200/[0.08] hover:border-slate-300/18 hover:bg-slate-200/[0.12]"
+                                          }`}
+                                          title={`${row} x ${col}`}
+                                        />
+                                      );
+                                    }
+                                  )}
+                                </div>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
-                ) : (
-                        <img
-                          ref={imageElementRef}
-                          src={imageUrl}
-                          alt="\u751f\u6210\u56fe\u7247"
-                          className={`block h-full w-full transition-opacity duration-200 ${isStarterPlaceholder || isImageLoaded ? "opacity-100" : "opacity-0"} ${isStarterPlaceholder ? "object-cover" : "object-contain"}`}
-                          draggable={false}
-                          onPointerDown={beginImageFrameDropDrag}
-                          onLoad={(e) => {
-                      const img = e.currentTarget;
-                      setImageLoadState({ status: "loaded", url: imageUrl });
-                      const naturalSize = {
-                        width: img.naturalWidth || resultImageSize.width,
-                        height: img.naturalHeight || resultImageSize.height,
-                      };
-                      const displaySize = fitImageSize(
-                        naturalSize,
-                        aspectRatio,
-                        resultImageBounds.maxWidth,
-                        resultImageBounds.maxHeight
-                      );
-                      setNaturalImageSize(naturalSize);
-                      if (
-                        node.data?.imageNaturalWidth !== naturalSize.width ||
-                        node.data?.imageNaturalHeight !== naturalSize.height ||
-                        node.data?.imageDisplayWidth !== displaySize.width ||
-                        node.data?.imageDisplayHeight !== displaySize.height
-                      ) {
-                        onUpdateData?.(node.id, {
-                          imageNaturalWidth: naturalSize.width,
-                          imageNaturalHeight: naturalSize.height,
-                          imageDisplayWidth: displaySize.width,
-                          imageDisplayHeight: displaySize.height,
-                        });
+                  <Tooltip content="全屏预览" position="top">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onPreview?.(
+                          imageUrl,
+                          "图片节点预览",
+                          node.id,
+                          resolvedImageUrls,
+                          activeImageIndex
+                        )
                       }
-                    }}
-                    onError={() => setImageLoadState({ status: "error", url: imageUrl })}
-                  />
-                )}
-                {selected && activeGridSelection && onSplitImageGrid && (
-                  <div
-                    data-node-action="true"
-                    className="absolute inset-0 grid"
-                    style={{
-                      gridTemplateColumns: `repeat(${activeGridSelection.cols}, minmax(0, 1fr))`,
-                      gridTemplateRows: `repeat(${activeGridSelection.rows}, minmax(0, 1fr))`,
-                    }}
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    {Array.from({ length: activeGridCellCount }, (_, index) => {
-                      const isSelected = selectedGridCells.includes(index);
-                      const isHovered = hoveredGridCell === index;
-                      return (
-                        <button
-                          key={`split-cell-${index}`}
-                          type="button"
-                          onMouseEnter={() => setHoveredGridCell(index)}
-                          onMouseLeave={() =>
-                            setHoveredGridCell((current) => (current === index ? null : current))
-                          }
-                          onClick={(event) => handleGridCellClick(index, event.shiftKey)}
-                          className={`relative min-h-0 min-w-0 border transition-colors focus-visible:outline-none ${
-                            isSelected
-                              ? "border-violet-300/82 bg-violet-400/[0.18] shadow-[inset_0_0_0_1px_rgba(167,139,250,0.2),0_0_24px_rgba(109,40,217,0.12)]"
-                              : "border-white/70 bg-white/0 hover:bg-violet-400/[0.1]"
-                          }`}
-                        >
-                          <span className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-[10px] border border-white/10 bg-[#0b1220]/72 px-2.5 py-1 text-[12px] font-semibold tracking-[0.02em] text-white/92 shadow-[0_12px_28px_-16px_rgba(0,0,0,0.92),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-md">
-                            {getGridBadgeLabel(index)}
-                          </span>
-                          {isHovered && (
-                            <span className="pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 translate-y-[20px] rounded-md border border-violet-300/18 bg-[#0b1220]/88 px-2 py-1 text-[10px] font-medium text-slate-200/92 shadow-[0_12px_28px_-18px_rgba(0,0,0,0.9),0_0_18px_rgba(109,40,217,0.14)]">
-                              Shift 可多选
-                            </span>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-                {selected && isCropMode && cropRect && (
-                  <div
-                    data-node-action="true"
-                    className="absolute inset-0 z-30"
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <div
-                      className="absolute cursor-move border-[3px] border-white shadow-[0_0_0_9999px_rgba(0,0,0,0.48),0_0_0_1px_rgba(15,23,42,0.62),0_14px_42px_-20px_rgba(0,0,0,0.9)]"
-                      style={{
-                        left: cropRect.x,
-                        top: cropRect.y,
-                        width: cropRect.width,
-                        height: cropRect.height,
-                      }}
-                      onPointerDown={(event) => handleCropPointerDown("move", event)}
+                      className="flex h-9 w-9 items-center justify-center rounded-[12px] text-slate-400 transition-colors hover:bg-white/[0.06] hover:text-slate-100"
                     >
-                      <div className="pointer-events-none absolute left-1/3 top-0 h-full w-px bg-white/54" />
-                      <div className="pointer-events-none absolute left-2/3 top-0 h-full w-px bg-white/54" />
-                      <div className="pointer-events-none absolute left-0 top-1/3 h-px w-full bg-white/54" />
-                      <div className="pointer-events-none absolute left-0 top-2/3 h-px w-full bg-white/54" />
-                      {CROP_HANDLES.map((handle) => {
-                        const isTop = handle.includes("n");
-                        const isBottom = handle.includes("s");
-                        const isLeft = handle.includes("w");
-                        const isRight = handle.includes("e");
-                        const isVerticalSide = handle === "n" || handle === "s";
-                        const isHorizontalSide = handle === "e" || handle === "w";
-                        const cursor =
-                          handle === "n" || handle === "s"
-                            ? "ns-resize"
-                            : handle === "e" || handle === "w"
-                              ? "ew-resize"
-                              : handle === "nw" || handle === "se"
-                                ? "nwse-resize"
-                                : "nesw-resize";
-                        return (
-                          <button
-                            key={handle}
-                            type="button"
-                            aria-label={`裁剪控制点 ${handle}`}
-                            className="absolute z-10 rounded-[2px] bg-white shadow-[0_0_0_1px_rgba(15,23,42,0.45)]"
-                            style={{
-                              width: isVerticalSide ? 44 : 8,
-                              height: isHorizontalSide ? 44 : 8,
-                              left: isLeft ? -5 : isRight ? "calc(100% - 3px)" : "50%",
-                              top: isTop ? -5 : isBottom ? "calc(100% - 3px)" : "50%",
-                              transform:
-                                !isLeft && !isRight && !isTop && !isBottom
-                                  ? "translate(-50%, -50%)"
-                                  : !isLeft && !isRight
-                                    ? "translateX(-50%)"
-                                    : !isTop && !isBottom
-                                      ? "translateY(-50%)"
-                                      : undefined,
-                              cursor,
-                            }}
-                            onPointerDown={(event) => handleCropPointerDown(handle, event)}
-                          />
-                        );
-                      })}
-                    </div>
-                  </div>
+                      <Eye className="h-5 w-5" />
+                    </button>
+                  </Tooltip>
+                </>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+        {isStarterPlaceholder ? (
+          <>
+            <div className="absolute -top-8 left-0 z-30 flex items-center gap-1.5 text-slate-300/82 drop-shadow-[0_1px_10px_rgba(15,23,42,0.9)]">
+              <ImageIcon className="h-4 w-4 shrink-0 text-slate-300/72" />
+              <span className="truncate text-[15px] font-medium tracking-tight">
+                {nodeBadgeMatch ? (
+                  <>
+                    <span>{nodeBadgeMatch[1]}</span>
+                    <span className="text-slate-200/72">{nodeBadgeMatch[2]}</span>
+                  </>
+                ) : (
+                  nodeBadgeTitle
                 )}
-                {isUploadingNodeAsset && (
-                  <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-[#070b12]/42 backdrop-blur-[1px]">
-                    <div className="flex items-center gap-2 rounded-full border border-cyan-100/18 bg-[#0b1220]/82 px-3 py-1.5 text-[12px] font-semibold text-cyan-50/86 shadow-[0_16px_42px_-22px_rgba(34,211,238,0.48),inset_0_1px_0_rgba(255,255,255,0.08)]">
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      <span>上传中</span>
-                    </div>
-                  </div>
-                )}
-              </div>
+              </span>
             </div>
-            {!isFrameStrip && resolvedImageUrls.length > 1 && (
-              <div
-                data-node-action="true"
-                className="mt-3 flex w-full items-center justify-center gap-3"
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <button
-                  type="button"
-                  onClick={() => cycleActiveImage(-1)}
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-400/18 bg-slate-900/42 text-slate-200/78 transition-all hover:border-slate-300/32 hover:bg-slate-800/70 hover:text-white"
-                  title="上一张"
+            <div className="absolute -top-8 right-0 z-30 flex shrink-0 items-center gap-3 text-[12px] font-medium tabular-nums text-slate-400/72 drop-shadow-[0_1px_10px_rgba(15,23,42,0.9)]">
+              <span>{naturalSizeLabel}</span>
+            </div>
+          </>
+        ) : (
+          <div className="mb-2 flex items-center justify-between gap-4 text-slate-300/82 drop-shadow-[0_1px_10px_rgba(15,23,42,0.9)]">
+            <div className="flex min-w-0 items-center gap-1.5">
+              <ImageIcon className="h-4 w-4 shrink-0 text-slate-300/72" />
+              <span className="truncate text-[15px] font-medium tracking-tight">
+                {nodeBadgeMatch ? (
+                  <>
+                    <span>{nodeBadgeMatch[1]}</span>
+                    <span className="text-slate-200/72">{nodeBadgeMatch[2]}</span>
+                  </>
+                ) : (
+                  nodeBadgeTitle
+                )}
+              </span>
+            </div>
+            <div className="flex shrink-0 items-center gap-3">
+              {!isFrameStrip && resolvedImageUrls.length > 1 && (
+                <span className="rounded-full border border-slate-400/18 bg-slate-900/46 px-2.5 py-1 text-[11px] font-semibold text-slate-300/72">
+                  {activeImageIndex + 1}/{resolvedImageUrls.length}
+                </span>
+              )}
+              <span className="text-[12px] font-medium tabular-nums text-slate-400/72">
+                {naturalSizeLabel}
+              </span>
+            </div>
+          </div>
+        )}
+        <div className="flex w-full flex-col items-center">
+          <div
+            ref={mediaFrameRef}
+            className={getImagePreviewFrameClassName({
+              isImageLoaded: isFrameStrip || isImageLoaded,
+              isSelected: selected,
+              isStarterPlaceholder,
+            })}
+            style={{ width: mediaFrameSize.width, height: mediaFrameSize.height }}
+          >
+            <div className="relative h-full w-full">
+              {!isFrameStrip && !isStarterPlaceholder && !isImageLoaded && (
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center overflow-hidden bg-[linear-gradient(135deg,rgba(15,23,42,0.96),rgba(17,24,39,0.92)_48%,rgba(30,41,59,0.96))]"
                 >
-                  <ChevronLeft className="h-4 w-4" />
-                </button>
-                <div className="flex items-center justify-center gap-2">
-                  {visibleThumbnailItems.map(({ url, index }) => {
-                    const isActive = index === activeImageIndex;
+                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_28%_18%,rgba(129,140,248,0.16),transparent_32%),radial-gradient(circle_at_74%_72%,rgba(34,211,238,0.08),transparent_38%)]" />
+                  <div className="animate-shimmer absolute inset-y-0 left-[-45%] w-1/2 bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.08),transparent)]" />
+                  <div className="relative flex items-center gap-2 rounded-full border border-cyan-100/12 bg-[#0b1220]/72 px-3 py-1.5 text-[12px] font-semibold text-slate-200/72 shadow-[0_16px_42px_-24px_rgba(0,0,0,0.9),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-md">
+                    {isImageLoadFailed ? (
+                      <ImageIcon className="h-3.5 w-3.5 text-rose-200/72" />
+                    ) : (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-cyan-200/72" />
+                    )}
+                    <span>{isImageLoadFailed ? "图片加载失败" : "图片加载中"}</span>
+                  </div>
+                </div>
+              )}
+              {isFrameStrip ? (
+                <div
+                  className="group/framegrid grid h-full w-full gap-px overflow-hidden rounded-[inherit] bg-slate-700/32 p-px shadow-[inset_0_0_0_1px_rgba(148,163,184,0.14)]"
+                  style={{
+                    gridTemplateColumns: `repeat(${frameGridColumns}, minmax(0, 1fr))`,
+                  }}
+                >
+                  {resolvedImageUrls.map((url, index) => (
+                    <div
+                      key={`${url}-${index}`}
+                      role="button"
+                      tabIndex={0}
+                      data-node-action="true"
+                      data-frame-strip-cell="true"
+                      data-frame-node-id={node.id}
+                      data-frame-index={index}
+                      aria-label={`第 ${index + 1} 帧，拖拽到画布生成图片子节点`}
+                      onPointerDown={(event) => beginFrameExtractionDrag(event, index, url)}
+                      onPointerMove={moveFrameExtractionDrag}
+                      onPointerUp={(event) => endFrameExtractionDrag(event, index, url)}
+                      onPointerCancel={cancelFrameExtractionDrag}
+                      onKeyDown={(event) => {
+                        if (event.key !== "Enter" && event.key !== " ") return;
+                        event.preventDefault();
+                        setActiveImageIndex(index);
+                        onSetPrimaryImageResult?.(node.id, url, index);
+                      }}
+                      className={`group/frame relative min-h-0 min-w-0 overflow-hidden bg-[#050914] shadow-[inset_0_0_0_1px_rgba(15,23,42,0.92),inset_0_0_32px_rgba(15,23,42,0.3)] transition-all duration-200 group-hover/framegrid:opacity-70 hover:z-10 hover:scale-[1.018] hover:opacity-100 hover:shadow-[0_0_0_2px_rgba(125,211,252,0.88),0_18px_44px_-22px_rgba(34,211,238,0.78),inset_0_0_0_1px_rgba(236,254,255,0.34)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300/70 ${onExtractFrameImage ? "cursor-grab active:cursor-grabbing" : ""}`}
+                    >
+                      <img
+                        src={url}
+                        alt={`\u9010\u5e27\u5206\u6790 ${index + 1}`}
+                        className="h-full w-full object-cover transition-all duration-200 group-hover/frame:brightness-110 group-hover/frame:saturate-110"
+                        draggable={false}
+                      />
+                      <span className="pointer-events-none absolute right-2 top-2 z-10 flex h-6 min-w-[24px] items-center justify-center rounded-full border border-white/18 bg-[#0b1018]/82 px-1.5 text-[11px] font-bold tabular-nums text-white shadow-[0_8px_18px_-12px_rgba(0,0,0,0.95)] transition-all duration-200 group-hover/frame:border-cyan-100/42 group-hover/frame:bg-cyan-100/18 group-hover/frame:text-cyan-50 group-hover/frame:shadow-[0_0_20px_rgba(103,232,249,0.26)]">
+                        {index + 1}
+                      </span>
+                      {onExtractFrameImage && (
+                        <>
+                          <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(236,254,255,0.1)_0%,rgba(236,254,255,0.04)_38%,rgba(2,12,22,0.62)_100%)] opacity-0 transition-opacity duration-200 group-hover/frame:opacity-100" />
+                          <span className="pointer-events-none absolute inset-0 opacity-0 shadow-[inset_0_0_0_1px_rgba(236,254,255,0.42)] transition-opacity duration-200 group-hover/frame:opacity-100" />
+                          <button
+                            type="button"
+                            data-node-action="true"
+                            className="absolute bottom-3 left-1/2 z-20 flex h-8 -translate-x-1/2 translate-y-1 items-center justify-center rounded-full border border-cyan-100/18 bg-[#0b1320]/82 px-3.5 text-[12px] font-semibold text-cyan-50/92 opacity-0 shadow-[0_12px_28px_-18px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-md transition-all duration-200 hover:border-cyan-100/32 hover:bg-[#101b2b]/92 hover:text-white group-hover/frame:translate-y-0 group-hover/frame:opacity-100"
+                            onPointerDown={(event) => {
+                              event.stopPropagation();
+                            }}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              onExtractFrameImage(node.id, index);
+                            }}
+                          >
+                            提取
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <img
+                  ref={imageElementRef}
+                  src={imageUrl}
+                  alt="\u751f\u6210\u56fe\u7247"
+                  className={`block h-full w-full transition-opacity duration-200 ${isStarterPlaceholder || isImageLoaded ? "opacity-100" : "opacity-0"} ${isStarterPlaceholder ? "object-cover" : "object-contain"}`}
+                  draggable={false}
+                  onPointerDown={beginImageFrameDropDrag}
+                  onLoad={(e) => {
+                    const img = e.currentTarget;
+                    setImageLoadState({ status: "loaded", url: imageUrl });
+                    const naturalSize = {
+                      width: img.naturalWidth || resultImageSize.width,
+                      height: img.naturalHeight || resultImageSize.height,
+                    };
+                    const displaySize = fitImageSize(
+                      naturalSize,
+                      aspectRatio,
+                      resultImageBounds.maxWidth,
+                      resultImageBounds.maxHeight
+                    );
+                    setNaturalImageSize(naturalSize);
+                    if (
+                      node.data?.imageNaturalWidth !== naturalSize.width ||
+                      node.data?.imageNaturalHeight !== naturalSize.height ||
+                      node.data?.imageDisplayWidth !== displaySize.width ||
+                      node.data?.imageDisplayHeight !== displaySize.height
+                    ) {
+                      onUpdateData?.(node.id, {
+                        imageNaturalWidth: naturalSize.width,
+                        imageNaturalHeight: naturalSize.height,
+                        imageDisplayWidth: displaySize.width,
+                        imageDisplayHeight: displaySize.height,
+                      });
+                    }
+                  }}
+                  onError={() => setImageLoadState({ status: "error", url: imageUrl })}
+                />
+              )}
+              {selected && activeGridSelection && onSplitImageGrid && (
+                <div
+                  data-node-action="true"
+                  className="absolute inset-0 grid"
+                  style={{
+                    gridTemplateColumns: `repeat(${activeGridSelection.cols}, minmax(0, 1fr))`,
+                    gridTemplateRows: `repeat(${activeGridSelection.rows}, minmax(0, 1fr))`,
+                  }}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {Array.from({ length: activeGridCellCount }, (_, index) => {
+                    const isSelected = selectedGridCells.includes(index);
+                    const isHovered = hoveredGridCell === index;
                     return (
                       <button
-                        key={`${url}-${index}`}
+                        key={`split-cell-${index}`}
                         type="button"
-                        onClick={() => {
-                          setActiveImageIndex(index);
-                          setNaturalImageSize(null);
-                          onSetPrimaryImageResult?.(node.id, url, index);
-                        }}
-                        className={`relative h-14 w-20 shrink-0 overflow-hidden rounded-[10px] border transition-all ${
-                          isActive
-                            ? "border-sky-300 shadow-[0_0_0_1px_rgba(125,211,252,0.45),0_12px_28px_-18px_rgba(56,189,248,0.6)]"
-                            : "border-slate-400/18 opacity-80 hover:border-slate-300/36 hover:opacity-100"
+                        onMouseEnter={() => setHoveredGridCell(index)}
+                        onMouseLeave={() =>
+                          setHoveredGridCell((current) => (current === index ? null : current))
+                        }
+                        onClick={(event) => handleGridCellClick(index, event.shiftKey)}
+                        className={`relative min-h-0 min-w-0 border transition-colors focus-visible:outline-none ${
+                          isSelected
+                            ? "border-violet-300/82 bg-violet-400/[0.18] shadow-[inset_0_0_0_1px_rgba(167,139,250,0.2),0_0_24px_rgba(109,40,217,0.12)]"
+                            : "border-white/70 bg-white/0 hover:bg-violet-400/[0.1]"
                         }`}
-                        title={`查看第 ${index + 1} 张`}
                       >
-                        <img
-                          src={url}
-                          alt={`生成图片 ${index + 1}`}
-                          className="h-full w-full object-cover"
-                          draggable={false}
-                        />
-                        <div className="absolute inset-x-0 bottom-0 flex h-5 items-center justify-center bg-black/42 text-[10px] font-semibold text-white/90">
-                          {index + 1}
-                        </div>
+                        <span className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-[10px] border border-white/10 bg-[#0b1220]/72 px-2.5 py-1 text-[12px] font-semibold tracking-[0.02em] text-white/92 shadow-[0_12px_28px_-16px_rgba(0,0,0,0.92),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-md">
+                          {getGridBadgeLabel(index)}
+                        </span>
+                        {isHovered && (
+                          <span className="pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 translate-y-[20px] rounded-md border border-violet-300/18 bg-[#0b1220]/88 px-2 py-1 text-[10px] font-medium text-slate-200/92 shadow-[0_12px_28px_-18px_rgba(0,0,0,0.9),0_0_18px_rgba(109,40,217,0.14)]">
+                            Shift 可多选
+                          </span>
+                        )}
                       </button>
                     );
                   })}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => cycleActiveImage(1)}
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-400/18 bg-slate-900/42 text-slate-200/78 transition-all hover:border-slate-300/32 hover:bg-slate-800/70 hover:text-white"
-                  title="下一张"
+              )}
+              {selected && isCropMode && cropRect && (
+                <div
+                  data-node-action="true"
+                  className="absolute inset-0 z-30"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => e.stopPropagation()}
                 >
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-              </div>
-            )}
+                  <div
+                    className="absolute cursor-move border-[3px] border-white shadow-[0_0_0_9999px_rgba(0,0,0,0.48),0_0_0_1px_rgba(15,23,42,0.62),0_14px_42px_-20px_rgba(0,0,0,0.9)]"
+                    style={{
+                      left: cropRect.x,
+                      top: cropRect.y,
+                      width: cropRect.width,
+                      height: cropRect.height,
+                    }}
+                    onPointerDown={(event) => handleCropPointerDown("move", event)}
+                  >
+                    <div className="pointer-events-none absolute left-1/3 top-0 h-full w-px bg-white/54" />
+                    <div className="pointer-events-none absolute left-2/3 top-0 h-full w-px bg-white/54" />
+                    <div className="pointer-events-none absolute left-0 top-1/3 h-px w-full bg-white/54" />
+                    <div className="pointer-events-none absolute left-0 top-2/3 h-px w-full bg-white/54" />
+                    {CROP_HANDLES.map((handle) => {
+                      const isTop = handle.includes("n");
+                      const isBottom = handle.includes("s");
+                      const isLeft = handle.includes("w");
+                      const isRight = handle.includes("e");
+                      const isVerticalSide = handle === "n" || handle === "s";
+                      const isHorizontalSide = handle === "e" || handle === "w";
+                      const cursor =
+                        handle === "n" || handle === "s"
+                          ? "ns-resize"
+                          : handle === "e" || handle === "w"
+                            ? "ew-resize"
+                            : handle === "nw" || handle === "se"
+                              ? "nwse-resize"
+                              : "nesw-resize";
+                      return (
+                        <button
+                          key={handle}
+                          type="button"
+                          aria-label={`裁剪控制点 ${handle}`}
+                          className="absolute z-10 rounded-[2px] bg-white shadow-[0_0_0_1px_rgba(15,23,42,0.45)]"
+                          style={{
+                            width: isVerticalSide ? 44 : 8,
+                            height: isHorizontalSide ? 44 : 8,
+                            left: isLeft ? -5 : isRight ? "calc(100% - 3px)" : "50%",
+                            top: isTop ? -5 : isBottom ? "calc(100% - 3px)" : "50%",
+                            transform:
+                              !isLeft && !isRight && !isTop && !isBottom
+                                ? "translate(-50%, -50%)"
+                                : !isLeft && !isRight
+                                  ? "translateX(-50%)"
+                                  : !isTop && !isBottom
+                                    ? "translateY(-50%)"
+                                    : undefined,
+                            cursor,
+                          }}
+                          onPointerDown={(event) => handleCropPointerDown(handle, event)}
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              {isUploadingNodeAsset && (
+                <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-[#070b12]/42 backdrop-blur-[1px]">
+                  <div className="flex items-center gap-2 rounded-full border border-cyan-100/18 bg-[#0b1220]/82 px-3 py-1.5 text-[12px] font-semibold text-cyan-50/86 shadow-[0_16px_42px_-22px_rgba(34,211,238,0.48),inset_0_1px_0_rgba(255,255,255,0.08)]">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    <span>上传中</span>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
-        </motion.div>
-
+          {!isFrameStrip && resolvedImageUrls.length > 1 && (
+            <div
+              data-node-action="true"
+              className="mt-3 flex w-full items-center justify-center gap-3"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                onClick={() => cycleActiveImage(-1)}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-400/18 bg-slate-900/42 text-slate-200/78 transition-all hover:border-slate-300/32 hover:bg-slate-800/70 hover:text-white"
+                title="上一张"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <div className="flex items-center justify-center gap-2">
+                {visibleThumbnailItems.map(({ url, index }) => {
+                  const isActive = index === activeImageIndex;
+                  return (
+                    <button
+                      key={`${url}-${index}`}
+                      type="button"
+                      onClick={() => {
+                        setActiveImageIndex(index);
+                        setNaturalImageSize(null);
+                        onSetPrimaryImageResult?.(node.id, url, index);
+                      }}
+                      className={`relative h-14 w-20 shrink-0 overflow-hidden rounded-[10px] border transition-all ${
+                        isActive
+                          ? "border-sky-300 shadow-[0_0_0_1px_rgba(125,211,252,0.45),0_12px_28px_-18px_rgba(56,189,248,0.6)]"
+                          : "border-slate-400/18 opacity-80 hover:border-slate-300/36 hover:opacity-100"
+                      }`}
+                      title={`查看第 ${index + 1} 张`}
+                    >
+                      <img
+                        src={url}
+                        alt={`生成图片 ${index + 1}`}
+                        className="h-full w-full object-cover"
+                        draggable={false}
+                      />
+                      <div className="absolute inset-x-0 bottom-0 flex h-5 items-center justify-center bg-black/42 text-[10px] font-semibold text-white/90">
+                        {index + 1}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+              <button
+                type="button"
+                onClick={() => cycleActiveImage(1)}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-400/18 bg-slate-900/42 text-slate-200/78 transition-all hover:border-slate-300/32 hover:bg-slate-800/70 hover:text-white"
+                title="下一张"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+        </div>
       </motion.div>
-    );
-  }
+    ) : null;
 
   return (
     <>
@@ -2633,354 +2640,361 @@ function ImageNodeCardImpl({
         exit={{ scale: 0.96, opacity: 0 }}
         transition={{ type: "spring", damping: 22, stiffness: 280 }}
         className="absolute text-left"
-        style={{ width: nodeWidth }}
+        style={{ width: imagePreviewContent ? previewNodeWidth : nodeWidth }}
+        ref={imagePreviewContent ? previewNodeRef : undefined}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
       >
-      {portHandles}
-      <motion.div
-        onPointerDown={(e) => {
-          if (e.button !== 0) {
-            e.stopPropagation();
-            return;
-          }
-          const target = e.target as HTMLElement;
-          if (
-            !target.closest("[data-node-action='true']") &&
-            !target.closest("textarea,button,input")
-          )
-            onDragStart(e, node);
-          else e.stopPropagation();
-        }}
-        onClick={(e) => {
-          e.stopPropagation();
-          onSelect(e);
-        }}
-        className={`group node-card relative cursor-grab rounded-[18px] border bg-[#121723]/88 shadow-[0_28px_80px_-26px_rgba(0,0,0,0.92),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl transition-all duration-300 active:cursor-grabbing ${
-          selected
-            ? "border-violet-300/26 -translate-y-[1px] shadow-[0_40px_100px_-34px_rgba(0,0,0,0.98),0_0_0_1px_rgba(196,181,253,0.2),0_0_0_7px_rgba(139,92,246,0.08),0_0_48px_rgba(109,40,217,0.18)]"
-            : "border-[#2b3142]/90 hover:border-slate-300/35"
-        }`}
-        style={{ width: nodeWidth, minHeight: 290 }}
-      >
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-px rounded-t-[18px] bg-gradient-to-r from-transparent via-slate-100/25 to-transparent" />
-        <div className="pointer-events-none absolute inset-0 rounded-[18px] bg-[radial-gradient(circle_at_28%_0%,rgba(34,211,238,0.08),transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.035),transparent_34%)]" />
-        {(isRunning || isUploadingNodeAsset) && (
-          <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-[18px]">
-            <div className="absolute inset-0 -translate-x-full animate-[text-node-shimmer_1.8s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-cyan-200/12 to-transparent" />
-          </div>
-        )}
-        {!isUploadingNodeAsset && (
-          <div
-            data-node-action="true"
-            className="absolute right-5 top-5 z-30"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {shouldShowUploadButton ? uploadControl : null}
-          </div>
-        )}
-        <div className="absolute -top-8 left-0 z-30 flex items-center gap-1.5 text-slate-300/82 drop-shadow-[0_1px_10px_rgba(15,23,42,0.9)]">
-          <ImageIcon className="h-4 w-4 text-cyan-100/58" />
-          <span className="text-[15px] font-medium tracking-tight">
-            {nodeBadgeMatch ? (
-              <>
-                <span>{nodeBadgeMatch[1]}</span>
-                <span className="text-emerald-200/72">{nodeBadgeMatch[2]}</span>
-              </>
-            ) : (
-              nodeBadgeTitle
-            )}
-          </span>
-        </div>
-        <div className="relative px-5 pb-5 pt-8">
-          {isRunning || isUploadingNodeAsset ? (
-            <div className="flex min-h-[250px] flex-col items-center justify-center gap-4 text-slate-300/60">
-              <div className="relative flex h-[96px] w-[96px] items-center justify-center text-cyan-100/58">
-                <ImageIcon className="h-14 w-14" strokeWidth={1.55} />
-              </div>
-              <div className="text-center">
-                <div className="inline-flex items-center gap-2 text-[13px] text-slate-100/80">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin text-cyan-100/72" />
-                  {getMediaNodeLoadingLabel({
-                    isUploading: isUploadingNodeAsset,
-                    mediaType: "image",
-                  })}
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="flex min-h-[250px] flex-col items-center justify-center">
-              <div className="mb-8 flex h-[96px] w-[96px] items-center justify-center text-cyan-100/58">
-                <ImageIcon className="h-14 w-14" strokeWidth={1.55} />
-              </div>
-            </div>
-          )}
-        </div>
-      </motion.div>
-
-      <AnimatePresence>
-        {(isHovered || selected) && !imageUrl && !isUploadingNodeAsset && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            data-node-action="true"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-              onSelect(e);
-            }}
-            className="relative node-card left-1/2 mt-5 w-[620px] -translate-x-1/2 rounded-[18px] border border-[#2b3142]/90 bg-[#121723]/88 px-4 pb-3 pt-3 shadow-[0_28px_70px_-26px_rgba(0,0,0,0.92),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl"
-          >
-            <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-slate-100/22 to-transparent" />
-            {inputReferences.length > 0 && (
-              <div className="mb-3 rounded-2xl border border-white/6 bg-[#0d1117]/46 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-                <div className="flex flex-wrap items-center gap-2">
-                  {inputReferences.map((reference, index) => (
-                    <React.Fragment key={`${reference.key}-${reference.value}-${index}`}>
-                      <ReferencePreviewCard reference={reference} index={index} />
-                    </React.Fragment>
-                  ))}
-                </div>
-              </div>
-            )}
-            <div className="relative">
-              <textarea
-                ref={promptTextareaRef}
-                value={promptText}
-                onChange={handlePromptChange}
-                onFocus={(event) =>
-                  setMentionMenuOpen(
-                    inputReferences.length > 0 &&
-                      shouldShowMentionMenu(
-                        event.currentTarget.value,
-                        event.currentTarget.selectionStart
-                      )
-                  )
+        {imagePreviewContent ?? (
+          <>
+            {portHandles}
+            <motion.div
+              onPointerDown={(e) => {
+                if (e.button !== 0) {
+                  e.stopPropagation();
+                  return;
                 }
-                onKeyDown={(event) => {
-                  if (event.key === "Escape") setMentionMenuOpen(false);
-                }}
-                placeholder={
-                  upstreamPrompt
-                    ? "继续补充这些输入资源要如何参与生成"
-                    : hasNonTextInputReferences
-                      ? "描述你想基于这些输入生成的画面内容"
-                      : "描述你想要生成的画面内容"
-                }
-                className="h-[92px] w-full resize-none bg-transparent px-1 text-[15px] leading-7 text-slate-100/88 outline-none placeholder:text-slate-400/42 custom-scrollbar"
-              />
-              {mentionMenuOpen && (
-                <InputResourceMentionMenu
-                  resources={inputReferences}
-                  onPick={(label) => insertResourceMention(label)}
-                  onRequestClose={() => setMentionMenuOpen(false)}
-                />
-              )}
-            </div>
-            <div
-              ref={controlsRef}
-              className="mt-3 flex items-center gap-2 border-t border-cyan-100/8 pt-3"
+                const target = e.target as HTMLElement;
+                if (
+                  !target.closest("[data-node-action='true']") &&
+                  !target.closest("textarea,button,input")
+                )
+                  onDragStart(e, node);
+                else e.stopPropagation();
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelect(e);
+              }}
+              className={`group node-card relative cursor-grab rounded-[18px] border bg-[#121723]/88 shadow-[0_28px_80px_-26px_rgba(0,0,0,0.92),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl transition-all duration-300 active:cursor-grabbing ${
+                selected
+                  ? "border-violet-300/26 -translate-y-[1px] shadow-[0_40px_100px_-34px_rgba(0,0,0,0.98),0_0_0_1px_rgba(196,181,253,0.2),0_0_0_7px_rgba(139,92,246,0.08),0_0_48px_rgba(109,40,217,0.18)]"
+                  : "border-[#2b3142]/90 hover:border-slate-300/35"
+              }`}
+              style={{ width: nodeWidth, minHeight: 290 }}
             >
-              <div className="relative min-w-[180px] flex-[1_1_190px]" ref={modelMenuRef}>
-                <button
-                  type="button"
+              <div className="pointer-events-none absolute inset-x-0 top-0 h-px rounded-t-[18px] bg-gradient-to-r from-transparent via-slate-100/25 to-transparent" />
+              <div className="pointer-events-none absolute inset-0 rounded-[18px] bg-[radial-gradient(circle_at_28%_0%,rgba(34,211,238,0.08),transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.035),transparent_34%)]" />
+              {(isRunning || isUploadingNodeAsset) && (
+                <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-[18px]">
+                  <div className="absolute inset-0 -translate-x-full animate-[text-node-shimmer_1.8s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-cyan-200/12 to-transparent" />
+                </div>
+              )}
+              {!isUploadingNodeAsset && (
+                <div
                   data-node-action="true"
-                  onPointerDown={(event) => event.stopPropagation()}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    setOpenSelect(null);
-                    const rect = modelMenuRef.current?.getBoundingClientRect();
-                    if (rect) {
-                      setModelMenuPosition(
-                        getFloatingMenuPosition({
-                          anchorRect: rect,
-                          viewportHeight: window.innerHeight,
-                          viewportWidth: window.innerWidth,
-                        })
-                      );
-                    }
-                    setModelMenuOpen((open) => !open);
-                  }}
-                  className={`flex h-10 w-full min-w-0 items-center gap-2 rounded-[14px] border px-3 text-[13px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors ${
-                    modelMenuOpen
-                      ? "border-cyan-100/34 bg-cyan-100/[0.075] text-cyan-50"
-                      : "border-cyan-100/8 bg-slate-950/18 text-cyan-50/78 hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
-                  }`}
+                  className="absolute right-5 top-5 z-30"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => e.stopPropagation()}
                 >
-                  <Wand2 className="h-3.5 w-3.5 shrink-0 text-cyan-100/50" />
-                  <span className="min-w-0 flex-1 truncate text-left">
-                    {getImageModelLabel(currentModel)}
-                  </span>
-                  <ChevronDown
-                    className={`h-3.5 w-3.5 shrink-0 text-slate-300/56 transition-transform ${modelMenuOpen ? "rotate-180" : ""}`}
-                  />
-                </button>
-                {typeof document !== "undefined" &&
-                  createPortal(
-                    <AnimatePresence>
-                      {modelMenuOpen && modelMenuPosition && (
-                        <motion.div
-                          ref={modelMenuPortalRef}
-                          initial={{
-                            opacity: 0,
-                            y: modelMenuPosition.placement === "bottom" ? 8 : -8,
-                            scale: 0.98,
-                          }}
-                          animate={{ opacity: 1, y: 0, scale: 1 }}
-                          exit={{
-                            opacity: 0,
-                            y: modelMenuPosition.placement === "bottom" ? 8 : -8,
-                            scale: 0.98,
-                          }}
-                          transition={{ duration: 0.16, ease: "easeOut" }}
-                          className="fixed z-[160] overflow-y-auto rounded-2xl border border-cyan-100/14 bg-[#121923]/96 p-1.5 shadow-[0_28px_70px_-28px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl custom-scrollbar"
-                          style={{
-                            left: modelMenuPosition.left,
-                            maxHeight: modelMenuPosition.maxHeight,
-                            top: modelMenuPosition.top,
-                            bottom: modelMenuPosition.bottom,
-                            width: modelMenuPosition.width,
-                          }}
-                          onPointerDown={(event) => event.stopPropagation()}
-                          onClick={(event) => event.stopPropagation()}
-                          onWheel={(event) => event.stopPropagation()}
-                        >
-                          {[
-                            { label: "内置模型", models: imageModelOptionGroups.builtIn },
-                            { label: "远程模型", models: imageModelOptionGroups.remote },
-                          ]
-                            .filter((group) => group.models.length > 0)
-                            .map((group) => (
-                              <div key={group.label} className="py-0.5">
-                                <div className="px-2 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-300/44">
-                                  {group.label}
-                                </div>
-                                {group.models.map((model) => {
-                                  const isActive = currentModel === model;
-                                  return (
-                                    <button
-                                      key={`${group.label}-${model}`}
-                                      type="button"
-                                      onClick={() => {
-                                        onUpdateProperty?.(node.id, "model", model);
-                                        setModelMenuOpen(false);
-                                      }}
-                                      className={`flex h-9 w-full items-center gap-2 rounded-xl px-3 text-left text-[13px] font-medium transition-colors ${
-                                        isActive
-                                          ? "bg-cyan-300/[0.13] text-cyan-50"
-                                          : "text-slate-200/82 hover:bg-white/[0.05] hover:text-white"
-                                      }`}
-                                    >
-                                      <span className="min-w-0 flex-1 truncate">
-                                        {getImageModelLabel(model)}
-                                      </span>
-                                      {isActive && <Check className="h-3.5 w-3.5 text-cyan-100" />}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            ))}
-                        </motion.div>
-                      )}
-                    </AnimatePresence>,
-                    document.body
+                  {shouldShowUploadButton ? uploadControl : null}
+                </div>
+              )}
+              <div className="absolute -top-8 left-0 z-30 flex items-center gap-1.5 text-slate-300/82 drop-shadow-[0_1px_10px_rgba(15,23,42,0.9)]">
+                <ImageIcon className="h-4 w-4 text-cyan-100/58" />
+                <span className="text-[15px] font-medium tracking-tight">
+                  {nodeBadgeMatch ? (
+                    <>
+                      <span>{nodeBadgeMatch[1]}</span>
+                      <span className="text-emerald-200/72">{nodeBadgeMatch[2]}</span>
+                    </>
+                  ) : (
+                    nodeBadgeTitle
                   )}
+                </span>
               </div>
-              <ImageResolutionPicker
-                resolution={resolution}
-                aspectRatio={aspectRatio}
-                onChange={(nextResolution, nextAspectRatio) => {
-                  onUpdateProperty?.(node.id, "resolution", nextResolution);
-                  onUpdateProperty?.(node.id, "aspect_ratio", nextAspectRatio);
-                }}
-                buttonClassName="relative inline-flex h-10 min-w-[230px] items-center justify-center gap-2 rounded-[14px] border border-cyan-100/8 bg-slate-950/18 px-3 text-[13px] font-medium text-cyan-50/76 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
-              />
+              <div className="relative px-5 pb-5 pt-8">
+                {isRunning || isUploadingNodeAsset ? (
+                  <div className="flex min-h-[250px] flex-col items-center justify-center gap-4 text-slate-300/60">
+                    <div className="relative flex h-[96px] w-[96px] items-center justify-center text-cyan-100/58">
+                      <ImageIcon className="h-14 w-14" strokeWidth={1.55} />
+                    </div>
+                    <div className="text-center">
+                      <div className="inline-flex items-center gap-2 text-[13px] text-slate-100/80">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin text-cyan-100/72" />
+                        {getMediaNodeLoadingLabel({
+                          isUploading: isUploadingNodeAsset,
+                          mediaType: "image",
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex min-h-[250px] flex-col items-center justify-center">
+                    <div className="mb-8 flex h-[96px] w-[96px] items-center justify-center text-cyan-100/58">
+                      <ImageIcon className="h-14 w-14" strokeWidth={1.55} />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </>
+        )}
+
+        <AnimatePresence>
+          {showImagePromptComposer && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              data-node-action="true"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelect(e);
+              }}
+              className="relative node-card left-1/2 mt-5 w-[620px] -translate-x-1/2 rounded-[18px] border border-[#2b3142]/90 bg-[#121723]/88 px-4 pb-3 pt-3 shadow-[0_28px_70px_-26px_rgba(0,0,0,0.92),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl"
+            >
+              <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-slate-100/22 to-transparent" />
+              {inputReferences.length > 0 && (
+                <div className="mb-3 rounded-2xl border border-white/6 bg-[#0d1117]/46 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {inputReferences.map((reference, index) => (
+                      <React.Fragment key={`${reference.key}-${reference.value}-${index}`}>
+                        <ReferencePreviewCard reference={reference} index={index} />
+                      </React.Fragment>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="relative">
+                <textarea
+                  ref={promptTextareaRef}
+                  value={promptText}
+                  onChange={handlePromptChange}
+                  onFocus={(event) =>
+                    setMentionMenuOpen(
+                      inputReferences.length > 0 &&
+                        shouldShowMentionMenu(
+                          event.currentTarget.value,
+                          event.currentTarget.selectionStart
+                        )
+                    )
+                  }
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") setMentionMenuOpen(false);
+                  }}
+                  placeholder={
+                    upstreamPrompt
+                      ? "继续补充这些输入资源要如何参与生成"
+                      : hasNonTextInputReferences
+                        ? "描述你想基于这些输入生成的画面内容"
+                        : "描述你想要生成的画面内容"
+                  }
+                  className="h-[92px] w-full resize-none bg-transparent px-1 text-[15px] leading-7 text-slate-100/88 outline-none placeholder:text-slate-400/42 custom-scrollbar"
+                />
+                {mentionMenuOpen && (
+                  <InputResourceMentionMenu
+                    resources={inputReferences}
+                    onPick={(label) => insertResourceMention(label)}
+                    onRequestClose={() => setMentionMenuOpen(false)}
+                  />
+                )}
+              </div>
+              <div
+                ref={controlsRef}
+                className="mt-3 flex items-center gap-2 border-t border-cyan-100/8 pt-3"
+              >
+                <div className="relative min-w-[180px] flex-[1_1_190px]" ref={modelMenuRef}>
+                  <button
+                    type="button"
+                    data-node-action="true"
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setOpenSelect(null);
+                      const rect = modelMenuRef.current?.getBoundingClientRect();
+                      if (rect) {
+                        setModelMenuPosition(
+                          getFloatingMenuPosition({
+                            anchorRect: rect,
+                            viewportHeight: window.innerHeight,
+                            viewportWidth: window.innerWidth,
+                          })
+                        );
+                      }
+                      setModelMenuOpen((open) => !open);
+                    }}
+                    className={`flex h-10 w-full min-w-0 items-center gap-2 rounded-[14px] border px-3 text-[13px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors ${
+                      modelMenuOpen
+                        ? "border-cyan-100/34 bg-cyan-100/[0.075] text-cyan-50"
+                        : "border-cyan-100/8 bg-slate-950/18 text-cyan-50/78 hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
+                    }`}
+                  >
+                    <Wand2 className="h-3.5 w-3.5 shrink-0 text-cyan-100/50" />
+                    <span className="min-w-0 flex-1 truncate text-left">
+                      {getImageModelLabel(currentModel)}
+                    </span>
+                    <ChevronDown
+                      className={`h-3.5 w-3.5 shrink-0 text-slate-300/56 transition-transform ${modelMenuOpen ? "rotate-180" : ""}`}
+                    />
+                  </button>
+                  {typeof document !== "undefined" &&
+                    createPortal(
+                      <AnimatePresence>
+                        {modelMenuOpen && modelMenuPosition && (
+                          <motion.div
+                            ref={modelMenuPortalRef}
+                            initial={{
+                              opacity: 0,
+                              y: modelMenuPosition.placement === "bottom" ? 8 : -8,
+                              scale: 0.98,
+                            }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{
+                              opacity: 0,
+                              y: modelMenuPosition.placement === "bottom" ? 8 : -8,
+                              scale: 0.98,
+                            }}
+                            transition={{ duration: 0.16, ease: "easeOut" }}
+                            className="fixed z-[160] overflow-y-auto rounded-2xl border border-cyan-100/14 bg-[#121923]/96 p-1.5 shadow-[0_28px_70px_-28px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl custom-scrollbar"
+                            style={{
+                              left: modelMenuPosition.left,
+                              maxHeight: modelMenuPosition.maxHeight,
+                              top: modelMenuPosition.top,
+                              bottom: modelMenuPosition.bottom,
+                              width: modelMenuPosition.width,
+                            }}
+                            onPointerDown={(event) => event.stopPropagation()}
+                            onClick={(event) => event.stopPropagation()}
+                            onWheel={(event) => event.stopPropagation()}
+                          >
+                            {[
+                              { label: "内置模型", models: imageModelOptionGroups.builtIn },
+                              { label: "远程模型", models: imageModelOptionGroups.remote },
+                            ]
+                              .filter((group) => group.models.length > 0)
+                              .map((group) => (
+                                <div key={group.label} className="py-0.5">
+                                  <div className="px-2 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-300/44">
+                                    {group.label}
+                                  </div>
+                                  {group.models.map((model) => {
+                                    const isActive = currentModel === model;
+                                    return (
+                                      <button
+                                        key={`${group.label}-${model}`}
+                                        type="button"
+                                        onClick={() => {
+                                          onUpdateProperty?.(node.id, "model", model);
+                                          setModelMenuOpen(false);
+                                        }}
+                                        className={`flex h-9 w-full items-center gap-2 rounded-xl px-3 text-left text-[13px] font-medium transition-colors ${
+                                          isActive
+                                            ? "bg-cyan-300/[0.13] text-cyan-50"
+                                            : "text-slate-200/82 hover:bg-white/[0.05] hover:text-white"
+                                        }`}
+                                      >
+                                        <span className="min-w-0 flex-1 truncate">
+                                          {getImageModelLabel(model)}
+                                        </span>
+                                        {isActive && (
+                                          <Check className="h-3.5 w-3.5 text-cyan-100" />
+                                        )}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              ))}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>,
+                      document.body
+                    )}
+                </div>
+                <ImageResolutionPicker
+                  resolution={resolution}
+                  aspectRatio={aspectRatio}
+                  onChange={(nextResolution, nextAspectRatio) => {
+                    onUpdateProperty?.(node.id, "resolution", nextResolution);
+                    onUpdateProperty?.(node.id, "aspect_ratio", nextAspectRatio);
+                  }}
+                  buttonClassName="relative inline-flex h-10 min-w-[230px] items-center justify-center gap-2 rounded-[14px] border border-cyan-100/8 bg-slate-950/18 px-3 text-[13px] font-medium text-cyan-50/76 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
+                />
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setModelMenuOpen(false);
+                      setOpenSelect((current) => (current === "quantity" ? null : "quantity"));
+                    }}
+                    className={`relative inline-flex h-10 min-w-[76px] items-center justify-center gap-1.5 rounded-[14px] border px-3 text-[13px] font-medium transition-colors ${
+                      openSelect === "quantity"
+                        ? "border-cyan-100/34 bg-cyan-100/[0.075] text-cyan-50"
+                        : "border-cyan-100/8 bg-slate-950/14 text-cyan-50/62 hover:border-cyan-100/18 hover:bg-cyan-100/[0.045] hover:text-cyan-50"
+                    }`}
+                  >
+                    <span>{quantity.replace("张", "")}</span>
+                    <span className="text-[12px] text-cyan-50/45">张</span>
+                    <ChevronUp
+                      className={`h-3.5 w-3.5 text-slate-300/55 transition-transform ${openSelect === "quantity" ? "" : "rotate-180"}`}
+                    />
+                  </button>
+                  <AnimatePresence>
+                    {openSelect === "quantity" && (
+                      <motion.div
+                        data-node-action="true"
+                        initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                        transition={{ duration: 0.15, ease: "easeOut" }}
+                        className="absolute bottom-[calc(100%+12px)] left-0 z-50 w-[112px] rounded-[16px] border border-cyan-100/12 bg-[#0d121c]/96 p-2 shadow-[0_22px_56px_-22px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-2xl"
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {QUANTITY_OPTIONS.map((option) => {
+                          const isActive = option === quantity;
+                          return (
+                            <button
+                              key={option}
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onUpdateProperty?.(node.id, "quantity", option);
+                                onUpdateProperty?.(node.id, "n", Number.parseInt(option, 10));
+                                setOpenSelect(null);
+                              }}
+                              className={`flex h-10 w-full items-center justify-between rounded-[12px] px-3 text-left transition-colors ${
+                                isActive
+                                  ? "bg-cyan-300/[0.1] text-cyan-50"
+                                  : "text-slate-300/76 hover:bg-white/[0.055] hover:text-slate-100"
+                              }`}
+                            >
+                              <span className="text-[13px] font-semibold">{option}</span>
+                              <span
+                                className={`h-1.5 w-1.5 rounded-full ${isActive ? "bg-cyan-300 shadow-[0_0_10px_rgba(103,232,249,0.9)]" : "bg-slate-500/35"}`}
+                              />
+                            </button>
+                          );
+                        })}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    setModelMenuOpen(false);
-                    setOpenSelect((current) => (current === "quantity" ? null : "quantity"));
+                    handleRun();
                   }}
-                  className={`relative inline-flex h-10 min-w-[76px] items-center justify-center gap-1.5 rounded-[14px] border px-3 text-[13px] font-medium transition-colors ${
-                    openSelect === "quantity"
-                      ? "border-cyan-100/34 bg-cyan-100/[0.075] text-cyan-50"
-                      : "border-cyan-100/8 bg-slate-950/14 text-cyan-50/62 hover:border-cyan-100/18 hover:bg-cyan-100/[0.045] hover:text-cyan-50"
+                  disabled={isRunning || (!upstreamPrompt && !promptText.trim())}
+                  className={`ml-auto flex h-10 w-10 items-center justify-center rounded-[14px] transition-all ${
+                    isRunning || (!upstreamPrompt && !promptText.trim())
+                      ? "cursor-not-allowed border border-cyan-100/6 bg-slate-200/8 text-slate-200/28"
+                      : "bg-cyan-50 text-[#0f172a] shadow-[0_14px_30px_-18px_rgba(103,232,249,0.9)] hover:bg-white"
                   }`}
                 >
-                  <span>{quantity.replace("张", "")}</span>
-                  <span className="text-[12px] text-cyan-50/45">张</span>
-                  <ChevronUp
-                    className={`h-3.5 w-3.5 text-slate-300/55 transition-transform ${openSelect === "quantity" ? "" : "rotate-180"}`}
-                  />
-                </button>
-                <AnimatePresence>
-                  {openSelect === "quantity" && (
-                    <motion.div
-                      data-node-action="true"
-                      initial={{ opacity: 0, y: 8, scale: 0.98 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: 8, scale: 0.98 }}
-                      transition={{ duration: 0.15, ease: "easeOut" }}
-                      className="absolute bottom-[calc(100%+12px)] left-0 z-50 w-[112px] rounded-[16px] border border-cyan-100/12 bg-[#0d121c]/96 p-2 shadow-[0_22px_56px_-22px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-2xl"
-                      onPointerDown={(e) => e.stopPropagation()}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {QUANTITY_OPTIONS.map((option) => {
-                        const isActive = option === quantity;
-                        return (
-                          <button
-                            key={option}
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onUpdateProperty?.(node.id, "quantity", option);
-                              onUpdateProperty?.(node.id, "n", Number.parseInt(option, 10));
-                              setOpenSelect(null);
-                            }}
-                            className={`flex h-10 w-full items-center justify-between rounded-[12px] px-3 text-left transition-colors ${
-                              isActive
-                                ? "bg-cyan-300/[0.1] text-cyan-50"
-                                : "text-slate-300/76 hover:bg-white/[0.055] hover:text-slate-100"
-                            }`}
-                          >
-                            <span className="text-[13px] font-semibold">{option}</span>
-                            <span
-                              className={`h-1.5 w-1.5 rounded-full ${isActive ? "bg-cyan-300 shadow-[0_0_10px_rgba(103,232,249,0.9)]" : "bg-slate-500/35"}`}
-                            />
-                          </button>
-                        );
-                      })}
-                    </motion.div>
+                  {isRunning ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <ArrowUp className="h-4 w-4" />
                   )}
-                </AnimatePresence>
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleRun();
-                }}
-                disabled={isRunning || (!upstreamPrompt && !promptText.trim())}
-                className={`ml-auto flex h-10 w-10 items-center justify-center rounded-[14px] transition-all ${
-                  isRunning || (!upstreamPrompt && !promptText.trim())
-                    ? "cursor-not-allowed border border-cyan-100/6 bg-slate-200/8 text-slate-200/28"
-                    : "bg-cyan-50 text-[#0f172a] shadow-[0_14px_30px_-18px_rgba(103,232,249,0.9)] hover:bg-white"
-                }`}
-              >
-                {isRunning ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <ArrowUp className="h-4 w-4" />
-                )}
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </motion.div>
     </>
   );

@@ -10,6 +10,8 @@ import {
   isRemoteWorkflowEcho,
   serializeRemotePersistSnapshot,
   sanitizeNodeRuntimeState,
+  hasNodeRuntimeState,
+  shouldApplyRemoteWorkflowSnapshot,
 } from "./useWorkflowState";
 import type { RemoteCanvasProject } from "../features/workspace/remoteCanvas";
 import type { GraphNode } from "../types";
@@ -107,6 +109,54 @@ describe("isRemoteWorkflowEcho", () => {
         groups: [],
       })
     ).toBe(false);
+  });
+
+  it("treats a sanitized remote copy as an echo while the local node is still running", () => {
+    const runningNode: GraphNode = {
+      ...makeTextNode("node-1"),
+      data: { loading: true, status: "loading", loadingOperation: "generate" },
+      properties: { status: "loading" },
+    };
+    const sanitizedNode = sanitizeNodeRuntimeState(runningNode);
+
+    expect(
+      isRemoteWorkflowEcho(makeRemoteProject([sanitizedNode]), {
+        workflowId: "canvas-1",
+        nodes: [runningNode],
+        links: [],
+        nodeOutputs: new Map(),
+        groups: [],
+      })
+    ).toBe(true);
+  });
+});
+
+describe("shouldApplyRemoteWorkflowSnapshot", () => {
+  it("blocks stale remote snapshots while a newer local edit is waiting to persist", () => {
+    expect(
+      shouldApplyRemoteWorkflowSnapshot({
+        incomingRemotePersistSignature: "remote-old",
+        pendingLocalPersistSignature: "local-new",
+      })
+    ).toBe(false);
+  });
+
+  it("allows remote snapshots when they acknowledge the pending local edit", () => {
+    expect(
+      shouldApplyRemoteWorkflowSnapshot({
+        incomingRemotePersistSignature: "local-new",
+        pendingLocalPersistSignature: "local-new",
+      })
+    ).toBe(true);
+  });
+
+  it("allows remote snapshots when there is no pending local edit", () => {
+    expect(
+      shouldApplyRemoteWorkflowSnapshot({
+        incomingRemotePersistSignature: "remote",
+        pendingLocalPersistSignature: "",
+      })
+    ).toBe(true);
   });
 });
 
@@ -324,9 +374,43 @@ describe("source node semantics", () => {
     expect(nodes[0].data?.isSourceNode).toBe(true);
     expect(nodes[0].properties.isSourceNode).toBe(true);
   });
+
+  it("creates uploading canvas file nodes as inputless source nodes before OSS returns", () => {
+    const result = addNodeToWorkflowSnapshot({
+      nodes: [],
+      links: [],
+      type: "image_node",
+      x: 0,
+      y: 0,
+      initialProps: {
+        __uploadedAssetKind: "image",
+        __nodeData: {
+          isSourceNode: true,
+          uploadingAsset: true,
+          uploadedAssetName: "pasted-image.png",
+        },
+      },
+      makeId: () => "image-source",
+    });
+
+    expect(result.node.inputs).toEqual([]);
+    expect(result.node.data?.isSourceNode).toBe(true);
+    expect(result.node.data?.uploadingAsset).toBe(true);
+    expect(result.node.properties.isSourceNode).toBe(true);
+  });
 });
 
 describe("sanitizeNodeRuntimeState", () => {
+  it("detects active runtime state", () => {
+    expect(
+      hasNodeRuntimeState({
+        ...makeTextNode("node-1"),
+        data: { loading: true, status: "loading" },
+      })
+    ).toBe(true);
+    expect(hasNodeRuntimeState(makeTextNode("node-2"))).toBe(false);
+  });
+
   it("clears stale loading state for every runnable node type after refresh", () => {
     const nodeTypes: Array<GraphNode["type"]> = [
       "text_node",

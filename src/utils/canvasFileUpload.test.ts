@@ -9,6 +9,7 @@ describe("buildInitialCanvasFileNodeData", () => {
         imageNaturalHeight: 500,
       })
     ).toMatchObject({
+      isSourceNode: true,
       imageNaturalWidth: 1000,
       imageNaturalHeight: 500,
       imageDisplayWidth: 780,
@@ -31,6 +32,7 @@ describe("buildInitialCanvasFileNodeData", () => {
         videoNaturalHeight: 500,
       })
     ).toMatchObject({
+      isSourceNode: true,
       videoNaturalWidth: 1000,
       videoNaturalHeight: 500,
       videoDisplayWidth: 520,

@@ -23,9 +23,39 @@ interface UseCanvasInteractionOptions {
   updateNodePosition: (nodeId: string, x: number, y: number) => void;
 }
 
-const CANVAS_SAFE_PADDING = 24;
+export function getDraggedNodePosition({
+  altKey = false,
+  clientX,
+  clientY,
+  nodeStartX,
+  nodeStartY,
+  snapToGridEnabled = true,
+  startX,
+  startY,
+  zoom,
+}: {
+  altKey?: boolean;
+  clientX: number;
+  clientY: number;
+  nodeStartX: number;
+  nodeStartY: number;
+  snapToGridEnabled?: boolean;
+  startX: number;
+  startY: number;
+  zoom: number;
+}) {
+  const point = {
+    x: nodeStartX + (clientX - startX) / zoom,
+    y: nodeStartY + (clientY - startY) / zoom,
+  };
+  return !snapToGridEnabled || altKey ? point : snapPointToGrid(point);
+}
 
-export function useCanvasInteraction({ nodes, snapToGridEnabled = true, updateNodePosition }: UseCanvasInteractionOptions) {
+export function useCanvasInteraction({
+  nodes,
+  snapToGridEnabled = true,
+  updateNodePosition,
+}: UseCanvasInteractionOptions) {
   const canvasRef = React.useRef<HTMLDivElement>(null);
   const dragRef = React.useRef<DragState>({ mode: null, startX: 0, startY: 0 });
   const dragFrameRef = React.useRef<number | null>(null);
@@ -46,19 +76,6 @@ export function useCanvasInteraction({ nodes, snapToGridEnabled = true, updateNo
     [pan.x, pan.y, zoom]
   );
 
-  const clampNodePosition = React.useCallback(
-    (point: { x: number; y: number }) => {
-      const rect = canvasRef.current?.getBoundingClientRect();
-      const minWorldX = rect ? (CANVAS_SAFE_PADDING - pan.x) / zoom : CANVAS_SAFE_PADDING;
-      const minWorldY = rect ? (CANVAS_SAFE_PADDING - pan.y) / zoom : CANVAS_SAFE_PADDING;
-      return {
-        x: Math.max(point.x, minWorldX),
-        y: Math.max(point.y, minWorldY),
-      };
-    },
-    [pan.x, pan.y, zoom]
-  );
-
   const fitView = React.useCallback(() => {
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect || nodes.length === 0) return;
@@ -66,26 +83,33 @@ export function useCanvasInteraction({ nodes, snapToGridEnabled = true, updateNo
     // Calculate actual bounds including dynamic widths
     const minX = Math.min(...nodes.map((n) => n.x));
     const minY = Math.min(...nodes.map((n) => n.y));
-    
-    const maxX = Math.max(...nodes.map((n) => {
-      return n.x + getNodeWidth(n);
-    }));
-    const maxY = Math.max(...nodes.map((n) => {
-      const estimatedHeight = n.type === "text_node" ? 420 : getNodeHeight(n);
-      return n.y + estimatedHeight;
-    }));
+
+    const maxX = Math.max(
+      ...nodes.map((n) => {
+        return n.x + getNodeWidth(n);
+      })
+    );
+    const maxY = Math.max(
+      ...nodes.map((n) => {
+        const estimatedHeight = n.type === "text_node" ? 420 : getNodeHeight(n);
+        return n.y + estimatedHeight;
+      })
+    );
 
     const width = Math.max(1, maxX - minX);
     const height = Math.max(1, maxY - minY);
-    
+
     const padding = 160;
-    const targetZoom = Math.max(0.35, Math.min(1.1, Math.min((rect.width - padding) / width, (rect.height - padding) / height)));
-    
+    const targetZoom = Math.max(
+      0.35,
+      Math.min(1.1, Math.min((rect.width - padding) / width, (rect.height - padding) / height))
+    );
+
     setZoom(targetZoom);
-    
+
     setPan({
-      x: (rect.width / 2) - (minX + width / 2) * targetZoom + 30,
-      y: (rect.height / 2) - (minY + height / 2) * targetZoom,
+      x: rect.width / 2 - (minX + width / 2) * targetZoom + 30,
+      y: rect.height / 2 - (minY + height / 2) * targetZoom,
     });
   }, [nodes]);
 
@@ -149,16 +173,14 @@ export function useCanvasInteraction({ nodes, snapToGridEnabled = true, updateNo
   const autoLayout = React.useCallback(() => {
     const columns = 4;
     nodes.forEach((node, i) => {
-      const snapped = snapPointToGrid(
-        clampNodePosition({
-          x: 144 + (i % columns) * 312,
-          y: 168 + Math.floor(i / columns) * 240,
-        })
-      );
+      const snapped = snapPointToGrid({
+        x: 144 + (i % columns) * 312,
+        y: 168 + Math.floor(i / columns) * 240,
+      });
       updateNodePosition(node.id, snapped.x, snapped.y);
     });
     setTimeout(fitView, 0);
-  }, [clampNodePosition, fitView, nodes, updateNodePosition]);
+  }, [fitView, nodes, updateNodePosition]);
 
   const onNodeDragStart = React.useCallback((e: React.PointerEvent, node: GraphNode) => {
     e.preventDefault();
@@ -179,7 +201,12 @@ export function useCanvasInteraction({ nodes, snapToGridEnabled = true, updateNo
     (e: React.PointerEvent) => {
       if (e.button !== 0 && e.button !== 1) return;
       const target = e.target as HTMLElement;
-      if (target.closest("button, input, select, textarea, [role='button'], [data-no-canvas-drag='true']")) return;
+      if (
+        target.closest(
+          "button, input, select, textarea, [role='button'], [data-no-canvas-drag='true']"
+        )
+      )
+        return;
       e.preventDefault();
       dragRef.current = {
         mode: "canvas",
@@ -219,12 +246,17 @@ export function useCanvasInteraction({ nodes, snapToGridEnabled = true, updateNo
         };
         scheduleDragUpdate();
       } else if (d.mode === "node" && d.nodeId) {
-        const dx = (e.clientX - d.startX) / zoom;
-        const dy = (e.clientY - d.startY) / zoom;
-        const unclamped = { x: (d.nodeStartX ?? 0) + dx, y: (d.nodeStartY ?? 0) + dy };
-        const next = clampNodePosition(
-          !snapToGridEnabled || e.altKey ? unclamped : snapPointToGrid(unclamped)
-        );
+        const next = getDraggedNodePosition({
+          altKey: e.altKey,
+          clientX: e.clientX,
+          clientY: e.clientY,
+          nodeStartX: d.nodeStartX ?? 0,
+          nodeStartY: d.nodeStartY ?? 0,
+          snapToGridEnabled,
+          startX: d.startX,
+          startY: d.startY,
+          zoom,
+        });
         pendingDragRef.current = {
           mode: "node",
           nodeId: d.nodeId,
@@ -234,24 +266,27 @@ export function useCanvasInteraction({ nodes, snapToGridEnabled = true, updateNo
         scheduleDragUpdate();
       }
     },
-    [clampNodePosition, scheduleDragUpdate, snapToGridEnabled, zoom]
+    [scheduleDragUpdate, snapToGridEnabled, zoom]
   );
 
-  const onPointerUp = React.useCallback((_event?: React.PointerEvent) => {
-    if (dragFrameRef.current !== null) {
-      window.cancelAnimationFrame(dragFrameRef.current);
-      dragFrameRef.current = null;
-    }
-    const pending = pendingDragRef.current;
-    if (pending?.mode === "canvas") {
-      setPan({ x: pending.x, y: pending.y });
-    } else if (pending?.mode === "node") {
-      updateNodePosition(pending.nodeId, pending.x, pending.y);
-    }
-    pendingDragRef.current = null;
-    dragRef.current = { mode: null, startX: 0, startY: 0 };
-    setDraggingNodeId(null);
-  }, [updateNodePosition]);
+  const onPointerUp = React.useCallback(
+    (_event?: React.PointerEvent) => {
+      if (dragFrameRef.current !== null) {
+        window.cancelAnimationFrame(dragFrameRef.current);
+        dragFrameRef.current = null;
+      }
+      const pending = pendingDragRef.current;
+      if (pending?.mode === "canvas") {
+        setPan({ x: pending.x, y: pending.y });
+      } else if (pending?.mode === "node") {
+        updateNodePosition(pending.nodeId, pending.x, pending.y);
+      }
+      pendingDragRef.current = null;
+      dragRef.current = { mode: null, startX: 0, startY: 0 };
+      setDraggingNodeId(null);
+    },
+    [updateNodePosition]
+  );
 
   const onWheel = React.useCallback(
     (e: WheelEvent) => {
