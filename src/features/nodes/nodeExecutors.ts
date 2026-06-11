@@ -534,13 +534,12 @@ async function callRemoteImageGeneration({
 
 function normalizeRemoteVideoResolution(value: unknown): string {
   const normalized = typeof value === "string" ? value.trim().toUpperCase() : "";
-  if (["P480", "P720", "P1080"].includes(normalized)) return normalized;
-  if (normalized === "480P") return "P480";
-  if (normalized === "720P") return "P720";
-  if (normalized === "1080P") return "P1080";
-  if (normalized === "2K") return "P720";
-  if (normalized === "3K" || normalized === "4K") return "P1080";
-  return "P480";
+  if (normalized === "P480" || normalized === "480P") return "480p";
+  if (normalized === "P720" || normalized === "720P" || normalized === "2K") return "720p";
+  if (normalized === "P1080" || normalized === "1080P" || normalized === "3K" || normalized === "4K") {
+    return "1080p";
+  }
+  return "480p";
 }
 
 function normalizeRemoteVideoRatio(properties: Record<string, unknown>): string {

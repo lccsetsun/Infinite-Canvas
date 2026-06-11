@@ -243,7 +243,7 @@ describe("video_node MiniMax executor", () => {
         duration: "6s",
         audio: true,
         aspect_ratio: "16:9",
-        resolution: "1K",
+        resolution: "P720",
       },
       apiConfig: {
         baseUrl: "",
@@ -262,7 +262,7 @@ describe("video_node MiniMax executor", () => {
           duration: 6,
           generateAudio: true,
           ratio: "16:9",
-          resolution: "P480",
+          resolution: "720p",
           ossId: ["2064712536372035585"],
           resrouceId: [],
           model: {

@@ -44,7 +44,7 @@ describe("createNodeFromType", () => {
       { name: "aspect_ratio", type: "STRING" },
     ]);
     expect(node.properties.resolution).toBe("1K");
-    expect(node.properties.aspect_ratio).toBe("16:9");
+    expect(node.properties.aspect_ratio).toBe("9:16");
   });
 
   it("creates audio nodes with text, image, and audio inputs", () => {

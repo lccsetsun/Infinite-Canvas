@@ -18,7 +18,6 @@ import { snapPointToGrid } from "./components/canvas/geometry";
 import { shouldStartCanvasPan, useCanvasInteraction } from "./hooks/useCanvasInteraction";
 import { useCanvasLinking } from "./hooks/useCanvasLinking";
 import { useMiniMapConfig } from "./hooks/useMiniMapConfig";
-import { useRefreshOnPageVisible } from "./hooks/useRefreshOnPageVisible";
 import { useWorkflowState } from "./hooks/useWorkflowState";
 import { useAppUiState } from "./hooks/useAppUiState";
 import { shouldOpenCanvasContextMenu } from "./utils/canvasContextMenuPolicy";
@@ -141,8 +140,6 @@ export default function App({ onLoggedOut }: AppProps) {
   React.useEffect(() => {
     refreshRemoteProject(true);
   }, [refreshRemoteProject]);
-
-  useRefreshOnPageVisible(() => refreshRemoteProject(false));
 
   const {
     nodes,

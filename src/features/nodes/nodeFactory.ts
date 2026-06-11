@@ -114,7 +114,7 @@ const NODE_BLUEPRINTS: Partial<Record<NodeClass, NodeBlueprint>> = {
       videoUrl: "",
       text: "",
       model: "MiniMax-Hailuo-2.3",
-      aspect_ratio: "16:9",
+      aspect_ratio: "9:16",
       resolution: "1K",
       duration: "5s",
       audio: true,
