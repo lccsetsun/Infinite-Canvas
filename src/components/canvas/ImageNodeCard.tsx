@@ -136,6 +136,7 @@ const CUSTOM_GRID_MAX_ROWS = 5;
 const CUSTOM_GRID_MAX_COLS = 5;
 const CROP_HANDLES = ["nw", "n", "ne", "e", "se", "s", "sw", "w"] as const;
 const EMPTY_IMAGE_NODE_MAIN_CARD_CENTER_Y = 145;
+const IMAGE_PORT_HANDLE_SIZE = 36;
 const FRAME_EXTRACTION_DRAG_THRESHOLD_PX = 8;
 const IMAGE_NODE_REFERENCE_IGNORED_KEYS = new Set([
   "negative_prompt",
@@ -219,6 +220,13 @@ export function getImageNodePortTopStyle({
 }) {
   if (!hasImageUrl) return emptyImageNodePortCenterY ?? EMPTY_IMAGE_NODE_MAIN_CARD_CENTER_Y;
   return imagePortCenterY ?? "50%";
+}
+
+export function getImagePortHandleWrapperStyle(top: number | string): React.CSSProperties {
+  return {
+    top,
+    marginTop: -(IMAGE_PORT_HANDLE_SIZE / 2),
+  };
 }
 
 export function getImagePreviewNodeWidth({
@@ -1931,8 +1939,8 @@ function ImageNodeCardImpl({
                 initial={{ opacity: 0, x: 10 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: 10 }}
-                className="absolute -left-11 z-10 -translate-y-1/2"
-                style={{ top: portTopStyle }}
+                className="absolute -left-11 z-10"
+                style={getImagePortHandleWrapperStyle(portTopStyle)}
               >
                 <div
                   role="button"
@@ -1967,8 +1975,8 @@ function ImageNodeCardImpl({
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -10 }}
-              className="absolute -right-11 z-10 -translate-y-1/2"
-              style={{ top: portTopStyle }}
+              className="absolute -right-11 z-10"
+              style={getImagePortHandleWrapperStyle(portTopStyle)}
             >
               <div
                 role="button"

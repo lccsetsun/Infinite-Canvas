@@ -44,6 +44,8 @@ import type {
   RemoteCanvasProject,
   RemoteCanvasWorkflowData,
 } from "../features/workspace/remoteCanvas";
+import type { RemoteVideoTaskResult } from "../features/video/remoteVideoGeneration";
+import { queryRemoteVideoGenerationTask } from "../features/video/remoteVideoGeneration";
 
 const HISTORY_LIMIT = 50;
 const PERSIST_DEBOUNCE_MS = 800;
@@ -52,6 +54,7 @@ const WORKSPACE_VERSION = 2 as const;
 const TRASH_RETENTION_DAYS = 30;
 const TRASH_RETENTION_MS = TRASH_RETENTION_DAYS * 86_400_000;
 const TRASH_PURGE_INTERVAL_MS = 60 * 60 * 1000;
+const REMOTE_VIDEO_POLL_INTERVAL_MS = 10_000;
 const TEXT_NODE_REQUIRED_MEDIA_INPUTS = [
   { name: "source_image", type: "IMAGE" as const },
   { name: "source_video", type: "VIDEO" as const },
@@ -641,9 +644,21 @@ export function hasNodeRuntimeState(node: GraphNode): boolean {
   );
 }
 
+export function isPendingRemoteVideoNode(node: GraphNode): boolean {
+  const data = node.data || {};
+  return (
+    node.type === "video_node" &&
+    typeof data.remoteVideoTaskId === "string" &&
+    data.remoteVideoTaskId.trim().length > 0 &&
+    !(typeof data.videoUrl === "string" && data.videoUrl.trim()) &&
+    !(typeof node.properties.videoUrl === "string" && node.properties.videoUrl.trim())
+  );
+}
+
 export function sanitizeNodeRuntimeState(node: GraphNode): GraphNode {
   const data = node.data || {};
   if (!hasNodeRuntimeState(node)) return node;
+  if (isPendingRemoteVideoNode(node)) return node;
 
   const {
     loading: _loading,
@@ -672,6 +687,197 @@ export function sanitizeNodeRuntimeState(node: GraphNode): GraphNode {
 
 function sanitizeNodesRuntimeState(nodes: GraphNode[]): GraphNode[] {
   return nodes.map(sanitizeNodeRuntimeState);
+}
+
+export function applyRemoteVideoTaskResultSnapshot({
+  nodes,
+  nodeOutputs,
+  nodeId,
+  taskId,
+  result,
+}: {
+  nodes: GraphNode[];
+  nodeOutputs: NodeOutputMap;
+  nodeId: string;
+  taskId: string;
+  result: RemoteVideoTaskResult;
+}) {
+  const nextOutputs = new Map(nodeOutputs);
+  const nextNodes = nodes.map((node) => {
+    if (node.id !== nodeId || node.type !== "video_node") return node;
+    if (node.data?.remoteVideoTaskId !== taskId) return node;
+
+    if (result.status === "success") {
+      nextOutputs.set(nodeId, new Map([[0, result.videoUrl]]));
+      return {
+        ...node,
+        properties: {
+          ...node.properties,
+          videoUrl: result.videoUrl,
+          status: "success",
+        },
+        data: {
+          ...(node.data || {}),
+          videoUrl: result.videoUrl,
+          loading: false,
+          loadingOperation: undefined,
+          status: "success",
+          error: undefined,
+          remoteVideoTaskStatus: result.rawStatus || "success",
+          remoteVideoTaskError: undefined,
+        },
+      };
+    }
+
+    if (result.status === "error") {
+      return {
+        ...node,
+        properties: {
+          ...node.properties,
+          status: "error",
+        },
+        data: {
+          ...(node.data || {}),
+          loading: false,
+          loadingOperation: undefined,
+          status: "error",
+          error: result.error || "视频生成任务失败",
+          remoteVideoTaskStatus: result.rawStatus || "error",
+          remoteVideoTaskError: result.error || "视频生成任务失败",
+        },
+      };
+    }
+
+    return {
+      ...node,
+      properties: {
+        ...node.properties,
+        status: "loading",
+      },
+      data: {
+        ...(node.data || {}),
+        loading: true,
+        loadingOperation: "generate",
+        status: "loading",
+        remoteVideoTaskStatus: result.rawStatus || "pending",
+      },
+    };
+  });
+
+  return { nodes: nextNodes, nodeOutputs: nextOutputs };
+}
+
+function normalizeOssIdValue(value: unknown): string {
+  if (typeof value === "string" && value.trim()) return value.trim();
+  if (typeof value === "number" && Number.isFinite(value)) return String(Math.trunc(value));
+  if (typeof value === "bigint") return String(value);
+  return "";
+}
+
+function collectOssIdsFromValue(value: unknown, seen = new Set<unknown>()): string[] {
+  const single = normalizeOssIdValue(value);
+  if (single) return [single];
+  if (!value || typeof value !== "object") return [];
+  if (seen.has(value)) return [];
+  seen.add(value);
+  if (Array.isArray(value)) return value.flatMap((item) => collectOssIdsFromValue(item, seen));
+  const record = value as Record<string, unknown>;
+  return [
+    ...collectOssIdsFromValue(record.ossId, seen),
+    ...collectOssIdsFromValue(record.ossIds, seen),
+    ...collectOssIdsFromValue(record.data, seen),
+    ...collectOssIdsFromValue(record.result, seen),
+    ...collectOssIdsFromValue(record.results, seen),
+    ...collectOssIdsFromValue(record.outputs, seen),
+  ];
+}
+
+function collectOssIdsFromObjectFields(value: unknown): string[] {
+  if (!value || typeof value !== "object") return [];
+  const ids: string[] = [];
+  const visit = (candidate: unknown, seen = new Set<unknown>()) => {
+    if (!candidate || typeof candidate !== "object") return;
+    if (seen.has(candidate)) return;
+    seen.add(candidate);
+    if (Array.isArray(candidate)) {
+      candidate.forEach((item) => visit(item, seen));
+      return;
+    }
+    const record = candidate as Record<string, unknown>;
+    collectOssIdsFromValue(record.ossId).forEach((id) => addUniqueString(ids, id));
+    collectOssIdsFromValue(record.ossIds).forEach((id) => addUniqueString(ids, id));
+    visit(record.data, seen);
+    visit(record.result, seen);
+    visit(record.results, seen);
+    visit(record.outputs, seen);
+  };
+  visit(value);
+  return ids;
+}
+
+function addUniqueString(target: string[], value: string) {
+  if (value && !target.includes(value)) target.push(value);
+}
+
+export function collectLinkedMediaReferences({
+  links,
+  nodeId,
+  nodeOutputs,
+  nodes,
+}: {
+  links: GraphLink[];
+  nodeId: string;
+  nodeOutputs: NodeOutputMap;
+  nodes: GraphNode[];
+}) {
+  const imageUrls: string[] = [];
+  const videoUrls: string[] = [];
+  const audioUrls: string[] = [];
+  const ossIds: string[] = [];
+
+  const addOssId = (value: unknown) => {
+    collectOssIdsFromValue(value).forEach((id) => addUniqueString(ossIds, id));
+  };
+
+  links.forEach((link) => {
+    if (link.toNodeId !== nodeId) return;
+    const sourceNode = nodes.find((candidate) => candidate.id === link.fromNodeId);
+    if (!sourceNode) return;
+    const outputValue = nodeOutputs.get(link.fromNodeId)?.get(link.fromOutputIndex);
+    addOssId(sourceNode.data?.ossId);
+    addOssId(sourceNode.data?.ossIds);
+    addOssId(sourceNode.properties.ossId);
+    addOssId(sourceNode.properties.ossIds);
+    collectOssIdsFromObjectFields(outputValue).forEach(addOssId);
+
+    if (sourceNode.type === "image_node") {
+      collectImageReferenceUrls(sourceNode, outputValue).forEach((imageUrl) =>
+        addUniqueString(imageUrls, imageUrl)
+      );
+      return;
+    }
+
+    if (sourceNode.type === "video_node") {
+      const videoUrl =
+        (typeof sourceNode.data?.videoUrl === "string" && sourceNode.data.videoUrl.trim()) ||
+        (typeof sourceNode.properties.videoUrl === "string" &&
+          sourceNode.properties.videoUrl.trim()) ||
+        "";
+      addUniqueString(videoUrls, videoUrl);
+      return;
+    }
+
+    if (sourceNode.type === "audio_node") {
+      const audioUrl =
+        (typeof sourceNode.data?.audioUrl === "string" && sourceNode.data.audioUrl.trim()) ||
+        (typeof sourceNode.properties.audioUrl === "string" &&
+          sourceNode.properties.audioUrl.trim()) ||
+        "";
+      addUniqueString(audioUrls, audioUrl);
+    }
+  });
+
+  return { imageUrls, videoUrls, audioUrls, ossIds };
 }
 
 function normalizeNodePorts(node: GraphNode): GraphNode {
@@ -850,6 +1056,9 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
   const currentLinksRef = useRef(initialWf?.data.links ?? []);
   const currentGroupsRef = useRef<import("../types").GroupBox[]>(initialWf?.data.groups ?? []);
   const currentNodeOutputsRef = useRef(outputsToMap(initialWf?.data.nodeOutputs ?? []));
+  const remoteVideoPollsRef = useRef(
+    new Map<string, { cancelled: boolean; timeoutId?: number }>()
+  );
   const canUndo = historyState.pointer > 0;
   const canRedo = historyState.pointer < historyState.stack.length - 1;
 
@@ -1742,58 +1951,13 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
   }, []);
 
   const collectTextNodeMediaReferences = useCallback(
-    (nodeId: string) => {
-      const imageUrls: string[] = [];
-      const videoUrls: string[] = [];
-      const audioUrls: string[] = [];
-      const ossIds: string[] = [];
-
-      const addOssId = (value: unknown) => {
-        const normalized =
-          typeof value === "string" && value.trim()
-            ? value.trim()
-            : typeof value === "number" && Number.isFinite(value)
-              ? String(Math.trunc(value))
-              : "";
-        if (normalized && !ossIds.includes(normalized)) ossIds.push(normalized);
-      };
-
-      links.forEach((link) => {
-        if (link.toNodeId !== nodeId) return;
-        const sourceNode = nodes.find((candidate) => candidate.id === link.fromNodeId);
-        if (!sourceNode) return;
-        addOssId(sourceNode.data?.ossId ?? sourceNode.properties.ossId);
-
-        if (sourceNode.type === "image_node") {
-          const outputValue = nodeOutputs.get(link.fromNodeId)?.get(link.fromOutputIndex);
-          collectImageReferenceUrls(sourceNode, outputValue).forEach((imageUrl) => {
-            if (!imageUrls.includes(imageUrl)) imageUrls.push(imageUrl);
-          });
-          return;
-        }
-
-        if (sourceNode.type === "video_node") {
-          const videoUrl =
-            (typeof sourceNode.data?.videoUrl === "string" && sourceNode.data.videoUrl.trim()) ||
-            (typeof sourceNode.properties.videoUrl === "string" &&
-              sourceNode.properties.videoUrl.trim()) ||
-            "";
-          if (videoUrl && !videoUrls.includes(videoUrl)) videoUrls.push(videoUrl);
-          return;
-        }
-
-        if (sourceNode.type === "audio_node") {
-          const audioUrl =
-            (typeof sourceNode.data?.audioUrl === "string" && sourceNode.data.audioUrl.trim()) ||
-            (typeof sourceNode.properties.audioUrl === "string" &&
-              sourceNode.properties.audioUrl.trim()) ||
-            "";
-          if (audioUrl && !audioUrls.includes(audioUrl)) audioUrls.push(audioUrl);
-        }
-      });
-
-      return { imageUrls, videoUrls, audioUrls, ossIds };
-    },
+    (nodeId: string) =>
+      collectLinkedMediaReferences({
+        links,
+        nodeId,
+        nodeOutputs,
+        nodes,
+      }),
     [links, nodeOutputs, nodes]
   );
 
@@ -1825,6 +1989,18 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
 
       try {
         const result = await executor({ inputs, properties: node.properties, apiConfig });
+        if (result.pending?.type === "remote-video") {
+          updateNodeData(nodeId, {
+            loading: true,
+            error: undefined,
+            status: "loading",
+            loadingOperation: "generate",
+            ...(result.patch || {}),
+          });
+          appendLog("info", `[${node.title}] 视频任务已提交，正在后台生成`);
+          return;
+        }
+
         writeNodeOutput(nodeId, result.outputs);
         const patch: Record<string, unknown> = {
           loading: false,
@@ -1851,6 +2027,115 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       collectTextNodeMediaReferences,
     ]
   );
+
+  useEffect(() => {
+    const activeKeys = new Set<string>();
+
+    const stopPoll = (key: string) => {
+      const entry = remoteVideoPollsRef.current.get(key);
+      if (!entry) return;
+      entry.cancelled = true;
+      if (entry.timeoutId !== undefined) window.clearTimeout(entry.timeoutId);
+      remoteVideoPollsRef.current.delete(key);
+    };
+
+    nodes.forEach((node) => {
+      if (!isPendingRemoteVideoNode(node)) return;
+      const taskId = node.data?.remoteVideoTaskId?.trim();
+      if (!taskId) return;
+      const key = `${node.id}:${taskId}`;
+      activeKeys.add(key);
+      if (remoteVideoPollsRef.current.has(key)) return;
+
+      const entry: { cancelled: boolean; timeoutId?: number } = { cancelled: false };
+      remoteVideoPollsRef.current.set(key, entry);
+
+      const poll = async () => {
+        if (entry.cancelled) return;
+        const latestNode = currentNodesRef.current.find((candidate) => candidate.id === node.id);
+        if (!latestNode || latestNode.data?.remoteVideoTaskId !== taskId || !isPendingRemoteVideoNode(latestNode)) {
+          stopPoll(key);
+          return;
+        }
+
+        try {
+          const result = await queryRemoteVideoGenerationTask(taskId);
+          const snapshot = applyRemoteVideoTaskResultSnapshot({
+            nodes: currentNodesRef.current,
+            nodeOutputs: currentNodeOutputsRef.current,
+            nodeId: node.id,
+            taskId,
+            result,
+          });
+
+          currentNodesRef.current = snapshot.nodes;
+          currentNodeOutputsRef.current = snapshot.nodeOutputs;
+          setNodes(snapshot.nodes);
+          setNodeOutputs(snapshot.nodeOutputs);
+          syncCurrentWorkflowMeta((workflow) => ({
+            ...workflow,
+            summary: { ...workflow.summary, updatedAt: Date.now() },
+            data: {
+              ...workflow.data,
+              nodes: snapshot.nodes,
+              nodeOutputs: mapToOutputs(snapshot.nodeOutputs),
+            },
+          }));
+
+          if (result.status === "success") {
+            appendLog("success", `[${latestNode.title}] 视频生成完成`);
+            stopPoll(key);
+            return;
+          }
+
+          if (result.status === "error") {
+            appendLog("error", `[${latestNode.title}] 视频生成失败:${result.error || "任务失败"}`);
+            stopPoll(key);
+            return;
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          setNodes((prev) =>
+            prev.map((candidate) =>
+              candidate.id === node.id && candidate.data?.remoteVideoTaskId === taskId
+                ? {
+                    ...candidate,
+                    data: {
+                      ...(candidate.data || {}),
+                      loading: true,
+                      status: "loading",
+                      loadingOperation: "generate",
+                      remoteVideoTaskError: message,
+                    },
+                  }
+                : candidate
+            )
+          );
+        }
+
+        if (!entry.cancelled) {
+          entry.timeoutId = window.setTimeout(poll, REMOTE_VIDEO_POLL_INTERVAL_MS);
+        }
+      };
+
+      void poll();
+    });
+
+    Array.from(remoteVideoPollsRef.current.keys() as Iterable<string>).forEach((key) => {
+      if (!activeKeys.has(key)) stopPoll(key);
+    });
+  }, [appendLog, nodes, syncCurrentWorkflowMeta]);
+
+  useEffect(() => {
+    const pollMap = remoteVideoPollsRef.current;
+    return () => {
+      pollMap.forEach((entry) => {
+        entry.cancelled = true;
+        if (entry.timeoutId !== undefined) window.clearTimeout(entry.timeoutId);
+      });
+      pollMap.clear();
+    };
+  }, []);
 
   const runGroup = useCallback(
     async (groupId: string) => {
@@ -2549,7 +2834,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      if (nodes.some(hasNodeRuntimeState)) return;
+      if (nodes.some((node) => hasNodeRuntimeState(node) && !isPendingRemoteVideoNode(node))) return;
       const persistableNodes = sanitizeNodesRuntimeState(nodes);
       const nextData = {
         nodes: persistableNodes,

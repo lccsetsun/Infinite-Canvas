@@ -92,6 +92,11 @@ export interface GraphNode {
     progress?: number;
     status?: string;
     error?: string;
+    remoteVideoTaskId?: string;
+    remoteVideoTaskStatus?: string;
+    remoteVideoTaskError?: string;
+    remoteModelApiId?: string;
+    remoteModelId?: string;
   };
 }
 

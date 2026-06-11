@@ -11,6 +11,8 @@ import {
   serializeRemotePersistSnapshot,
   sanitizeNodeRuntimeState,
   hasNodeRuntimeState,
+  applyRemoteVideoTaskResultSnapshot,
+  collectLinkedMediaReferences,
   shouldApplyRemoteWorkflowSnapshot,
 } from "./useWorkflowState";
 import type { RemoteCanvasProject } from "../features/workspace/remoteCanvas";
@@ -442,6 +444,30 @@ describe("sanitizeNodeRuntimeState", () => {
     });
   });
 
+  it("preserves pending remote video task loading state after refresh", () => {
+    const pendingVideoNode: GraphNode = {
+      ...makeTextNode("video-1"),
+      type: "video_node",
+      properties: { status: "loading" },
+      data: {
+        loading: true,
+        status: "loading",
+        loadingOperation: "generate",
+        progress: 60,
+        remoteVideoTaskId: "remote-video-task-1",
+        remoteVideoTaskStatus: "pending",
+      },
+    };
+
+    const sanitized = sanitizeNodeRuntimeState(pendingVideoNode);
+
+    expect(sanitized.properties.status).toBe("loading");
+    expect(sanitized.data?.loading).toBe(true);
+    expect(sanitized.data?.status).toBe("loading");
+    expect(sanitized.data?.loadingOperation).toBe("generate");
+    expect(sanitized.data?.remoteVideoTaskId).toBe("remote-video-task-1");
+  });
+
   it("clears stale upload state after refresh", () => {
     const uploadingImageNode: GraphNode = {
       id: "image-1",
@@ -464,6 +490,130 @@ describe("sanitizeNodeRuntimeState", () => {
     expect(sanitized.data?.uploadingAsset).toBeUndefined();
     expect(sanitized.data?.status).toBe("idle");
     expect(sanitized.data?.uploadedAssetName).toBe("demo.png");
+  });
+});
+
+describe("applyRemoteVideoTaskResultSnapshot", () => {
+  it("writes completed remote video tasks to the node and outputs", () => {
+    const node: GraphNode = {
+      ...makeTextNode("video-1"),
+      type: "video_node",
+      data: {
+        loading: true,
+        status: "loading",
+        remoteVideoTaskId: "remote-video-task-1",
+      },
+    };
+
+    const result = applyRemoteVideoTaskResultSnapshot({
+      nodes: [node],
+      nodeOutputs: new Map(),
+      nodeId: "video-1",
+      taskId: "remote-video-task-1",
+      result: {
+        status: "success",
+        videoUrl: "https://example.com/generated.mp4",
+        error: "",
+        rawStatus: "success",
+      },
+    });
+
+    expect(result.nodes[0].data).toMatchObject({
+      videoUrl: "https://example.com/generated.mp4",
+      loading: false,
+      status: "success",
+      remoteVideoTaskId: "remote-video-task-1",
+      remoteVideoTaskStatus: "success",
+    });
+    expect(result.nodeOutputs.get("video-1")?.get(0)).toBe("https://example.com/generated.mp4");
+  });
+
+  it("keeps pending remote video tasks loading", () => {
+    const node: GraphNode = {
+      ...makeTextNode("video-1"),
+      type: "video_node",
+      data: {
+        loading: true,
+        status: "loading",
+        remoteVideoTaskId: "remote-video-task-1",
+      },
+    };
+
+    const result = applyRemoteVideoTaskResultSnapshot({
+      nodes: [node],
+      nodeOutputs: new Map(),
+      nodeId: "video-1",
+      taskId: "remote-video-task-1",
+      result: { status: "pending", videoUrl: "", error: "", rawStatus: "running" },
+    });
+
+    expect(result.nodes[0].data).toMatchObject({
+      loading: true,
+      status: "loading",
+      remoteVideoTaskStatus: "running",
+    });
+    expect(result.nodeOutputs.has("video-1")).toBe(false);
+  });
+});
+
+describe("collectLinkedMediaReferences", () => {
+  it("collects oss ids from every linked image reference, including ossIds arrays", () => {
+    const target = { ...makeTextNode("target"), type: "image_node" as const };
+    const sourceA: GraphNode = {
+      ...makeTextNode("image-a"),
+      type: "image_node",
+      data: { imageUrl: "https://example.com/a.png", ossId: "oss-a" },
+    };
+    const sourceB: GraphNode = {
+      ...makeTextNode("image-b"),
+      type: "image_node",
+      data: { imageUrl: "https://example.com/b.png", ossIds: ["oss-b"] },
+    };
+    const sourceC: GraphNode = {
+      ...makeTextNode("image-c"),
+      type: "image_node",
+      data: { imageUrl: "https://example.com/c.png" },
+      properties: { ossId: "oss-c" },
+    };
+
+    const references = collectLinkedMediaReferences({
+      nodeId: target.id,
+      links: [
+        { id: "l-a", fromNodeId: sourceA.id, fromOutputIndex: 0, toNodeId: target.id, toInputIndex: 1 },
+        { id: "l-b", fromNodeId: sourceB.id, fromOutputIndex: 0, toNodeId: target.id, toInputIndex: 1 },
+        { id: "l-c", fromNodeId: sourceC.id, fromOutputIndex: 0, toNodeId: target.id, toInputIndex: 1 },
+      ],
+      nodes: [target, sourceA, sourceB, sourceC],
+      nodeOutputs: new Map(),
+    });
+
+    expect(references.ossIds).toEqual(["oss-a", "oss-b", "oss-c"]);
+    expect(references.imageUrls).toEqual([
+      "https://example.com/a.png",
+      "https://example.com/b.png",
+      "https://example.com/c.png",
+    ]);
+  });
+
+  it("does not treat plain output urls as oss ids", () => {
+    const target = { ...makeTextNode("target"), type: "image_node" as const };
+    const source: GraphNode = {
+      ...makeTextNode("image-a"),
+      type: "image_node",
+      data: { imageUrl: "https://example.com/a.png" },
+    };
+
+    const references = collectLinkedMediaReferences({
+      nodeId: target.id,
+      links: [
+        { id: "l-a", fromNodeId: source.id, fromOutputIndex: 0, toNodeId: target.id, toInputIndex: 1 },
+      ],
+      nodes: [target, source],
+      nodeOutputs: new Map([[source.id, new Map([[0, "https://example.com/a.png"]])]]),
+    });
+
+    expect(references.imageUrls).toEqual(["https://example.com/a.png"]);
+    expect(references.ossIds).toEqual([]);
   });
 });
 

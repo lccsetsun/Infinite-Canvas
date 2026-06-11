@@ -95,6 +95,45 @@ describe("image_node MiniMax executor", () => {
     expect(result?.patch?.remoteModelId).toBe("wan2.7-image-pro");
   });
 
+  it("keeps remote image oss ids on generated image nodes for downstream references", async () => {
+    vi.mocked(devApiFetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          code: 200,
+          msg: "ok",
+          data: {
+            imageUrls: ["https://example.com/a.png", "https://example.com/b.png"],
+            ossIds: ["oss-a", "oss-b"],
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+    const remoteModelsByType = makeEmptyAiModelsByType();
+    remoteModelsByType[AI_MODEL_TYPES[1]] = [
+      {
+        id: "image-remote-1",
+        apiId: "2062435940867551234",
+        modelId: "wan2.7-image-pro",
+        modelType: AI_MODEL_TYPES[1],
+      },
+    ];
+
+    const executor = getExecutor("image_node");
+    const result = await executor?.({
+      inputs: { prompt: "Generate references" },
+      properties: { model: "wan2.7-image-pro", aspect_ratio: "1:1", resolution: "1K", n: 2 },
+      apiConfig: { baseUrl: "", apiKey: "", remoteModelsByType },
+    });
+
+    expect(result?.patch?.imageUrls).toEqual([
+      "https://example.com/a.png",
+      "https://example.com/b.png",
+    ]);
+    expect(result?.patch?.ossIds).toEqual(["oss-a", "oss-b"]);
+    expect(result?.patch?.ossId).toBe("oss-a");
+  });
+
   it("sends MiniMax-native text-to-image parameters", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,
@@ -208,14 +247,14 @@ describe("video_node MiniMax executor", () => {
     vi.mocked(devApiFetch).mockReset();
   });
 
-  it("sends remote video models to the generator video API with upstream oss ids", async () => {
+  it("sends remote video models to the generator video API and returns a pending task id", async () => {
     vi.mocked(devApiFetch).mockResolvedValue(
       new Response(
         JSON.stringify({
           code: 200,
           msg: "ok",
           data: {
-            videoUrl: "https://example.com/remote-video.mp4",
+            id: "remote-video-task-1",
           },
         }),
         { status: 200, headers: { "Content-Type": "application/json" } }
@@ -273,11 +312,13 @@ describe("video_node MiniMax executor", () => {
       })
     );
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(result?.outputs[0]).toBe("https://example.com/remote-video.mp4");
+    expect(result?.outputs).toEqual({});
+    expect(result?.pending).toEqual({ type: "remote-video", taskId: "remote-video-task-1" });
     expect(result?.patch).toMatchObject({
-      videoUrl: "https://example.com/remote-video.mp4",
+      remoteVideoTaskId: "remote-video-task-1",
       remoteModelId: "wan2.7-video-pro",
-      status: "success",
+      status: "loading",
+      loading: true,
     });
   });
 

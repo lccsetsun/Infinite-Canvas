@@ -3,6 +3,7 @@ import {
   getImageNodeInputReferences,
   getImagePreviewFrameClassName,
   getImagePreviewNodeWidth,
+  getImagePortHandleWrapperStyle,
   getImageNodePortTopStyle,
   getSettledImageLoadStatus,
   getResultImageBounds,
@@ -242,6 +243,12 @@ describe("getImagePreviewNodeWidth", () => {
         resultImageWidth: 780,
       })
     ).toBe(780);
+  });
+});
+
+describe("getImagePortHandleWrapperStyle", () => {
+  it("centers the plus handle on the image-height center without relying on transform", () => {
+    expect(getImagePortHandleWrapperStyle(220)).toEqual({ top: 220, marginTop: -18 });
   });
 });
 

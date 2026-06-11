@@ -4,6 +4,7 @@ import { AI_MODEL_TYPES } from "../api/aiModelCatalog";
 import { parseDevApiEnvelope } from "../auth/apiEnvelope";
 import { devApiFetch } from "../auth/request";
 import { uploadFileToOss } from "../resource/ossApi";
+import { createRemoteVideoGenerationTask } from "../video/remoteVideoGeneration";
 import { getImageResolutionPreset } from "./imageResolutionPresets";
 
 export interface ExecutorContext {
@@ -36,6 +37,7 @@ export interface ExecutorContext {
 export interface ExecutorResult {
   outputs: Record<number, unknown>;
   patch?: Record<string, unknown>;
+  pending?: { type: "remote-video"; taskId: string };
 }
 
 export type NodeExecutor = (ctx: ExecutorContext) => Promise<ExecutorResult>;
@@ -481,6 +483,41 @@ function extractRemoteImageUrls(data: unknown): string[] {
   return urls;
 }
 
+function extractRemoteOssIds(data: unknown): string[] {
+  const ids: string[] = [];
+  const addId = (value: unknown) => {
+    const normalized =
+      typeof value === "string" && value.trim()
+        ? value.trim()
+        : typeof value === "number" && Number.isFinite(value)
+          ? String(Math.trunc(value))
+          : typeof value === "bigint"
+            ? String(value)
+            : "";
+    if (normalized && !ids.includes(normalized)) ids.push(normalized);
+  };
+
+  const visit = (value: unknown) => {
+    if (!value) return;
+    addId(value);
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+    if (typeof value !== "object") return;
+    const record = value as Record<string, unknown>;
+    addId(record.ossId);
+    visit(record.ossIds);
+    visit(record.data);
+    visit(record.result);
+    visit(record.results);
+    visit(record.outputs);
+  };
+
+  visit(data);
+  return ids;
+}
+
 function getImageCustomSize(properties: Record<string, unknown>, aspectRatio: string): string {
   if (typeof properties.customSize === "string" && properties.customSize.trim()) {
     return properties.customSize.trim();
@@ -507,7 +544,7 @@ async function callRemoteImageGeneration({
   model: AiModel;
   timeout?: number;
   signal?: AbortSignal;
-}): Promise<{ imageUrls: string[] }> {
+}): Promise<{ imageUrls: string[]; ossIds: string[] }> {
   const response = await devApiFetch("/system/generator/images", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -529,7 +566,7 @@ async function callRemoteImageGeneration({
   if (imageUrls.length === 0) {
     throw new Error("远程图片模型未返回图片链接");
   }
-  return { imageUrls };
+  return { imageUrls, ossIds: extractRemoteOssIds(parsed.data) };
 }
 
 function normalizeRemoteVideoResolution(value: unknown): string {
@@ -570,31 +607,6 @@ function normalizeNumberArray(value: unknown): number[] {
   return result;
 }
 
-function extractRemoteVideoUrl(data: unknown): string {
-  if (typeof data === "string") return data.trim();
-  if (!data || typeof data !== "object") return "";
-  const record = data as Record<string, unknown>;
-  const keys = ["videoUrl", "video_url", "url", "src", "fileUrl", "result", "output"];
-  for (const key of keys) {
-    const value = record[key];
-    if (typeof value === "string" && value.trim()) return value.trim();
-  }
-  const arrays = ["videos", "videoUrls", "urls", "data", "list", "results", "outputs"];
-  for (const key of arrays) {
-    const value = record[key];
-    if (Array.isArray(value)) {
-      for (const item of value) {
-        const url = extractRemoteVideoUrl(item);
-        if (url) return url;
-      }
-    } else {
-      const url = extractRemoteVideoUrl(value);
-      if (url) return url;
-    }
-  }
-  return "";
-}
-
 async function callRemoteVideoGeneration({
   prompt,
   properties,
@@ -611,32 +623,20 @@ async function callRemoteVideoGeneration({
   model: AiModel;
   timeout?: number;
   signal?: AbortSignal;
-}): Promise<{ videoUrl: string }> {
-  const response = await devApiFetch("/system/generator/video", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+}): Promise<{ taskId: string; videoUrl: string }> {
+  const result = await createRemoteVideoGenerationTask({
+    prompt,
+    duration: parseDurationSeconds(properties.duration),
+    generateAudio: properties.audio !== false,
+    ratio: normalizeRemoteVideoRatio(properties),
+    resolution: normalizeRemoteVideoResolution(properties.resolution),
+    ossIds,
+    resourceIds,
+    model,
     timeoutMs: timeout ? timeout * 1000 : undefined,
     signal,
-    body: JSON.stringify({
-      prompt,
-      duration: parseDurationSeconds(properties.duration),
-      generateAudio: properties.audio !== false,
-      ratio: normalizeRemoteVideoRatio(properties),
-      resolution: normalizeRemoteVideoResolution(properties.resolution),
-      ossId: ossIds,
-      resrouceId: resourceIds,
-      model: {
-        apiId: model.apiId,
-        modelId: model.modelId,
-      },
-    }),
   });
-  const parsed = await parseDevApiEnvelope<unknown>(response);
-  const videoUrl = extractRemoteVideoUrl(parsed.data);
-  if (!videoUrl) {
-    throw new Error("远程视频模型未返回视频链接");
-  }
-  return { videoUrl };
+  return result;
 }
 
 function buildTextToImageUrl(prompt: string, aspect: string): string {
@@ -1033,6 +1033,8 @@ const executors: Partial<Record<NodeClass, NodeExecutor>> = {
         patch: {
           imageUrl: result.imageUrls[0],
           imageUrls: result.imageUrls,
+          ossId: result.ossIds[0],
+          ossIds: result.ossIds,
           activeImageIndex: 0,
           status: "success",
           remoteModelApiId: remoteImageModel.apiId,
@@ -1083,6 +1085,21 @@ const executors: Partial<Record<NodeClass, NodeExecutor>> = {
         timeout: apiConfig.timeout,
         signal,
       });
+      if (!result.videoUrl) {
+        return {
+          outputs: {},
+          pending: { type: "remote-video", taskId: result.taskId },
+          patch: {
+            loading: true,
+            loadingOperation: "generate",
+            status: "loading",
+            remoteVideoTaskId: result.taskId,
+            remoteVideoTaskStatus: "pending",
+            remoteModelApiId: remoteVideoModel.apiId,
+            remoteModelId: remoteVideoModel.modelId,
+          },
+        };
+      }
       return {
         outputs: { 0: result.videoUrl },
         patch: {
