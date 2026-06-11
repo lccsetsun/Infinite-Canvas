@@ -41,8 +41,7 @@ import { uploadFileToOss } from "../../features/resource/ossApi";
 import { ReferencePreviewCard } from "./ReferencePreviewCard";
 import { getMediaNodeLoadingLabel, isMediaNodeRunning } from "../../utils/mediaNodeLoadingState";
 import { ImageResolutionPicker } from "./ImageResolutionPicker";
-import { insertMentionLabel, shouldShowMentionMenu } from "../../utils/inputResourceMentions";
-import { InputResourceMentionMenu } from "./InputResourceMentionMenu";
+import { PromptTokenEditor } from "./PromptTokenEditor";
 import {
   AI_MODEL_TYPES,
   getModelOptionGroups,
@@ -52,6 +51,7 @@ import {
   getFloatingMenuPosition,
   type FloatingMenuPosition,
 } from "../../utils/floatingMenuPosition";
+import { stringifyInputReferenceValues } from "../../utils/inputReferenceValues";
 
 interface ImageNodeCardProps {
   node: GraphNode;
@@ -253,24 +253,6 @@ export interface ImageNodeInputReference {
   label: string;
   title: string;
   value: string;
-}
-
-function stringifyInputReferenceValue(value: unknown): string {
-  if (typeof value === "string") return value.trim();
-  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
-    return String(value);
-  }
-  return "";
-}
-
-function stringifyInputReferenceValues(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return value
-      .map((item) => stringifyInputReferenceValue(item))
-      .filter((item) => item.trim().length > 0);
-  }
-  const singleValue = stringifyInputReferenceValue(value);
-  return singleValue ? [singleValue] : [];
 }
 
 function inferImageNodeInputReferenceKind(
@@ -512,7 +494,6 @@ function ImageNodeCardImpl({
   const mediaFrameRef = React.useRef<HTMLDivElement | null>(null);
   const imageElementRef = React.useRef<HTMLImageElement | null>(null);
   const uploadInputRef = React.useRef<HTMLInputElement | null>(null);
-  const promptTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
   const frameExtractionDragRef = React.useRef<{
     element: HTMLElement;
     frameIndex: number;
@@ -550,7 +531,6 @@ function ImageNodeCardImpl({
   } | null>(null);
   const imageFrameDropHotTargetRef = React.useRef<HTMLElement | null>(null);
   const imageFrameDropLongPressTimerRef = React.useRef<number | null>(null);
-  const [mentionMenuOpen, setMentionMenuOpen] = React.useState(false);
   const [isUploadingAsset, setIsUploadingAsset] = React.useState(false);
   const isUploadingNodeAsset = node.data?.uploadingAsset === true || isUploadingAsset;
   const [imageLoadState, setImageLoadState] = React.useState<{
@@ -1492,28 +1472,8 @@ function ImageNodeCardImpl({
     onRun?.(node.id);
   };
 
-  const handlePromptChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
-    onUpdateProperty?.(node.id, "text", event.target.value);
-    setMentionMenuOpen(
-      inputReferences.length > 0 &&
-        shouldShowMentionMenu(event.target.value, event.target.selectionStart)
-    );
-  };
-
-  const insertResourceMention = (label: string) => {
-    const cursorIndex =
-      promptTextareaRef.current?.selectionStart ?? (node.properties.text as string)?.length ?? 0;
-    const { nextCursorIndex, nextValue } = insertMentionLabel(
-      (node.properties.text as string) || "",
-      cursorIndex,
-      label
-    );
-    onUpdateProperty?.(node.id, "text", nextValue);
-    setMentionMenuOpen(false);
-    window.requestAnimationFrame(() => {
-      promptTextareaRef.current?.focus();
-      promptTextareaRef.current?.setSelectionRange(nextCursorIndex, nextCursorIndex);
-    });
+  const handlePromptChange = (value: string) => {
+    onUpdateProperty?.(node.id, "text", value);
   };
 
   const downloadImage = async () => {
@@ -1969,12 +1929,12 @@ function ImageNodeCardImpl({
 
   const showImagePromptComposer =
     !isSourceAssetNode && (isHovered || selected) && !isUploadingNodeAsset && !isRunning;
+
   const imagePreviewContent =
     imageUrl && !isRunning && !isUploadingNodeAsset ? (
       <motion.div
         onPointerDown={(e) => {
           if (e.button !== 0) {
-            e.stopPropagation();
             return;
           }
           const target = e.target as HTMLElement;
@@ -2635,10 +2595,6 @@ function ImageNodeCardImpl({
   return (
     <>
       <motion.div
-        initial={{ scale: 0.96, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.96, opacity: 0 }}
-        transition={{ type: "spring", damping: 22, stiffness: 280 }}
         className="absolute text-left"
         style={{ width: imagePreviewContent ? previewNodeWidth : nodeWidth }}
         ref={imagePreviewContent ? previewNodeRef : undefined}
@@ -2651,13 +2607,12 @@ function ImageNodeCardImpl({
             <motion.div
               onPointerDown={(e) => {
                 if (e.button !== 0) {
-                  e.stopPropagation();
                   return;
                 }
                 const target = e.target as HTMLElement;
                 if (
                   !target.closest("[data-node-action='true']") &&
-                  !target.closest("textarea,button,input")
+                  !target.closest("textarea,button,input,[contenteditable='true'],[role='textbox']")
                 )
                   onDragStart(e, node);
                 else e.stopPropagation();
@@ -2734,9 +2689,6 @@ function ImageNodeCardImpl({
         <AnimatePresence>
           {showImagePromptComposer && (
             <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
               data-node-action="true"
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => {
@@ -2758,22 +2710,10 @@ function ImageNodeCardImpl({
                 </div>
               )}
               <div className="relative">
-                <textarea
-                  ref={promptTextareaRef}
+                <PromptTokenEditor
                   value={promptText}
+                  resources={inputReferences}
                   onChange={handlePromptChange}
-                  onFocus={(event) =>
-                    setMentionMenuOpen(
-                      inputReferences.length > 0 &&
-                        shouldShowMentionMenu(
-                          event.currentTarget.value,
-                          event.currentTarget.selectionStart
-                        )
-                    )
-                  }
-                  onKeyDown={(event) => {
-                    if (event.key === "Escape") setMentionMenuOpen(false);
-                  }}
                   placeholder={
                     upstreamPrompt
                       ? "继续补充这些输入资源要如何参与生成"
@@ -2781,15 +2721,8 @@ function ImageNodeCardImpl({
                         ? "描述你想基于这些输入生成的画面内容"
                         : "描述你想要生成的画面内容"
                   }
-                  className="h-[92px] w-full resize-none bg-transparent px-1 text-[15px] leading-7 text-slate-100/88 outline-none placeholder:text-slate-400/42 custom-scrollbar"
+                  className="h-[92px] text-[15px] leading-7 custom-scrollbar"
                 />
-                {mentionMenuOpen && (
-                  <InputResourceMentionMenu
-                    resources={inputReferences}
-                    onPick={(label) => insertResourceMention(label)}
-                    onRequestClose={() => setMentionMenuOpen(false)}
-                  />
-                )}
               </div>
               <div
                 ref={controlsRef}

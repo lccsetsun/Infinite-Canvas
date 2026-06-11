@@ -22,6 +22,7 @@ interface LeaferCanvasProps {
   draftIssue?: string | null;
   draftCursor?: { x: number; y: number } | null;
   renderDraftPreview?: boolean;
+  animationsPaused?: boolean;
 }
 
 type LeaferScene = {
@@ -262,7 +263,8 @@ function buildDraftPreview(
   draftFromOutputIndex = 0,
   draftToInputIndex = 0,
   draftIssue?: string | null,
-  draftCursor?: { x: number; y: number } | null
+  draftCursor?: { x: number; y: number } | null,
+  animationsPaused = false
 ) {
   group.clear();
 
@@ -314,11 +316,13 @@ function buildDraftPreview(
 
   group.add(flowPath as never);
 
-  // 启动草图流光动画
-  (flowPath as unknown as { animate: (props: Record<string, number>, opts: Record<string, unknown>) => void }).animate(
-    { dashOffset: -60 },
-      { duration: CONNECTION_DRAFT_STYLE.flow.duration, loop: true, easing: "linear" }
-  );
+  if (!animationsPaused) {
+    // 启动草图流光动画
+    (flowPath as unknown as { animate: (props: Record<string, number>, opts: Record<string, unknown>) => void }).animate(
+      { dashOffset: -60 },
+        { duration: CONNECTION_DRAFT_STYLE.flow.duration, loop: true, easing: "linear" }
+    );
+  }
 
 }
 
@@ -338,6 +342,7 @@ export default function LeaferCanvas({
   draftIssue,
   draftCursor = null,
   renderDraftPreview = true,
+  animationsPaused = false,
 }: LeaferCanvasProps) {
   const hostRef = React.useRef<HTMLDivElement>(null);
   const sceneRef = React.useRef<LeaferScene | null>(null);
@@ -440,7 +445,7 @@ export default function LeaferCanvas({
     buildLinks(scene.links, nodes, links);
     buildNodeShells(scene.shells, nodes, selectedNodeId);
     if (renderDraftPreview) {
-      buildDraftPreview(scene.draft, nodes, draftFromNodeId, draftToNodeId, draftFromOutputIndex, draftToInputIndex, draftIssue, draftCursor);
+      buildDraftPreview(scene.draft, nodes, draftFromNodeId, draftToNodeId, draftFromOutputIndex, draftToInputIndex, draftIssue, draftCursor, animationsPaused);
     } else {
       scene.draft.clear();
     }
@@ -472,6 +477,7 @@ export default function LeaferCanvas({
     selectedNodeId,
     showNodeDecorators,
     renderDraftPreview,
+    animationsPaused,
   ]);
 
   return (

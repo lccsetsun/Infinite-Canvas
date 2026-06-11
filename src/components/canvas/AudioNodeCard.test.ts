@@ -59,6 +59,14 @@ describe("getAudioNodeInputReferences", () => {
     ]);
   });
 
+  it("flattens nested media groups when multiple inputs are connected", () => {
+    expect(
+      getAudioNodeInputReferences({
+        source_image: [["https://oss.example.com/a.png"], "https://oss.example.com/b.png"],
+      }).map((reference) => reference.value)
+    ).toEqual(["https://oss.example.com/a.png", "https://oss.example.com/b.png"]);
+  });
+
   it("expands a frame-analysis image group into individual references", () => {
     const frameImages = Array.from(
       { length: 7 },

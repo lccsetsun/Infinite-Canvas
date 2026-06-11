@@ -29,10 +29,9 @@ import { Tooltip } from "../common/Tooltip";
 import { downloadMediaAsset, extensionFromAssetUrl } from "../../utils/mediaAssets";
 import { uploadFileToOss } from "../../features/resource/ossApi";
 import { getMediaNodeLoadingLabel, isMediaNodeRunning } from "../../utils/mediaNodeLoadingState";
-import { insertMentionLabel, shouldShowMentionMenu } from "../../utils/inputResourceMentions";
 import { ImageResolutionPicker } from "./ImageResolutionPicker";
-import { InputResourceMentionMenu } from "./InputResourceMentionMenu";
 import { ReferencePreviewCard } from "./ReferencePreviewCard";
+import { PromptTokenEditor } from "./PromptTokenEditor";
 import {
   AI_MODEL_TYPES,
   getModelOptionGroups,
@@ -42,6 +41,7 @@ import {
   getFloatingMenuPosition,
   type FloatingMenuPosition,
 } from "../../utils/floatingMenuPosition";
+import { stringifyInputReferenceValues } from "../../utils/inputReferenceValues";
 
 interface VideoNodeCardProps {
   node: GraphNode;
@@ -107,24 +107,6 @@ export interface VideoNodeInputReference {
   value: string;
 }
 
-function stringifyVideoInputReferenceValue(value: unknown): string {
-  if (typeof value === "string") return value.trim();
-  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
-    return String(value);
-  }
-  return "";
-}
-
-function stringifyVideoInputReferenceValues(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return value
-      .map((item) => stringifyVideoInputReferenceValue(item))
-      .filter((item) => item.trim().length > 0);
-  }
-  const singleValue = stringifyVideoInputReferenceValue(value);
-  return singleValue ? [singleValue] : [];
-}
-
 function inferVideoNodeInputReferenceKind(
   key: string,
   value: string
@@ -171,7 +153,7 @@ export function getVideoNodeInputReferences(
   return Object.entries(resolvedInputs).reduce<VideoNodeInputReference[]>(
     (references, [key, rawValue]) => {
       if (VIDEO_NODE_REFERENCE_IGNORED_KEYS.has(key)) return references;
-      stringifyVideoInputReferenceValues(rawValue).forEach((value) => {
+      stringifyInputReferenceValues(rawValue).forEach((value) => {
         const kind = inferVideoNodeInputReferenceKind(key, value);
         if (!kind) return;
         const label = getVideoInputReferenceLabel(kind);
@@ -274,6 +256,7 @@ function VideoNodeCardImpl({
     data: node.data,
     properties: node.properties,
   });
+  const isSourceAssetNode = isSourceNode(node);
   const isNodeUploadingAsset = node.data?.uploadingAsset === true;
   const [isHovered, setIsHovered] = React.useState(false);
   const [isPlaying, setIsPlaying] = React.useState(false);
@@ -293,8 +276,6 @@ function VideoNodeCardImpl({
   const previewNodeRef = React.useRef<HTMLDivElement | null>(null);
   const mediaFrameRef = React.useRef<HTMLDivElement | null>(null);
   const uploadInputRef = React.useRef<HTMLInputElement | null>(null);
-  const textareaRef = React.useRef<HTMLTextAreaElement | null>(null);
-  const [mentionMenuOpen, setMentionMenuOpen] = React.useState(false);
   const [naturalVideoSize, setNaturalVideoSize] = React.useState<{
     width: number;
     height: number;
@@ -318,6 +299,8 @@ function VideoNodeCardImpl({
   const hasNonTextInputReferences = inputReferences.some((reference) => reference.kind !== "text");
   const promptText = (node.properties.text as string) || "";
   const videoUrl = (node.data?.videoUrl as string) || (node.properties.videoUrl as string) || "";
+  const promptComposerVisible =
+    !isSourceAssetNode && (isHovered || selected) && !videoUrl && !isUploadingAsset;
   const aspectRatio = (node.properties.aspect_ratio as string) || "16:9";
   const resolution = (node.properties.resolution as string) || "1K";
   const durationSeconds = normalizeVideoDurationSeconds(node.properties.duration);
@@ -457,28 +440,8 @@ function VideoNodeCardImpl({
     onRun?.(node.id);
   };
 
-  const handlePromptChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
-    onUpdateProperty?.(node.id, "text", event.target.value);
-    setMentionMenuOpen(
-      inputReferences.length > 0 &&
-        shouldShowMentionMenu(event.target.value, event.target.selectionStart)
-    );
-  };
-
-  const insertResourceMention = (label: string) => {
-    const cursorIndex =
-      textareaRef.current?.selectionStart ?? (node.properties.text as string)?.length ?? 0;
-    const { nextCursorIndex, nextValue } = insertMentionLabel(
-      (node.properties.text as string) || "",
-      cursorIndex,
-      label
-    );
-    onUpdateProperty?.(node.id, "text", nextValue);
-    setMentionMenuOpen(false);
-    window.requestAnimationFrame(() => {
-      textareaRef.current?.focus();
-      textareaRef.current?.setSelectionRange(nextCursorIndex, nextCursorIndex);
-    });
+  const handlePromptChange = (value: string) => {
+    onUpdateProperty?.(node.id, "text", value);
   };
 
   const togglePlay = async () => {
@@ -695,7 +658,6 @@ function VideoNodeCardImpl({
     }
   };
 
-  const isSourceAssetNode = isSourceNode(node);
   const hasInputPorts = !isSourceAssetNode && node.inputs.length > 0;
   const portHandles = (
     <AnimatePresence>
@@ -781,10 +743,6 @@ function VideoNodeCardImpl({
   if (videoUrl && !isRunning && !isUploadingAsset) {
     return (
       <motion.div
-        initial={{ scale: 0.96, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.96, opacity: 0 }}
-        transition={{ type: "spring", damping: 22, stiffness: 280 }}
         className="absolute text-left"
         style={{ width: resultVideoSize.width }}
         ref={previewNodeRef}
@@ -794,7 +752,6 @@ function VideoNodeCardImpl({
         <motion.div
           onPointerDown={(e) => {
             if (e.button !== 0) {
-              e.stopPropagation();
               return;
             }
             const target = e.target as HTMLElement;
@@ -1027,10 +984,6 @@ function VideoNodeCardImpl({
 
   return (
     <motion.div
-      initial={{ scale: 0.96, opacity: 0 }}
-      animate={{ scale: 1, opacity: 1 }}
-      exit={{ scale: 0.96, opacity: 0 }}
-      transition={{ type: "spring", damping: 22, stiffness: 280 }}
       className="absolute text-left"
       style={{ width: nodeWidth }}
       onMouseEnter={() => setIsHovered(true)}
@@ -1039,13 +992,12 @@ function VideoNodeCardImpl({
       <motion.div
         onPointerDown={(e) => {
           if (e.button !== 0) {
-            e.stopPropagation();
             return;
           }
           const target = e.target as HTMLElement;
           if (
             !target.closest("[data-node-action='true']") &&
-            !target.closest("textarea,button,input")
+            !target.closest("textarea,button,input,[contenteditable='true'],[role='textbox']")
           )
             onDragStart(e, node);
           else e.stopPropagation();
@@ -1117,11 +1069,8 @@ function VideoNodeCardImpl({
       </motion.div>
 
       <AnimatePresence>
-        {!isSourceAssetNode && (isHovered || selected) && !videoUrl && !isUploadingAsset && (
+        {promptComposerVisible && (
           <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
             data-node-action="true"
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => {
@@ -1147,34 +1096,15 @@ function VideoNodeCardImpl({
               </div>
             )}
             <div className="relative">
-              <textarea
-                ref={textareaRef}
+              <PromptTokenEditor
                 value={promptText}
+                resources={inputReferences}
                 onChange={handlePromptChange}
-                onFocus={(event) =>
-                  setMentionMenuOpen(
-                    inputReferences.length > 0 &&
-                      shouldShowMentionMenu(
-                        event.currentTarget.value,
-                        event.currentTarget.selectionStart
-                      )
-                  )
-                }
-                onKeyDown={(event) => {
-                  if (event.key === "Escape") setMentionMenuOpen(false);
-                }}
                 placeholder={
                   upstreamPrompt ? "继续补充这些输入资源要如何参与生成" : "描述你想要生成的视频内容"
                 }
-                className="h-[92px] w-full resize-none bg-transparent px-1 text-[15px] leading-7 text-slate-100/88 outline-none placeholder:text-slate-400/42 custom-scrollbar"
+                className="h-[92px] text-[15px] leading-7 custom-scrollbar"
               />
-              {mentionMenuOpen && (
-                <InputResourceMentionMenu
-                  resources={inputReferences}
-                  onPick={(label) => insertResourceMention(label)}
-                  onRequestClose={() => setMentionMenuOpen(false)}
-                />
-              )}
             </div>
             <div className="mt-3 flex flex-nowrap items-center gap-2 border-t border-cyan-100/8 pt-3">
               <div className="relative min-w-0 flex-[1_1_196px]" ref={modelMenuRef}>

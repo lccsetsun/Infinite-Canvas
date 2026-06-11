@@ -1,6 +1,10 @@
 import React from "react";
 import { createPortal } from "react-dom";
-import { buildMentionOptions, type MentionResource } from "../../utils/inputResourceMentions";
+import {
+  buildMentionOptions,
+  getNextMentionMenuIndex,
+  type MentionResource,
+} from "../../utils/inputResourceMentions";
 import { ReferencePreviewCard } from "./ReferencePreviewCard";
 
 export type MentionMenuPlacement = "above" | "below";
@@ -26,10 +30,10 @@ export function getMentionMenuLayout({
   menuHeight,
   gap = 4,
   margin = 12,
-  maxMenuHeight = 260,
-  minMenuHeight = 96,
+  maxMenuHeight = 184,
+  minMenuHeight = 56,
   anchorLeft = 0,
-  menuWidth = 224,
+  menuWidth = 188,
   viewportWidth = 0,
 }: MentionMenuLayoutInput): {
   left: number;
@@ -111,6 +115,22 @@ function getTextareaCaretRect(textarea: HTMLTextAreaElement) {
   };
 }
 
+function getContentEditableCaretRect(element: HTMLElement) {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) return null;
+  const range = selection.getRangeAt(0);
+  if (!element.contains(range.endContainer)) return null;
+  const collapsedRange = range.cloneRange();
+  collapsedRange.collapse(false);
+  const rect = collapsedRange.getClientRects()[0] ?? collapsedRange.getBoundingClientRect();
+  if (rect.width <= 0 && rect.height <= 0) return null;
+  return {
+    bottom: rect.bottom,
+    left: rect.left,
+    top: rect.top,
+  };
+}
+
 interface InputResourceMentionMenuProps<T extends MentionResource> {
   onPick: (label: string, resource: T) => void;
   onRequestClose?: () => void;
@@ -122,15 +142,22 @@ export function InputResourceMentionMenu<T extends MentionResource>({
   onRequestClose,
   resources,
 }: InputResourceMentionMenuProps<T>) {
-  const options = buildMentionOptions(resources);
+  const options = React.useMemo(() => buildMentionOptions(resources), [resources]);
   const anchorId = React.useId();
   const menuRef = React.useRef<HTMLDivElement | null>(null);
+  const optionRefs = React.useRef<Array<HTMLButtonElement | null>>([]);
+  const [activeIndex, setActiveIndex] = React.useState(0);
   const [layout, setLayout] = React.useState<ReturnType<typeof getMentionMenuLayout>>({
     left: 16,
-    maxHeight: 260,
+    maxHeight: 184,
     placement: "below",
     top: 16,
   });
+
+  React.useEffect(() => {
+    setActiveIndex(0);
+    optionRefs.current = optionRefs.current.slice(0, options.length);
+  }, [options.length]);
 
   React.useLayoutEffect(() => {
     const updateLayout = () => {
@@ -141,8 +168,15 @@ export function InputResourceMentionMenu<T extends MentionResource>({
       if (!menuElement || !anchorElement) return;
       const anchorRect = anchorElement.getBoundingClientRect();
       const textarea = anchorElement.parentElement?.querySelector("textarea");
+      const contentEditable = anchorElement.parentElement?.querySelector(
+        "[contenteditable='true']"
+      );
       const caretRect =
-        textarea instanceof HTMLTextAreaElement ? getTextareaCaretRect(textarea) : null;
+        textarea instanceof HTMLTextAreaElement
+          ? getTextareaCaretRect(textarea)
+          : contentEditable instanceof HTMLElement
+            ? getContentEditableCaretRect(contentEditable)
+            : null;
       const activeRect = caretRect ?? anchorRect;
       const nextLayout = getMentionMenuLayout({
         anchorBottom: activeRect.bottom,
@@ -208,6 +242,38 @@ export function InputResourceMentionMenu<T extends MentionResource>({
     };
   }, []);
 
+  React.useEffect(() => {
+    if (options.length === 0) return;
+
+    const handleKeyboardPick = (event: KeyboardEvent) => {
+      if (event.isComposing) return;
+      if (event.key !== "ArrowDown" && event.key !== "ArrowUp" && event.key !== "Enter") return;
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (event.key === "Enter") {
+        const option = options[activeIndex];
+        if (option) onPick(option.mentionText, option.resource);
+        return;
+      }
+
+      const navigationKey = event.key;
+      setActiveIndex((currentIndex) => {
+        const nextIndex = getNextMentionMenuIndex(currentIndex, navigationKey, options.length);
+        window.requestAnimationFrame(() => {
+          optionRefs.current[nextIndex]?.scrollIntoView({ block: "nearest" });
+        });
+        return nextIndex;
+      });
+    };
+
+    window.addEventListener("keydown", handleKeyboardPick, true);
+    return () => {
+      window.removeEventListener("keydown", handleKeyboardPick, true);
+    };
+  }, [activeIndex, onPick, options]);
+
   if (options.length === 0) return null;
 
   return (
@@ -222,7 +288,7 @@ export function InputResourceMentionMenu<T extends MentionResource>({
           ref={menuRef}
           data-anchor-id={anchorId}
           data-node-action="true"
-          className="fixed z-[240] w-[224px] cursor-default overflow-y-auto rounded-[12px] border border-white/10 bg-[#111827]/96 p-1.5 shadow-[0_18px_42px_-18px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl custom-scrollbar"
+          className="fixed z-[240] w-[188px] cursor-default overflow-y-auto rounded-[10px] border border-white/10 bg-[#111827]/96 p-1 shadow-[0_16px_34px_-18px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl custom-scrollbar"
           style={{ left: layout.left, maxHeight: layout.maxHeight, top: layout.top }}
           onPointerDown={(event) => event.stopPropagation()}
           onPointerMove={(event) => event.stopPropagation()}
@@ -234,14 +300,20 @@ export function InputResourceMentionMenu<T extends MentionResource>({
           {options.map(({ label, mentionText, resource }, index) => (
             <button
               key={`${label}-${resource.value}-${index}`}
+              ref={(element) => {
+                optionRefs.current[index] = element;
+              }}
               type="button"
-              className="flex w-full items-center gap-2 rounded-[10px] p-1.5 text-left transition-colors hover:bg-white/[0.06]"
+              className={`flex w-full items-center gap-2 rounded-[8px] p-1 text-left transition-colors ${
+                activeIndex === index ? "bg-white/[0.07]" : "hover:bg-white/[0.06]"
+              }`}
               onClick={() => onPick(mentionText, resource)}
+              onPointerEnter={() => setActiveIndex(index)}
             >
-              <ReferencePreviewCard reference={resource} index={index} />
+              <ReferencePreviewCard compact reference={resource} index={index} />
               <div className="min-w-0 flex-1">
-                <div className="truncate text-[13px] font-semibold text-slate-100">{label}</div>
-                <div className="mt-0.5 truncate text-[11px] text-slate-400/70">
+                <div className="truncate text-[12px] font-semibold text-slate-100">{label}</div>
+                <div className="truncate text-[10px] text-slate-400/70">
                   {resource.title}
                 </div>
               </div>

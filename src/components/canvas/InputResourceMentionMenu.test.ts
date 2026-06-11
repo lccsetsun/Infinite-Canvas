@@ -46,6 +46,6 @@ describe("getMentionMenuLayout", () => {
         viewportWidth: 800,
         menuHeight: 220,
       }).left
-    ).toBe(564);
+    ).toBe(600);
   });
 });

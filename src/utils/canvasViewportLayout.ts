@@ -1,8 +1,7 @@
 const CANVAS_VIEWPORT_CLASSES = [
   "absolute",
   "inset-0",
-  "cursor-grab",
-  "active:cursor-grabbing",
+  "cursor-default",
   "select-none",
 ].join(" ");
 

@@ -17,6 +17,10 @@ export interface MentionOption<T extends MentionResource = MentionResource> {
   resource: T;
 }
 
+export type MentionDisplayPart<T extends MentionResource = MentionResource> =
+  | { kind: "text"; text: string }
+  | { index: number; kind: "mention"; mentionText: string; resource: T };
+
 const RESOURCE_LABELS: Record<MentionResourceKind, string> = {
   audio: "音频",
   image: "图片",
@@ -31,7 +35,9 @@ const RESOURCE_MENTION_LABELS: Record<MentionResourceKind, string> = {
   video: "Video",
 };
 
-export function buildMentionOptions<T extends MentionResource>(resources: T[]): MentionOption<T>[] {
+export function buildMentionOptions<T extends MentionResource>(
+  resources: readonly T[]
+): MentionOption<T>[] {
   const counts: Record<MentionResourceKind, number> = {
     audio: 0,
     image: 0,
@@ -49,6 +55,60 @@ export function buildMentionOptions<T extends MentionResource>(resources: T[]): 
         resource,
       };
     });
+}
+
+export function getNextMentionMenuIndex(
+  currentIndex: number,
+  key: "ArrowDown" | "ArrowUp",
+  optionCount: number
+): number {
+  if (optionCount <= 0) return -1;
+  const normalizedIndex =
+    currentIndex >= 0 && currentIndex < optionCount ? currentIndex : key === "ArrowDown" ? -1 : 0;
+  return key === "ArrowDown"
+    ? (normalizedIndex + 1) % optionCount
+    : (normalizedIndex - 1 + optionCount) % optionCount;
+}
+
+export function resolveMentionDisplayParts<T extends MentionResource>(
+  value: string,
+  resources: readonly T[]
+): MentionDisplayPart<T>[] {
+  if (!value) return [];
+
+  const options = buildMentionOptions(resources);
+  if (options.length === 0) return [{ kind: "text", text: value }];
+
+  const optionByMentionText = new Map(
+    options.map((option, index) => [option.mentionText, { ...option, index }])
+  );
+  const mentionPattern = /\{\{\s*(Image|Text|Video|Audio)(\d+)\s*\}\}/g;
+  const parts: MentionDisplayPart<T>[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = mentionPattern.exec(value))) {
+    const mentionText = `{{ ${match[1]}${match[2]} }}`;
+    const option = optionByMentionText.get(mentionText);
+    if (!option) continue;
+
+    if (match.index > lastIndex) {
+      parts.push({ kind: "text", text: value.slice(lastIndex, match.index) });
+    }
+    parts.push({
+      index: option.index,
+      kind: "mention",
+      mentionText: option.mentionText,
+      resource: option.resource,
+    });
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < value.length) {
+    parts.push({ kind: "text", text: value.slice(lastIndex) });
+  }
+
+  return parts.length > 0 ? parts : [{ kind: "text", text: value }];
 }
 
 export function shouldShowMentionMenu(value: string, cursorIndex: number): boolean {

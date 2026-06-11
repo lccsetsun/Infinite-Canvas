@@ -51,6 +51,10 @@ export function getDraggedNodePosition({
   return !snapToGridEnabled || altKey ? point : snapPointToGrid(point);
 }
 
+export function shouldStartCanvasPan(button: number) {
+  return button === 1;
+}
+
 export function useCanvasInteraction({
   nodes,
   snapToGridEnabled = true,
@@ -63,6 +67,7 @@ export function useCanvasInteraction({
   const [pan, setPan] = React.useState({ x: 0, y: 0 });
   const [zoom, setZoom] = React.useState(1);
   const [draggingNodeId, setDraggingNodeId] = React.useState<string | null>(null);
+  const [isCanvasPanning, setIsCanvasPanning] = React.useState(false);
 
   const toWorld = React.useCallback(
     (clientX: number, clientY: number) => {
@@ -199,14 +204,7 @@ export function useCanvasInteraction({
 
   const onCanvasPointerDown = React.useCallback(
     (e: React.PointerEvent) => {
-      if (e.button !== 0 && e.button !== 1) return;
-      const target = e.target as HTMLElement;
-      if (
-        target.closest(
-          "button, input, select, textarea, [role='button'], [data-no-canvas-drag='true']"
-        )
-      )
-        return;
+      if (!shouldStartCanvasPan(e.button)) return;
       e.preventDefault();
       dragRef.current = {
         mode: "canvas",
@@ -215,6 +213,7 @@ export function useCanvasInteraction({
         panStartX: pan.x,
         panStartY: pan.y,
       };
+      setIsCanvasPanning(true);
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     },
     [pan.x, pan.y]
@@ -282,6 +281,7 @@ export function useCanvasInteraction({
         updateNodePosition(pending.nodeId, pending.x, pending.y);
       }
       pendingDragRef.current = null;
+      setIsCanvasPanning(false);
       dragRef.current = { mode: null, startX: 0, startY: 0 };
       setDraggingNodeId(null);
     },
@@ -348,6 +348,7 @@ export function useCanvasInteraction({
     focusWorldRect,
     autoLayout,
     draggingNodeId,
+    isCanvasPanning,
     onNodeDragStart,
     onCanvasPointerDown,
     onPointerMove,

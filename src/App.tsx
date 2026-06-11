@@ -15,7 +15,7 @@ import PreviewModal, { PreviewContent } from "./components/app/PreviewModal";
 import SettingsPanels from "./components/app/SettingsPanels";
 import { Copy, Eye, Loader2, Trash2 } from "lucide-react";
 import { snapPointToGrid } from "./components/canvas/geometry";
-import { useCanvasInteraction } from "./hooks/useCanvasInteraction";
+import { shouldStartCanvasPan, useCanvasInteraction } from "./hooks/useCanvasInteraction";
 import { useCanvasLinking } from "./hooks/useCanvasLinking";
 import { useMiniMapConfig } from "./hooks/useMiniMapConfig";
 import { useRefreshOnPageVisible } from "./hooks/useRefreshOnPageVisible";
@@ -356,6 +356,7 @@ export default function App({ onLoggedOut }: AppProps) {
     jumpToWorldPos,
     focusWorldRect,
     draggingNodeId,
+    isCanvasPanning,
     onNodeDragStart,
     onCanvasPointerDown,
     onPointerMove,
@@ -1101,6 +1102,7 @@ export default function App({ onLoggedOut }: AppProps) {
     >
       <div
         className="relative w-full h-screen bg-[#202637] text-[#e2e8f0] overflow-hidden select-none font-sans"
+        data-canvas-panning={isCanvasPanning ? "true" : undefined}
         onContextMenu={handleCanvasContextMenu}
       >
         <CanvasHeader
@@ -1137,6 +1139,12 @@ export default function App({ onLoggedOut }: AppProps) {
             e.stopPropagation();
             uploadFilesToCanvas(files, { clientX: e.clientX, clientY: e.clientY });
           }}
+          onPointerDownCapture={(e) => {
+            if (!shouldStartCanvasPan(e.button)) return;
+            lastCanvasPointerRef.current = { clientX: e.clientX, clientY: e.clientY };
+            onCanvasPointerDown(e);
+            e.stopPropagation();
+          }}
           onPointerDown={(e) => {
             lastCanvasPointerRef.current = { clientX: e.clientX, clientY: e.clientY };
             if (isLinkingOnCanvas) {
@@ -1149,7 +1157,7 @@ export default function App({ onLoggedOut }: AppProps) {
             const target = e.target as HTMLElement;
             if (
               !target.closest(
-                "[data-node-action='true'], .node-card, button, input, select, textarea"
+                "[data-node-action='true'], .node-card, button, input, select, textarea, [contenteditable='true'], [role='textbox']"
               )
             ) {
               setSelectedNodeId(null);
@@ -1194,6 +1202,7 @@ export default function App({ onLoggedOut }: AppProps) {
             draftIssue={linkDraftIssue}
             draftCursor={draftCursor}
             renderDraftPreview={false}
+            animationsPaused={isCanvasPanning}
           />
 
           {!isLinkingOnCanvas && (
@@ -1205,6 +1214,7 @@ export default function App({ onLoggedOut }: AppProps) {
               selectedNodeId={selectedNodeId}
               selectedLinkId={selectedLinkId}
               selectedLinkAnchor={selectedLinkAnchor}
+              animationsPaused={isCanvasPanning}
               onSelectLink={(linkId, anchor) => {
                 if (!linkId || !anchor) {
                   handleSelectLink(linkId, null);

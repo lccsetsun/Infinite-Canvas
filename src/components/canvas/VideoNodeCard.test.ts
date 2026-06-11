@@ -55,6 +55,14 @@ describe("getVideoNodeInputReferences", () => {
     ]);
   });
 
+  it("flattens nested image groups when multiple image inputs are connected", () => {
+    expect(
+      getVideoNodeInputReferences({
+        image: [["https://oss.example.com/a.png"], "https://oss.example.com/b.png"],
+      }).map((reference) => reference.value)
+    ).toEqual(["https://oss.example.com/a.png", "https://oss.example.com/b.png"]);
+  });
+
   it("expands a frame-analysis image group into individual first-frame references", () => {
     const frameImages = Array.from(
       { length: 7 },

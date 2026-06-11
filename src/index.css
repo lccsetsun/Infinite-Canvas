@@ -390,6 +390,12 @@ body {
     opacity: 1;
   }
 
+  [data-canvas-panning="true"] .port-attention,
+  [data-canvas-panning="true"] .link-energy-pulse,
+  [data-canvas-panning="true"] .link-energy-pulse-head {
+    animation: none;
+  }
+
   .link-energy-pulse-head-aura {
     animation: link-energy-flow 1.04s linear infinite, link-energy-head-glint 1.92s ease-in-out infinite;
     animation-delay: -0.01s, -0.22s;

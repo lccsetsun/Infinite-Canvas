@@ -35,12 +35,8 @@ function NodeCardImpl({
 
   return (
     <motion.div
-      initial={{ scale: 0.92, opacity: 0 }}
-      animate={{ scale: 1, opacity: 1 }}
-      exit={{ scale: 0.92, opacity: 0 }}
-      whileHover={{ y: -2 }}
-      transition={{ type: "spring", damping: 20, stiffness: 300 }}
       onPointerDown={(event) => {
+        if (event.button !== 0) return;
         const target = event.target as HTMLElement;
         if (!target.closest("[data-node-action='true']")) {
           onDragStart(event, node);

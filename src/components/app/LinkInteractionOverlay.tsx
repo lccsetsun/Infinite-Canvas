@@ -12,6 +12,7 @@ interface LinkInteractionOverlayProps {
   selectedNodeId: string | null;
   selectedLinkId: string | null;
   selectedLinkAnchor?: { x: number; y: number } | null;
+  animationsPaused?: boolean;
   onSelectLink: (linkId: string | null, anchor?: { x: number; y: number } | null) => void;
   onDeleteLink: (linkId: string) => void;
 }
@@ -39,6 +40,7 @@ export default function LinkInteractionOverlay({
   selectedNodeId,
   selectedLinkId,
   selectedLinkAnchor,
+  animationsPaused = false,
   onSelectLink,
   onDeleteLink,
 }: LinkInteractionOverlayProps) {
@@ -122,7 +124,7 @@ export default function LinkInteractionOverlay({
           {renderedLinks.map((link) => {
             const selected = link.id === selectedLinkId;
             const hovered = link.id === hoveredLinkId;
-            const active = isLinkConnectedToNode(link, selectedNodeId);
+            const active = !animationsPaused && isLinkConnectedToNode(link, selectedNodeId);
             return (
               <React.Fragment key={link.id}>
                 {active && (

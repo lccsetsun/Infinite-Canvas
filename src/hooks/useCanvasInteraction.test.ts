@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getDraggedNodePosition } from "./useCanvasInteraction";
+import { getDraggedNodePosition, shouldStartCanvasPan } from "./useCanvasInteraction";
 
 describe("getDraggedNodePosition", () => {
   it("allows nodes to be dragged past the current top-left viewport", () => {
@@ -29,5 +29,13 @@ describe("getDraggedNodePosition", () => {
         zoom: 1,
       })
     ).toEqual({ x: -12, y: -12 });
+  });
+});
+
+describe("shouldStartCanvasPan", () => {
+  it("starts canvas panning only from the middle mouse button", () => {
+    expect(shouldStartCanvasPan(1)).toBe(true);
+    expect(shouldStartCanvasPan(0)).toBe(false);
+    expect(shouldStartCanvasPan(2)).toBe(false);
   });
 });

@@ -34,9 +34,8 @@ import {
   type FloatingMenuPosition,
 } from "../../utils/floatingMenuPosition";
 import { ReferencePreviewCard } from "./ReferencePreviewCard";
-import { insertMentionLabel, shouldShowMentionMenu } from "../../utils/inputResourceMentions";
-import { InputResourceMentionMenu } from "./InputResourceMentionMenu";
 import { calculateTextNodeResize } from "../../utils/textNodeResize";
+import { PromptTokenEditor, type PromptTokenEditorHandle } from "./PromptTokenEditor";
 
 interface TextNodeCardProps {
   node: GraphNode;
@@ -188,9 +187,9 @@ function TextNodeCardImpl({
   const [outputMenuPos, setOutputMenuPos] = React.useState<{ x: number; y: number } | null>(null);
   const [modelMenuOpen, setModelMenuOpen] = React.useState(false);
   const [forceComposerOpen, setForceComposerOpen] = React.useState(false);
-  const textareaRef = React.useRef<HTMLTextAreaElement | null>(null);
-  const inlineTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
-  const responseTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
+  const promptEditorRef = React.useRef<PromptTokenEditorHandle | null>(null);
+  const inlineEditorRef = React.useRef<PromptTokenEditorHandle | null>(null);
+  const responseEditorRef = React.useRef<PromptTokenEditorHandle | null>(null);
   const rootRef = React.useRef<HTMLDivElement | null>(null);
   const cardRef = React.useRef<HTMLDivElement | null>(null);
   const [responseEditing, setResponseEditing] = React.useState(false);
@@ -199,7 +198,6 @@ function TextNodeCardImpl({
     width: number;
     height: number;
   } | null>(null);
-  const [mentionMenuOpen, setMentionMenuOpen] = React.useState(false);
   const inputPortRef = React.useRef<HTMLDivElement | null>(null);
   const outputPortRef = React.useRef<HTMLDivElement | null>(null);
   const modelMenuRef = React.useRef<HTMLDivElement | null>(null);
@@ -328,6 +326,8 @@ function TextNodeCardImpl({
     typeof node.properties.frameAnalysisVideoUrl === "string" &&
     Array.isArray(node.properties.frameAnalysisSegments) &&
     node.properties.frameAnalysisSegments.length > 0;
+  const promptComposerVisible =
+    showPromptComposer && !responseEditing && !isResizingTextNode && !isRunning;
 
   React.useEffect(() => {
     if (!resizeDraftSize) return;
@@ -341,12 +341,8 @@ function TextNodeCardImpl({
     onRun?.(node.id);
   };
 
-  const handleComposerPromptChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
-    onUpdateProperty?.(node.id, "text", event.target.value);
-    setMentionMenuOpen(
-      mentionableReferences.length > 0 &&
-        shouldShowMentionMenu(event.target.value, event.target.selectionStart)
-    );
+  const handleComposerPromptChange = (value: string) => {
+    onUpdateProperty?.(node.id, "text", value);
   };
 
   const enterResponseEditMode = () => {
@@ -354,27 +350,16 @@ function TextNodeCardImpl({
     setForceComposerOpen(false);
     setOutputMenuPos(null);
     setResponseEditing(true);
-    window.requestAnimationFrame(() => responseTextareaRef.current?.focus());
+    window.requestAnimationFrame(() => responseEditorRef.current?.focus());
   };
 
-  const handleResponseTextChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
-    onUpdateData?.(node.id, { response: event.target.value, status: "success" });
-  };
-
-  const insertResourceMention = (label: string) => {
-    const cursorIndex = textareaRef.current?.selectionStart ?? promptText.length;
-    const { nextCursorIndex, nextValue } = insertMentionLabel(promptText, cursorIndex, label);
-    onUpdateProperty?.(node.id, "text", nextValue);
-    setMentionMenuOpen(false);
-    window.requestAnimationFrame(() => {
-      textareaRef.current?.focus();
-      textareaRef.current?.setSelectionRange(nextCursorIndex, nextCursorIndex);
-    });
+  const handleResponseTextChange = (value: string) => {
+    onUpdateData?.(node.id, { response: value, status: "success" });
   };
 
   const focusComposer = () => {
     setForceComposerOpen(true);
-    window.requestAnimationFrame(() => textareaRef.current?.focus());
+    window.requestAnimationFrame(() => promptEditorRef.current?.focus());
   };
 
   const handleStarterAction = (action: StarterAction) => {
@@ -382,7 +367,7 @@ function TextNodeCardImpl({
       onUpdateProperty?.(node.id, "textMode", "plain");
       setForceComposerOpen(false);
       setInlineEditing(true);
-      window.requestAnimationFrame(() => inlineTextareaRef.current?.focus());
+      window.requestAnimationFrame(() => inlineEditorRef.current?.focus());
       return;
     }
     if (action === "image-prompt") {
@@ -397,7 +382,7 @@ function TextNodeCardImpl({
   const enterInlineEditMode = () => {
     if (!isPlainMode || upstreamTextPrompt) return;
     setInlineEditing(true);
-    window.requestAnimationFrame(() => inlineTextareaRef.current?.focus());
+    window.requestAnimationFrame(() => inlineEditorRef.current?.focus());
   };
 
   const handleCopy = (e: React.MouseEvent) => {
@@ -557,7 +542,6 @@ function TextNodeCardImpl({
     if (!isRunning) return;
     setForceComposerOpen(false);
     setInlineEditing(false);
-    setMentionMenuOpen(false);
     setModelMenuOpen(false);
     setOutputMenuPos(null);
     setResponseEditing(false);
@@ -567,18 +551,18 @@ function TextNodeCardImpl({
     if (node.data?.forceComposerOpen !== true) return;
     setForceComposerOpen(true);
     onUpdateData?.(node.id, { forceComposerOpen: false });
-    window.requestAnimationFrame(() => textareaRef.current?.focus());
+    window.requestAnimationFrame(() => promptEditorRef.current?.focus());
   }, [node.data?.forceComposerOpen, node.id, onUpdateData]);
 
   React.useEffect(() => {
     if (node.data?.forceInlineEditing !== true) return;
     setInlineEditing(true);
     onUpdateData?.(node.id, { forceInlineEditing: false });
-    window.requestAnimationFrame(() => inlineTextareaRef.current?.focus());
+    window.requestAnimationFrame(() => inlineEditorRef.current?.focus());
   }, [node.data?.forceInlineEditing, node.id, onUpdateData]);
 
   React.useEffect(() => {
-    if (showInlineEditor) inlineTextareaRef.current?.focus();
+    if (showInlineEditor) window.requestAnimationFrame(() => inlineEditorRef.current?.focus());
   }, [showInlineEditor]);
 
   React.useEffect(() => {
@@ -656,10 +640,6 @@ function TextNodeCardImpl({
   return (
     <motion.div
       ref={rootRef}
-      initial={{ scale: 0.96, opacity: 0 }}
-      animate={{ scale: 1, opacity: 1 }}
-      exit={{ scale: 0.96, opacity: 0 }}
-      transition={{ type: "spring", damping: 22, stiffness: 280 }}
       className="absolute text-left"
       style={{ width: renderedNodeWidth }}
       onMouseEnter={() => setIsHovered(true)}
@@ -670,14 +650,15 @@ function TextNodeCardImpl({
         ref={cardRef}
         onPointerDown={(e) => {
           if (e.button !== 0) {
-            e.stopPropagation();
             return;
           }
 
           const target = e.target as HTMLElement;
           if (
             !target.closest("[data-node-action='true']") &&
-            !target.closest("textarea,button,input,.ant-select")
+            !target.closest(
+              "textarea,button,input,[contenteditable='true'],[role='textbox'],.ant-select"
+            )
           ) {
             onDragStart(e, node);
           } else {
@@ -692,7 +673,9 @@ function TextNodeCardImpl({
           const target = e.target as HTMLElement;
           if (
             target.closest("[data-node-action='true']") ||
-            target.closest("textarea,button,input,.ant-select")
+            target.closest(
+              "textarea,button,input,[contenteditable='true'],[role='textbox'],.ant-select"
+            )
           )
             return;
           e.stopPropagation();
@@ -919,9 +902,6 @@ function TextNodeCardImpl({
           <AnimatePresence mode="wait">
             <motion.div
               key={contentViewKey}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
               className="flex flex-1 flex-col"
             >
               <div
@@ -949,21 +929,14 @@ function TextNodeCardImpl({
                     </div>
                   ) : responseText || responseEditing ? (
                     responseEditing ? (
-                      <textarea
-                        ref={responseTextareaRef}
-                        data-node-action="true"
-                        data-canvas-passthrough="true"
+                      <PromptTokenEditor
+                        ref={responseEditorRef}
                         value={responseText}
                         onChange={handleResponseTextChange}
+                        resources={[]}
                         onBlur={() => setResponseEditing(false)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Escape") {
-                            event.preventDefault();
-                            setResponseEditing(false);
-                          }
-                        }}
-                        onWheel={(event) => event.stopPropagation()}
-                        className="custom-scrollbar w-full resize-none bg-transparent pr-2 text-[14px] leading-[1.78] text-slate-100/88 outline-none"
+                        onEscape={() => setResponseEditing(false)}
+                        className="custom-scrollbar w-full pr-2 text-[14px] leading-[1.78]"
                         style={{ height: "var(--text-node-response-height)" }}
                       />
                     ) : (
@@ -991,22 +964,15 @@ function TextNodeCardImpl({
                       </div>
                     )
                   ) : showInlineEditor ? (
-                    <textarea
-                      ref={inlineTextareaRef}
-                      data-node-action="true"
-                      data-canvas-passthrough="true"
+                    <PromptTokenEditor
+                      ref={inlineEditorRef}
                       value={promptText}
-                      onChange={(e) => onUpdateProperty?.(node.id, "text", e.target.value)}
+                      resources={mentionableReferences}
+                      onChange={(value) => onUpdateProperty?.(node.id, "text", value)}
                       onBlur={() => setInlineEditing(false)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Escape") {
-                          event.preventDefault();
-                          setInlineEditing(false);
-                        }
-                      }}
+                      onEscape={() => setInlineEditing(false)}
                       placeholder="直接写下文本内容，完成后点击空白处退出编辑。"
-                      onWheel={(event) => event.stopPropagation()}
-                      className="custom-scrollbar min-h-[210px] w-full resize-none bg-transparent text-[15px] leading-7 text-slate-100/88 outline-none placeholder:text-slate-400/38"
+                      className="custom-scrollbar min-h-[210px] w-full text-[15px] leading-7"
                     />
                   ) : isPlainMode ? (
                     <div
@@ -1106,11 +1072,8 @@ function TextNodeCardImpl({
       </motion.div>
 
       <AnimatePresence>
-        {showPromptComposer && !responseEditing && !isResizingTextNode && !isRunning && (
+        {promptComposerVisible && (
           <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
             data-node-action="true"
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => {
@@ -1132,24 +1095,11 @@ function TextNodeCardImpl({
               </div>
             )}
             <div className="relative">
-              <textarea
-                ref={textareaRef}
-                data-canvas-passthrough="true"
+              <PromptTokenEditor
+                ref={promptEditorRef}
                 value={promptText}
+                resources={mentionableReferences}
                 onChange={handleComposerPromptChange}
-                onFocus={(event) =>
-                  setMentionMenuOpen(
-                    mentionableReferences.length > 0 &&
-                      shouldShowMentionMenu(
-                        event.currentTarget.value,
-                        event.currentTarget.selectionStart
-                      )
-                  )
-                }
-                onKeyDown={(event) => {
-                  if (event.key === "Escape") setMentionMenuOpen(false);
-                }}
-                onWheel={(event) => event.stopPropagation()}
                 placeholder={
                   upstreamTextPrompt
                     ? "输入你想如何处理上游内容，例如：总结、改写或回答它。"
@@ -1157,15 +1107,8 @@ function TextNodeCardImpl({
                       ? "根据图片生成结构化中文提示词，包括主体描述、环境、光影、镜头语言与风格关键词。"
                       : "写下你想讲的故事、场景或角色设定。例如：一个来自未来的机器人，在城市屋顶看着星星。"
                 }
-                className="relative h-[88px] w-full resize-none bg-transparent text-[15px] leading-7 text-slate-100/88 outline-none placeholder:text-slate-400/42 custom-scrollbar"
+                className="h-[88px] text-[15px] leading-7 custom-scrollbar"
               />
-              {mentionMenuOpen && (
-                <InputResourceMentionMenu
-                  resources={mentionableReferences}
-                  onPick={(label) => insertResourceMention(label)}
-                  onRequestClose={() => setMentionMenuOpen(false)}
-                />
-              )}
             </div>
             <div className="relative mt-3 flex flex-nowrap items-center gap-2 border-t border-slate-200/8 pt-3">
               <div className="min-w-0 flex-[1_1_230px]">

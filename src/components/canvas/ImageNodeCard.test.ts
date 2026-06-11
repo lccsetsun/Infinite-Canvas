@@ -78,6 +78,27 @@ describe("getImageNodeInputReferences", () => {
     ]);
   });
 
+  it("flattens nested media groups when multiple image inputs are connected", () => {
+    expect(
+      getImageNodeInputReferences({
+        source_image: [
+          ["https://oss.example.com/duck.png"],
+          "https://oss.example.com/cat-dog.png",
+        ],
+      }).map((reference) => reference.value)
+    ).toEqual(["https://oss.example.com/duck.png", "https://oss.example.com/cat-dog.png"]);
+  });
+
+  it("extracts image references from object-shaped upstream outputs", () => {
+    expect(
+      getImageNodeInputReferences({
+        source_image: {
+          imageUrls: ["https://oss.example.com/a.png", "https://oss.example.com/b.png"],
+        },
+      }).map((reference) => reference.value)
+    ).toEqual(["https://oss.example.com/a.png", "https://oss.example.com/b.png"]);
+  });
+
   it("expands a frame-analysis image group into individual references", () => {
     const frameImages = Array.from(
       { length: 7 },
