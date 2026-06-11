@@ -163,6 +163,7 @@ export function getAudioNodeInputReferences(
 }
 
 type AudioOptionMenu = "voice" | "emotion" | "speed" | null;
+const AUDIO_GENERATION_UNAVAILABLE = true;
 
 function AudioNodeCardImpl({
   node,
@@ -223,6 +224,7 @@ function AudioNodeCardImpl({
   const nodeBadgeMatch = nodeBadgeTitle.match(/^(.*?)(\s+\d+)$/);
 
   const handleRun = () => {
+    if (AUDIO_GENERATION_UNAVAILABLE) return;
     if (isRunning) return;
     setOptionMenuOpen(null);
     onRun?.(node.id);
@@ -510,7 +512,7 @@ function AudioNodeCardImpl({
                 <Music2 className="h-6 w-6" />
               </div>
               <div className="min-w-0">
-                <div className="text-[13px] font-semibold text-slate-100/86">MiniMax 音频结果</div>
+                <div className="text-[13px] font-semibold text-slate-100/86">远程音频结果</div>
                 <div className="mt-1 truncate text-[11px] text-slate-400/70">
                   {voiceId} · {AUDIO_MODEL}
                 </div>
@@ -671,16 +673,18 @@ function AudioNodeCardImpl({
             <div className="mt-3 flex items-center gap-2 border-t border-cyan-100/8 pt-3">
               <div className="flex h-10 min-w-[156px] items-center gap-2 rounded-[14px] border border-cyan-100/8 bg-slate-950/18 px-3 text-[13px] font-medium text-cyan-50/78 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]">
                 <Wand2 className="h-3.5 w-3.5 text-cyan-100/50" />
-                <span>MiniMax Audio</span>
+                <span>音频生成开发中</span>
               </div>
               <div className="relative">
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
+                    if (AUDIO_GENERATION_UNAVAILABLE) return;
                     setOptionMenuOpen((open) => (open === "voice" ? null : "voice"));
                   }}
-                  className="inline-flex h-10 min-w-[116px] items-center justify-center gap-2 rounded-[14px] border border-cyan-100/8 bg-slate-950/18 px-3 text-[13px] font-medium text-cyan-50/76 transition-colors hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
+                  disabled={AUDIO_GENERATION_UNAVAILABLE}
+                  className="inline-flex h-10 min-w-[116px] items-center justify-center gap-2 rounded-[14px] border border-cyan-100/8 bg-slate-950/18 px-3 text-[13px] font-medium text-cyan-50/76 transition-colors hover:border-cyan-100/18 hover:bg-cyan-100/[0.045] disabled:cursor-not-allowed disabled:opacity-45"
                 >
                   <span>
                     {VOICE_OPTIONS.find((item) => item.value === voiceId)?.label || "默认音色"}
@@ -718,9 +722,11 @@ function AudioNodeCardImpl({
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
+                    if (AUDIO_GENERATION_UNAVAILABLE) return;
                     setOptionMenuOpen((open) => (open === "emotion" ? null : "emotion"));
                   }}
-                  className="inline-flex h-10 min-w-[92px] items-center justify-center gap-2 rounded-[14px] border border-cyan-100/8 bg-slate-950/18 px-3 text-[13px] font-medium text-cyan-50/68 transition-colors hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
+                  disabled={AUDIO_GENERATION_UNAVAILABLE}
+                  className="inline-flex h-10 min-w-[92px] items-center justify-center gap-2 rounded-[14px] border border-cyan-100/8 bg-slate-950/18 px-3 text-[13px] font-medium text-cyan-50/68 transition-colors hover:border-cyan-100/18 hover:bg-cyan-100/[0.045] disabled:cursor-not-allowed disabled:opacity-45"
                 >
                   <span>
                     {EMOTION_OPTIONS.find((item) => item.value === emotion)?.label || "自动情绪"}
@@ -758,9 +764,11 @@ function AudioNodeCardImpl({
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
+                    if (AUDIO_GENERATION_UNAVAILABLE) return;
                     setOptionMenuOpen((open) => (open === "speed" ? null : "speed"));
                   }}
-                  className="inline-flex h-10 min-w-[76px] items-center justify-center rounded-[14px] border border-cyan-100/8 bg-slate-950/18 px-3 text-[13px] font-medium text-cyan-50/68 transition-colors hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
+                  disabled={AUDIO_GENERATION_UNAVAILABLE}
+                  className="inline-flex h-10 min-w-[76px] items-center justify-center rounded-[14px] border border-cyan-100/8 bg-slate-950/18 px-3 text-[13px] font-medium text-cyan-50/68 transition-colors hover:border-cyan-100/18 hover:bg-cyan-100/[0.045] disabled:cursor-not-allowed disabled:opacity-45"
                 >
                   {speed}x
                 </button>
@@ -796,9 +804,10 @@ function AudioNodeCardImpl({
                   e.stopPropagation();
                   handleRun();
                 }}
-                disabled={isRunning || (!upstreamPrompt && !promptText.trim())}
+                title={AUDIO_GENERATION_UNAVAILABLE ? "音频生成开发中" : undefined}
+                disabled={AUDIO_GENERATION_UNAVAILABLE || isRunning || (!upstreamPrompt && !promptText.trim())}
                 className={`ml-auto flex h-10 w-10 items-center justify-center rounded-[14px] transition-all ${
-                  isRunning || (!upstreamPrompt && !promptText.trim())
+                  AUDIO_GENERATION_UNAVAILABLE || isRunning || (!upstreamPrompt && !promptText.trim())
                     ? "cursor-not-allowed border border-cyan-100/6 bg-slate-200/8 text-slate-200/28"
                     : "bg-cyan-50 text-[#0f172a] shadow-[0_14px_30px_-18px_rgba(103,232,249,0.9)] hover:bg-white"
                 }`}

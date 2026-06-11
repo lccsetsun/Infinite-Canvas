@@ -71,22 +71,20 @@ export function groupAiModelsByType(rows: unknown[]): AiModelsByType {
 }
 
 export function getModelOptionGroups(
-  builtInModels: string[],
+  _builtInModels: string[],
   remoteModels: AiModel[]
 ): { builtIn: string[]; remote: string[] } {
-  const builtIn = builtInModels.map((model) => model.trim()).filter(Boolean);
-  const builtInSet = new Set(builtIn);
   const remoteSeen = new Set<string>();
   const remote: string[] = [];
 
   remoteModels.forEach((model) => {
     const modelId = model.modelId.trim();
-    if (!modelId || builtInSet.has(modelId) || remoteSeen.has(modelId)) return;
+    if (!modelId || remoteSeen.has(modelId)) return;
     remoteSeen.add(modelId);
     remote.push(modelId);
   });
 
-  return { builtIn, remote };
+  return { builtIn: [], remote };
 }
 
 export async function fetchAiModelCatalog(): Promise<AiModelsByType> {

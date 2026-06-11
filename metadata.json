@@ -1,6 +1,6 @@
 {
   "name": "AI Canvas",
-  "description": "A high-performance LiteGraph.js visual node-graph editor with ComfyUI design, custom node types, drag-and-drop wiring, and DeepSeek and MiniMax API integrations.",
+  "description": "A high-performance LiteGraph.js visual node-graph editor with ComfyUI design, custom node types, drag-and-drop wiring, and remote model integrations.",
   "requestFramePermissions": [],
   "majorCapabilities": []
 }

@@ -24,7 +24,7 @@ export function getTextNodeViewState({
   if (isRunning) {
     return {
       accentClass: "text-cyan-200 border-cyan-300/30 bg-cyan-300/10",
-      description: "正在请求大模型，等待 DeepSeek 返回结果",
+      description: "正在请求远程模型，等待返回结果",
       kind: "running",
       label: "请求中",
       shortLabel: "RUN",
@@ -54,7 +54,7 @@ export function getTextNodeViewState({
   if (promptText.trim()) {
     return {
       accentClass: "text-indigo-100 border-indigo-300/28 bg-indigo-300/10",
-      description: "输入已就绪，点击运行发送到 DeepSeek Chat",
+      description: "输入已就绪，点击运行发送到远程模型",
       kind: "ready",
       label: "已输入",
       shortLabel: "READY",

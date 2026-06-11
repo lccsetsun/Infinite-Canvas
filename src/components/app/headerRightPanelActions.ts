@@ -1,4 +1,4 @@
-export type HeaderMenuActionKey = "api-settings" | "logout";
+export type HeaderMenuActionKey = "logout";
 
 type RunHeaderMenuActionOptions = {
   actionKey: HeaderMenuActionKey;

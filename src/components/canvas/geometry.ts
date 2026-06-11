@@ -1,8 +1,9 @@
 import { GraphNode } from "../../types";
 
 const NODE_WIDTH = 240;
-const TEXT_NODE_WIDTH = 420;
-const TEXT_NODE_HEIGHT = 420;
+const TEXT_NODE_WIDTH = 360;
+const TEXT_NODE_HEIGHT = 360;
+const LEGACY_TEXT_NODE_DEFAULT_SIZE = 420;
 const MEDIA_NODE_FOOTPRINT_WIDTH = 540;
 const MEDIA_NODE_FOOTPRINT_HEIGHT = 540;
 const MEDIA_NODE_WIDTH = 520;
@@ -35,7 +36,12 @@ function fitNodeFootprint(aspectRatio: unknown) {
 export function getNodeWidth(node: GraphNode) {
   if (node.type === "text_node") {
     const nodeWidth = node.data?.textNodeWidth;
-    if (typeof nodeWidth === "number" && Number.isFinite(nodeWidth) && nodeWidth > 0)
+    if (
+      typeof nodeWidth === "number" &&
+      Number.isFinite(nodeWidth) &&
+      nodeWidth > 0 &&
+      nodeWidth !== LEGACY_TEXT_NODE_DEFAULT_SIZE
+    )
       return nodeWidth;
     return TEXT_NODE_WIDTH;
   }
@@ -73,7 +79,12 @@ export function getNodeHeight(node: GraphNode) {
   }
   if (node.type === "text_node") {
     const nodeHeight = node.data?.textNodeHeight;
-    if (typeof nodeHeight === "number" && Number.isFinite(nodeHeight) && nodeHeight > 0)
+    if (
+      typeof nodeHeight === "number" &&
+      Number.isFinite(nodeHeight) &&
+      nodeHeight > 0 &&
+      nodeHeight !== LEGACY_TEXT_NODE_DEFAULT_SIZE
+    )
       return nodeHeight;
     return TEXT_NODE_HEIGHT;
   }

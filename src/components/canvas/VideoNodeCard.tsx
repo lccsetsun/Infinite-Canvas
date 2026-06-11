@@ -46,7 +46,6 @@ interface VideoNodeCardProps {
   node: GraphNode;
   selected: boolean;
   apiConfig?: {
-    providerModels?: Partial<Record<string, string>>;
     remoteModelsByType?: AiModelsByType;
   };
   onSelect: (e?: React.MouseEvent) => void;
@@ -87,7 +86,6 @@ const EMPTY_NODE_FOOTPRINT_HEIGHT = 540;
 const VIDEO_DURATION_MIN_SECONDS = 1;
 const VIDEO_DURATION_MAX_SECONDS = 15;
 const VIDEO_DURATION_DEFAULT_SECONDS = 5;
-const MINIMAX_VIDEO_MODEL = "MiniMax-Hailuo-2.3";
 const VIDEO_NODE_REFERENCE_IGNORED_KEYS = new Set([
   "duration",
   "aspect_ratio",
@@ -329,7 +327,7 @@ function VideoNodeCardImpl({
   const videoModelOptionGroups = React.useMemo(
     () =>
       getModelOptionGroups(
-        [MINIMAX_VIDEO_MODEL],
+        [],
         apiConfig?.remoteModelsByType?.[AI_MODEL_TYPES[2]] ?? []
       ),
     [apiConfig?.remoteModelsByType]
@@ -338,9 +336,7 @@ function VideoNodeCardImpl({
     () => [...videoModelOptionGroups.builtIn, ...videoModelOptionGroups.remote],
     [videoModelOptionGroups]
   );
-  const preferredVideoModel = videoModelOptions.includes(apiConfig?.providerModels?.minimax || "")
-    ? apiConfig?.providerModels?.minimax || MINIMAX_VIDEO_MODEL
-    : videoModelOptions[0] || MINIMAX_VIDEO_MODEL;
+  const preferredVideoModel = videoModelOptions[0] || "";
   const selectedVideoModel =
     typeof node.properties.model === "string" && node.properties.model.trim()
       ? node.properties.model.trim()
@@ -671,21 +667,21 @@ function VideoNodeCardImpl({
         className="hidden"
         onChange={handleVideoUpload}
       />
-      <Tooltip content={videoUrl ? "上传替换视频" : "上传视频"} position="top">
-        <button
-          type="button"
-          data-node-action="true"
-          onClick={handleUploadClick}
-          disabled={isUploadingAsset || isUploadingVideo}
-          className="flex h-9 w-9 items-center justify-center rounded-[12px] border border-slate-300/14 bg-[#101827]/72 text-slate-300/78 shadow-[0_14px_34px_-24px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.055)] backdrop-blur-xl transition-all hover:-translate-y-0.5 hover:border-violet-300/36 hover:bg-violet-500/[0.16] hover:text-violet-50 hover:shadow-[0_16px_34px_-22px_rgba(139,92,246,0.85),0_0_18px_rgba(139,92,246,0.2)] disabled:cursor-wait"
-        >
-          {isUploadingAsset || isUploadingVideo ? (
-            <Loader2 className="h-[18px] w-[18px] animate-spin" />
-          ) : (
-            <Upload className="h-[18px] w-[18px]" />
-          )}
-        </button>
-      </Tooltip>
+      <button
+        type="button"
+        data-node-action="true"
+        aria-label={videoUrl ? "上传替换视频" : "上传视频"}
+        onClick={handleUploadClick}
+        disabled={isUploadingAsset || isUploadingVideo}
+        className="flex h-9 items-center justify-center gap-1.5 rounded-[12px] bg-[#101824]/54 px-3 text-slate-300/82 shadow-[0_10px_28px_-22px_rgba(0,0,0,0.95)] backdrop-blur-xl transition-colors hover:bg-white/[0.065] hover:text-slate-50 disabled:cursor-wait"
+      >
+        {isUploadingAsset || isUploadingVideo ? (
+          <Loader2 className="h-[18px] w-[18px] animate-spin" />
+        ) : (
+          <Upload className="h-[18px] w-[18px]" />
+        )}
+        <span className="text-[13px] font-medium leading-none">上传</span>
+      </button>
     </>
   );
 
@@ -831,14 +827,22 @@ function VideoNodeCardImpl({
           style={{ width: resultVideoSize.width }}
         >
           {portHandles}
-          <div
-            data-node-action="true"
-            className="absolute right-2 top-8 z-30"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {uploadControl}
-          </div>
+          <AnimatePresence>
+            {selected && !isUploadingAsset && !isUploadingVideo && (
+              <motion.div
+                data-node-action="true"
+                initial={{ opacity: 0, y: 8, scale: 0.96 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 8, scale: 0.96 }}
+                transition={{ duration: 0.16, ease: "easeOut" }}
+                className="absolute left-1/2 top-0 z-50 flex -translate-x-1/2 -translate-y-[calc(100%-20px)] items-center"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => e.stopPropagation()}
+              >
+                {uploadControl}
+              </motion.div>
+            )}
+          </AnimatePresence>
           <AnimatePresence>
             {selected && (
               <motion.div
@@ -1086,16 +1090,22 @@ function VideoNodeCardImpl({
           </div>
         )}
         {portHandles}
-        {!isUploadingAsset && (
-          <div
-            data-node-action="true"
-            className="absolute right-3 top-3 z-30"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {uploadControl}
-          </div>
-        )}
+        <AnimatePresence>
+          {selected && !isUploadingAsset && (
+            <motion.div
+              data-node-action="true"
+              initial={{ opacity: 0, y: 8, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 8, scale: 0.96 }}
+              transition={{ duration: 0.16, ease: "easeOut" }}
+              className="absolute left-1/2 top-0 z-40 flex -translate-x-1/2 -translate-y-[calc(100%+14px)] items-center"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {uploadControl}
+            </motion.div>
+          )}
+        </AnimatePresence>
         <div className="absolute -top-8 left-0 z-30 flex items-center gap-1.5 text-slate-300/82 drop-shadow-[0_1px_10px_rgba(15,23,42,0.9)]">
           <Video className="h-4 w-4 text-cyan-100/58" />
           <span className="text-[15px] font-medium tracking-tight">
@@ -1371,7 +1381,6 @@ const VideoNodeCard = React.memo(
   (prev, next) =>
     prev.node === next.node &&
     prev.selected === next.selected &&
-    prev.apiConfig?.providerModels?.minimax === next.apiConfig?.providerModels?.minimax &&
     prev.apiConfig?.remoteModelsByType === next.apiConfig?.remoteModelsByType
 );
 

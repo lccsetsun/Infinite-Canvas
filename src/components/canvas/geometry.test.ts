@@ -75,9 +75,30 @@ describe("text node sizing", () => {
       properties: {},
     };
 
-    expect(getNodeWidth(node)).toBe(420);
-    expect(getNodeHeight(node)).toBe(420);
-    expect(getOutputAnchor(node, 0)).toEqual({ x: 540, y: 290 });
+    expect(getNodeWidth(node)).toBe(360);
+    expect(getNodeHeight(node)).toBe(360);
+    expect(getOutputAnchor(node, 0)).toEqual({ x: 480, y: 260 });
+  });
+
+  it("normalizes legacy default text node dimensions", () => {
+    const node = {
+      id: "text",
+      title: "鏂囨湰鑺傜偣 1",
+      type: "text_node" as const,
+      x: 120,
+      y: 80,
+      inputs: [],
+      outputs: [{ name: "鏂囨湰", type: "STRING" as const }],
+      properties: {},
+      data: {
+        textNodeWidth: 420,
+        textNodeHeight: 420,
+      },
+    };
+
+    expect(getNodeWidth(node)).toBe(360);
+    expect(getNodeHeight(node)).toBe(360);
+    expect(getOutputAnchor(node, 0)).toEqual({ x: 480, y: 260 });
   });
 
   it("uses custom text node dimensions when present", () => {
@@ -92,13 +113,13 @@ describe("text node sizing", () => {
       properties: {},
       data: {
         textNodeWidth: 560,
-        textNodeHeight: 420,
+        textNodeHeight: 500,
       },
     };
 
     expect(getNodeWidth(node)).toBe(560);
-    expect(getNodeHeight(node)).toBe(420);
-    expect(getOutputAnchor(node, 0)).toEqual({ x: 680, y: 290 });
+    expect(getNodeHeight(node)).toBe(500);
+    expect(getOutputAnchor(node, 0)).toEqual({ x: 680, y: 330 });
   });
 });
 

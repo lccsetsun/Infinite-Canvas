@@ -59,7 +59,7 @@ describe("ai model catalog", () => {
     expect(EMPTY_AI_MODELS_BY_TYPE.文本).toEqual([]);
   });
 
-  it("keeps built-in and remote model options in separate groups without duplicate remote ids", () => {
+  it("ignores built-in model options and only exposes remote model ids", () => {
     const groups = getModelOptionGroups(["deepseek-chat", "deepseek-reasoner"], [
         {
           id: "remote-1",
@@ -76,8 +76,8 @@ describe("ai model catalog", () => {
       ]);
 
     expect(groups).toEqual({
-      builtIn: ["deepseek-chat", "deepseek-reasoner"],
-      remote: ["qwen3.7-plus"],
+      builtIn: [],
+      remote: ["deepseek-chat", "qwen3.7-plus"],
     });
   });
 });

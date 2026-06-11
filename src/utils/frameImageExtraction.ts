@@ -2,8 +2,8 @@ import { createNodeFromType } from "../features/nodes/nodeFactory";
 import type { NodeOutputMap } from "../runtime/dataflow";
 import type { GraphLink, GraphNode } from "../types";
 
-const EXTRACTED_FRAME_CHILD_MAX_WIDTH = 360;
-const EXTRACTED_FRAME_CHILD_MAX_HEIGHT = 270;
+const EXTRACTED_FRAME_CHILD_MAX_WIDTH = 540;
+const EXTRACTED_FRAME_CHILD_MAX_HEIGHT = 540;
 
 function fitExtractedFrameChildSize(sourceNode: GraphNode) {
   const width =

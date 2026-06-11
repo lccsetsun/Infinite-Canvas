@@ -38,32 +38,48 @@ const MenuItem = ({
   label,
   description,
   colorClass,
+  disabled = false,
+  badge,
 }: {
   onClick: () => void;
   icon: React.ComponentType<{ className?: string }>;
   label: string;
   description: string;
   colorClass: string;
+  disabled?: boolean;
+  badge?: string;
 }) => (
   <motion.button
-    whileHover={{ x: 4, backgroundColor: "rgba(255, 255, 255, 0.03)" }}
-    whileTap={{ scale: 0.98 }}
+    whileHover={disabled ? undefined : { x: 4, backgroundColor: "rgba(255, 255, 255, 0.03)" }}
+    whileTap={disabled ? undefined : { scale: 0.98 }}
     type="button"
-    onClick={onClick}
-    className="group flex w-full items-center rounded-xl border border-transparent p-2 text-left transition-all hover:border-white/5"
+    onClick={disabled ? undefined : onClick}
+    disabled={disabled}
+    className={`group flex w-full items-center rounded-[11px] border border-transparent p-1.5 text-left transition-all ${
+      disabled
+        ? "cursor-not-allowed opacity-45"
+        : "hover:border-cyan-100/10"
+    }`}
   >
-    <div className={`rounded-lg bg-white/5 p-2 ${colorClass} transition-transform group-hover:scale-110`}>
-      <Icon className="h-4 w-4" />
+    <div className={`rounded-[10px] bg-slate-100/[0.055] p-1.5 ${colorClass} transition-transform group-hover:scale-110`}>
+      <Icon className="h-[17px] w-[17px]" />
     </div>
-    <div className="ml-3 flex-1">
-      <div className="text-[13px] font-bold text-gray-200 transition-colors group-hover:text-white">
+    <div className="ml-2.5 min-w-0 flex-1">
+      <div className="flex min-w-0 items-center gap-2 text-[12px] font-bold text-slate-100/90 transition-colors group-hover:text-white">
         {label}
+        {badge ? (
+          <span className="rounded-full border border-slate-300/10 bg-slate-100/[0.055] px-1.5 py-0.5 text-[10px] font-semibold text-slate-400">
+            {badge}
+          </span>
+        ) : null}
       </div>
-      <div className="text-[10px] text-gray-500 transition-colors group-hover:text-gray-400">
+      <div className="truncate text-[10px] text-slate-500 transition-colors group-hover:text-slate-400">
         {description}
       </div>
     </div>
-    <ChevronRight className="h-3.5 w-3.5 -translate-x-2 text-gray-600 opacity-0 transition-all group-hover:translate-x-0 group-hover:opacity-100" />
+    {!disabled ? (
+      <ChevronRight className="h-3.5 w-3.5 -translate-x-2 text-gray-600 opacity-0 transition-all group-hover:translate-x-0 group-hover:opacity-100" />
+    ) : null}
   </motion.button>
 );
 
@@ -82,16 +98,22 @@ export default function SearchMenu({
   const containerRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [menuSize, setMenuSize] = React.useState({ width: 280, height: 520 });
+  const [menuSize, setMenuSize] = React.useState({ width: 244, height: 430 });
 
   useEffect(() => {
-    const handlePointerDownOutside = (event: PointerEvent) => {
+    const handlePointerDownOutside = (event: Event) => {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
         onClose();
       }
     };
-    document.addEventListener("pointerdown", handlePointerDownOutside);
-    return () => document.removeEventListener("pointerdown", handlePointerDownOutside);
+    document.addEventListener("pointerdown", handlePointerDownOutside, true);
+    document.addEventListener("mousedown", handlePointerDownOutside, true);
+    document.addEventListener("auxclick", handlePointerDownOutside, true);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDownOutside, true);
+      document.removeEventListener("mousedown", handlePointerDownOutside, true);
+      document.removeEventListener("auxclick", handlePointerDownOutside, true);
+    };
   }, [onClose]);
 
   useEffect(() => {
@@ -100,8 +122,8 @@ export default function SearchMenu({
 
     const syncMenuSize = () => {
       setMenuSize({
-        width: panel.offsetWidth || 280,
-        height: panel.offsetHeight || 520,
+        width: panel.offsetWidth || 244,
+        height: panel.offsetHeight || 430,
       });
     };
 
@@ -174,15 +196,15 @@ export default function SearchMenu({
         ref={panelRef}
         onPointerDown={(event) => event.stopPropagation()}
         onClick={(event) => event.stopPropagation()}
-        className={`${isContextMenu ? "" : "ml-[12px]"} flex max-h-[calc(100vh-144px)] w-[280px] flex-col gap-4 overflow-y-auto rounded-[24px] border border-white/10 bg-[#0d1117]/90 p-5 shadow-[0_30px_60px_-12px_rgba(0,0,0,0.6),inset_0_1px_1px_rgba(255,255,255,0.05)] backdrop-blur-2xl`}
+        className={`${isContextMenu ? "" : "ml-[12px]"} flex max-h-[calc(100vh-144px)] w-[244px] flex-col gap-3 overflow-y-auto rounded-[20px] border border-slate-400/10 bg-[#121923]/94 p-4 shadow-[0_24px_56px_-24px_rgba(0,0,0,0.92),0_0_34px_rgba(99,102,241,0.08),inset_0_1px_0_rgba(255,255,255,0.045)] backdrop-blur-2xl`}
       >
-        <div className="space-y-4">
+        <div className="space-y-3">
           <section>
-            <div className="mb-2 flex items-center justify-between px-2">
-              <span className="font-sans text-[10px] font-black uppercase tracking-[0.15em] text-indigo-400">
+            <div className="mb-1.5 flex items-center justify-between px-1.5">
+              <span className="font-sans text-[10px] font-black uppercase tracking-[0.14em] text-violet-300">
                 基础节点
               </span>
-              <div className="ml-4 h-px flex-1 bg-gradient-to-r from-indigo-500/30 to-transparent" />
+              <div className="ml-3 h-px flex-1 bg-gradient-to-r from-violet-400/25 to-transparent" />
             </div>
             <div className="flex flex-col gap-0.5">
               <MenuItem
@@ -207,21 +229,23 @@ export default function SearchMenu({
                 colorClass="text-rose-400 group-hover:text-rose-300"
               />
               <MenuItem
-                onClick={() => handleSelect("audio_node")}
+                onClick={() => onNotice?.("音频生成开发中")}
                 icon={Music2}
                 label="音频生成"
-                description="生成语音、音乐或音效"
-                colorClass="text-amber-400 group-hover:text-amber-300"
+                description="音频生成接口开发中"
+                colorClass="text-amber-400"
+                disabled
+                badge="开发中"
               />
             </div>
           </section>
 
           <section>
-            <div className="mb-2 flex items-center justify-between px-2">
-              <span className="font-sans text-[10px] font-black uppercase tracking-[0.15em] text-emerald-400">
+            <div className="mb-1.5 flex items-center justify-between px-1.5">
+              <span className="font-sans text-[10px] font-black uppercase tracking-[0.14em] text-cyan-300">
                 本地资源
               </span>
-              <div className="ml-4 h-px flex-1 bg-gradient-to-r from-emerald-500/30 to-transparent" />
+              <div className="ml-3 h-px flex-1 bg-gradient-to-r from-cyan-300/25 to-transparent" />
             </div>
             <div className="flex flex-col gap-0.5">
               <MenuItem

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { getDraggedNodePosition, shouldStartCanvasPan } from "./useCanvasInteraction";
+import {
+  getDraggedNodePosition,
+  getWheelPanPosition,
+  shouldStartCanvasPan,
+} from "./useCanvasInteraction";
 
 describe("getDraggedNodePosition", () => {
   it("allows nodes to be dragged past the current top-left viewport", () => {
@@ -37,5 +41,17 @@ describe("shouldStartCanvasPan", () => {
     expect(shouldStartCanvasPan(1)).toBe(true);
     expect(shouldStartCanvasPan(0)).toBe(false);
     expect(shouldStartCanvasPan(2)).toBe(false);
+  });
+});
+
+describe("getWheelPanPosition", () => {
+  it("moves the canvas viewport with normal wheel deltas", () => {
+    expect(
+      getWheelPanPosition({
+        deltaX: 12,
+        deltaY: 80,
+        pan: { x: 100, y: 240 },
+      })
+    ).toEqual({ x: 88, y: 160 });
   });
 });

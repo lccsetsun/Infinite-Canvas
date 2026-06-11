@@ -1,21 +1,16 @@
 import React from "react";
 import { motion } from "motion/react";
-import { ApiSettings } from "../../features/api/apiSettings";
 
-const ApiSettingsPage = React.lazy(() => import("../pages/ApiSettingsPage"));
 const WorkflowSettingsPage = React.lazy(() => import("../pages/WorkflowSettingsPage"));
 
 interface SettingsPanelsProps {
-  apiSettings: ApiSettings;
   autoSaveWorkflow: boolean;
   currentView: "canvas" | "api" | "workflow";
   fallback: React.ReactNode;
   workflowName: string;
-  onSaveApiSettings: (settings: ApiSettings) => void;
   onSaveWorkflow: () => void;
   setAutoSaveWorkflow: (value: boolean) => void;
   setWorkflowName: (value: string) => void;
-  showNotice: (message: string, kind?: "info" | "success" | "warning" | "error") => void;
 }
 
 function PageShell({ children }: { children: React.ReactNode }) {
@@ -32,31 +27,16 @@ function PageShell({ children }: { children: React.ReactNode }) {
 }
 
 export default function SettingsPanels({
-  apiSettings,
   autoSaveWorkflow,
   currentView,
   fallback,
   workflowName,
-  onSaveApiSettings,
   onSaveWorkflow,
   setAutoSaveWorkflow,
   setWorkflowName,
-  showNotice,
 }: SettingsPanelsProps) {
   return (
     <>
-      {currentView === "api" && (
-        <React.Suspense fallback={fallback}>
-          <PageShell>
-            <ApiSettingsPage
-              initial={apiSettings}
-              onSave={onSaveApiSettings}
-              showNotice={showNotice}
-            />
-          </PageShell>
-        </React.Suspense>
-      )}
-
       {currentView === "workflow" && (
         <React.Suspense fallback={fallback}>
           <PageShell>

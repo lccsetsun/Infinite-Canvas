@@ -6,29 +6,25 @@ import {
   ArrowUp,
   Check,
   ChevronDown,
-  Clapperboard,
   Copy,
   Eye,
   FileText,
-  Image,
   Loader2,
-  Maximize2,
   MessageSquareText,
-  Music4,
   Plus,
-  SquarePen,
-  Wand2,
 } from "lucide-react";
 import { GraphNode } from "../../types";
 import { getNodeHeight, getNodeWidth } from "./geometry";
 import { findResolvedStringInput } from "../../utils/resolvedInputs";
 import { shouldShowInlinePortHandles } from "../../utils/portHandleVisibility";
-import { TEXT_NODE_MODEL } from "../../features/nodes/nodeExecutors";
 import { getTextNodeViewState } from "../../utils/textNodeViewState";
 import { getTextNodeInteractionState } from "../../utils/textNodeInteractionState";
 import type { TextNodeReferenceItem } from "../../utils/textNodeReferences";
-import { PROVIDER_PRESETS } from "../../features/api/apiSettings";
-import { getModelOptionGroups, type AiModelsByType } from "../../features/api/aiModelCatalog";
+import {
+  AI_MODEL_TYPES,
+  getModelOptionGroups,
+  type AiModelsByType,
+} from "../../features/api/aiModelCatalog";
 import {
   getFloatingMenuPosition,
   type FloatingMenuPosition,
@@ -41,7 +37,6 @@ interface TextNodeCardProps {
   node: GraphNode;
   selected: boolean;
   apiConfig?: {
-    providerModels?: Partial<Record<string, string>>;
     remoteModelsByType?: AiModelsByType;
   };
   onSelect: (e?: React.MouseEvent) => void;
@@ -57,13 +52,10 @@ interface TextNodeCardProps {
     items?: string[],
     currentIndex?: number
   ) => void;
-  onReverseSegmentAnalysis?: (node: GraphNode) => Promise<void> | void;
   resolvedInputs?: Record<string, unknown>;
   references?: TextNodeReferenceItem[];
   hasConnectedLinks?: boolean;
   onRun?: (nodeId: string) => void;
-  onCreateImagePromptStarter?: (nodeId: string) => void;
-  onCreateTextStarterFlow?: (nodeId: string, action: "video" | "music") => void;
   // 连线相关
   isLinkingOnCanvas?: boolean;
   linkFromNodeId?: string | null;
@@ -82,9 +74,8 @@ interface TextNodeCardProps {
   getCanvasLinkTargetIssue?: (nodeId: string, inputIndex: number) => string | null;
 }
 
-type StarterAction = "write" | "video" | "image-prompt" | "music";
-
-const MINIMAX_MULTIMODAL_MODELS = ["MiniMax-M3"];
+const DEFAULT_TEXT_REMOTE_MODEL = "qwen3.7-plus";
+const LEGACY_TEXT_REMOTE_DEFAULT_MODEL = "qwen3.6-plus";
 const TEXT_NODE_MIN_WIDTH = 360;
 const TEXT_NODE_MIN_HEIGHT = 250;
 const TEXT_NODE_MAX_WIDTH = 860;
@@ -150,13 +141,10 @@ function TextNodeCardImpl({
   onUpdateProperty,
   onUpdateData,
   onPreview,
-  onReverseSegmentAnalysis,
   resolvedInputs,
   references = [],
   hasConnectedLinks = false,
   onRun,
-  onCreateImagePromptStarter,
-  onCreateTextStarterFlow,
   isLinkingOnCanvas,
   linkFromNodeId,
   linkFromOutputIndex,
@@ -168,22 +156,9 @@ function TextNodeCardImpl({
   onLeaveCanvasLinkTarget,
   getCanvasLinkTargetIssue,
 }: TextNodeCardProps) {
-  const deepseekTextModels = PROVIDER_PRESETS.deepseek.models;
-  const starterActions = React.useMemo<
-    Array<{ icon: typeof SquarePen; label: string; action: StarterAction }>
-  >(
-    () => [
-      { icon: SquarePen, label: "自己编写内容", action: "write" },
-      { icon: Clapperboard, label: "文生视频", action: "video" },
-      { icon: Image, label: "图片反推提示词", action: "image-prompt" },
-      { icon: Music4, label: "文字生音乐", action: "music" },
-    ],
-    []
-  );
   const isRunning = node.properties.status === "loading" || node.data?.loading === true;
   const [copied, setCopied] = React.useState(false);
   const [isHovered, setIsHovered] = React.useState(false);
-  const [isReversingSegments, setIsReversingSegments] = React.useState(false);
   const [outputMenuPos, setOutputMenuPos] = React.useState<{ x: number; y: number } | null>(null);
   const [modelMenuOpen, setModelMenuOpen] = React.useState(false);
   const [forceComposerOpen, setForceComposerOpen] = React.useState(false);
@@ -283,27 +258,23 @@ function TextNodeCardImpl({
     node.inputs.findIndex((input) => input.name === "user_prompt")
   );
   const modelOptionGroups = React.useMemo(
-    () =>
-      getModelOptionGroups(
-        isMultimodalMode ? MINIMAX_MULTIMODAL_MODELS : deepseekTextModels,
-        apiConfig?.remoteModelsByType?.文本 ?? []
-      ),
-    [apiConfig?.remoteModelsByType?.文本, deepseekTextModels, isMultimodalMode]
+    () => getModelOptionGroups([], apiConfig?.remoteModelsByType?.[AI_MODEL_TYPES[0]] ?? []),
+    [apiConfig?.remoteModelsByType]
   );
   const modelOptions = React.useMemo(
     () => [...modelOptionGroups.builtIn, ...modelOptionGroups.remote],
     [modelOptionGroups]
   );
-  const rawPreferredProviderModel = isMultimodalMode
-    ? apiConfig?.providerModels?.minimax || MINIMAX_MULTIMODAL_MODELS[0]
-    : apiConfig?.providerModels?.deepseek || deepseekTextModels[0];
-  const preferredProviderModel = modelOptions.includes(rawPreferredProviderModel)
-    ? rawPreferredProviderModel
-    : modelOptions[0];
+  const selectedModel = typeof node.properties.model === "string" ? node.properties.model : "";
+  const hasPreferredTextModel = modelOptions.includes(DEFAULT_TEXT_REMOTE_MODEL);
   const currentModel =
-    typeof node.properties.model === "string" && modelOptions.includes(node.properties.model)
-      ? node.properties.model
-      : preferredProviderModel;
+    selectedModel &&
+    modelOptions.includes(selectedModel) &&
+    !(selectedModel === LEGACY_TEXT_REMOTE_DEFAULT_MODEL && hasPreferredTextModel)
+      ? selectedModel
+      : hasPreferredTextModel
+        ? DEFAULT_TEXT_REMOTE_MODEL
+        : modelOptions[0] || "";
   const viewState = getTextNodeViewState({
     errorText,
     isRunning,
@@ -321,11 +292,6 @@ function TextNodeCardImpl({
   const showPortHandles =
     !isRunning && shouldShowInlinePortHandles({ isHovered, isLinkingOnCanvas, selected });
   const hasCompactContent = Boolean(responseText || errorText || isPlainMode);
-  const canReverseSegments =
-    node.properties.isFullVideoAnalysisText === true &&
-    typeof node.properties.frameAnalysisVideoUrl === "string" &&
-    Array.isArray(node.properties.frameAnalysisSegments) &&
-    node.properties.frameAnalysisSegments.length > 0;
   const promptComposerVisible =
     showPromptComposer && !responseEditing && !isResizingTextNode && !isRunning;
 
@@ -357,28 +323,6 @@ function TextNodeCardImpl({
     onUpdateData?.(node.id, { response: value, status: "success" });
   };
 
-  const focusComposer = () => {
-    setForceComposerOpen(true);
-    window.requestAnimationFrame(() => promptEditorRef.current?.focus());
-  };
-
-  const handleStarterAction = (action: StarterAction) => {
-    if (action === "write") {
-      onUpdateProperty?.(node.id, "textMode", "plain");
-      setForceComposerOpen(false);
-      setInlineEditing(true);
-      window.requestAnimationFrame(() => inlineEditorRef.current?.focus());
-      return;
-    }
-    if (action === "image-prompt") {
-      onCreateImagePromptStarter?.(node.id);
-      focusComposer();
-      return;
-    }
-    onCreateTextStarterFlow?.(node.id, action);
-    focusComposer();
-  };
-
   const enterInlineEditMode = () => {
     if (!isPlainMode || upstreamTextPrompt) return;
     setInlineEditing(true);
@@ -399,17 +343,6 @@ function TextNodeCardImpl({
     if (!responseText) return;
     setOutputMenuPos(null);
     onPreview?.(responseText, "文本节点输出", node.id);
-  };
-
-  const handleReverseSegments = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!canReverseSegments || isReversingSegments || !onReverseSegmentAnalysis) return;
-    setIsReversingSegments(true);
-    try {
-      await onReverseSegmentAnalysis(node);
-    } finally {
-      setIsReversingSegments(false);
-    }
   };
 
   const handleOutputContextMenu = (e: React.MouseEvent) => {
@@ -721,32 +654,6 @@ function TextNodeCardImpl({
               >
                 <Eye className="h-5 w-5" />
               </button>
-              {canReverseSegments && (
-                <>
-                  <div className="mx-1 h-7 w-px bg-slate-500/22" />
-                  <button
-                    type="button"
-                    data-node-action="true"
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onClick={(e) => {
-                      void handleReverseSegments(e);
-                    }}
-                    disabled={isReversingSegments}
-                    className={`flex h-9 w-9 items-center justify-center rounded-[12px] transition-colors ${
-                      isReversingSegments
-                        ? "cursor-wait bg-cyan-100/10 text-cyan-100"
-                        : "text-slate-400 hover:bg-white/[0.06] hover:text-slate-100"
-                    }`}
-                    title="反推分段分析"
-                  >
-                    {isReversingSegments ? (
-                      <Loader2 className="h-5 w-5 animate-spin" />
-                    ) : (
-                      <Wand2 className="h-5 w-5" />
-                    )}
-                  </button>
-                </>
-              )}
             </motion.div>
           )}
         </AnimatePresence>
@@ -997,43 +904,9 @@ function TextNodeCardImpl({
                       )}
                     </div>
                   ) : showStarterGuide ? (
-                    <div className="flex min-h-[166px] w-full flex-col justify-between px-1 py-1">
-                      <div className="flex justify-center pt-2">
-                        <div className="w-[96px]">
-                          <TextSkeleton active={isRunning} />
-                        </div>
-                      </div>
-                      <div className="pb-0.5">
-                        <div className="mb-2 text-[13px] font-medium tracking-tight text-slate-300/48">
-                          尝试：
-                        </div>
-                        <div className="grid grid-cols-2 gap-x-5 gap-y-2.5">
-                          {starterActions.map(({ icon: Icon, label, action }) => (
-                            <div
-                              key={label}
-                              role="button"
-                              tabIndex={0}
-                              onPointerDown={(event) => event.stopPropagation()}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                handleStarterAction(action);
-                              }}
-                              onKeyDown={(event) => {
-                                if (event.key !== "Enter" && event.key !== " ") return;
-                                event.preventDefault();
-                                event.stopPropagation();
-                                handleStarterAction(action);
-                              }}
-                              className="group relative flex min-w-0 cursor-pointer items-center gap-2.5 rounded-[12px] border border-transparent px-3 py-2.5 text-slate-100/86 transition-all duration-200 hover:-translate-y-0.5 hover:border-violet-300/18 hover:bg-violet-400/[0.075] hover:shadow-[0_12px_28px_-22px_rgba(139,92,246,0.8),inset_0_1px_0_rgba(255,255,255,0.05)]"
-                            >
-                              <span className="pointer-events-none absolute inset-0 rounded-[12px] bg-[radial-gradient(circle_at_18%_20%,rgba(196,181,253,0.14),transparent_46%)] opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
-                              <Icon className="relative h-[18px] w-[18px] shrink-0 text-violet-200/62 transition-all duration-200 group-hover:scale-110 group-hover:text-violet-100 group-hover:drop-shadow-[0_0_8px_rgba(167,139,250,0.55)]" />
-                              <div className="relative truncate text-[14px] font-medium tracking-tight text-slate-100/88 transition-colors duration-200 group-hover:text-white">
-                                {label}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
+                    <div className="flex min-h-[166px] w-full items-center justify-center px-1 py-1">
+                      <div className="flex h-[116px] w-[116px] items-center justify-center text-cyan-100/58">
+                        <FileText className="h-16 w-16" strokeWidth={1.55} />
                       </div>
                     </div>
                   ) : showSkeleton && isMultimodalMode ? (
@@ -1061,9 +934,12 @@ function TextNodeCardImpl({
             aria-label="调整文本节点大小"
             title="拖拽调整文本节点大小"
             onPointerDown={handleResizePointerDown}
-            className="absolute bottom-2 right-2 z-30 flex h-8 w-8 cursor-nwse-resize items-center justify-center rounded-[10px] border border-slate-300/10 bg-[#0b111c]/80 text-slate-300/52 shadow-[0_10px_22px_-16px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.05)] transition-colors hover:border-cyan-200/24 hover:bg-[#101827] hover:text-cyan-100/78"
+            className={`absolute bottom-0 right-0 z-30 h-14 w-14 cursor-nwse-resize rounded-br-[18px] rounded-tl-[30px] text-slate-300/42 opacity-0 transition-all duration-200 hover:bg-[#0a1019]/62 hover:text-cyan-100/74 focus-visible:bg-[#0a1019]/72 focus-visible:text-cyan-100/78 focus-visible:opacity-100 group-hover:opacity-100 ${
+              selected ? "opacity-100" : ""
+            }`}
           >
-            <Maximize2 className="h-3.5 w-3.5" />
+            <span className="pointer-events-none absolute bottom-[17px] right-[14px] h-[2px] w-[14px] -rotate-45 rounded-full bg-current" />
+            <span className="pointer-events-none absolute bottom-[22px] right-[20px] h-[2px] w-[11px] -rotate-45 rounded-full bg-current" />
           </button>
         )}
       </motion.div>
@@ -1204,7 +1080,6 @@ function TextNodeCardImpl({
                     </AnimatePresence>,
                     document.body
                   )}
-                <input type="hidden" value={TEXT_NODE_MODEL} readOnly />
               </div>
               <button
                 type="button"
@@ -1238,8 +1113,6 @@ const TextNodeCard = React.memo(
   (prev, next) =>
     prev.node === next.node &&
     prev.selected === next.selected &&
-    prev.apiConfig?.providerModels?.deepseek === next.apiConfig?.providerModels?.deepseek &&
-    prev.apiConfig?.providerModels?.minimax === next.apiConfig?.providerModels?.minimax &&
     prev.apiConfig?.remoteModelsByType === next.apiConfig?.remoteModelsByType
 );
 

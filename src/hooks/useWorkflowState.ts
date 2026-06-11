@@ -9,7 +9,6 @@ import {
   GraphNode,
   GroupBox,
   NodeClass,
-  VideoSegmentTextAnalysis,
 } from "../types";
 import type { VideoFrameCaptureItem } from "../features/video/frameCapture";
 import {
@@ -49,6 +48,7 @@ import { queryRemoteVideoGenerationTask } from "../features/video/remoteVideoGen
 
 const HISTORY_LIMIT = 50;
 const PERSIST_DEBOUNCE_MS = 800;
+const DEFAULT_TEXT_REMOTE_MODEL = "qwen3.7-plus";
 const DEFAULT_WORKFLOW_NAME = "默认项目";
 const WORKSPACE_VERSION = 2 as const;
 const TRASH_RETENTION_DAYS = 30;
@@ -83,9 +83,9 @@ const VIDEO_NODE_REQUIRED_INPUTS = [
   { name: "duration", type: "NUMBER" as const },
   { name: "aspect_ratio", type: "STRING" as const },
 ];
-const MINIMAX_IMAGE_RATIOS = new Set(["1:1", "16:9", "4:3", "3:2", "2:3", "3:4", "9:16", "21:9"]);
+const IMAGE_ASPECT_RATIOS = new Set(["1:1", "16:9", "4:3", "3:2", "2:3", "3:4", "9:16", "21:9"]);
 const IMAGE_NODE_MODEL_FALLBACKS = new Set(["", "lib-navo-pro", "flux-1", "sdxl", "midjourney"]);
-const TEXT_NODE_MODEL_FALLBACKS = new Set(["", "deepseek-v4-flash"]);
+const EMPTY_TEXT_MODEL_FALLBACKS = new Set([""]);
 export const IMAGE_PROMPT_PLACEHOLDER_URL = `data:image/svg+xml,${encodeURIComponent(`
 <svg xmlns="http://www.w3.org/2000/svg" width="1152" height="864" viewBox="0 0 1152 864">
   <defs>
@@ -910,13 +910,13 @@ function normalizeNodePorts(node: GraphNode): GraphNode {
       normalizedInputs.push(requiredInput);
       inputsChanged = true;
     });
-    if (TEXT_NODE_MODEL_FALLBACKS.has(model) || inputsChanged) {
+    if (EMPTY_TEXT_MODEL_FALLBACKS.has(model) || inputsChanged) {
       nextNode = {
         ...nextNode,
         inputs: normalizedInputs,
         properties: {
           ...nextNode.properties,
-          model: TEXT_NODE_MODEL_FALLBACKS.has(model) ? "deepseek-chat" : model,
+          model: EMPTY_TEXT_MODEL_FALLBACKS.has(model) ? "" : model,
         },
       };
     }
@@ -939,8 +939,8 @@ function normalizeNodePorts(node: GraphNode): GraphNode {
       inputs: nextInputs,
       properties: {
         ...nextNode.properties,
-        model: IMAGE_NODE_MODEL_FALLBACKS.has(model) ? "image-01" : model,
-        aspect_ratio: MINIMAX_IMAGE_RATIOS.has(aspectRatio) ? aspectRatio : "16:9",
+        model: IMAGE_NODE_MODEL_FALLBACKS.has(model) ? "" : model,
+        aspect_ratio: IMAGE_ASPECT_RATIOS.has(aspectRatio) ? aspectRatio : "16:9",
         quantity: "1",
         n: 1,
         prompt_optimizer: false,
@@ -998,14 +998,6 @@ export interface UseWorkflowStateOptions {
     timeout?: number;
     systemPrompt?: string;
     useSystemProxy?: boolean;
-    deepseekBaseUrl?: string;
-    deepseekApiKey?: string;
-    deepseekModel?: string;
-    minimaxApiKey?: string;
-    minimaxBaseUrl?: string;
-    providerApiKeys?: Partial<Record<string, string>>;
-    providerBaseUrls?: Partial<Record<string, string>>;
-    providerModels?: Partial<Record<string, string>>;
     remoteModelsByType?: AiModelsByType;
   };
   remoteProject?: RemoteCanvasProject | null;
@@ -1495,7 +1487,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
                   typeof node.properties.text === "string" && node.properties.text.trim()
                     ? node.properties.text
                     : IMAGE_PROMPT_DEFAULT_TEXT,
-                model: "MiniMax-M3",
+                model: DEFAULT_TEXT_REMOTE_MODEL,
                 status: node.properties.status || "idle",
               },
             }
@@ -1788,71 +1780,6 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       appendLog(
         "success",
         `\u9010\u5e27\u5206\u6790\u5b8c\u6210\uff1a\u751f\u6210 ${captures.length} \u7ec4\u63a5\u53e3\u8282\u70b9`
-      );
-    },
-    [appendLog, links, nodeOutputs, nodes, pushHistory, syncCurrentWorkflowMeta]
-  );
-
-  const addSegmentVideoAnalyses = useCallback(
-    (parentNodeId: string, analyses: VideoSegmentTextAnalysis[]) => {
-      const parentNode = nodes.find((n) => n.id === parentNodeId);
-      if (!parentNode || analyses.length === 0) {
-        appendLog("warning", "鍙嶆帹澶辫触:鏈壘鍒板垎鏋愭枃鏈妭鐐规垨娌℃湁鍒嗘缁撴灉");
-        return;
-      }
-
-      const baseX = parentNode.x + 620;
-      const baseY = parentNode.y;
-      const nextNodes = [...nodes];
-      const nextLinks = [...links];
-      const nextOutputs: NodeOutputMap = new Map(nodeOutputs);
-      const createdNodes: GraphNode[] = [];
-
-      analyses.forEach((analysis, index) => {
-        const id = makeId("node");
-        const node = createNodeFromType("text_node", id, baseX, baseY + index * 260);
-        node.title = `${analysis.title} 鍒嗘瀽`;
-        node.properties = {
-          ...node.properties,
-          response: analysis.text,
-          text: `${analysis.title} 瑙嗛鍒嗘瀽缁撴灉`,
-          sourceSegment: {
-            title: analysis.title,
-            start: analysis.start,
-            end: analysis.end,
-          },
-        };
-        node.data = { response: analysis.text, loading: false, status: "success" };
-        nextNodes.push(node);
-        createdNodes.push(node);
-        nextOutputs.set(id, new Map([[0, analysis.text]]));
-        nextLinks.push({
-          id: makeId("link"),
-          fromNodeId: parentNode.id,
-          fromOutputIndex: 0,
-          toNodeId: id,
-          toInputIndex: 1,
-        });
-      });
-
-      setNodes(nextNodes);
-      setLinks(nextLinks);
-      setNodeOutputs(nextOutputs);
-      setSelectedNodeId(createdNodes[0]?.id ?? parentNode.id);
-      syncCurrentWorkflowMeta((wf) => ({
-        ...wf,
-        summary: { ...wf.summary, updatedAt: Date.now() },
-        data: {
-          ...wf.data,
-          nodes: nextNodes,
-          links: nextLinks,
-          nodeOutputs: mapToOutputs(nextOutputs),
-        },
-      }));
-      pushHistory({ nodes: nextNodes, links: nextLinks });
-      appendLog(
-        "success",
-        `Reverse analysis completed: generated ${analyses.length} segment text nodes.`
       );
     },
     [appendLog, links, nodeOutputs, nodes, pushHistory, syncCurrentWorkflowMeta]
@@ -2944,7 +2871,6 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     replaceExtractedFrameImage,
     replaceFrameImageUrl,
     addVideoFrameAnalysis,
-    addSegmentVideoAnalyses,
     clearCanvas,
     clearExecution,
     addLinkFromDraft,

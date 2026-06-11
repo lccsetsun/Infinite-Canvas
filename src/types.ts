@@ -80,6 +80,8 @@ export interface GraphNode {
     isFrameStrip?: boolean;
     frameGridColumns?: number;
     frameGridRows?: number;
+    frameTileWidth?: number;
+    frameTileHeight?: number;
     frameCaptureSourceNodeId?: string;
     extractedFrameSourceNodeId?: string;
     extractedFrameIndex?: number;
@@ -124,13 +126,6 @@ export interface VideoFrameAnalysisOverview {
   width: number;
   height: number;
   frameCount: number;
-}
-
-export interface VideoSegmentTextAnalysis {
-  title: string;
-  start: number;
-  end: number;
-  text: string;
 }
 
 export interface WorkflowPreset {

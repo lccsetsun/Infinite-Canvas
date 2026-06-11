@@ -5,7 +5,6 @@ import type { VideoFrameCaptureItem } from "../features/video/frameCapture";
 
 const FRAME_GRID_COLUMNS = 5;
 const FRAME_TILE_WIDTH = 168;
-const FRAME_TILE_HEIGHT = 96;
 const CAPTURE_VIDEO_NODE_FOOTPRINT_WIDTH = 540;
 const CAPTURE_VIDEO_NODE_FOOTPRINT_HEIGHT = 540;
 const CAPTURE_VERTICAL_GAP = 96;
@@ -26,12 +25,40 @@ function getInputIndex(node: GraphNode, inputName: string, fallbackIndex: number
   return index >= 0 ? index : fallbackIndex;
 }
 
-function makeFrameGridSize(frameCount: number) {
+function getSourceVideoAspectRatio(sourceNode: GraphNode) {
+  const naturalWidth = sourceNode.data?.videoNaturalWidth;
+  const naturalHeight = sourceNode.data?.videoNaturalHeight;
+  if (
+    typeof naturalWidth === "number" &&
+    typeof naturalHeight === "number" &&
+    naturalWidth > 0 &&
+    naturalHeight > 0
+  ) {
+    return naturalWidth / naturalHeight;
+  }
+
+  const displayWidth = sourceNode.data?.videoDisplayWidth;
+  const displayHeight = sourceNode.data?.videoDisplayHeight;
+  if (
+    typeof displayWidth === "number" &&
+    typeof displayHeight === "number" &&
+    displayWidth > 0 &&
+    displayHeight > 0
+  ) {
+    return displayWidth / displayHeight;
+  }
+
+  return 16 / 9;
+}
+
+function makeFrameGridSize(frameCount: number, sourceNode: GraphNode) {
   const rows = Math.max(1, Math.ceil(frameCount / FRAME_GRID_COLUMNS));
+  const tileHeight = Math.max(1, Math.round(FRAME_TILE_WIDTH / getSourceVideoAspectRatio(sourceNode)));
   return {
     width: FRAME_GRID_COLUMNS * FRAME_TILE_WIDTH,
-    height: rows * FRAME_TILE_HEIGHT,
+    height: rows * tileHeight,
     rows,
+    tileHeight,
   };
 }
 
@@ -103,7 +130,7 @@ export function createVideoFrameCaptureSnapshot({
     const displayIndex = captureIndex + 1;
     const segmentVideoUrl = capture.videoUrl || sourceVideoUrl;
     const frameImages = capture.frameImages;
-    const gridSize = frameImages.length > 0 ? makeFrameGridSize(frameImages.length) : null;
+    const gridSize = frameImages.length > 0 ? makeFrameGridSize(frameImages.length, sourceNode) : null;
     const videoDisplaySize = makeCaptureVideoDisplaySize(sourceNode);
     const y = nextY;
 
@@ -158,6 +185,8 @@ export function createVideoFrameCaptureSnapshot({
         isFrameStrip: true,
         frameGridColumns: FRAME_GRID_COLUMNS,
         frameGridRows: gridSize.rows,
+        frameTileHeight: gridSize.tileHeight,
+        frameTileWidth: FRAME_TILE_WIDTH,
         frameCaptureSourceNodeId: sourceNodeId,
         status: "success",
         loading: false,

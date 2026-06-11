@@ -8,8 +8,7 @@ interface AppHeaderProps {
   workflowName?: string;
   workflowCount?: number;
   username?: string;
-  onOpenProjectSwitcher?: () => void;
-  onOpenApiSettings?: () => void;
+  onOpenProjectSwitcher?: () => void;
   onRun: () => void;
   onLogout?: () => void;
   showProjectSwitcher?: boolean;
@@ -19,8 +18,7 @@ export default function AppHeader({
   workflowName,
   workflowCount,
   username = "lccsetsun",
-  onOpenProjectSwitcher,
-  onOpenApiSettings,
+  onOpenProjectSwitcher,
   onRun: _onRun,
   onLogout,
   showProjectSwitcher = true,
@@ -70,8 +68,7 @@ export default function AppHeader({
       </div>
 
       <HeaderRightPanel
-        username={username}
-        onOpenApiSettings={onOpenApiSettings}
+        username={username}
         onLogout={onLogout}
       />
     </header>

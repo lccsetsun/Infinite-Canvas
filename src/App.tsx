@@ -3,7 +3,6 @@ import { AnimatePresence } from "motion/react";
 import CanvasHeader from "./components/app/CanvasHeader";
 import CanvasControls from "./components/app/CanvasControls";
 import CanvasHistoryDock from "./components/app/CanvasHistoryDock";
-import ApiSettingsModal from "./components/app/ApiSettingsModal";
 import CanvasNodeLayer from "./components/app/CanvasNodeLayer";
 import DraftLinkOverlay from "./components/app/DraftLinkOverlay";
 import GroupsLayer from "./components/app/GroupsLayer";
@@ -15,7 +14,11 @@ import PreviewModal, { PreviewContent } from "./components/app/PreviewModal";
 import SettingsPanels from "./components/app/SettingsPanels";
 import { Copy, Eye, Loader2, Trash2 } from "lucide-react";
 import { snapPointToGrid } from "./components/canvas/geometry";
-import { shouldStartCanvasPan, useCanvasInteraction } from "./hooks/useCanvasInteraction";
+import {
+  shouldStartCanvasPan,
+  useCanvasInteraction,
+  type CanvasViewport,
+} from "./hooks/useCanvasInteraction";
 import { useCanvasLinking } from "./hooks/useCanvasLinking";
 import { useMiniMapConfig } from "./hooks/useMiniMapConfig";
 import { useWorkflowState } from "./hooks/useWorkflowState";
@@ -35,15 +38,8 @@ import {
 } from "./utils/canvasFileUpload";
 import { collectTextNodeReferences } from "./utils/textNodeReferences";
 import { ConfigProvider, theme } from "antd";
-import { GraphNode, NodeClass, VideoSegmentTextAnalysis } from "./types";
+import { GraphNode, NodeClass } from "./types";
 import type { VideoFrameCaptureItem } from "./features/video/frameCapture";
-import {
-  ApiSettings,
-  getActiveProfile,
-  getProviderProfile,
-  loadApiSettings,
-  saveApiSettings,
-} from "./features/api/apiSettings";
 import {
   fetchAiModelCatalog,
   makeEmptyAiModelsByType,
@@ -59,6 +55,48 @@ import {
 } from "./features/workspace/remoteCanvas";
 
 const SearchMenu = React.lazy(() => import("./components/SearchMenu"));
+
+const CANVAS_VIEWPORT_STORAGE_PREFIX = "aistudio:canvas-viewport:";
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function readStoredCanvasViewport(workflowId: string | null): CanvasViewport | null {
+  if (!workflowId || typeof localStorage === "undefined") return null;
+
+  try {
+    const raw = localStorage.getItem(`${CANVAS_VIEWPORT_STORAGE_PREFIX}${workflowId}`);
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw) as Partial<CanvasViewport>;
+    const pan = parsed.pan;
+    if (
+      !pan ||
+      !isFiniteNumber(pan.x) ||
+      !isFiniteNumber(pan.y) ||
+      !isFiniteNumber(parsed.zoom)
+    ) {
+      return null;
+    }
+
+    return {
+      pan: { x: pan.x, y: pan.y },
+      zoom: Math.min(3, Math.max(0.15, parsed.zoom)),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredCanvasViewport(workflowId: string | null, viewport: CanvasViewport) {
+  if (!workflowId || typeof localStorage === "undefined") return;
+
+  localStorage.setItem(
+    `${CANVAS_VIEWPORT_STORAGE_PREFIX}${workflowId}`,
+    JSON.stringify(viewport)
+  );
+}
 
 interface AppProps {
   onLoggedOut: () => void;
@@ -84,20 +122,6 @@ export default function App({ onLoggedOut }: AppProps) {
     </div>
   );
 
-  const [apiSettings, setApiSettings] = React.useState<ApiSettings>(() => loadApiSettings());
-  const [apiSettingsOpen, setApiSettingsOpen] = React.useState(false);
-  const activeApiProfile = React.useMemo(() => getActiveProfile(apiSettings), [apiSettings]);
-  const deepseekApiProfile = React.useMemo(
-    () => getProviderProfile(apiSettings, "deepseek"),
-    [apiSettings]
-  );
-  const minimaxApiProfile = React.useMemo(
-    () => getProviderProfile(apiSettings, "minimax"),
-    [apiSettings]
-  );
-  const apiBaseUrl = activeApiProfile.baseUrl;
-  const apiKey = activeApiProfile.apiKey;
-  const apiModel = activeApiProfile.model;
   const [remoteProject, setRemoteProject] = React.useState<RemoteCanvasProject | null>(null);
   const [isProjectLoading, setIsProjectLoading] = React.useState(Boolean(requestedWorkflowId));
   const [projectLoadError, setProjectLoadError] = React.useState("");
@@ -150,8 +174,6 @@ export default function App({ onLoggedOut }: AppProps) {
     clearCanvas,
     runNode,
     addNode,
-    createImagePromptStarter,
-    createTextNodeStarterFlow,
     syncImagePromptStarterLayout,
     removeNode,
     removeLink,
@@ -160,11 +182,9 @@ export default function App({ onLoggedOut }: AppProps) {
     updateNodeProperty,
     updateNodeData,
     setPrimaryImageResult,
-    extractFrameImageNode,
-    replaceExtractedFrameImage,
-    replaceFrameImageUrl,
     addVideoFrameAnalysis,
-    addSegmentVideoAnalyses,
+    extractFrameImageNode,
+    replaceFrameImageUrl,
     linkFromNodeId,
     linkToNodeId,
     linkFromOutputIndex,
@@ -191,32 +211,8 @@ export default function App({ onLoggedOut }: AppProps) {
     runGroup,
   } = useWorkflowState({
     apiConfig: {
-      baseUrl: apiBaseUrl,
-      apiKey,
-      model: apiModel,
-      temperature: activeApiProfile.temperature,
-      maxTokens: activeApiProfile.maxTokens,
-      topP: activeApiProfile.topP,
-      timeout: activeApiProfile.timeout,
-      systemPrompt: activeApiProfile.systemPrompt,
-      useSystemProxy: activeApiProfile.useSystemProxy,
-      deepseekBaseUrl: deepseekApiProfile?.baseUrl || "",
-      deepseekApiKey: deepseekApiProfile?.apiKey || "",
-      deepseekModel: deepseekApiProfile?.model || "",
-      minimaxApiKey: minimaxApiProfile?.apiKey || "",
-      minimaxBaseUrl: minimaxApiProfile?.baseUrl || "",
-      providerApiKeys: {
-        deepseek: deepseekApiProfile?.apiKey || "",
-        minimax: minimaxApiProfile?.apiKey || "",
-      },
-      providerBaseUrls: {
-        deepseek: deepseekApiProfile?.baseUrl || "",
-        minimax: minimaxApiProfile?.baseUrl || "",
-      },
-      providerModels: {
-        deepseek: deepseekApiProfile?.model || "",
-        minimax: minimaxApiProfile?.model || "",
-      },
+      baseUrl: "",
+      apiKey: "",
       remoteModelsByType,
     },
     remoteProject,
@@ -323,6 +319,11 @@ export default function App({ onLoggedOut }: AppProps) {
     null
   );
   const lastCanvasPointerRef = React.useRef<{ clientX: number; clientY: number } | null>(null);
+  const activeWorkflowId = currentWorkflowSummary?.id ?? null;
+  const storedCanvasViewport = React.useMemo(
+    () => readStoredCanvasViewport(activeWorkflowId),
+    [activeWorkflowId]
+  );
 
   React.useEffect(() => {
     if (!currentWorkflowSummary?.name) return;
@@ -351,7 +352,6 @@ export default function App({ onLoggedOut }: AppProps) {
     fitView,
     scrollToNode,
     jumpToWorldPos,
-    focusWorldRect,
     draggingNodeId,
     isCanvasPanning,
     onNodeDragStart,
@@ -359,7 +359,23 @@ export default function App({ onLoggedOut }: AppProps) {
     onPointerMove,
     onPointerUp,
     onContextMenu,
-  } = useCanvasInteraction({ nodes, snapToGridEnabled, updateNodePosition });
+  } = useCanvasInteraction({
+    initialViewport: storedCanvasViewport,
+    nodes,
+    snapToGridEnabled,
+    updateNodePosition,
+    viewportKey: activeWorkflowId,
+  });
+
+  React.useEffect(() => {
+    if (currentView !== "canvas" || !activeWorkflowId) return;
+
+    const saveTimer = window.setTimeout(() => {
+      writeStoredCanvasViewport(activeWorkflowId, { pan, zoom });
+    }, 120);
+
+    return () => window.clearTimeout(saveTimer);
+  }, [activeWorkflowId, currentView, pan, zoom]);
 
   const {
     beginCanvasLink,
@@ -417,7 +433,8 @@ export default function App({ onLoggedOut }: AppProps) {
         x: world.x - 140,
         y: world.y - 120,
       });
-      return addNode(type, snapped.x, snapped.y, initialProps, connectFromDraft);
+      const nodeId = addNode(type, snapped.x, snapped.y, initialProps, connectFromDraft);
+      return nodeId;
     },
     [addNode, toWorld]
   );
@@ -435,76 +452,6 @@ export default function App({ onLoggedOut }: AppProps) {
       clientY: typeof window === "undefined" ? 0 : window.innerHeight / 2,
     };
   }, [canvasRef]);
-
-  const handleCreateImagePromptStarter = React.useCallback(
-    (nodeId: string) => {
-      const result = createImagePromptStarter(nodeId);
-      if (!result) return;
-      setCurrentView("canvas");
-      setActiveQuickTool(null);
-      setSelectedLinkId(null);
-      setSelectedGroupId(null);
-      setSelectedNodeIds(new Set([result.textNodeId]));
-      setSelectedNodeId(result.textNodeId);
-      window.requestAnimationFrame(() => {
-        focusWorldRect(result.bounds, {
-          maxZoom: 0.84,
-          padding: 180,
-          offsetX: 28,
-          offsetY: -20,
-        });
-      });
-    },
-    [
-      createImagePromptStarter,
-      focusWorldRect,
-      setActiveQuickTool,
-      setCurrentView,
-      setSelectedNodeId,
-    ]
-  );
-
-  const handleCreateTextStarterFlow = React.useCallback(
-    (nodeId: string, action: "video" | "music") => {
-      const result = createTextNodeStarterFlow(nodeId, action);
-      if (!result) return;
-
-      const textNode = result.nodes.find((node) => node.id === result.textNodeId);
-      const createdNode = result.nodes.find((node) => node.id === result.createdNodeId);
-      setCurrentView("canvas");
-      setActiveQuickTool(null);
-      setSelectedLinkId(null);
-      setSelectedGroupId(null);
-      setSelectedNodeIds(new Set([result.textNodeId]));
-      setSelectedNodeId(result.textNodeId);
-
-      if (textNode && createdNode) {
-        window.requestAnimationFrame(() => {
-          focusWorldRect(
-            {
-              minX: Math.min(textNode.x, createdNode.x) - 40,
-              minY: Math.min(textNode.y, createdNode.y) - 80,
-              maxX: Math.max(textNode.x + 560, createdNode.x + 560),
-              maxY: Math.max(textNode.y + 500, createdNode.y + 420),
-            },
-            {
-              maxZoom: 0.92,
-              padding: 180,
-              offsetX: 0,
-              offsetY: -20,
-            }
-          );
-        });
-      }
-    },
-    [
-      createTextNodeStarterFlow,
-      focusWorldRect,
-      setActiveQuickTool,
-      setCurrentView,
-      setSelectedNodeId,
-    ]
-  );
 
   const handleSplitImageGrid = React.useCallback(
     async (
@@ -721,88 +668,15 @@ export default function App({ onLoggedOut }: AppProps) {
     [addVideoFrameAnalysis, showNotice]
   );
 
-  const handleReverseSegmentAnalysis = React.useCallback(
-    async (node: GraphNode) => {
-      const videoUrl =
-        typeof node.properties.frameAnalysisVideoUrl === "string"
-          ? node.properties.frameAnalysisVideoUrl
-          : "";
-      const rawSegments = Array.isArray(node.properties.frameAnalysisSegments)
-        ? node.properties.frameAnalysisSegments
-        : [];
-      const segments = rawSegments
-        .map((segment) => ({
-          title: typeof segment?.title === "string" ? segment.title : "",
-          start: typeof segment?.start === "number" ? segment.start : 0,
-          end: typeof segment?.end === "number" ? segment.end : 0,
-          frameCount: typeof segment?.frameCount === "number" ? segment.frameCount : 0,
-          width: typeof segment?.width === "number" ? segment.width : 0,
-          height: typeof segment?.height === "number" ? segment.height : 0,
-        }))
-        .filter((segment) => segment.title && segment.end >= segment.start);
-
-      if (!videoUrl || segments.length === 0) {
-        showNotice("No segment data available for reverse analysis.");
-        return;
-      }
-
-      showNotice(`Reverse-analyzing ${segments.length} video segments.`);
-      const analyses: VideoSegmentTextAnalysis[] = await Promise.all(
-        segments.map(async (segment) => {
-          try {
-            const response = await fetch("/api/video/frame-analysis", {
-              method: "POST",
-              credentials: "include",
-              headers: {
-                "Content-Type": "application/json",
-                ...(deepseekApiProfile?.apiKey
-                  ? { "X-DeepSeek-Api-Key": deepseekApiProfile.apiKey }
-                  : {}),
-                ...(deepseekApiProfile?.baseUrl
-                  ? { "X-DeepSeek-Base-Url": deepseekApiProfile.baseUrl }
-                  : {}),
-                ...(deepseekApiProfile?.model
-                  ? { "X-DeepSeek-Model": deepseekApiProfile.model }
-                  : {}),
-              },
-              body: JSON.stringify({
-                video_url: videoUrl,
-                segments: [segment],
-                prompt: [
-                  `Analyze only this time range of the video: ${segment.title} (${segment.start.toFixed(1)}s-${segment.end.toFixed(1)}s).`,
-                  "Return Markdown including visual content, subject motion, camera motion, pacing changes, and useful follow-up generation or editing prompts.",
-                  "Do not analyze other time ranges.",
-                ].join("\n"),
-              }),
-            });
-            const data = await response.json().catch(() => ({}));
-            if (!response.ok) throw new Error(data?.error || "Segment reverse analysis failed.");
-            return {
-              title: segment.title,
-              start: segment.start,
-              end: segment.end,
-              text:
-                typeof data?.text === "string" && data.text.trim()
-                  ? data.text
-                  : `## ${segment.title}\n\nNo analysis result was returned.`,
-            };
-          } catch (error) {
-            const message =
-              error instanceof Error ? error.message : "Segment reverse analysis failed.";
-            return {
-              title: segment.title,
-              start: segment.start,
-              end: segment.end,
-              text: `## ${segment.title}\n\nReverse analysis failed: ${message}`,
-            };
-          }
-        })
-      );
-
-      addSegmentVideoAnalyses(node.id, analyses);
-      showNotice("Segment reverse analysis completed.");
+  const handleExtractFrameImage = React.useCallback(
+    (nodeId: string, frameIndex: number, clientPoint?: { clientX: number; clientY: number }) => {
+      const worldPoint = clientPoint ? toWorld(clientPoint.clientX, clientPoint.clientY) : null;
+      const position = worldPoint
+        ? snapPointToGrid({ x: worldPoint.x - 180, y: worldPoint.y - 140 })
+        : undefined;
+      extractFrameImageNode(nodeId, frameIndex, position);
     },
-    [addSegmentVideoAnalyses, deepseekApiProfile, showNotice]
+    [extractFrameImageNode, toWorld]
   );
 
   const handleUngroup = React.useCallback(
@@ -933,7 +807,7 @@ export default function App({ onLoggedOut }: AppProps) {
     autoFitStateRef.current = { workflowId, nodeCount: nodes.length };
 
     const shouldFit =
-      nodes.length > 0 && (!prev || prev.workflowId !== workflowId || prev.nodeCount === 0);
+      nodes.length === 1 && prev?.workflowId === workflowId && prev.nodeCount === 0;
     if (shouldFit) fitView();
   }, [currentWorkflowSummary?.id, fitView, nodes.length]);
 
@@ -997,13 +871,6 @@ export default function App({ onLoggedOut }: AppProps) {
     };
   }, []);
 
-  React.useEffect(() => {
-    try {
-      saveApiSettings(apiSettings);
-    } catch {
-      // quota exceeded 鈥?ignore
-    }
-  }, [apiSettings]);
 
   const handleCanvasContextMenu = React.useCallback(
     (e: React.MouseEvent) => {
@@ -1112,9 +979,6 @@ export default function App({ onLoggedOut }: AppProps) {
             }
           }}
           onNotice={showNotice}
-          onOpenApiSettings={() => {
-            setApiSettingsOpen(true);
-          }}
           onLogout={handleLogout}
         />
 
@@ -1137,6 +1001,7 @@ export default function App({ onLoggedOut }: AppProps) {
             uploadFilesToCanvas(files, { clientX: e.clientX, clientY: e.clientY });
           }}
           onPointerDownCapture={(e) => {
+            if (menuPos) return;
             if (!shouldStartCanvasPan(e.button)) return;
             lastCanvasPointerRef.current = { clientX: e.clientX, clientY: e.clientY };
             onCanvasPointerDown(e);
@@ -1144,6 +1009,7 @@ export default function App({ onLoggedOut }: AppProps) {
           }}
           onPointerDown={(e) => {
             lastCanvasPointerRef.current = { clientX: e.clientX, clientY: e.clientY };
+            if (menuPos) return;
             if (isLinkingOnCanvas) {
               e.preventDefault();
               resetCanvasLinkDraft();
@@ -1380,15 +1246,10 @@ export default function App({ onLoggedOut }: AppProps) {
           )}
 
           <SettingsPanels
-            apiSettings={apiSettings}
             autoSaveWorkflow={autoSaveWorkflow}
             currentView={currentView}
             fallback={panelFallback}
             workflowName={workflowName}
-            onSaveApiSettings={(s) => {
-              setApiSettings(s);
-              showNotice("API settings saved.");
-            }}
             onSaveWorkflow={() => {
               const trimmedName = workflowName.trim();
               if (
@@ -1404,28 +1265,12 @@ export default function App({ onLoggedOut }: AppProps) {
             }}
             setAutoSaveWorkflow={setAutoSaveWorkflow}
             setWorkflowName={setWorkflowName}
-            showNotice={showNotice}
-          />
-
-          <ApiSettingsModal
-            open={apiSettingsOpen}
-            settings={apiSettings}
-            onClose={() => setApiSettingsOpen(false)}
-            onSave={(settings) => {
-              setApiSettings(settings);
-              showNotice("API settings saved.");
-            }}
-            showNotice={showNotice}
           />
 
           <CanvasNodeLayer
             apiConfig={{
-              baseUrl: apiBaseUrl,
-              apiKey,
-              providerModels: {
-                deepseek: deepseekApiProfile?.model || "",
-                minimax: minimaxApiProfile?.model || "",
-              },
+              baseUrl: "",
+              apiKey: "",
               remoteModelsByType,
             }}
             isLinkingOnCanvas={isLinkingOnCanvas}
@@ -1459,19 +1304,11 @@ export default function App({ onLoggedOut }: AppProps) {
               })
             }
             onAnalyzeVideo={handleAnalyzeVideo}
-            onReverseSegmentAnalysis={handleReverseSegmentAnalysis}
             onSelectNode={(nodeId, e) => handleSelectNode(nodeId, e)}
             onUpdateNodeData={updateNodeData}
             onUpdateNodeProperty={updateNodeProperty}
             onSetPrimaryImageResult={setPrimaryImageResult}
-            onExtractFrameImage={(nodeId, frameIndex, clientPoint) =>
-              extractFrameImageNode(
-                nodeId,
-                frameIndex,
-                clientPoint ? toWorld(clientPoint.clientX, clientPoint.clientY) : undefined
-              )
-            }
-            onReplaceExtractedFrame={replaceExtractedFrameImage}
+            onExtractFrameImage={handleExtractFrameImage}
             onReplaceFrameImage={replaceFrameImageUrl}
             onSyncImagePromptStarterLayout={syncImagePromptStarterLayout}
             onSplitImageGrid={handleSplitImageGrid}
@@ -1479,8 +1316,6 @@ export default function App({ onLoggedOut }: AppProps) {
             resolvedInputsMap={resolvedInputsMap}
             textNodeReferencesMap={textNodeReferencesMap}
             onRunNode={runNode}
-            onCreateImagePromptStarter={handleCreateImagePromptStarter}
-            onCreateTextStarterFlow={handleCreateTextStarterFlow}
             onNotice={showNotice}
           />
           {isLinkingOnCanvas && (

@@ -61,7 +61,9 @@ describe("createVideoFrameCaptureSnapshot", () => {
     expect(frameGrid?.data?.isFrameStrip).toBe(true);
     expect(frameGrid?.data?.frameGridColumns).toBe(5);
     expect(frameGrid?.data?.imageDisplayWidth).toBe(840);
-    expect(frameGrid?.data?.imageDisplayHeight).toBe(192);
+    expect(frameGrid?.data?.imageDisplayHeight).toBe(598);
+    expect(frameGrid?.data?.frameTileWidth).toBe(168);
+    expect(frameGrid?.data?.frameTileHeight).toBe(299);
     expect(result?.nodeOutputs.get(frameGrid?.id || "")?.get(0)).toEqual(
       frameGrid?.data?.imageUrls
     );

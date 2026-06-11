@@ -9,6 +9,7 @@ type NodeBlueprint = {
 
 const DEFAULT_IMAGE_URL =
   "https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?auto=format&fit=crop&w=512&q=80";
+const DEFAULT_TEXT_REMOTE_MODEL = "qwen3.7-plus";
 
 const NODE_BLUEPRINTS: Partial<Record<NodeClass, NodeBlueprint>> = {
   string_input: {
@@ -68,7 +69,7 @@ const NODE_BLUEPRINTS: Partial<Record<NodeClass, NodeBlueprint>> = {
     outputs: [{ name: "文本", type: "STRING" }],
     properties: {
       text: "",
-      model: "deepseek-chat",
+      model: DEFAULT_TEXT_REMOTE_MODEL,
       resolution: "1K",
       aspect_ratio: "16:9",
       quantity: "1张",
@@ -91,7 +92,7 @@ const NODE_BLUEPRINTS: Partial<Record<NodeClass, NodeBlueprint>> = {
     properties: {
       imageUrl: "",
       text: "",
-      model: "image-01",
+      model: "",
       resolution: "1K",
       aspect_ratio: "16:9",
       quantity: "1张",
@@ -113,7 +114,7 @@ const NODE_BLUEPRINTS: Partial<Record<NodeClass, NodeBlueprint>> = {
     properties: {
       videoUrl: "",
       text: "",
-      model: "MiniMax-Hailuo-2.3",
+      model: "",
       aspect_ratio: "9:16",
       resolution: "1K",
       duration: "5s",
@@ -135,7 +136,7 @@ const NODE_BLUEPRINTS: Partial<Record<NodeClass, NodeBlueprint>> = {
     properties: {
       audioUrl: "",
       text: "",
-      model: "speech-2.8-hd",
+      model: "",
       voice_id: "male-qn-qingse",
       speed: 1,
       vol: 1,

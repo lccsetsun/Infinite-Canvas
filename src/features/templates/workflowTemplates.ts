@@ -46,7 +46,7 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
     isDemo: true,
     nodes: [
       { type: "string_input", x: 80, y: 140, defaultProperties: { value: "全新自动咖啡机 5 秒出杯,AI 调配 12 种风味" } },
-      { type: "text_node", x: 380, y: 140, defaultProperties: { system_prompt: "你是一位资深营销文案,擅长将产品卖点扩展为吸引人的 80 字广告语,语言有温度。", model: "deepseek-v4-flash" } },
+      { type: "text_node", x: 380, y: 140, defaultProperties: { system_prompt: "你是一位资深营销文案,擅长将产品卖点扩展为吸引人的 80 字广告语,语言有温度。" } },
       { type: "string_concat", x: 680, y: 140, defaultProperties: { separator: "\n\n" } },
     ],
     links: [
@@ -68,7 +68,7 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
     nodes: [
       { type: "string_input", x: 80, y: 100, defaultProperties: { value: "凌晨三点的自动咖啡机" } },
       { type: "string_input", x: 80, y: 240, defaultProperties: { value: "温暖、生活感、略带幽默" } },
-      { type: "text_node", x: 380, y: 170, defaultProperties: { system_prompt: "你是一位作家。根据用户提供的主题和风格,写一段 100 字的微型故事,文笔细腻,留有余味。", model: "deepseek-v4-flash" } },
+      { type: "text_node", x: 380, y: 170, defaultProperties: { system_prompt: "你是一位作家。根据用户提供的主题和风格,写一段 100 字的微型故事,文笔细腻,留有余味。" } },
     ],
     links: [
       { fromNodeIndex: 0, fromOutputIndex: 0, toNodeIndex: 2, toInputIndex: 0 },
@@ -140,7 +140,7 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
     category: "文本",
     nodes: [
       { type: "string_input", x: 80, y: 120, defaultProperties: { value: "月亮与六便士" } },
-      { type: "text_node", x: 380, y: 120, defaultProperties: { model: "deepseek-v4-flash" } },
+      { type: "text_node", x: 380, y: 120, defaultProperties: { model: "qwen3.7-plus" } },
     ],
     links: [
       { fromNodeIndex: 0, fromOutputIndex: 0, toNodeIndex: 1, toInputIndex: 1 },

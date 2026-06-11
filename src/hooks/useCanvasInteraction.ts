@@ -17,11 +17,41 @@ type PendingDrag =
   | { mode: "canvas"; x: number; y: number }
   | { mode: "node"; nodeId: string; x: number; y: number };
 
+const TEXT_NODE_FOCUS_WIDTH = 620;
+const TEXT_NODE_FOCUS_HEIGHT = 610;
+
+function getNodeFocusBounds(node: GraphNode) {
+  if (node.type === "text_node") {
+    const width = getNodeWidth(node);
+    const focusWidth = Math.max(TEXT_NODE_FOCUS_WIDTH, width);
+    const focusMinX = node.x - (focusWidth - width) / 2;
+    return {
+      minX: focusMinX,
+      minY: node.y - 40,
+      maxX: focusMinX + focusWidth,
+      maxY: node.y + TEXT_NODE_FOCUS_HEIGHT,
+    };
+  }
+  return {
+    minX: node.x,
+    minY: node.y,
+    maxX: node.x + getNodeWidth(node),
+    maxY: node.y + getNodeHeight(node),
+  };
+}
+
 interface UseCanvasInteractionOptions {
   nodes: GraphNode[];
+  initialViewport?: CanvasViewport | null;
   snapToGridEnabled?: boolean;
   updateNodePosition: (nodeId: string, x: number, y: number) => void;
+  viewportKey?: string | null;
 }
+
+export type CanvasViewport = {
+  pan: { x: number; y: number };
+  zoom: number;
+};
 
 export function getDraggedNodePosition({
   altKey = false,
@@ -55,19 +85,46 @@ export function shouldStartCanvasPan(button: number) {
   return button === 1;
 }
 
+export function getWheelPanPosition({
+  deltaX,
+  deltaY,
+  pan,
+}: {
+  deltaX: number;
+  deltaY: number;
+  pan: { x: number; y: number };
+}) {
+  return {
+    x: pan.x - deltaX,
+    y: pan.y - deltaY,
+  };
+}
+
 export function useCanvasInteraction({
+  initialViewport,
   nodes,
   snapToGridEnabled = true,
   updateNodePosition,
+  viewportKey,
 }: UseCanvasInteractionOptions) {
   const canvasRef = React.useRef<HTMLDivElement>(null);
   const dragRef = React.useRef<DragState>({ mode: null, startX: 0, startY: 0 });
   const dragFrameRef = React.useRef<number | null>(null);
   const pendingDragRef = React.useRef<PendingDrag | null>(null);
-  const [pan, setPan] = React.useState({ x: 0, y: 0 });
-  const [zoom, setZoom] = React.useState(1);
+  const viewportKeyRef = React.useRef(viewportKey ?? null);
+  const [pan, setPan] = React.useState(() => initialViewport?.pan ?? { x: 0, y: 0 });
+  const [zoom, setZoom] = React.useState(() => initialViewport?.zoom ?? 1);
   const [draggingNodeId, setDraggingNodeId] = React.useState<string | null>(null);
   const [isCanvasPanning, setIsCanvasPanning] = React.useState(false);
+
+  React.useEffect(() => {
+    const nextKey = viewportKey ?? null;
+    if (viewportKeyRef.current === nextKey) return;
+
+    viewportKeyRef.current = nextKey;
+    setPan(initialViewport?.pan ?? { x: 0, y: 0 });
+    setZoom(initialViewport?.zoom ?? 1);
+  }, [initialViewport?.pan.x, initialViewport?.pan.y, initialViewport?.zoom, viewportKey]);
 
   const toWorld = React.useCallback(
     (clientX: number, clientY: number) => {
@@ -85,21 +142,12 @@ export function useCanvasInteraction({
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect || nodes.length === 0) return;
 
-    // Calculate actual bounds including dynamic widths
-    const minX = Math.min(...nodes.map((n) => n.x));
-    const minY = Math.min(...nodes.map((n) => n.y));
+    const nodeBounds = nodes.map(getNodeFocusBounds);
+    const minX = Math.min(...nodeBounds.map((bounds) => bounds.minX));
+    const minY = Math.min(...nodeBounds.map((bounds) => bounds.minY));
 
-    const maxX = Math.max(
-      ...nodes.map((n) => {
-        return n.x + getNodeWidth(n);
-      })
-    );
-    const maxY = Math.max(
-      ...nodes.map((n) => {
-        const estimatedHeight = n.type === "text_node" ? 420 : getNodeHeight(n);
-        return n.y + estimatedHeight;
-      })
-    );
+    const maxX = Math.max(...nodeBounds.map((bounds) => bounds.maxX));
+    const maxY = Math.max(...nodeBounds.map((bounds) => bounds.maxY));
 
     const width = Math.max(1, maxX - minX);
     const height = Math.max(1, maxY - minY);
@@ -302,6 +350,11 @@ export function useCanvasInteraction({
 
       const rect = canvasRef.current?.getBoundingClientRect();
       if (!rect) return;
+
+      if (!(e.ctrlKey || e.metaKey)) {
+        setPan(getWheelPanPosition({ deltaX: e.deltaX, deltaY: e.deltaY, pan }));
+        return;
+      }
 
       const mouseX = e.clientX - rect.left;
       const mouseY = e.clientY - rect.top;

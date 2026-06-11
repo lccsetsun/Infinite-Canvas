@@ -16,7 +16,6 @@ interface CanvasNodeLayerProps {
   apiConfig: {
     apiKey: string;
     baseUrl: string;
-    providerModels?: Partial<Record<string, string>>;
     remoteModelsByType?: AiModelsByType;
   };
   isLinkingOnCanvas: boolean;
@@ -53,7 +52,6 @@ interface CanvasNodeLayerProps {
     currentIndex?: number
   ) => void;
   onAnalyzeVideo?: (node: GraphNode, captures: VideoFrameCaptureItem[]) => Promise<void> | void;
-  onReverseSegmentAnalysis?: (node: GraphNode) => Promise<void> | void;
   onSelectNode: (nodeId: string, e?: React.MouseEvent) => void;
   onUpdateNodeData: (nodeId: string, data: any) => void;
   onUpdateNodeProperty: (nodeId: string, key: string, value: unknown) => void;
@@ -63,7 +61,6 @@ interface CanvasNodeLayerProps {
     frameIndex: number,
     clientPoint?: { clientX: number; clientY: number }
   ) => void;
-  onReplaceExtractedFrame?: (nodeId: string) => void;
   onReplaceFrameImage?: (nodeId: string, frameIndex: number, replacementUrl: string) => void;
   onSyncImagePromptStarterLayout?: (nodeId: string, imageNodeWidth: number) => void;
   onSplitImageGrid?: (
@@ -81,8 +78,6 @@ interface CanvasNodeLayerProps {
   resolvedInputsMap?: Map<string, Record<string, unknown>>;
   textNodeReferencesMap?: Map<string, TextNodeReferenceItem[]>;
   onRunNode?: (nodeId: string) => void;
-  onCreateImagePromptStarter?: (nodeId: string) => void;
-  onCreateTextStarterFlow?: (nodeId: string, action: "video" | "music") => void;
   onNotice?: (message: string) => void;
 }
 
@@ -111,13 +106,11 @@ export default function CanvasNodeLayer({
   onNodeDragStart,
   onPreview,
   onAnalyzeVideo,
-  onReverseSegmentAnalysis,
   onSelectNode,
   onUpdateNodeData,
   onUpdateNodeProperty,
   onSetPrimaryImageResult,
   onExtractFrameImage,
-  onReplaceExtractedFrame,
   onReplaceFrameImage,
   onSyncImagePromptStarterLayout,
   onSplitImageGrid,
@@ -125,8 +118,6 @@ export default function CanvasNodeLayer({
   resolvedInputsMap,
   textNodeReferencesMap,
   onRunNode,
-  onCreateImagePromptStarter,
-  onCreateTextStarterFlow,
   onNotice,
 }: CanvasNodeLayerProps) {
   return (
@@ -173,15 +164,12 @@ export default function CanvasNodeLayer({
                   onUpdateData={onUpdateNodeData}
                   onSetPrimaryImageResult={onSetPrimaryImageResult}
                   onPreview={onPreview}
-                  onReverseSegmentAnalysis={onReverseSegmentAnalysis}
                   resolvedInputs={resolvedInputsMap?.get(node.id)}
                   references={textNodeReferencesMap?.get(node.id) ?? []}
                   hasConnectedLinks={links.some(
                     (link) => link.fromNodeId === node.id || link.toNodeId === node.id
                   )}
                   onRun={onRunNode}
-                  onCreateImagePromptStarter={onCreateImagePromptStarter}
-                  onCreateTextStarterFlow={onCreateTextStarterFlow}
                   // 连线相关
                   isLinkingOnCanvas={isLinkingOnCanvas}
                   linkFromNodeId={linkFromNodeId}
@@ -214,7 +202,6 @@ export default function CanvasNodeLayer({
                   onUpdateData={onUpdateNodeData}
                   onSetPrimaryImageResult={onSetPrimaryImageResult}
                   onExtractFrameImage={onExtractFrameImage}
-                  onReplaceExtractedFrame={onReplaceExtractedFrame}
                   onReplaceFrameImage={onReplaceFrameImage}
                   onSyncImagePromptStarterLayout={onSyncImagePromptStarterLayout}
                   onSplitImageGrid={onSplitImageGrid}

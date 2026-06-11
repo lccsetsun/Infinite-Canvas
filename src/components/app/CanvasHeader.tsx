@@ -11,8 +11,7 @@ import {
 
 interface CanvasHeaderProps {
   projectName?: string;
-  username?: string;
-  onOpenApiSettings?: () => void;
+  username?: string;
   onLogout?: () => void;
   onProjectRenamed?: (name: string) => void;
   onNotice?: (message: string) => void;
@@ -110,8 +109,7 @@ function MenuSection({ label }: { label: string }) {
 
 export default function CanvasHeader({
   projectName: loadedProjectName,
-  username = "lccsetsun",
-  onOpenApiSettings,
+  username = "lccsetsun",
   onLogout,
   onProjectRenamed,
   onNotice,
@@ -396,8 +394,7 @@ export default function CanvasHeader({
       ) : null}
 
       <HeaderRightPanel
-        username={username}
-        onOpenApiSettings={onOpenApiSettings}
+        username={username}
         onLogout={onLogout}
         variant="compact"
       />

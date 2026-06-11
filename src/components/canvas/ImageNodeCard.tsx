@@ -56,7 +56,6 @@ interface ImageNodeCardProps {
   node: GraphNode;
   selected: boolean;
   apiConfig?: {
-    providerModels?: Partial<Record<string, string>>;
     remoteModelsByType?: AiModelsByType;
   };
   onSelect: (e?: React.MouseEvent) => void;
@@ -115,16 +114,17 @@ interface ImageNodeCardProps {
 
 const MEDIA_NODE_FOOTPRINT_WIDTH = 540;
 const MEDIA_NODE_FOOTPRINT_HEIGHT = 540;
-const EXTRACTED_FRAME_IMAGE_MAX_WIDTH = 360;
-const EXTRACTED_FRAME_IMAGE_MAX_HEIGHT = 270;
+const EXTRACTED_FRAME_IMAGE_MAX_WIDTH = MEDIA_NODE_FOOTPRINT_WIDTH;
+const EXTRACTED_FRAME_IMAGE_MAX_HEIGHT = MEDIA_NODE_FOOTPRINT_HEIGHT;
 const EMPTY_NODE_FOOTPRINT_WIDTH = 540;
 const EMPTY_NODE_FOOTPRINT_HEIGHT = 540;
 const FRAME_STRIP_TILE_MIN_WIDTH = 168;
 const FRAME_STRIP_TILE_MIN_HEIGHT = 96;
+const FRAME_STRIP_TILE_GAP = 1;
+const FRAME_STRIP_TILE_SCALE = 2;
+const FRAME_STRIP_PADDING = 10;
 const IMAGE_FRAME_DROP_LONG_PRESS_MS = 450;
 const QUANTITY_OPTIONS = ["1张", "2张", "3张", "4张"];
-const MINIMAX_IMAGE_MODEL = "image-01";
-const MINIMAX_IMAGE_MODEL_LABEL = "MiniMax Image 01";
 const VISIBLE_THUMBNAIL_COUNT = 3;
 const GRID_SPLIT_PRESETS = [
   { label: "4宫格 (2×2)", rows: 2, cols: 2 },
@@ -154,7 +154,7 @@ const IMAGE_NODE_TEXT_INPUT_KEYS = new Set([
   "user_prompt",
 ]);
 function getImageModelLabel(model: string) {
-  return model === MINIMAX_IMAGE_MODEL ? MINIMAX_IMAGE_MODEL_LABEL : model;
+  return model;
 }
 
 export function getImagePreviewFrameClassName({
@@ -239,6 +239,59 @@ export function getImagePreviewNodeWidth({
   resultImageWidth: number;
 }) {
   return isFrameStrip ? frameStripWidth : resultImageWidth;
+}
+
+export function getFrameStripAdaptiveLayout({
+  fallbackTileHeight,
+  fallbackTileWidth,
+  imageSizes,
+  imageUrls,
+  maxColumns,
+}: {
+  fallbackTileHeight: number;
+  fallbackTileWidth: number;
+  imageSizes?: Record<number, { width: number; height: number }>;
+  imageUrls: string[];
+  maxColumns: number;
+}) {
+  const safeFallbackWidth = Math.max(1, fallbackTileWidth);
+  const safeFallbackHeight = Math.max(1, fallbackTileHeight);
+  const safeMaxColumns = Math.max(1, maxColumns);
+  const targetHeight = safeFallbackHeight * FRAME_STRIP_TILE_SCALE;
+  const fallbackRatio = safeFallbackWidth / safeFallbackHeight;
+  const tiles = imageUrls.map((_, index) => {
+    const size = imageSizes?.[index];
+    const ratio =
+      size && size.width > 0 && size.height > 0 ? size.width / size.height : fallbackRatio;
+    return {
+      height: targetHeight,
+      width: Math.max(1, Math.round(targetHeight * ratio)),
+    };
+  });
+
+  const rowCount = Math.max(1, Math.ceil(Math.max(1, tiles.length) / safeMaxColumns));
+  let layoutWidth = 0;
+  for (let rowIndex = 0; rowIndex < rowCount; rowIndex += 1) {
+    const rowTiles = tiles.slice(rowIndex * safeMaxColumns, (rowIndex + 1) * safeMaxColumns);
+    const rowWidth =
+      rowTiles.reduce((sum, tile) => sum + tile.width, 0) +
+      Math.max(0, rowTiles.length - 1) * FRAME_STRIP_TILE_GAP;
+    if (rowWidth > layoutWidth) {
+      layoutWidth = rowWidth;
+    }
+  }
+  layoutWidth = Math.max(layoutWidth, safeFallbackWidth);
+
+  return {
+    height: Math.max(
+      safeFallbackHeight,
+      rowCount * targetHeight +
+        Math.max(0, rowCount - 1) * FRAME_STRIP_TILE_GAP +
+        FRAME_STRIP_PADDING * 2
+    ),
+    tiles,
+    width: layoutWidth + FRAME_STRIP_PADDING * 2,
+  };
 }
 
 export function getSettledImageLoadStatus({
@@ -531,6 +584,9 @@ function ImageNodeCardImpl({
     const height = node.data?.imageNaturalHeight;
     return typeof width === "number" && typeof height === "number" ? { width, height } : null;
   });
+  const [frameImageSizes, setFrameImageSizes] = React.useState<
+    Record<number, { width: number; height: number }>
+  >({});
   const previewNodeRef = React.useRef<HTMLDivElement | null>(null);
   const mediaFrameRef = React.useRef<HTMLDivElement | null>(null);
   const imageElementRef = React.useRef<HTMLImageElement | null>(null);
@@ -543,6 +599,8 @@ function ImageNodeCardImpl({
     pointerId: number;
     startClientX: number;
     startClientY: number;
+    thumbHeight: number;
+    thumbWidth: number;
     url: string;
     dragging: boolean;
   } | null>(null);
@@ -562,6 +620,8 @@ function ImageNodeCardImpl({
     pointerId: number;
     startClientX: number;
     startClientY: number;
+    thumbHeight: number;
+    thumbWidth: number;
     url: string;
   } | null>(null);
   const imageFrameDropCleanupRef = React.useRef<(() => void) | null>(null);
@@ -613,6 +673,14 @@ function ImageNodeCardImpl({
     1,
     Math.ceil(Math.max(1, resolvedImageUrls.length) / frameGridColumns)
   );
+  const frameTileWidth =
+    typeof node.data?.frameTileWidth === "number" && node.data.frameTileWidth > 0
+      ? Math.round(node.data.frameTileWidth)
+      : FRAME_STRIP_TILE_MIN_WIDTH;
+  const frameTileHeight =
+    typeof node.data?.frameTileHeight === "number" && node.data.frameTileHeight > 0
+      ? Math.round(node.data.frameTileHeight)
+      : FRAME_STRIP_TILE_MIN_HEIGHT;
   const cleanupFrameExtractionDragListeners = React.useCallback(() => {
     frameExtractionDragCleanupRef.current?.();
     frameExtractionDragCleanupRef.current = null;
@@ -694,12 +762,12 @@ function ImageNodeCardImpl({
         border: "1px solid rgba(207,250,254,0.28)",
         borderRadius: "12px",
         boxShadow: "0 16px 34px -18px rgba(0,0,0,0.95), 0 0 24px rgba(129,140,248,0.2)",
-        height: "58px",
-        left: `${clientX + 14}px`,
+        height: `${drag.thumbHeight}px`,
+        left: `${clientX - drag.thumbWidth / 2}px`,
         overflow: "hidden",
         position: "fixed",
-        top: `${clientY + 14}px`,
-        width: "88px",
+        top: `${clientY - drag.thumbHeight / 2}px`,
+        width: `${drag.thumbWidth}px`,
       });
       const thumbImage = document.createElement("img");
       thumbImage.src = drag.url;
@@ -708,29 +776,10 @@ function ImageNodeCardImpl({
       Object.assign(thumbImage.style, {
         display: "block",
         height: "100%",
-        objectFit: "cover",
+        objectFit: "contain",
         width: "100%",
       });
-      const indexBadge = document.createElement("div");
-      indexBadge.textContent = String(drag.frameIndex + 1);
-      Object.assign(indexBadge.style, {
-        alignItems: "center",
-        background: "rgba(15,23,42,0.9)",
-        border: "1px solid rgba(255,255,255,0.18)",
-        borderRadius: "999px",
-        color: "white",
-        display: "flex",
-        fontSize: "12px",
-        fontWeight: "800",
-        height: "24px",
-        justifyContent: "center",
-        minWidth: "24px",
-        padding: "0 6px",
-        position: "absolute",
-        right: "5px",
-        top: "5px",
-      });
-      thumb.append(thumbImage, indexBadge);
+      thumb.append(thumbImage);
 
       root.append(svg, thumb);
       document.body.appendChild(root);
@@ -743,8 +792,11 @@ function ImageNodeCardImpl({
     if (!overlay) return;
     overlay.line.setAttribute("x2", String(clientX));
     overlay.line.setAttribute("y2", String(clientY));
-    overlay.thumb.style.left = `${clientX + 14}px`;
-    overlay.thumb.style.top = `${clientY + 14}px`;
+    const drag = frameExtractionDragRef.current;
+    const thumbWidth = drag?.thumbWidth ?? overlay.thumb.offsetWidth;
+    const thumbHeight = drag?.thumbHeight ?? overlay.thumb.offsetHeight;
+    overlay.thumb.style.left = `${clientX - thumbWidth / 2}px`;
+    overlay.thumb.style.top = `${clientY - thumbHeight / 2}px`;
   }, []);
   const updateFrameExtractionDragPreview = React.useCallback(
     (pointerId: number, clientX: number, clientY: number) => {
@@ -804,6 +856,8 @@ function ImageNodeCardImpl({
         pointerId: event.pointerId,
         startClientX: event.clientX,
         startClientY: event.clientY,
+        thumbHeight: Math.max(1, Math.round(rect.height / 2)),
+        thumbWidth: Math.max(1, Math.round(rect.width / 2)),
         url,
         dragging: false,
       };
@@ -980,12 +1034,12 @@ function ImageNodeCardImpl({
         border: "1px solid rgba(207,250,254,0.28)",
         borderRadius: "12px",
         boxShadow: "0 16px 34px -18px rgba(0,0,0,0.95), 0 0 24px rgba(129,140,248,0.2)",
-        height: "58px",
-        left: `${clientX + 14}px`,
+        height: `${drag.thumbHeight}px`,
+        left: `${clientX - drag.thumbWidth / 2}px`,
         overflow: "hidden",
         position: "fixed",
-        top: `${clientY + 14}px`,
-        width: "88px",
+        top: `${clientY - drag.thumbHeight / 2}px`,
+        width: `${drag.thumbWidth}px`,
       });
       const thumbImage = document.createElement("img");
       thumbImage.src = drag.url;
@@ -994,7 +1048,7 @@ function ImageNodeCardImpl({
       Object.assign(thumbImage.style, {
         display: "block",
         height: "100%",
-        objectFit: "cover",
+        objectFit: "contain",
         width: "100%",
       });
       thumb.appendChild(thumbImage);
@@ -1025,8 +1079,11 @@ function ImageNodeCardImpl({
       if (!overlay) return;
       overlay.line.setAttribute("x2", String(clientX));
       overlay.line.setAttribute("y2", String(clientY));
-      overlay.thumb.style.left = `${clientX + 14}px`;
-      overlay.thumb.style.top = `${clientY + 14}px`;
+      const drag = imageFrameDropDragRef.current;
+      const thumbWidth = drag?.thumbWidth ?? overlay.thumb.offsetWidth;
+      const thumbHeight = drag?.thumbHeight ?? overlay.thumb.offsetHeight;
+      overlay.thumb.style.left = `${clientX - thumbWidth / 2}px`;
+      overlay.thumb.style.top = `${clientY - thumbHeight / 2}px`;
 
       const element = document.elementFromPoint(clientX, clientY) as HTMLElement | null;
       const target = element?.closest("[data-frame-strip-cell='true']") as HTMLElement | null;
@@ -1105,6 +1162,8 @@ function ImageNodeCardImpl({
           pointerId,
           startClientX,
           startClientY,
+          thumbHeight: Math.max(1, Math.round(rect.height / 4)),
+          thumbWidth: Math.max(1, Math.round(rect.width / 4)),
           url: imageUrl,
         };
         updateImageFrameDropDrag(pointerId, lastClientX, lastClientY);
@@ -1182,7 +1241,7 @@ function ImageNodeCardImpl({
   const imageModelOptionGroups = React.useMemo(
     () =>
       getModelOptionGroups(
-        [MINIMAX_IMAGE_MODEL],
+        [],
         apiConfig?.remoteModelsByType?.[AI_MODEL_TYPES[1]] ?? []
       ),
     [apiConfig?.remoteModelsByType]
@@ -1191,9 +1250,7 @@ function ImageNodeCardImpl({
     () => [...imageModelOptionGroups.builtIn, ...imageModelOptionGroups.remote],
     [imageModelOptionGroups]
   );
-  const preferredImageModel = imageModelOptions.includes(apiConfig?.providerModels?.minimax || "")
-    ? apiConfig?.providerModels?.minimax || MINIMAX_IMAGE_MODEL
-    : imageModelOptions[0] || MINIMAX_IMAGE_MODEL;
+  const preferredImageModel = imageModelOptions[0] || "";
   const selectedImageModel =
     typeof node.properties.model === "string" && node.properties.model.trim()
       ? node.properties.model.trim()
@@ -1241,20 +1298,48 @@ function ImageNodeCardImpl({
       }),
     [aspectRatio, isExtractedFrameNode, node.data?.isUploadPlaceholder, resolution]
   );
+  const frameStripLayout = React.useMemo(
+    () =>
+      getFrameStripAdaptiveLayout({
+        fallbackTileHeight: frameTileHeight,
+        fallbackTileWidth: frameTileWidth,
+        imageSizes: frameImageSizes,
+        imageUrls: resolvedImageUrls,
+        maxColumns: frameGridColumns,
+      }),
+    [frameGridColumns, frameImageSizes, frameTileHeight, frameTileWidth, resolvedImageUrls]
+  );
   const frameStripSize = {
-    width: Math.max(
-      frameGridColumns * FRAME_STRIP_TILE_MIN_WIDTH,
-      typeof node.data?.imageDisplayWidth === "number" && node.data.imageDisplayWidth > 0
-        ? Math.round(node.data.imageDisplayWidth)
-        : 0
-    ),
-    height: Math.max(
-      frameGridRows * FRAME_STRIP_TILE_MIN_HEIGHT,
-      typeof node.data?.imageDisplayHeight === "number" && node.data.imageDisplayHeight > 0
-        ? Math.round(node.data.imageDisplayHeight)
-        : 0
-    ),
+    width: frameStripLayout.width,
+    height: frameStripLayout.height,
   };
+  const frameStripRows = React.useMemo(
+    () =>
+      Array.from(
+        { length: Math.max(1, Math.ceil(Math.max(1, resolvedImageUrls.length) / frameGridColumns)) },
+        (_, rowIndex) =>
+          resolvedImageUrls
+            .slice(rowIndex * frameGridColumns, (rowIndex + 1) * frameGridColumns)
+            .map((url, offset) => {
+              const index = rowIndex * frameGridColumns + offset;
+              return {
+                index,
+                tileSize: frameStripLayout.tiles[index] ?? {
+                  height: frameTileHeight,
+                  width: frameTileWidth,
+                },
+                url,
+              };
+            })
+      ),
+    [
+      frameGridColumns,
+      frameStripLayout.tiles,
+      frameTileHeight,
+      frameTileWidth,
+      resolvedImageUrls,
+    ]
+  );
   const mediaFrameSize = isFrameStrip ? frameStripSize : resultImageSize;
   const previewNodeWidth = getImagePreviewNodeWidth({
     frameStripWidth: frameStripSize.width,
@@ -1699,21 +1784,21 @@ function ImageNodeCardImpl({
         className="hidden"
         onChange={handleImageUpload}
       />
-      <Tooltip content={imageUrl ? "上传替换图片" : "上传图片"} position="top">
-        <button
-          type="button"
-          data-node-action="true"
-          onClick={handleUploadClick}
-          disabled={isUploadingNodeAsset}
-          className="flex h-9 w-9 items-center justify-center rounded-[12px] border border-slate-300/14 bg-[#101827]/72 text-slate-300/78 shadow-[0_14px_34px_-24px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.055)] backdrop-blur-xl transition-all hover:-translate-y-0.5 hover:border-violet-300/36 hover:bg-violet-500/[0.16] hover:text-violet-50 hover:shadow-[0_16px_34px_-22px_rgba(139,92,246,0.85),0_0_18px_rgba(139,92,246,0.2)]"
-        >
-          {isUploadingNodeAsset ? (
-            <Loader2 className="h-[18px] w-[18px] animate-spin" />
-          ) : (
-            <Upload className="h-[18px] w-[18px]" />
-          )}
-        </button>
-      </Tooltip>
+      <button
+        type="button"
+        data-node-action="true"
+        aria-label={imageUrl ? "上传替换图片" : "上传图片"}
+        onClick={handleUploadClick}
+        disabled={isUploadingNodeAsset}
+        className="flex h-9 items-center justify-center gap-1.5 rounded-[12px] bg-[#101824]/54 px-3 text-slate-300/82 shadow-[0_10px_28px_-22px_rgba(0,0,0,0.95)] backdrop-blur-xl transition-colors hover:bg-white/[0.065] hover:text-slate-50 disabled:cursor-wait"
+      >
+        {isUploadingNodeAsset ? (
+          <Loader2 className="h-[18px] w-[18px] animate-spin" />
+        ) : (
+          <Upload className="h-[18px] w-[18px]" />
+        )}
+        <span className="text-[13px] font-medium leading-none">上传</span>
+      </button>
     </>
   );
 
@@ -2011,7 +2096,11 @@ function ImageNodeCardImpl({
   );
 
   const showImagePromptComposer =
-    !isSourceAssetNode && (isHovered || selected) && !isUploadingNodeAsset && !isRunning;
+    !isFrameStrip &&
+    !isSourceAssetNode &&
+    (isHovered || selected) &&
+    !isUploadingNodeAsset &&
+    !isRunning;
 
   const imagePreviewContent =
     imageUrl && !isRunning && !isUploadingNodeAsset ? (
@@ -2032,14 +2121,22 @@ function ImageNodeCardImpl({
         style={{ width: previewNodeWidth }}
       >
         {portHandles}
-        <div
-          data-node-action="true"
-          className="absolute right-2 top-8 z-30"
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {shouldShowUploadButton && !isCropMode && !isExtractedFrameNode ? uploadControl : null}
-        </div>
+        <AnimatePresence>
+          {selected && shouldShowUploadButton && !isCropMode && !isExtractedFrameNode && (
+            <motion.div
+              data-node-action="true"
+              initial={{ opacity: 0, y: 8, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 8, scale: 0.96 }}
+              transition={{ duration: 0.16, ease: "easeOut" }}
+              className="absolute left-1/2 top-0 z-50 flex -translate-x-1/2 -translate-y-[calc(100%-20px)] items-center"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {uploadControl}
+            </motion.div>
+          )}
+        </AnimatePresence>
         <AnimatePresence>
           {selected && (
             <motion.div
@@ -2399,18 +2496,15 @@ function ImageNodeCardImpl({
                 </div>
               )}
               {isFrameStrip ? (
-                <div
-                  className="group/framegrid grid h-full w-full gap-px overflow-hidden rounded-[inherit] bg-slate-700/32 p-px shadow-[inset_0_0_0_1px_rgba(148,163,184,0.14)]"
-                  style={{
-                    gridTemplateColumns: `repeat(${frameGridColumns}, minmax(0, 1fr))`,
-                  }}
-                >
-                  {resolvedImageUrls.map((url, index) => (
-                    <div
-                      key={`${url}-${index}`}
-                      role="button"
-                      tabIndex={0}
-                      data-node-action="true"
+                <div className="group/framegrid flex h-full w-full flex-col gap-px overflow-hidden rounded-[inherit] bg-[#07101b] p-[10px] shadow-[inset_0_0_0_1px_rgba(148,163,184,0.14)]">
+                  {frameStripRows.map((row, rowIndex) => (
+                    <div key={`frame-row-${rowIndex}`} className="flex shrink-0 gap-px">
+                      {row.map(({ index, tileSize, url }) => (
+                        <div
+                          key={`${url}-${index}`}
+                          role="button"
+                          tabIndex={0}
+                          data-node-action="true"
                       data-frame-strip-cell="true"
                       data-frame-node-id={node.id}
                       data-frame-index={index}
@@ -2425,13 +2519,34 @@ function ImageNodeCardImpl({
                         setActiveImageIndex(index);
                         onSetPrimaryImageResult?.(node.id, url, index);
                       }}
-                      className={`group/frame relative min-h-0 min-w-0 overflow-hidden bg-[#050914] shadow-[inset_0_0_0_1px_rgba(15,23,42,0.92),inset_0_0_32px_rgba(15,23,42,0.3)] transition-all duration-200 group-hover/framegrid:opacity-70 hover:z-10 hover:scale-[1.018] hover:opacity-100 hover:shadow-[0_0_0_2px_rgba(125,211,252,0.88),0_18px_44px_-22px_rgba(34,211,238,0.78),inset_0_0_0_1px_rgba(236,254,255,0.34)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300/70 ${onExtractFrameImage ? "cursor-grab active:cursor-grabbing" : ""}`}
+                      className={`group/frame relative shrink-0 overflow-hidden bg-[#050914] shadow-[inset_0_0_0_1px_rgba(15,23,42,0.92),inset_0_0_32px_rgba(15,23,42,0.3)] transition-all duration-200 group-hover/framegrid:opacity-70 hover:z-10 hover:scale-[1.018] hover:opacity-100 hover:shadow-[0_0_0_2px_rgba(125,211,252,0.88),0_18px_44px_-22px_rgba(34,211,238,0.78),inset_0_0_0_1px_rgba(236,254,255,0.34)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300/70 ${onExtractFrameImage ? "cursor-grab active:cursor-grabbing" : ""}`}
+                      style={{ height: tileSize.height, width: tileSize.width }}
                     >
                       <img
                         src={url}
                         alt={`\u9010\u5e27\u5206\u6790 ${index + 1}`}
-                        className="h-full w-full object-cover transition-all duration-200 group-hover/frame:brightness-110 group-hover/frame:saturate-110"
+                        className="h-full w-full object-contain transition-all duration-200 group-hover/frame:brightness-110 group-hover/frame:saturate-110"
                         draggable={false}
+                        onLoad={(event) => {
+                          const img = event.currentTarget;
+                          if (!img.naturalWidth || !img.naturalHeight) return;
+                          setFrameImageSizes((current) => {
+                            const previous = current[index];
+                            if (
+                              previous?.width === img.naturalWidth &&
+                              previous?.height === img.naturalHeight
+                            ) {
+                              return current;
+                            }
+                            return {
+                              ...current,
+                              [index]: {
+                                width: img.naturalWidth,
+                                height: img.naturalHeight,
+                              },
+                            };
+                          });
+                        }}
                       />
                       <span className="pointer-events-none absolute right-2 top-2 z-10 flex h-6 min-w-[24px] items-center justify-center rounded-full border border-white/18 bg-[#0b1018]/82 px-1.5 text-[11px] font-bold tabular-nums text-white shadow-[0_8px_18px_-12px_rgba(0,0,0,0.95)] transition-all duration-200 group-hover/frame:border-cyan-100/42 group-hover/frame:bg-cyan-100/18 group-hover/frame:text-cyan-50 group-hover/frame:shadow-[0_0_20px_rgba(103,232,249,0.26)]">
                         {index + 1}
@@ -2450,12 +2565,14 @@ function ImageNodeCardImpl({
                             onClick={(event) => {
                               event.stopPropagation();
                               onExtractFrameImage(node.id, index);
-                            }}
-                          >
+                          }}
+                        >
                             提取
                           </button>
                         </>
                       )}
+                        </div>
+                      ))}
                     </div>
                   ))}
                 </div>
@@ -2716,16 +2833,22 @@ function ImageNodeCardImpl({
                   <div className="absolute inset-0 -translate-x-full animate-[text-node-shimmer_1.8s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-cyan-200/12 to-transparent" />
                 </div>
               )}
-              {!isUploadingNodeAsset && (
-                <div
-                  data-node-action="true"
-                  className="absolute right-5 top-5 z-30"
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {shouldShowUploadButton ? uploadControl : null}
-                </div>
-              )}
+              <AnimatePresence>
+                {selected && !isUploadingNodeAsset && shouldShowUploadButton && (
+                  <motion.div
+                    data-node-action="true"
+                    initial={{ opacity: 0, y: 8, scale: 0.96 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 8, scale: 0.96 }}
+                    transition={{ duration: 0.16, ease: "easeOut" }}
+                    className="absolute left-1/2 top-0 z-40 flex -translate-x-1/2 -translate-y-[calc(100%+14px)] items-center"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {uploadControl}
+                  </motion.div>
+                )}
+              </AnimatePresence>
               <div className="absolute -top-8 left-0 z-30 flex items-center gap-1.5 text-slate-300/82 drop-shadow-[0_1px_10px_rgba(15,23,42,0.9)]">
                 <ImageIcon className="h-4 w-4 text-cyan-100/58" />
                 <span className="text-[15px] font-medium tracking-tight">
@@ -3040,7 +3163,6 @@ const ImageNodeCard = React.memo(
   (prev, next) =>
     prev.node === next.node &&
     prev.selected === next.selected &&
-    prev.apiConfig?.providerModels?.minimax === next.apiConfig?.providerModels?.minimax &&
     prev.apiConfig?.remoteModelsByType === next.apiConfig?.remoteModelsByType &&
     prev.resolvedInputs === next.resolvedInputs
 );

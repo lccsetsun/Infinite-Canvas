@@ -5,6 +5,7 @@ import {
   getImagePreviewNodeWidth,
   getImagePortHandleWrapperStyle,
   getImageNodePortTopStyle,
+  getFrameStripAdaptiveLayout,
   getSettledImageLoadStatus,
   getResultImageBounds,
   hasFrameExtractionDragStarted,
@@ -120,10 +121,10 @@ describe("getResultImageBounds", () => {
     });
   });
 
-  it("uses compact bounds for extracted frame child nodes", () => {
+  it("uses regular image bounds for extracted frame child nodes", () => {
     expect(getResultImageBounds("16:9", false, true)).toEqual({
-      maxWidth: 360,
-      maxHeight: 270,
+      maxWidth: 540,
+      maxHeight: 540,
     });
   });
 
@@ -243,6 +244,25 @@ describe("getImagePreviewNodeWidth", () => {
         resultImageWidth: 780,
       })
     ).toBe(780);
+  });
+});
+
+describe("getFrameStripAdaptiveLayout", () => {
+  it("keeps five adaptive frames per row without fixed empty cells", () => {
+    const layout = getFrameStripAdaptiveLayout({
+      fallbackTileHeight: 160,
+      fallbackTileWidth: 90,
+      imageSizes: Object.fromEntries(
+        Array.from({ length: 7 }, (_, index) => [index, { width: 720, height: 1280 }])
+      ),
+      imageUrls: Array.from({ length: 7 }, (_, index) => `frame-${index + 1}.png`),
+      maxColumns: 5,
+    });
+
+    expect(layout.tiles).toHaveLength(7);
+    expect(layout.tiles[0]).toEqual({ height: 320, width: 180 });
+    expect(layout.width).toBe(5 * 180 + 4 + 20);
+    expect(layout.height).toBe(2 * 320 + 1 + 20);
   });
 });
 

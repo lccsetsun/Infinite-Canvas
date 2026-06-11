@@ -3,8 +3,8 @@ import { runHeaderMenuAction } from "./headerRightPanelActions";
 
 describe("runHeaderMenuAction", () => {
   it("marks the action pending before invoking the async callback and clears it after success", async () => {
-    const states: Array<"api-settings" | "logout" | null | "callback-ran"> = [];
-    const setPendingAction = vi.fn((value: "api-settings" | "logout" | null) => {
+    const states: Array<"logout" | null | "callback-ran"> = [];
+    const setPendingAction = vi.fn((value: "logout" | null) => {
       states.push(value);
     });
     const action = vi.fn(async () => {
@@ -12,14 +12,14 @@ describe("runHeaderMenuAction", () => {
     });
 
     await runHeaderMenuAction({
-      actionKey: "api-settings",
+      actionKey: "logout",
       pendingAction: null,
       setPendingAction,
       action,
     });
 
     expect(action).toHaveBeenCalledTimes(1);
-    expect(states).toEqual(["api-settings", "callback-ran", null]);
+    expect(states).toEqual(["logout", "callback-ran", null]);
   });
 
   it("does not invoke a second action while one is already pending", async () => {
@@ -28,7 +28,7 @@ describe("runHeaderMenuAction", () => {
 
     await runHeaderMenuAction({
       actionKey: "logout",
-      pendingAction: "api-settings",
+      pendingAction: "logout",
       setPendingAction,
       action,
     });
@@ -38,8 +38,8 @@ describe("runHeaderMenuAction", () => {
   });
 
   it("clears pending state when the action throws", async () => {
-    const states: Array<"api-settings" | "logout" | null> = [];
-    const setPendingAction = vi.fn((value: "api-settings" | "logout" | null) => {
+    const states: Array<"logout" | null> = [];
+    const setPendingAction = vi.fn((value: "logout" | null) => {
       states.push(value);
     });
 

@@ -1,10 +1,9 @@
 import React from "react";
-import { ChevronDown, KeyRound, Loader2, LogOut, User } from "lucide-react";
+import { ChevronDown, Loader2, LogOut, User } from "lucide-react";
 import { type HeaderMenuActionKey, runHeaderMenuAction } from "./headerRightPanelActions";
 
 interface HeaderRightPanelProps {
   username?: string;
-  onOpenApiSettings?: () => void | Promise<void>;
   onLogout?: () => void | Promise<void>;
   variant?: "default" | "compact";
 }
@@ -52,7 +51,6 @@ function AccountMenuItem({
 
 export default function HeaderRightPanel({
   username = "lccsetsun",
-  onOpenApiSettings,
   onLogout,
   variant = "default",
 }: HeaderRightPanelProps) {
@@ -142,14 +140,6 @@ export default function HeaderRightPanel({
 
         {menuOpen ? (
           <div className={menuClassName}>
-            <AccountMenuItem
-              icon={<KeyRound className="h-4 w-4" />}
-              title="API 设置"
-              hint={pendingAction === "api-settings" ? "正在打开..." : "管理服务配置"}
-              disabled={isBusy}
-              busy={pendingAction === "api-settings"}
-              onClick={() => void runAction("api-settings", onOpenApiSettings)}
-            />
 
             <AccountMenuItem
               icon={<LogOut className="h-4 w-4" />}
