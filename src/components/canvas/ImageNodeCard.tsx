@@ -24,7 +24,6 @@ import { GraphNode } from "../../types";
 import { findResolvedStringInput } from "../../utils/resolvedInputs";
 import { shouldShowInlinePortHandles } from "../../utils/portHandleVisibility";
 import { isSourceNode } from "../../utils/sourceNodes";
-import { getNodeWidth } from "./geometry";
 import { Tooltip } from "../common/Tooltip";
 import { downloadMediaAsset, extensionFromAssetUrl } from "../../utils/mediaAssets";
 import {
@@ -114,14 +113,12 @@ interface ImageNodeCardProps {
   getCanvasLinkTargetIssue?: (nodeId: string, inputIndex: number) => string | null;
 }
 
-const RESULT_IMAGE_MAX_WIDTH = 780;
-const RESULT_IMAGE_MAX_HEIGHT = 585;
-const SQUARE_RESULT_IMAGE_MAX_WIDTH = 520;
-const SQUARE_RESULT_IMAGE_MAX_HEIGHT = 390;
-const PLACEHOLDER_RESULT_IMAGE_MAX_WIDTH = 520;
-const PLACEHOLDER_RESULT_IMAGE_MAX_HEIGHT = 390;
+const MEDIA_NODE_FOOTPRINT_WIDTH = 540;
+const MEDIA_NODE_FOOTPRINT_HEIGHT = 540;
 const EXTRACTED_FRAME_IMAGE_MAX_WIDTH = 360;
 const EXTRACTED_FRAME_IMAGE_MAX_HEIGHT = 270;
+const EMPTY_NODE_FOOTPRINT_WIDTH = 540;
+const EMPTY_NODE_FOOTPRINT_HEIGHT = 540;
 const FRAME_STRIP_TILE_MIN_WIDTH = 168;
 const FRAME_STRIP_TILE_MIN_HEIGHT = 96;
 const IMAGE_FRAME_DROP_LONG_PRESS_MS = 450;
@@ -212,13 +209,15 @@ export function hasFrameExtractionDragStarted({
 }
 
 export function getImageNodePortTopStyle({
+  emptyImageNodePortCenterY,
   hasImageUrl,
   imagePortCenterY,
 }: {
+  emptyImageNodePortCenterY?: number;
   hasImageUrl: boolean;
   imagePortCenterY?: number;
 }) {
-  if (!hasImageUrl) return EMPTY_IMAGE_NODE_MAIN_CARD_CENTER_Y;
+  if (!hasImageUrl) return emptyImageNodePortCenterY ?? EMPTY_IMAGE_NODE_MAIN_CARD_CENTER_Y;
   return imagePortCenterY ?? "50%";
 }
 
@@ -338,6 +337,40 @@ function fitImageSize(
   return { width: Math.round(maxHeight * ratio), height: maxHeight };
 }
 
+function fitMediaNodePreviewSize(naturalSize: { width: number; height: number }) {
+  return fitImageSize(naturalSize, "16:9", MEDIA_NODE_FOOTPRINT_WIDTH, MEDIA_NODE_FOOTPRINT_HEIGHT);
+}
+
+export function resolveEmptyImageNodeSize({
+  aspectRatio,
+  isExtractedFrameNode = false,
+  isUploadPlaceholder = false,
+  resolution,
+}: {
+  aspectRatio: string;
+  isExtractedFrameNode?: boolean;
+  isUploadPlaceholder?: boolean;
+  resolution: string;
+}) {
+  void resolution;
+  void isUploadPlaceholder;
+  void isExtractedFrameNode;
+  const displaySize = fitImageSize(
+    null,
+    aspectRatio,
+    EMPTY_NODE_FOOTPRINT_WIDTH,
+    EMPTY_NODE_FOOTPRINT_HEIGHT
+  );
+
+  return {
+    displayHeight: displaySize.height,
+    displayWidth: displaySize.width,
+    nodeHeight: displaySize.height,
+    nodeWidth: displaySize.width,
+    portCenterY: Math.round(displaySize.height / 2),
+  };
+}
+
 function isFinitePositiveNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
 }
@@ -356,21 +389,21 @@ export function getResultImageBounds(
 
   if (isUploadPlaceholder) {
     return {
-      maxWidth: PLACEHOLDER_RESULT_IMAGE_MAX_WIDTH,
-      maxHeight: PLACEHOLDER_RESULT_IMAGE_MAX_HEIGHT,
+      maxWidth: MEDIA_NODE_FOOTPRINT_WIDTH,
+      maxHeight: MEDIA_NODE_FOOTPRINT_HEIGHT,
     };
   }
 
   if (aspectRatio === "1:1") {
     return {
-      maxWidth: SQUARE_RESULT_IMAGE_MAX_WIDTH,
-      maxHeight: SQUARE_RESULT_IMAGE_MAX_HEIGHT,
+      maxWidth: MEDIA_NODE_FOOTPRINT_WIDTH,
+      maxHeight: MEDIA_NODE_FOOTPRINT_HEIGHT,
     };
   }
 
   return {
-    maxWidth: RESULT_IMAGE_MAX_WIDTH,
-    maxHeight: RESULT_IMAGE_MAX_HEIGHT,
+    maxWidth: MEDIA_NODE_FOOTPRINT_WIDTH,
+    maxHeight: MEDIA_NODE_FOOTPRINT_HEIGHT,
   };
 }
 
@@ -1162,7 +1195,6 @@ function ImageNodeCardImpl({
   const nodeBadgeTitle =
     node.title === "图片节点" || node.title === "图片" ? "图片节点 1" : node.title;
   const nodeBadgeMatch = nodeBadgeTitle.match(/^(.*?)(\s+\d+)$/);
-  const nodeWidth = getNodeWidth(node);
   const resultImageBounds = getResultImageBounds(
     aspectRatio,
     node.data?.isUploadPlaceholder === true,
@@ -1190,6 +1222,16 @@ function ImageNodeCardImpl({
       node.data?.isUploadPlaceholder,
       isExtractedFrameNode,
     ]
+  );
+  const emptyImageNodeSize = React.useMemo(
+    () =>
+      resolveEmptyImageNodeSize({
+        aspectRatio,
+        isExtractedFrameNode,
+        isUploadPlaceholder: node.data?.isUploadPlaceholder === true,
+        resolution,
+      }),
+    [aspectRatio, isExtractedFrameNode, node.data?.isUploadPlaceholder, resolution]
   );
   const frameStripSize = {
     width: Math.max(
@@ -1285,11 +1327,48 @@ function ImageNodeCardImpl({
     imageUrl,
     node.data?.imageNodeHeight,
     node.data?.imageNodeWidth,
+    node.data?.imagePortCenterY,
     node.id,
     onUpdateData,
     resolvedImageUrls.length,
     mediaFrameSize.height,
     mediaFrameSize.width,
+  ]);
+
+  React.useEffect(() => {
+    if (imageUrl || isFrameStrip) return;
+    if (
+      node.data?.imageDisplayWidth === emptyImageNodeSize.displayWidth &&
+      node.data?.imageDisplayHeight === emptyImageNodeSize.displayHeight &&
+      node.data?.imageNodeWidth === emptyImageNodeSize.nodeWidth &&
+      node.data?.imageNodeHeight === emptyImageNodeSize.nodeHeight &&
+      node.data?.imagePortCenterY === emptyImageNodeSize.portCenterY
+    ) {
+      return;
+    }
+
+    onUpdateData?.(node.id, {
+      imageDisplayHeight: emptyImageNodeSize.displayHeight,
+      imageDisplayWidth: emptyImageNodeSize.displayWidth,
+      imageNodeHeight: emptyImageNodeSize.nodeHeight,
+      imageNodeWidth: emptyImageNodeSize.nodeWidth,
+      imagePortCenterY: emptyImageNodeSize.portCenterY,
+    });
+  }, [
+    emptyImageNodeSize.displayHeight,
+    emptyImageNodeSize.displayWidth,
+    emptyImageNodeSize.nodeHeight,
+    emptyImageNodeSize.nodeWidth,
+    emptyImageNodeSize.portCenterY,
+    imageUrl,
+    isFrameStrip,
+    node.data?.imageDisplayHeight,
+    node.data?.imageDisplayWidth,
+    node.data?.imageNodeHeight,
+    node.data?.imageNodeWidth,
+    node.data?.imagePortCenterY,
+    node.id,
+    onUpdateData,
   ]);
 
   React.useEffect(() => {
@@ -1509,12 +1588,7 @@ function ImageNodeCardImpl({
             width: uploadedImage.naturalWidth || resultImageSize.width,
             height: uploadedImage.naturalHeight || resultImageSize.height,
           };
-          const displaySize = fitImageSize(
-            naturalSize,
-            aspectRatio,
-            resultImageBounds.maxWidth,
-            resultImageBounds.maxHeight
-          );
+          const displaySize = fitMediaNodePreviewSize(naturalSize);
           setActiveImageIndex(0);
           setNaturalImageSize(naturalSize);
           onUpdateProperty?.(node.id, "imageUrl", uploadedUrl);
@@ -1843,6 +1917,7 @@ function ImageNodeCardImpl({
 
   const hasInputPorts = !isSourceAssetNode && node.inputs.length > 0;
   const portTopStyle = getImageNodePortTopStyle({
+    emptyImageNodePortCenterY: emptyImageNodeSize.portCenterY,
     hasImageUrl: Boolean(imageUrl),
     imagePortCenterY: node.data?.imagePortCenterY,
   });
@@ -2391,12 +2466,7 @@ function ImageNodeCardImpl({
                       width: img.naturalWidth || resultImageSize.width,
                       height: img.naturalHeight || resultImageSize.height,
                     };
-                    const displaySize = fitImageSize(
-                      naturalSize,
-                      aspectRatio,
-                      resultImageBounds.maxWidth,
-                      resultImageBounds.maxHeight
-                    );
+                    const displaySize = fitMediaNodePreviewSize(naturalSize);
                     setNaturalImageSize(naturalSize);
                     if (
                       node.data?.imageNaturalWidth !== naturalSize.width ||
@@ -2596,7 +2666,7 @@ function ImageNodeCardImpl({
     <>
       <motion.div
         className="absolute text-left"
-        style={{ width: imagePreviewContent ? previewNodeWidth : nodeWidth }}
+        style={{ width: imagePreviewContent ? previewNodeWidth : emptyImageNodeSize.nodeWidth }}
         ref={imagePreviewContent ? previewNodeRef : undefined}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
@@ -2626,7 +2696,10 @@ function ImageNodeCardImpl({
                   ? "border-violet-300/26 -translate-y-[1px] shadow-[0_40px_100px_-34px_rgba(0,0,0,0.98),0_0_0_1px_rgba(196,181,253,0.2),0_0_0_7px_rgba(139,92,246,0.08),0_0_48px_rgba(109,40,217,0.18)]"
                   : "border-[#2b3142]/90 hover:border-slate-300/35"
               }`}
-              style={{ width: nodeWidth, minHeight: 290 }}
+              style={{
+                width: emptyImageNodeSize.nodeWidth,
+                minHeight: emptyImageNodeSize.nodeHeight,
+              }}
             >
               <div className="pointer-events-none absolute inset-x-0 top-0 h-px rounded-t-[18px] bg-gradient-to-r from-transparent via-slate-100/25 to-transparent" />
               <div className="pointer-events-none absolute inset-0 rounded-[18px] bg-[radial-gradient(circle_at_28%_0%,rgba(34,211,238,0.08),transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.035),transparent_34%)]" />
@@ -2660,7 +2733,10 @@ function ImageNodeCardImpl({
               </div>
               <div className="relative px-5 pb-5 pt-8">
                 {isRunning || isUploadingNodeAsset ? (
-                  <div className="flex min-h-[250px] flex-col items-center justify-center gap-4 text-slate-300/60">
+                  <div
+                    className="flex flex-col items-center justify-center gap-4 text-slate-300/60"
+                    style={{ minHeight: Math.max(120, emptyImageNodeSize.nodeHeight - 52) }}
+                  >
                     <div className="relative flex h-[96px] w-[96px] items-center justify-center text-cyan-100/58">
                       <ImageIcon className="h-14 w-14" strokeWidth={1.55} />
                     </div>
@@ -2675,7 +2751,10 @@ function ImageNodeCardImpl({
                     </div>
                   </div>
                 ) : (
-                  <div className="flex min-h-[250px] flex-col items-center justify-center">
+                  <div
+                    className="flex flex-col items-center justify-center"
+                    style={{ minHeight: Math.max(120, emptyImageNodeSize.nodeHeight - 52) }}
+                  >
                     <div className="mb-8 flex h-[96px] w-[96px] items-center justify-center text-cyan-100/58">
                       <ImageIcon className="h-14 w-14" strokeWidth={1.55} />
                     </div>
@@ -2841,6 +2920,21 @@ function ImageNodeCardImpl({
                   onChange={(nextResolution, nextAspectRatio) => {
                     onUpdateProperty?.(node.id, "resolution", nextResolution);
                     onUpdateProperty?.(node.id, "aspect_ratio", nextAspectRatio);
+                    if (!imageUrl && !isFrameStrip) {
+                      const nextNodeSize = resolveEmptyImageNodeSize({
+                        aspectRatio: nextAspectRatio,
+                        isExtractedFrameNode,
+                        isUploadPlaceholder: node.data?.isUploadPlaceholder === true,
+                        resolution: nextResolution,
+                      });
+                      onUpdateData?.(node.id, {
+                        imageDisplayHeight: nextNodeSize.displayHeight,
+                        imageDisplayWidth: nextNodeSize.displayWidth,
+                        imageNodeHeight: nextNodeSize.nodeHeight,
+                        imageNodeWidth: nextNodeSize.nodeWidth,
+                        imagePortCenterY: nextNodeSize.portCenterY,
+                      });
+                    }
                   }}
                   buttonClassName="relative inline-flex h-10 min-w-[230px] items-center justify-center gap-2 rounded-[14px] border border-cyan-100/8 bg-slate-950/18 px-3 text-[13px] font-medium text-cyan-50/76 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
                 />

@@ -12,7 +12,7 @@ import {
   Wand2,
 } from "lucide-react";
 import { GraphNode } from "../../types";
-import { getNodeWidth } from "./geometry";
+import { getNodeHeight, getNodeWidth } from "./geometry";
 import { findResolvedStringInput } from "../../utils/resolvedInputs";
 import { shouldShowInlinePortHandles } from "../../utils/portHandleVisibility";
 import { isSourceNode } from "../../utils/sourceNodes";
@@ -214,6 +214,7 @@ function AudioNodeCardImpl({
   const promptComposerVisible =
     !isSourceAssetNode && (isHovered || selected) && !audioUrl && !isUploadingAsset;
   const nodeWidth = getNodeWidth(node);
+  const nodeHeight = getNodeHeight(node);
   const voiceId = (node.properties.voice_id as string) || "male-qn-qingse";
   const emotion = (node.properties.emotion as string) || "auto";
   const speed = Number(node.properties.speed ?? 1);
@@ -567,7 +568,7 @@ function AudioNodeCardImpl({
             ? "border-violet-300/26 -translate-y-[1px] shadow-[0_40px_100px_-34px_rgba(0,0,0,0.98),0_0_0_1px_rgba(196,181,253,0.2),0_0_0_7px_rgba(139,92,246,0.08),0_0_48px_rgba(109,40,217,0.18)]"
             : "border-[#2b3142]/90 hover:border-slate-300/35"
         }`}
-        style={{ width: nodeWidth, minHeight: 290 }}
+        style={{ width: nodeWidth, minHeight: nodeHeight }}
       >
         <div className="pointer-events-none absolute inset-x-0 top-0 h-px rounded-t-[18px] bg-gradient-to-r from-transparent via-slate-100/25 to-transparent" />
         <div className="pointer-events-none absolute inset-0 rounded-[18px] bg-[radial-gradient(circle_at_28%_0%,rgba(34,211,238,0.08),transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.035),transparent_34%)]" />
@@ -602,7 +603,10 @@ function AudioNodeCardImpl({
         </div>
         <div className="relative px-5 pb-5 pt-8">
           {isRunning || isUploadingAsset ? (
-            <div className="flex min-h-[250px] flex-col items-center justify-center gap-5 text-slate-300/60">
+            <div
+              className="flex flex-col items-center justify-center gap-5 text-slate-300/60"
+              style={{ minHeight: Math.max(120, nodeHeight - 52) }}
+            >
               <Loader2 className="h-10 w-10 animate-spin" />
               <div className="text-center">
                 <div className="text-[13px] text-slate-100/80">
@@ -614,7 +618,10 @@ function AudioNodeCardImpl({
               </div>
             </div>
           ) : (
-            <div className="flex min-h-[250px] flex-col items-center justify-center">
+            <div
+              className="flex flex-col items-center justify-center"
+              style={{ minHeight: Math.max(120, nodeHeight - 52) }}
+            >
               <div className="mb-8 flex h-[96px] w-[96px] items-center justify-center rounded-[28px] bg-slate-950/[0.12] text-cyan-50/[0.2] shadow-[inset_0_1px_0_rgba(255,255,255,0.035),0_22px_55px_-40px_rgba(34,211,238,0.55)] backdrop-blur-sm">
                 <Music2 className="h-14 w-14" strokeWidth={1.55} />
               </div>

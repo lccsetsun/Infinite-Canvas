@@ -900,10 +900,7 @@ function TextNodeCardImpl({
           className={`relative flex h-full min-h-[250px] flex-col ${hasCompactContent ? "px-5 py-5" : "px-5 pb-5 pt-8"}`}
         >
           <AnimatePresence mode="wait">
-            <motion.div
-              key={contentViewKey}
-              className="flex flex-1 flex-col"
-            >
+            <motion.div key={contentViewKey} className="flex flex-1 flex-col">
               <div
                 className={`relative flex flex-1 flex-col overflow-hidden transition-colors ${
                   hasCompactContent ? "justify-start" : "justify-center rounded-[14px] px-4 py-3"
@@ -1000,17 +997,17 @@ function TextNodeCardImpl({
                       )}
                     </div>
                   ) : showStarterGuide ? (
-                    <div className="flex min-h-[166px] w-full flex-col justify-between px-0.5 py-0.5">
-                      <div className="flex justify-center pt-3">
+                    <div className="flex min-h-[166px] w-full flex-col justify-between px-1 py-1">
+                      <div className="flex justify-center pt-2">
                         <div className="w-[96px]">
                           <TextSkeleton active={isRunning} />
                         </div>
                       </div>
                       <div className="pb-0.5">
-                        <div className="mb-1.5 text-[12px] font-medium tracking-tight text-slate-300/42">
+                        <div className="mb-2 text-[13px] font-medium tracking-tight text-slate-300/48">
                           尝试：
                         </div>
-                        <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+                        <div className="grid grid-cols-2 gap-x-5 gap-y-2.5">
                           {starterActions.map(({ icon: Icon, label, action }) => (
                             <div
                               key={label}
@@ -1027,11 +1024,11 @@ function TextNodeCardImpl({
                                 event.stopPropagation();
                                 handleStarterAction(action);
                               }}
-                              className="group relative flex min-w-0 cursor-pointer items-center gap-1.5 rounded-[10px] border border-transparent px-2 py-1.5 text-slate-100/82 transition-all duration-200 hover:-translate-y-0.5 hover:border-violet-300/18 hover:bg-violet-400/[0.075] hover:shadow-[0_12px_28px_-22px_rgba(139,92,246,0.8),inset_0_1px_0_rgba(255,255,255,0.05)]"
+                              className="group relative flex min-w-0 cursor-pointer items-center gap-2.5 rounded-[12px] border border-transparent px-3 py-2.5 text-slate-100/86 transition-all duration-200 hover:-translate-y-0.5 hover:border-violet-300/18 hover:bg-violet-400/[0.075] hover:shadow-[0_12px_28px_-22px_rgba(139,92,246,0.8),inset_0_1px_0_rgba(255,255,255,0.05)]"
                             >
-                              <span className="pointer-events-none absolute inset-0 rounded-[10px] bg-[radial-gradient(circle_at_18%_20%,rgba(196,181,253,0.14),transparent_46%)] opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
-                              <Icon className="relative h-[15px] w-[15px] shrink-0 text-violet-200/58 transition-all duration-200 group-hover:scale-110 group-hover:text-violet-100 group-hover:drop-shadow-[0_0_8px_rgba(167,139,250,0.55)]" />
-                              <div className="relative truncate text-[12px] font-medium tracking-tight text-slate-100/82 transition-colors duration-200 group-hover:text-white">
+                              <span className="pointer-events-none absolute inset-0 rounded-[12px] bg-[radial-gradient(circle_at_18%_20%,rgba(196,181,253,0.14),transparent_46%)] opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
+                              <Icon className="relative h-[18px] w-[18px] shrink-0 text-violet-200/62 transition-all duration-200 group-hover:scale-110 group-hover:text-violet-100 group-hover:drop-shadow-[0_0_8px_rgba(167,139,250,0.55)]" />
+                              <div className="relative truncate text-[14px] font-medium tracking-tight text-slate-100/88 transition-colors duration-200 group-hover:text-white">
                                 {label}
                               </div>
                             </div>

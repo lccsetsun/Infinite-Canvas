@@ -25,10 +25,8 @@ interface UploadCanvasFileOptions {
 }
 
 const LOCAL_METADATA_TIMEOUT_MS = 2500;
-const RESULT_IMAGE_MAX_WIDTH = 780;
-const RESULT_IMAGE_MAX_HEIGHT = 585;
-const VIDEO_NODE_WIDTH = 520;
-const RESULT_VIDEO_MAX_HEIGHT = 390;
+const MEDIA_NODE_FOOTPRINT_WIDTH = 540;
+const MEDIA_NODE_FOOTPRINT_HEIGHT = 540;
 
 function withMetadataTimeout<T>(read: Promise<T>, fallback: T): Promise<T> {
   return new Promise((resolve) => {
@@ -100,22 +98,10 @@ function isFinitePositiveNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
 }
 
-function fitImageSize(naturalSize: { width: number; height: number }) {
+function fitMediaSize(naturalSize: { width: number; height: number }) {
   const scale = Math.min(
-    RESULT_IMAGE_MAX_WIDTH / naturalSize.width,
-    RESULT_IMAGE_MAX_HEIGHT / naturalSize.height
-  );
-  return {
-    width: Math.round(naturalSize.width * scale),
-    height: Math.round(naturalSize.height * scale),
-  };
-}
-
-function fitVideoSize(naturalSize: { width: number; height: number }) {
-  const scale = Math.min(
-    VIDEO_NODE_WIDTH / naturalSize.width,
-    RESULT_VIDEO_MAX_HEIGHT / naturalSize.height,
-    1
+    MEDIA_NODE_FOOTPRINT_WIDTH / naturalSize.width,
+    MEDIA_NODE_FOOTPRINT_HEIGHT / naturalSize.height
   );
   return {
     width: Math.round(naturalSize.width * scale),
@@ -161,7 +147,7 @@ export function buildInitialCanvasFileNodeData(
       isFinitePositiveNumber(metadata.imageNaturalWidth) &&
       isFinitePositiveNumber(metadata.imageNaturalHeight)
     ) {
-      const displaySize = fitImageSize({
+      const displaySize = fitMediaSize({
         width: metadata.imageNaturalWidth,
         height: metadata.imageNaturalHeight,
       });
@@ -175,7 +161,7 @@ export function buildInitialCanvasFileNodeData(
     isFinitePositiveNumber(metadata.videoNaturalWidth) &&
     isFinitePositiveNumber(metadata.videoNaturalHeight)
   ) {
-    const displaySize = fitVideoSize({
+    const displaySize = fitMediaSize({
       width: metadata.videoNaturalWidth,
       height: metadata.videoNaturalHeight,
     });

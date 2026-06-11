@@ -12,8 +12,8 @@ describe("buildInitialCanvasFileNodeData", () => {
       isSourceNode: true,
       imageNaturalWidth: 1000,
       imageNaturalHeight: 500,
-      imageDisplayWidth: 780,
-      imageDisplayHeight: 390,
+      imageDisplayWidth: 540,
+      imageDisplayHeight: 270,
       activeImageIndex: 0,
       uploadingAsset: true,
     });
@@ -35,8 +35,8 @@ describe("buildInitialCanvasFileNodeData", () => {
       isSourceNode: true,
       videoNaturalWidth: 1000,
       videoNaturalHeight: 500,
-      videoDisplayWidth: 520,
-      videoDisplayHeight: 260,
+      videoDisplayWidth: 540,
+      videoDisplayHeight: 270,
       uploadingAsset: true,
     });
     expect(

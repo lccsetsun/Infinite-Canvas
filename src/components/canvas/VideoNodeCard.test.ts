@@ -4,13 +4,34 @@ import {
   getVideoDurationSliderPercent,
   getVideoNodeInputReferences,
   normalizeVideoDurationSeconds,
+  resolveEmptyVideoNodeSize,
 } from "./VideoNodeCard";
 
 describe("fitVideoSize", () => {
-  it("keeps portrait videos wide enough for the playback controls", () => {
-    expect(fitVideoSize({ width: 690, height: 1136 }, "9:16", 520, 390)).toEqual({
-      width: 520,
-      height: 856,
+  it("fits portrait videos inside the media-node footprint", () => {
+    expect(fitVideoSize({ width: 690, height: 1136 }, "9:16", 540, 540)).toEqual({
+      width: 328,
+      height: 540,
+    });
+  });
+});
+
+describe("resolveEmptyVideoNodeSize", () => {
+  it("fits empty video nodes into the text-node footprint by aspect ratio", () => {
+    expect(resolveEmptyVideoNodeSize({ resolution: "4K", aspectRatio: "16:9" })).toEqual({
+      displayHeight: 304,
+      displayWidth: 540,
+      nodeHeight: 304,
+      nodeWidth: 540,
+      portCenterY: 152,
+    });
+
+    expect(resolveEmptyVideoNodeSize({ resolution: "1K", aspectRatio: "9:16" })).toEqual({
+      displayHeight: 540,
+      displayWidth: 304,
+      nodeHeight: 540,
+      nodeWidth: 304,
+      portCenterY: 270,
     });
   });
 });

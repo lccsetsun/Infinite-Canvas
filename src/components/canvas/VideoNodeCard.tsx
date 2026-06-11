@@ -24,7 +24,6 @@ import { fetchVideoFrameCapture } from "../../features/video/frameCapture";
 import { findResolvedStringInput } from "../../utils/resolvedInputs";
 import { shouldShowInlinePortHandles } from "../../utils/portHandleVisibility";
 import { isSourceNode } from "../../utils/sourceNodes";
-import { getNodeWidth, VIDEO_NODE_WIDTH } from "./geometry";
 import { Tooltip } from "../common/Tooltip";
 import { downloadMediaAsset, extensionFromAssetUrl } from "../../utils/mediaAssets";
 import { uploadFileToOss } from "../../features/resource/ossApi";
@@ -83,7 +82,8 @@ interface VideoNodeCardProps {
   getCanvasLinkTargetIssue?: (nodeId: string, inputIndex: number) => string | null;
 }
 
-const RESULT_VIDEO_MAX_HEIGHT = 390;
+const EMPTY_NODE_FOOTPRINT_WIDTH = 540;
+const EMPTY_NODE_FOOTPRINT_HEIGHT = 540;
 const VIDEO_DURATION_MIN_SECONDS = 1;
 const VIDEO_DURATION_MAX_SECONDS = 15;
 const VIDEO_DURATION_DEFAULT_SECONDS = 5;
@@ -184,11 +184,7 @@ export function fitVideoSize(
   maxHeight: number
 ) {
   if (naturalSize && naturalSize.width > 0 && naturalSize.height > 0) {
-    const aspect = naturalSize.width / naturalSize.height;
-    const scale =
-      aspect < 1
-        ? maxWidth / naturalSize.width
-        : Math.min(maxWidth / naturalSize.width, maxHeight / naturalSize.height, 1);
+    const scale = Math.min(maxWidth / naturalSize.width, maxHeight / naturalSize.height);
     return {
       width: Math.round(naturalSize.width * scale),
       height: Math.round(naturalSize.height * scale),
@@ -199,7 +195,31 @@ export function fitVideoSize(
   if (ratio >= maxWidth / maxHeight) {
     return { width: maxWidth, height: Math.round(maxWidth / ratio) };
   }
-  return { width: maxWidth, height: Math.round(maxWidth / ratio) };
+  return { width: Math.round(maxHeight * ratio), height: maxHeight };
+}
+
+export function resolveEmptyVideoNodeSize({
+  aspectRatio,
+  resolution,
+}: {
+  aspectRatio: string;
+  resolution: string;
+}) {
+  void resolution;
+  const displaySize = fitVideoSize(
+    null,
+    aspectRatio,
+    EMPTY_NODE_FOOTPRINT_WIDTH,
+    EMPTY_NODE_FOOTPRINT_HEIGHT
+  );
+
+  return {
+    displayHeight: displaySize.height,
+    displayWidth: displaySize.width,
+    nodeHeight: displaySize.height,
+    nodeWidth: displaySize.width,
+    portCenterY: Math.round(displaySize.height / 2),
+  };
 }
 
 function formatTime(seconds: number): string {
@@ -329,10 +349,19 @@ function VideoNodeCardImpl({
   const nodeBadgeTitle =
     node.title === "视频节点" || node.title === "视频" ? "视频节点 1" : node.title;
   const nodeBadgeMatch = nodeBadgeTitle.match(/^(.*?)(\s+\d+)$/);
-  const nodeWidth = getNodeWidth(node);
   const resultVideoSize = React.useMemo(
-    () => fitVideoSize(naturalVideoSize, aspectRatio, VIDEO_NODE_WIDTH, RESULT_VIDEO_MAX_HEIGHT),
+    () =>
+      fitVideoSize(
+        naturalVideoSize,
+        aspectRatio,
+        EMPTY_NODE_FOOTPRINT_WIDTH,
+        EMPTY_NODE_FOOTPRINT_HEIGHT
+      ),
     [aspectRatio, naturalVideoSize]
+  );
+  const emptyVideoNodeSize = React.useMemo(
+    () => resolveEmptyVideoNodeSize({ aspectRatio, resolution }),
+    [aspectRatio, resolution]
   );
   const naturalSizeLabel =
     naturalVideoSize && naturalVideoSize.width > 0 && naturalVideoSize.height > 0
@@ -423,10 +452,46 @@ function VideoNodeCardImpl({
   }, [
     node.data?.videoNodeHeight,
     node.data?.videoNodeWidth,
+    node.data?.videoPortCenterY,
     node.id,
     onUpdateData,
     resultVideoSize.height,
     resultVideoSize.width,
+    videoUrl,
+  ]);
+
+  React.useEffect(() => {
+    if (videoUrl) return;
+    if (
+      node.data?.videoDisplayWidth === emptyVideoNodeSize.displayWidth &&
+      node.data?.videoDisplayHeight === emptyVideoNodeSize.displayHeight &&
+      node.data?.videoNodeWidth === emptyVideoNodeSize.nodeWidth &&
+      node.data?.videoNodeHeight === emptyVideoNodeSize.nodeHeight &&
+      node.data?.videoPortCenterY === emptyVideoNodeSize.portCenterY
+    ) {
+      return;
+    }
+
+    onUpdateData?.(node.id, {
+      videoDisplayHeight: emptyVideoNodeSize.displayHeight,
+      videoDisplayWidth: emptyVideoNodeSize.displayWidth,
+      videoNodeHeight: emptyVideoNodeSize.nodeHeight,
+      videoNodeWidth: emptyVideoNodeSize.nodeWidth,
+      videoPortCenterY: emptyVideoNodeSize.portCenterY,
+    });
+  }, [
+    emptyVideoNodeSize.displayHeight,
+    emptyVideoNodeSize.displayWidth,
+    emptyVideoNodeSize.nodeHeight,
+    emptyVideoNodeSize.nodeWidth,
+    emptyVideoNodeSize.portCenterY,
+    node.data?.videoDisplayHeight,
+    node.data?.videoDisplayWidth,
+    node.data?.videoNodeHeight,
+    node.data?.videoNodeWidth,
+    node.data?.videoPortCenterY,
+    node.id,
+    onUpdateData,
     videoUrl,
   ]);
 
@@ -558,8 +623,8 @@ function VideoNodeCardImpl({
         const displaySize = fitVideoSize(
           naturalSize,
           aspectRatio,
-          VIDEO_NODE_WIDTH,
-          RESULT_VIDEO_MAX_HEIGHT
+          EMPTY_NODE_FOOTPRINT_WIDTH,
+          EMPTY_NODE_FOOTPRINT_HEIGHT
         );
         const asset = await uploadFileToOss(file);
 
@@ -670,7 +735,7 @@ function VideoNodeCardImpl({
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: 10 }}
                 className="absolute -left-11 z-10 -translate-y-1/2"
-                style={{ top: node.data?.videoPortCenterY ?? "50%" }}
+                style={{ top: node.data?.videoPortCenterY ?? emptyVideoNodeSize.portCenterY }}
               >
                 <div
                   role="button"
@@ -706,7 +771,7 @@ function VideoNodeCardImpl({
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -10 }}
               className="absolute -right-11 z-10 -translate-y-1/2"
-              style={{ top: node.data?.videoPortCenterY ?? "50%" }}
+              style={{ top: node.data?.videoPortCenterY ?? emptyVideoNodeSize.portCenterY }}
             >
               <div
                 role="button"
@@ -861,8 +926,8 @@ function VideoNodeCardImpl({
                 const displaySize = fitVideoSize(
                   naturalSize,
                   aspectRatio,
-                  VIDEO_NODE_WIDTH,
-                  RESULT_VIDEO_MAX_HEIGHT
+                  EMPTY_NODE_FOOTPRINT_WIDTH,
+                  EMPTY_NODE_FOOTPRINT_HEIGHT
                 );
                 setNaturalVideoSize(naturalSize);
                 setMediaDuration(video.duration || 0);
@@ -985,7 +1050,7 @@ function VideoNodeCardImpl({
   return (
     <motion.div
       className="absolute text-left"
-      style={{ width: nodeWidth }}
+      style={{ width: emptyVideoNodeSize.nodeWidth }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
@@ -1011,7 +1076,7 @@ function VideoNodeCardImpl({
             ? "border-violet-300/26 -translate-y-[1px] shadow-[0_40px_100px_-34px_rgba(0,0,0,0.98),0_0_0_1px_rgba(196,181,253,0.2),0_0_0_7px_rgba(139,92,246,0.08),0_0_48px_rgba(109,40,217,0.18)]"
             : "border-[#2b3142]/90 hover:border-slate-300/35"
         }`}
-        style={{ width: nodeWidth, minHeight: 290 }}
+        style={{ width: emptyVideoNodeSize.nodeWidth, minHeight: emptyVideoNodeSize.nodeHeight }}
       >
         <div className="pointer-events-none absolute inset-x-0 top-0 h-px rounded-t-[18px] bg-gradient-to-r from-transparent via-slate-100/25 to-transparent" />
         <div className="pointer-events-none absolute inset-0 rounded-[18px] bg-[radial-gradient(circle_at_28%_0%,rgba(129,140,248,0.08),transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.035),transparent_34%)]" />
@@ -1046,7 +1111,10 @@ function VideoNodeCardImpl({
         </div>
         <div className="relative px-5 pb-5 pt-8">
           {isRunning || isUploadingAsset ? (
-            <div className="flex min-h-[250px] flex-col items-center justify-center gap-5 text-slate-300/60">
+            <div
+              className="flex flex-col items-center justify-center gap-5 text-slate-300/60"
+              style={{ minHeight: Math.max(120, emptyVideoNodeSize.nodeHeight - 52) }}
+            >
               <Loader2 className="h-10 w-10 animate-spin" />
               <div className="text-center">
                 <div className="text-[13px] text-slate-100/80">
@@ -1059,7 +1127,10 @@ function VideoNodeCardImpl({
               </div>
             </div>
           ) : (
-            <div className="flex min-h-[250px] flex-col items-center justify-center">
+            <div
+              className="flex flex-col items-center justify-center"
+              style={{ minHeight: Math.max(120, emptyVideoNodeSize.nodeHeight - 52) }}
+            >
               <div className="mb-8 flex h-[96px] w-[96px] items-center justify-center text-cyan-100/58">
                 <Video className="h-14 w-14" strokeWidth={1.55} />
               </div>
@@ -1214,6 +1285,19 @@ function VideoNodeCardImpl({
                 onChange={(nextResolution, nextAspectRatio) => {
                   onUpdateProperty?.(node.id, "resolution", nextResolution);
                   onUpdateProperty?.(node.id, "aspect_ratio", nextAspectRatio);
+                  if (!videoUrl) {
+                    const nextNodeSize = resolveEmptyVideoNodeSize({
+                      aspectRatio: nextAspectRatio,
+                      resolution: nextResolution,
+                    });
+                    onUpdateData?.(node.id, {
+                      videoDisplayHeight: nextNodeSize.displayHeight,
+                      videoDisplayWidth: nextNodeSize.displayWidth,
+                      videoNodeHeight: nextNodeSize.nodeHeight,
+                      videoNodeWidth: nextNodeSize.nodeWidth,
+                      videoPortCenterY: nextNodeSize.portCenterY,
+                    });
+                  }
                 }}
                 buttonClassName="relative inline-flex h-10 w-[246px] shrink-0 items-center justify-center gap-2 rounded-[14px] border border-cyan-100/8 bg-slate-950/18 px-3 text-[13px] font-medium text-cyan-50/76 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
               />

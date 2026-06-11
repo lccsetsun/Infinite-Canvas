@@ -22,6 +22,23 @@ describe("grid snapping", () => {
 });
 
 describe("media node anchors", () => {
+  it("fits the generated image placeholder into the text-node footprint before node data is measured", () => {
+    const node = {
+      id: "image",
+      title: "图片节点 1",
+      type: "image_node" as const,
+      x: 120,
+      y: 80,
+      inputs: [],
+      outputs: [{ name: "图片", type: "IMAGE" as const }],
+      properties: {},
+    };
+
+    expect(getNodeWidth(node)).toBe(540);
+    expect(getNodeHeight(node)).toBe(304);
+    expect(getOutputAnchor(node, 0)).toEqual({ x: 660, y: 232 });
+  });
+
   it("uses frame-strip image node dimensions even without a single imageUrl", () => {
     const node = {
       id: "frames",
@@ -46,6 +63,23 @@ describe("media node anchors", () => {
 });
 
 describe("text node sizing", () => {
+  it("uses a compact square default footprint", () => {
+    const node = {
+      id: "text",
+      title: "文本节点 1",
+      type: "text_node" as const,
+      x: 120,
+      y: 80,
+      inputs: [],
+      outputs: [{ name: "文本", type: "STRING" as const }],
+      properties: {},
+    };
+
+    expect(getNodeWidth(node)).toBe(420);
+    expect(getNodeHeight(node)).toBe(420);
+    expect(getOutputAnchor(node, 0)).toEqual({ x: 540, y: 290 });
+  });
+
   it("uses custom text node dimensions when present", () => {
     const node = {
       id: "text",
@@ -65,5 +99,24 @@ describe("text node sizing", () => {
     expect(getNodeWidth(node)).toBe(560);
     expect(getNodeHeight(node)).toBe(420);
     expect(getOutputAnchor(node, 0)).toEqual({ x: 680, y: 290 });
+  });
+});
+
+describe("audio node sizing", () => {
+  it("uses the same default footprint as the text node", () => {
+    const node = {
+      id: "audio",
+      title: "音频节点 1",
+      type: "audio_node" as const,
+      x: 120,
+      y: 80,
+      inputs: [],
+      outputs: [{ name: "音频", type: "AUDIO" as const }],
+      properties: {},
+    };
+
+    expect(getNodeWidth(node)).toBe(540);
+    expect(getNodeHeight(node)).toBe(540);
+    expect(getOutputAnchor(node, 0)).toEqual({ x: 660, y: 350 });
   });
 });

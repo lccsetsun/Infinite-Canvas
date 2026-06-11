@@ -7,6 +7,7 @@ import {
   getSettledImageLoadStatus,
   getResultImageBounds,
   hasFrameExtractionDragStarted,
+  resolveEmptyImageNodeSize,
   resolveResultImageSize,
   shouldShowImageUploadButton,
 } from "./ImageNodeCard";
@@ -81,10 +82,7 @@ describe("getImageNodeInputReferences", () => {
   it("flattens nested media groups when multiple image inputs are connected", () => {
     expect(
       getImageNodeInputReferences({
-        source_image: [
-          ["https://oss.example.com/duck.png"],
-          "https://oss.example.com/cat-dog.png",
-        ],
+        source_image: [["https://oss.example.com/duck.png"], "https://oss.example.com/cat-dog.png"],
       }).map((reference) => reference.value)
     ).toEqual(["https://oss.example.com/duck.png", "https://oss.example.com/cat-dog.png"]);
   });
@@ -116,8 +114,8 @@ describe("getImageNodeInputReferences", () => {
 describe("getResultImageBounds", () => {
   it("uses compact bounds for image prompt starter placeholders", () => {
     expect(getResultImageBounds("16:9", true)).toEqual({
-      maxWidth: 520,
-      maxHeight: 390,
+      maxWidth: 540,
+      maxHeight: 540,
     });
   });
 
@@ -128,10 +126,17 @@ describe("getResultImageBounds", () => {
     });
   });
 
-  it("keeps large bounds for regular non-square image nodes", () => {
+  it("uses media-node footprint bounds for regular image nodes", () => {
     expect(getResultImageBounds("16:9")).toEqual({
-      maxWidth: 780,
-      maxHeight: 585,
+      maxWidth: 540,
+      maxHeight: 540,
+    });
+  });
+
+  it("uses media-node footprint bounds for square image nodes", () => {
+    expect(getResultImageBounds("1:1")).toEqual({
+      maxWidth: 540,
+      maxHeight: 540,
     });
   });
 
@@ -169,8 +174,52 @@ describe("getImageNodePortTopStyle", () => {
     expect(getImageNodePortTopStyle({ hasImageUrl: false })).toBe(145);
   });
 
+  it("uses the current empty node center while the image node has no generated image", () => {
+    expect(getImageNodePortTopStyle({ hasImageUrl: false, emptyImageNodePortCenterY: 292 })).toBe(
+      292
+    );
+  });
+
   it("uses the measured image media center after an image is loaded", () => {
     expect(getImageNodePortTopStyle({ hasImageUrl: true, imagePortCenterY: 220 })).toBe(220);
+  });
+});
+
+describe("resolveEmptyImageNodeSize", () => {
+  it("fits empty image nodes into the text-node footprint by aspect ratio", () => {
+    expect(resolveEmptyImageNodeSize({ resolution: "1K", aspectRatio: "16:9" })).toEqual({
+      displayHeight: 304,
+      displayWidth: 540,
+      nodeHeight: 304,
+      nodeWidth: 540,
+      portCenterY: 152,
+    });
+
+    expect(resolveEmptyImageNodeSize({ resolution: "4K", aspectRatio: "1:1" })).toEqual({
+      displayHeight: 540,
+      displayWidth: 540,
+      nodeHeight: 540,
+      nodeWidth: 540,
+      portCenterY: 270,
+    });
+
+    expect(resolveEmptyImageNodeSize({ resolution: "1K", aspectRatio: "9:16" })).toEqual({
+      displayHeight: 540,
+      displayWidth: 304,
+      nodeHeight: 540,
+      nodeWidth: 304,
+      portCenterY: 270,
+    });
+  });
+
+  it("fits very wide empty nodes into the same text-node footprint", () => {
+    expect(resolveEmptyImageNodeSize({ resolution: "1K", aspectRatio: "21:9" })).toEqual({
+      displayHeight: 231,
+      displayWidth: 540,
+      nodeHeight: 231,
+      nodeWidth: 540,
+      portCenterY: 116,
+    });
   });
 });
 

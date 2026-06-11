@@ -52,11 +52,11 @@ describe("createVideoFrameCaptureSnapshot", () => {
     expect(segmentVideo?.type).toBe("video_node");
     expect(segmentVideo?.title).toBe("分段 1");
     expect(segmentVideo?.properties.videoUrl).toBe("https://oss.example.com/segment.mp4");
-    expect(segmentVideo?.data?.videoDisplayWidth).toBe(520);
-    expect(segmentVideo?.data?.videoDisplayHeight).toBe(924);
+    expect(segmentVideo?.data?.videoDisplayWidth).toBe(304);
+    expect(segmentVideo?.data?.videoDisplayHeight).toBe(540);
     expect(frameGrid?.type).toBe("image_node");
     expect(frameGrid?.title).toBe("逐帧分析 1");
-    expect(frameGrid?.x).toBeGreaterThanOrEqual((segmentVideo?.x ?? 0) + 640);
+    expect(frameGrid?.x).toBeGreaterThanOrEqual((segmentVideo?.x ?? 0) + 424);
     expect(frameGrid?.data?.imageUrls).toHaveLength(8);
     expect(frameGrid?.data?.isFrameStrip).toBe(true);
     expect(frameGrid?.data?.frameGridColumns).toBe(5);

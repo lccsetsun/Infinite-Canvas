@@ -6,7 +6,8 @@ import type { VideoFrameCaptureItem } from "../features/video/frameCapture";
 const FRAME_GRID_COLUMNS = 5;
 const FRAME_TILE_WIDTH = 168;
 const FRAME_TILE_HEIGHT = 96;
-const CAPTURE_VIDEO_NODE_WIDTH = 520;
+const CAPTURE_VIDEO_NODE_FOOTPRINT_WIDTH = 540;
+const CAPTURE_VIDEO_NODE_FOOTPRINT_HEIGHT = 540;
 const CAPTURE_VERTICAL_GAP = 96;
 
 export type VideoFrameCaptureSnapshot = {
@@ -43,14 +44,18 @@ function makeCaptureVideoDisplaySize(sourceNode: GraphNode) {
     naturalWidth > 0 &&
     naturalHeight > 0
   ) {
+    const scale = Math.min(
+      CAPTURE_VIDEO_NODE_FOOTPRINT_WIDTH / naturalWidth,
+      CAPTURE_VIDEO_NODE_FOOTPRINT_HEIGHT / naturalHeight
+    );
     return {
-      width: CAPTURE_VIDEO_NODE_WIDTH,
-      height: Math.round((CAPTURE_VIDEO_NODE_WIDTH * naturalHeight) / naturalWidth),
+      width: Math.round(naturalWidth * scale),
+      height: Math.round(naturalHeight * scale),
     };
   }
 
   return {
-    width: CAPTURE_VIDEO_NODE_WIDTH,
+    width: CAPTURE_VIDEO_NODE_FOOTPRINT_WIDTH,
     height:
       typeof sourceNode.data?.videoDisplayHeight === "number" &&
       sourceNode.data.videoDisplayHeight > 0
@@ -91,7 +96,7 @@ export function createVideoFrameCaptureSnapshot({
   staleNodeIds.forEach((nodeId) => nextOutputs.delete(nodeId));
   const createdNodes: GraphNode[] = [];
   const baseX = sourceNode.x + 520;
-  const frameNodeX = baseX + CAPTURE_VIDEO_NODE_WIDTH + 120;
+  const frameNodeX = baseX + CAPTURE_VIDEO_NODE_FOOTPRINT_WIDTH + 120;
   let nextY = sourceNode.y;
 
   captures.forEach((capture, captureIndex) => {
