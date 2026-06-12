@@ -1314,6 +1314,68 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     return true;
   };
 
+  const addLinksFromDrafts = (
+    drafts: Array<{
+      fromNodeId: string;
+      toNodeId: string;
+      fromOutputIndex: number;
+      toInputIndex: number;
+    }>
+  ) => {
+    const createdLinks: GraphLink[] = [];
+    const warnings: string[] = [];
+    let nextLinks = links;
+
+    drafts.forEach((draft) => {
+      const fromNodeCandidate = nodes.find((n) => n.id === draft.fromNodeId);
+      const toNodeCandidate = nodes.find((n) => n.id === draft.toNodeId);
+      const fromOutput = fromNodeCandidate?.outputs[draft.fromOutputIndex];
+      const requestedInput = toNodeCandidate?.inputs[draft.toInputIndex];
+      const normalizedInputIndex =
+        fromNodeCandidate &&
+        toNodeCandidate &&
+        fromOutput &&
+        (!requestedInput || !isDataTypeCompatible(fromOutput.type, requestedInput.type))
+          ? findFirstCompatibleInputIndex(fromNodeCandidate, toNodeCandidate, draft.fromOutputIndex)
+          : draft.toInputIndex;
+      const normalizedDraft = { ...draft, toInputIndex: normalizedInputIndex };
+      const issue = getLinkDraftIssue({ ...normalizedDraft, nodes, links: nextLinks });
+      if (issue) {
+        warnings.push(issue);
+        return;
+      }
+
+      const link: GraphLink = {
+        id: makeId("link"),
+        fromNodeId: normalizedDraft.fromNodeId,
+        fromOutputIndex: normalizedDraft.fromOutputIndex,
+        toNodeId: normalizedDraft.toNodeId,
+        toInputIndex: normalizedDraft.toInputIndex,
+      };
+      createdLinks.push(link);
+      nextLinks = [...nextLinks, link];
+    });
+
+    if (createdLinks.length === 0) {
+      appendLog("warning", warnings[0] ?? "没有可建立的连线。");
+      return 0;
+    }
+
+    currentLinksRef.current = nextLinks;
+    setLinks(nextLinks);
+    syncCurrentWorkflowMeta((wf) => ({
+      ...wf,
+      summary: { ...wf.summary, updatedAt: Date.now() },
+      data: { ...wf.data, links: nextLinks },
+    }));
+    pushHistory({ nodes, links: nextLinks });
+    appendLog("success", `已批量建立 ${createdLinks.length} 条连线。`);
+    if (warnings.length > 0) {
+      appendLog("warning", `${warnings.length} 条连线因端口不兼容或重复被跳过。`);
+    }
+    return createdLinks.length;
+  };
+
   const addLink = () => {
     if (linkDraftIssue) {
       appendLog("warning", linkDraftIssue);
@@ -2913,6 +2975,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     clearCanvas,
     clearExecution,
     addLinkFromDraft,
+    addLinksFromDrafts,
     addLink,
     removeLink,
     updateSelectedProperty,

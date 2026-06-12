@@ -9,6 +9,7 @@ interface DraftLinkOverlayProps {
   nodes: GraphNode[];
   pan: { x: number; y: number };
   zoom: number;
+  draftSources?: Array<{ fromNodeId: string; fromOutputIndex: number }>;
   draftFromNodeId?: string;
   draftToNodeId?: string;
   draftFromOutputIndex?: number;
@@ -21,6 +22,7 @@ export default function DraftLinkOverlay({
   nodes,
   pan,
   zoom,
+  draftSources,
   draftFromNodeId = "",
   draftToNodeId = "",
   draftFromOutputIndex = 0,
@@ -28,15 +30,29 @@ export default function DraftLinkOverlay({
   draftIssue,
   draftCursor = null,
 }: DraftLinkOverlayProps) {
-  const fromNode = draftFromNodeId ? getNodeById(nodes, draftFromNodeId) : null;
   const toNode = draftToNodeId ? getNodeById(nodes, draftToNodeId) : null;
-  if (!fromNode || !fromNode.outputs[draftFromOutputIndex]) return null;
+  const sources =
+    draftSources && draftSources.length > 0
+      ? draftSources
+      : [{ fromNodeId: draftFromNodeId, fromOutputIndex: draftFromOutputIndex }];
+  const renderedPaths = sources
+    .map((source) => {
+      const fromNode = source.fromNodeId ? getNodeById(nodes, source.fromNodeId) : null;
+      if (!fromNode || !fromNode.outputs[source.fromOutputIndex]) return null;
+      const from = getOutputAnchor(fromNode, source.fromOutputIndex);
+      const to =
+        toNode && toNode.inputs[draftToInputIndex]
+          ? getInputAnchor(toNode, draftToInputIndex)
+          : draftCursor;
+      if (!to) return null;
+      return {
+        key: `${source.fromNodeId}:${source.fromOutputIndex}`,
+        path: linkPath(from, to),
+      };
+    })
+    .filter((path): path is { key: string; path: string } => Boolean(path));
+  if (renderedPaths.length === 0) return null;
 
-  const from = getOutputAnchor(fromNode, draftFromOutputIndex);
-  const to = toNode && toNode.inputs[draftToInputIndex] ? getInputAnchor(toNode, draftToInputIndex) : draftCursor;
-  if (!to) return null;
-
-  const path = linkPath(from, to);
   const visualState = getDraftLinkVisualState({
     draftIssue,
     hasTargetNode: Boolean(toNode),
@@ -86,72 +102,76 @@ export default function DraftLinkOverlay({
         </linearGradient>
       </defs>
       <g transform={`translate(${pan.x} ${pan.y}) scale(${zoom})`}>
-        <path
-          d={path}
-          fill="none"
-          stroke={glowStroke}
-          strokeLinecap="round"
-          strokeWidth={CONNECTION_DRAFT_STYLE.glow.strokeWidth}
-          opacity="0.58"
-          filter="url(#draft-link-overlay-glow)"
-        />
-        <path
-          d={path}
-          fill="none"
-          stroke={baseStroke}
-          strokeLinecap="round"
-          strokeWidth={isValidTarget ? 4.8 : 4.2}
-          opacity={isInvalidTarget ? CONNECTION_DRAFT_STYLE.core.opacity : 0.72}
-        />
-        <path
-          d={path}
-          fill="none"
-          stroke={isInvalidTarget ? flowStroke : "rgba(224,231,255,0.7)"}
-          strokeLinecap="round"
-          strokeWidth={1.65}
-          opacity={isValidTarget ? 0.95 : 0.82}
-        />
-        <path
-          d={path}
-          className="link-energy-pulse"
-          pathLength={100}
-          fill="none"
-          stroke={
-            isInvalidTarget
-              ? "url(#draft-link-rose-tail)"
-              : "url(#draft-link-cyan-violet-tail)"
-          }
-          strokeDasharray={isInvalidTarget ? "54 260" : "34 66"}
-          strokeLinecap="round"
-          strokeWidth={isInvalidTarget ? 3.1 : isValidTarget ? 3.4 : 2.8}
-          opacity={isInvalidTarget ? 0.84 : 0.9}
-          filter="url(#draft-link-overlay-glow)"
-        />
-        {!isInvalidTarget && (
-          <path
-            d={path}
-            className="link-energy-pulse link-energy-pulse-soft"
-            pathLength={100}
-            fill="none"
-            stroke={softPulseStroke}
-            strokeDasharray="16 84"
-            strokeLinecap="round"
-            strokeWidth={1.45}
-          />
-        )}
-        {!isInvalidTarget && (
-          <path
-            d={path}
-            className="link-energy-pulse-head"
-            pathLength={100}
-            fill="none"
-            stroke="url(#draft-link-cyan-head)"
-            strokeDasharray="3 97"
-            strokeLinecap="round"
-            strokeWidth={isValidTarget ? 2.05 : 1.7}
-            filter="url(#draft-link-overlay-glow)"
-          />
-        )}
+        {renderedPaths.map(({ key, path }) => (
+          <g key={key}>
+            <path
+              d={path}
+              fill="none"
+              stroke={glowStroke}
+              strokeLinecap="round"
+              strokeWidth={CONNECTION_DRAFT_STYLE.glow.strokeWidth}
+              opacity="0.58"
+              filter="url(#draft-link-overlay-glow)"
+            />
+            <path
+              d={path}
+              fill="none"
+              stroke={baseStroke}
+              strokeLinecap="round"
+              strokeWidth={isValidTarget ? 4.8 : 4.2}
+              opacity={isInvalidTarget ? CONNECTION_DRAFT_STYLE.core.opacity : 0.72}
+            />
+            <path
+              d={path}
+              fill="none"
+              stroke={isInvalidTarget ? flowStroke : "rgba(224,231,255,0.7)"}
+              strokeLinecap="round"
+              strokeWidth={1.65}
+              opacity={isValidTarget ? 0.95 : 0.82}
+            />
+            <path
+              d={path}
+              className="link-energy-pulse"
+              pathLength={100}
+              fill="none"
+              stroke={
+                isInvalidTarget
+                  ? "url(#draft-link-rose-tail)"
+                  : "url(#draft-link-cyan-violet-tail)"
+              }
+              strokeDasharray={isInvalidTarget ? "54 260" : "34 66"}
+              strokeLinecap="round"
+              strokeWidth={isInvalidTarget ? 3.1 : isValidTarget ? 3.4 : 2.8}
+              opacity={isInvalidTarget ? 0.84 : 0.9}
+              filter="url(#draft-link-overlay-glow)"
+            />
+            {!isInvalidTarget && (
+              <path
+                d={path}
+                className="link-energy-pulse link-energy-pulse-soft"
+                pathLength={100}
+                fill="none"
+                stroke={softPulseStroke}
+                strokeDasharray="16 84"
+                strokeLinecap="round"
+                strokeWidth={1.45}
+              />
+            )}
+            {!isInvalidTarget && (
+              <path
+                d={path}
+                className="link-energy-pulse-head"
+                pathLength={100}
+                fill="none"
+                stroke="url(#draft-link-cyan-head)"
+                strokeDasharray="3 97"
+                strokeLinecap="round"
+                strokeWidth={isValidTarget ? 2.05 : 1.7}
+                filter="url(#draft-link-overlay-glow)"
+              />
+            )}
+          </g>
+        ))}
       </g>
     </svg>
   );

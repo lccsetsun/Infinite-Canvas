@@ -7,6 +7,7 @@ import CanvasNodeLayer from "./components/app/CanvasNodeLayer";
 import DraftLinkOverlay from "./components/app/DraftLinkOverlay";
 import GroupsLayer from "./components/app/GroupsLayer";
 import LinkInteractionOverlay from "./components/app/LinkInteractionOverlay";
+import MultiSelectionLayer from "./components/app/MultiSelectionLayer";
 import EmptyCanvasState from "./components/app/EmptyCanvasState";
 import LeaferCanvas from "./components/canvas/LeaferCanvas";
 import MiniMap from "./components/app/MiniMap";
@@ -27,6 +28,15 @@ import { shouldOpenCanvasContextMenu } from "./utils/canvasContextMenuPolicy";
 import { shouldFinishCanvasLinkOnCanvasPointerUp } from "./utils/canvasPointerPolicy";
 import { cropImageGridCell, getGridChildNodePosition } from "./utils/imageGridSplit";
 import { getCanvasViewportClassName } from "./utils/canvasViewportLayout";
+import {
+  getBatchOutputDrafts,
+  getNodesFullyInsideSelection,
+  getSelectionBounds,
+  isClickWithoutDrag,
+  normalizeSelectionRect,
+  type Point,
+  type Rect,
+} from "./utils/multiSelection";
 import {
   shouldShowCanvasProjectLoading,
   shouldShowEmptyCanvasState,
@@ -206,6 +216,7 @@ export default function App({ onLoggedOut }: AppProps) {
     setLinkToInputIndex,
     clearLinkDraft,
     addLinkFromDraft,
+    addLinksFromDrafts,
     groups,
     createGroup,
     ungroup,
@@ -288,6 +299,7 @@ export default function App({ onLoggedOut }: AppProps) {
     clientY: number;
     fromNodeId: string;
     fromOutputIndex: number;
+    sources?: Array<{ fromNodeId: string; fromOutputIndex: number }>;
   } | null>(null);
   const [previewContent, setPreviewContent] = React.useState<PreviewContent | null>(null);
   const [canvasSize, setCanvasSize] = React.useState({ width: 0, height: 0 });
@@ -298,6 +310,11 @@ export default function App({ onLoggedOut }: AppProps) {
     y: number;
   } | null>(null);
   const [selectedNodeIds, setSelectedNodeIds] = React.useState<Set<string>>(new Set());
+  const [selectionDrag, setSelectionDrag] = React.useState<{
+    start: Point;
+    current: Point;
+  } | null>(null);
+  const blankPointerDownRef = React.useRef<{ client: Point; world: Point } | null>(null);
   const [nodeContextMenu, setNodeContextMenu] = React.useState<{
     nodeId: string;
     x: number;
@@ -340,6 +357,20 @@ export default function App({ onLoggedOut }: AppProps) {
     return m;
   }, [nodes]);
 
+  const selectedNodes = React.useMemo(
+    () => nodes.filter((node) => selectedNodeIds.has(node.id)),
+    [nodes, selectedNodeIds]
+  );
+  const multiSelectionBounds = React.useMemo(
+    () => (selectedNodes.length > 1 ? getSelectionBounds(selectedNodes, 44) : null),
+    [selectedNodes]
+  );
+  const selectionDragRect = React.useMemo<Rect | null>(
+    () => (selectionDrag ? normalizeSelectionRect(selectionDrag.start, selectionDrag.current) : null),
+    [selectionDrag]
+  );
+  const batchLinkSources = React.useMemo(() => getBatchOutputDrafts(selectedNodes), [selectedNodes]);
+
   const handleCreateProjectFromWelcome = React.useCallback(() => {
     setIsWelcomeDismissed(true);
     setCurrentView("canvas");
@@ -357,6 +388,7 @@ export default function App({ onLoggedOut }: AppProps) {
     draggingNodeId,
     isCanvasPanning,
     onNodeDragStart,
+    onNodesDragStart,
     onCanvasPointerDown,
     onPointerMove,
     onPointerUp,
@@ -380,6 +412,8 @@ export default function App({ onLoggedOut }: AppProps) {
   }, [activeWorkflowId, currentView, pan, zoom]);
 
   const {
+    batchLinkSources: activeBatchLinkSources,
+    beginBatchCanvasLink,
     beginCanvasLink,
     draftCursor,
     finishCanvasLink,
@@ -391,6 +425,7 @@ export default function App({ onLoggedOut }: AppProps) {
     setDraftCursor,
   } = useCanvasLinking({
     addLinkFromDraft,
+    addLinksFromDrafts,
     clearLinkDraft,
     linkFromNodeId,
     linkFromOutputIndex,
@@ -412,6 +447,7 @@ export default function App({ onLoggedOut }: AppProps) {
         clientY: draft.clientY,
         fromNodeId: draft.fromNodeId,
         fromOutputIndex: draft.fromOutputIndex,
+        sources: draft.sources,
       });
       setMenuPos({
         x: draft.clientX - (rect?.left ?? 0),
@@ -536,9 +572,9 @@ export default function App({ onLoggedOut }: AppProps) {
           const next = new Set(prev);
           if (next.has(nodeId)) next.delete(nodeId);
           else next.add(nodeId);
+          setSelectedNodeId(next.size === 1 ? Array.from(next)[0] : null);
           return next;
         });
-        setSelectedNodeId(nodeId);
         return;
       }
       setSelectedNodeIds(new Set([nodeId]));
@@ -556,6 +592,25 @@ export default function App({ onLoggedOut }: AppProps) {
       setSelectedLinkAnchor(linkId ? (anchor ?? null) : null);
     },
     [setSelectedNodeId]
+  );
+
+  const isCanvasSelectionBlocked = React.useCallback((target: HTMLElement | null) => {
+    return Boolean(
+      target?.closest(
+        "[data-node-action='true'], [data-group-action='true'], .node-card, button, input, select, textarea, [contenteditable='true'], [role='textbox']"
+      )
+    );
+  }, []);
+
+  const handleBeginNodeCanvasLink = React.useCallback(
+    (nodeId: string, outputIndex: number, clientX: number, clientY: number) => {
+      if (selectedNodeIds.size > 1 && selectedNodeIds.has(nodeId) && batchLinkSources.length > 1) {
+        beginBatchCanvasLink(batchLinkSources, clientX, clientY);
+        return;
+      }
+      beginCanvasLink(nodeId, outputIndex, clientX, clientY);
+    },
+    [batchLinkSources, beginBatchCanvasLink, beginCanvasLink, selectedNodeIds]
   );
 
   const handleNodeContextMenu = React.useCallback(
@@ -587,6 +642,71 @@ export default function App({ onLoggedOut }: AppProps) {
   const closeNodeContextMenu = React.useCallback(() => {
     setNodeContextMenu(null);
   }, []);
+
+  const handleCanvasSelectionPointerDown = React.useCallback(
+    (e: React.PointerEvent) => {
+      if (currentView !== "canvas" || menuPos || isLinkingOnCanvas || e.button !== 0) return false;
+      const target = e.target as HTMLElement | null;
+      if (isCanvasSelectionBlocked(target)) return false;
+
+      const world = toWorld(e.clientX, e.clientY);
+      const client = { x: e.clientX, y: e.clientY };
+      blankPointerDownRef.current = { client, world };
+      setSelectionDrag({ current: world, start: world });
+      e.preventDefault();
+      e.stopPropagation();
+      return true;
+    },
+    [currentView, isCanvasSelectionBlocked, isLinkingOnCanvas, menuPos, toWorld]
+  );
+
+  const handleCanvasSelectionPointerMove = React.useCallback(
+    (e: React.PointerEvent) => {
+      if (!selectionDrag) return false;
+      setSelectionDrag((current) =>
+        current ? { ...current, current: toWorld(e.clientX, e.clientY) } : current
+      );
+      e.preventDefault();
+      e.stopPropagation();
+      return true;
+    },
+    [selectionDrag, toWorld]
+  );
+
+  const handleCanvasSelectionPointerUp = React.useCallback(
+    (e: React.PointerEvent) => {
+      if (!selectionDrag) return false;
+      const pointerStart = blankPointerDownRef.current;
+      const pointerEnd = { x: e.clientX, y: e.clientY };
+      const finalRect = normalizeSelectionRect(selectionDrag.start, toWorld(e.clientX, e.clientY));
+      const isClick = pointerStart ? isClickWithoutDrag(pointerStart.client, pointerEnd) : false;
+      setSelectionDrag(null);
+      blankPointerDownRef.current = null;
+
+      if (isClick) {
+        setSelectedNodeId(null);
+        setSelectedNodeIds(new Set());
+        setSelectedGroupId(null);
+        setSelectedLinkId(null);
+        setSelectedLinkAnchor(null);
+        closeNodeContextMenu();
+      } else {
+        const nextSelectedNodes = getNodesFullyInsideSelection(nodes, finalRect);
+        const nextIds = nextSelectedNodes.map((node) => node.id);
+        setSelectedNodeIds(new Set(nextIds));
+        setSelectedNodeId(nextIds.length === 1 ? nextIds[0] : null);
+        setSelectedGroupId(null);
+        setSelectedLinkId(null);
+        setSelectedLinkAnchor(null);
+        closeNodeContextMenu();
+      }
+
+      e.preventDefault();
+      e.stopPropagation();
+      return true;
+    },
+    [closeNodeContextMenu, nodes, selectionDrag, setSelectedNodeId, toWorld]
+  );
 
   const handleCreateGroup = () => {
     const ids = Array.from(selectedNodeIds);
@@ -668,9 +788,20 @@ export default function App({ onLoggedOut }: AppProps) {
   const handleNodeDragStart = React.useCallback(
     (event: React.PointerEvent, node: GraphNode) => {
       closeFloatingMenus();
-      onNodeDragStart(event, node);
+      const batchNodes =
+        selectedNodeIds.size > 1 && selectedNodeIds.has(node.id) ? selectedNodes : undefined;
+      onNodeDragStart(event, node, { batchNodes });
     },
-    [closeFloatingMenus, onNodeDragStart]
+    [closeFloatingMenus, onNodeDragStart, selectedNodeIds, selectedNodes]
+  );
+
+  const handleSelectionDragStart = React.useCallback(
+    (event: React.PointerEvent) => {
+      if (selectedNodes.length < 2) return;
+      closeFloatingMenus();
+      onNodesDragStart(event, selectedNodes);
+    },
+    [closeFloatingMenus, onNodesDragStart, selectedNodes]
   );
 
   const openQuickMenu = React.useCallback(() => {
@@ -978,26 +1109,13 @@ export default function App({ onLoggedOut }: AppProps) {
               resetCanvasLinkDraft();
               return;
             }
-
-            // 鐐瑰嚮鑳屾櫙鏃跺彇娑堟墍鏈夐€夋嫨 (濡傛灉娌℃湁鐐瑰嚮鍒拌妭鐐规垨鍔ㄤ綔鎸夐挳)
-            const target = e.target as HTMLElement;
-            if (
-              !target.closest(
-                "[data-node-action='true'], .node-card, button, input, select, textarea, [contenteditable='true'], [role='textbox']"
-              )
-            ) {
-              setSelectedNodeId(null);
-              setSelectedNodeIds(new Set());
-              setSelectedGroupId(null);
-              setSelectedLinkId(null);
-              setSelectedLinkAnchor(null);
-              closeNodeContextMenu();
-            }
+            if (handleCanvasSelectionPointerDown(e)) return;
 
             onCanvasPointerDown(e);
           }}
           onPointerMove={(e) => {
             lastCanvasPointerRef.current = { clientX: e.clientX, clientY: e.clientY };
+            if (handleCanvasSelectionPointerMove(e)) return;
             onPointerMove(e);
           }}
           onPointerMoveCapture={(e) => {
@@ -1006,10 +1124,15 @@ export default function App({ onLoggedOut }: AppProps) {
             }
           }}
           onPointerUp={(e) => {
+            if (handleCanvasSelectionPointerUp(e)) return;
             onPointerUp(e);
             if (shouldFinishCanvasLinkOnCanvasPointerUp(isLinkingOnCanvas)) finishCanvasLink();
           }}
           onPointerLeave={(e) => {
+            if (selectionDrag) {
+              setSelectionDrag(null);
+              blankPointerDownRef.current = null;
+            }
             onPointerUp(e);
             if (isLinkingOnCanvas) resetCanvasLinkDraft();
           }}
@@ -1089,7 +1212,24 @@ export default function App({ onLoggedOut }: AppProps) {
                   }}
                   onAddNode={(type, x, y, initialProps) => {
                     let nodeId: string | undefined;
-                    if (pendingLinkMenuDraft) {
+                    if (pendingLinkMenuDraft?.sources && pendingLinkMenuDraft.sources.length > 1) {
+                      nodeId = addNodeAtPosition(
+                        type,
+                        pendingLinkMenuDraft.clientX,
+                        pendingLinkMenuDraft.clientY,
+                        initialProps
+                      );
+                      if (nodeId) {
+                        addLinksFromDrafts(
+                          pendingLinkMenuDraft.sources.map((source) => ({
+                            fromNodeId: source.fromNodeId,
+                            fromOutputIndex: source.fromOutputIndex,
+                            toNodeId: nodeId!,
+                            toInputIndex: 0,
+                          }))
+                        );
+                      }
+                    } else if (pendingLinkMenuDraft) {
                       nodeId = addNodeAtPosition(
                         type,
                         pendingLinkMenuDraft.clientX,
@@ -1248,7 +1388,7 @@ export default function App({ onLoggedOut }: AppProps) {
             selectedNodeId={selectedNodeId}
             zoom={zoom}
             getCanvasLinkTargetIssue={getCanvasLinkTargetIssue}
-            onBeginCanvasLink={beginCanvasLink}
+            onBeginCanvasLink={handleBeginNodeCanvasLink}
             onCanvasPointerDown={onCanvasPointerDown}
             onDeleteNode={removeNode}
             onDuplicateNode={duplicateNode}
@@ -1281,11 +1421,23 @@ export default function App({ onLoggedOut }: AppProps) {
             onRunNode={runNode}
             onNotice={showNotice}
           />
+          <MultiSelectionLayer
+            bounds={multiSelectionBounds}
+            dragRect={selectionDragRect}
+            hasLinkableSources={batchLinkSources.length > 1 && !isLinkingOnCanvas}
+            pan={pan}
+            zoom={zoom}
+            onBeginBatchLink={(clientX, clientY) => {
+              beginBatchCanvasLink(batchLinkSources, clientX, clientY);
+            }}
+            onBeginSelectionDrag={handleSelectionDragStart}
+          />
           {isLinkingOnCanvas && (
             <DraftLinkOverlay
               nodes={nodes}
               pan={pan}
               zoom={zoom}
+              draftSources={activeBatchLinkSources}
               draftFromNodeId={linkFromNodeId}
               draftToNodeId={linkToNodeId}
               draftFromOutputIndex={linkFromOutputIndex}

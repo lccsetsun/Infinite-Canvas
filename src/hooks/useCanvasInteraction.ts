@@ -3,8 +3,9 @@ import { getNodeHeight, getNodeWidth, snapPointToGrid } from "../components/canv
 import { GraphNode } from "../types";
 
 type DragState = {
-  mode: "node" | "canvas" | null;
+  mode: "node" | "nodes" | "canvas" | null;
   nodeId?: string;
+  nodeStarts?: Array<{ nodeId: string; x: number; y: number }>;
   startX: number;
   startY: number;
   nodeStartX?: number;
@@ -15,7 +16,8 @@ type DragState = {
 
 type PendingDrag =
   | { mode: "canvas"; x: number; y: number }
-  | { mode: "node"; nodeId: string; x: number; y: number };
+  | { mode: "node"; nodeId: string; x: number; y: number }
+  | { mode: "nodes"; positions: Array<{ nodeId: string; x: number; y: number }> };
 
 const TEXT_NODE_FOCUS_WIDTH = 620;
 const TEXT_NODE_FOCUS_HEIGHT = 610;
@@ -79,6 +81,51 @@ export function getDraggedNodePosition({
     y: nodeStartY + (clientY - startY) / zoom,
   };
   return !snapToGridEnabled || altKey ? point : snapPointToGrid(point);
+}
+
+export function getDraggedNodePositions({
+  altKey = false,
+  clientX,
+  clientY,
+  grabbedNodeId,
+  nodeStarts,
+  snapToGridEnabled = true,
+  startX,
+  startY,
+  zoom,
+}: {
+  altKey?: boolean;
+  clientX: number;
+  clientY: number;
+  grabbedNodeId: string;
+  nodeStarts: Array<{ nodeId: string; x: number; y: number }>;
+  snapToGridEnabled?: boolean;
+  startX: number;
+  startY: number;
+  zoom: number;
+}) {
+  const grabbedStart = nodeStarts.find((node) => node.nodeId === grabbedNodeId) ?? nodeStarts[0];
+  if (!grabbedStart) return [];
+
+  const grabbedNext = getDraggedNodePosition({
+    altKey,
+    clientX,
+    clientY,
+    nodeStartX: grabbedStart.x,
+    nodeStartY: grabbedStart.y,
+    snapToGridEnabled,
+    startX,
+    startY,
+    zoom,
+  });
+  const dx = grabbedNext.x - grabbedStart.x;
+  const dy = grabbedNext.y - grabbedStart.y;
+
+  return nodeStarts.map((node) => ({
+    nodeId: node.nodeId,
+    x: node.x + dx,
+    y: node.y + dy,
+  }));
 }
 
 export function shouldStartCanvasPan(button: number) {
@@ -235,10 +282,30 @@ export function useCanvasInteraction({
     setTimeout(fitView, 0);
   }, [fitView, nodes, updateNodePosition]);
 
-  const onNodeDragStart = React.useCallback((e: React.PointerEvent, node: GraphNode) => {
+  const onNodeDragStart = React.useCallback((
+    e: React.PointerEvent,
+    node: GraphNode,
+    options?: { batchNodes?: GraphNode[] }
+  ) => {
     e.preventDefault();
     e.stopPropagation();
     setDraggingNodeId(node.id);
+    const batchStarts = options?.batchNodes?.map((candidate) => ({
+      nodeId: candidate.id,
+      x: candidate.x,
+      y: candidate.y,
+    }));
+    if (batchStarts && batchStarts.length > 1) {
+      dragRef.current = {
+        mode: "nodes",
+        nodeId: node.id,
+        nodeStarts: batchStarts,
+        startX: e.clientX,
+        startY: e.clientY,
+      };
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      return;
+    }
     dragRef.current = {
       mode: "node",
       nodeId: node.id,
@@ -246,6 +313,27 @@ export function useCanvasInteraction({
       startY: e.clientY,
       nodeStartX: node.x,
       nodeStartY: node.y,
+    };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  }, []);
+
+  const onNodesDragStart = React.useCallback((e: React.PointerEvent, batchNodes: GraphNode[]) => {
+    const firstNode = batchNodes[0];
+    if (!firstNode) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    setDraggingNodeId(firstNode.id);
+    dragRef.current = {
+      mode: "nodes",
+      nodeId: firstNode.id,
+      nodeStarts: batchNodes.map((candidate) => ({
+        nodeId: candidate.id,
+        x: candidate.x,
+        y: candidate.y,
+      })),
+      startX: e.clientX,
+      startY: e.clientY,
     };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   }, []);
@@ -276,6 +364,10 @@ export function useCanvasInteraction({
       if (!pending) return;
       if (pending.mode === "canvas") {
         setPan({ x: pending.x, y: pending.y });
+      } else if (pending.mode === "nodes") {
+        pending.positions.forEach((position) => {
+          updateNodePosition(position.nodeId, position.x, position.y);
+        });
       } else {
         updateNodePosition(pending.nodeId, pending.x, pending.y);
       }
@@ -311,6 +403,22 @@ export function useCanvasInteraction({
           y: next.y,
         };
         scheduleDragUpdate();
+      } else if (d.mode === "nodes" && d.nodeId && d.nodeStarts) {
+        pendingDragRef.current = {
+          mode: "nodes",
+          positions: getDraggedNodePositions({
+            altKey: e.altKey,
+            clientX: e.clientX,
+            clientY: e.clientY,
+            grabbedNodeId: d.nodeId,
+            nodeStarts: d.nodeStarts,
+            snapToGridEnabled,
+            startX: d.startX,
+            startY: d.startY,
+            zoom,
+          }),
+        };
+        scheduleDragUpdate();
       }
     },
     [scheduleDragUpdate, snapToGridEnabled, zoom]
@@ -327,6 +435,10 @@ export function useCanvasInteraction({
         setPan({ x: pending.x, y: pending.y });
       } else if (pending?.mode === "node") {
         updateNodePosition(pending.nodeId, pending.x, pending.y);
+      } else if (pending?.mode === "nodes") {
+        pending.positions.forEach((position) => {
+          updateNodePosition(position.nodeId, position.x, position.y);
+        });
       }
       pendingDragRef.current = null;
       setIsCanvasPanning(false);
@@ -403,6 +515,7 @@ export function useCanvasInteraction({
     draggingNodeId,
     isCanvasPanning,
     onNodeDragStart,
+    onNodesDragStart,
     onCanvasPointerDown,
     onPointerMove,
     onPointerUp,

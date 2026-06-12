@@ -15,6 +15,14 @@ interface UseCanvasLinkingOptions {
     fromOutputIndex: number;
     toInputIndex: number;
   }) => boolean;
+  addLinksFromDrafts?: (
+    drafts: Array<{
+      fromNodeId: string;
+      toNodeId: string;
+      fromOutputIndex: number;
+      toInputIndex: number;
+    }>
+  ) => number;
   clearLinkDraft: () => void;
   linkFromNodeId: string;
   linkFromOutputIndex: number;
@@ -26,7 +34,7 @@ interface UseCanvasLinkingOptions {
   setLinkFromOutputIndex: (outputIndex: number) => void;
   setLinkToInputIndex: (inputIndex: number) => void;
   setLinkToNodeId: (nodeId: string) => void;
-  setSelectedNodeId: (nodeId: string) => void;
+  setSelectedNodeId: (nodeId: string | null) => void;
   showNotice: (message: string, duration?: number) => void;
   toWorld: (clientX: number, clientY: number) => WorldPoint;
   onBlankLinkDrop?: (draft: {
@@ -34,12 +42,14 @@ interface UseCanvasLinkingOptions {
     clientY: number;
     fromNodeId: string;
     fromOutputIndex: number;
+    sources?: Array<{ fromNodeId: string; fromOutputIndex: number }>;
     worldPoint: WorldPoint;
   }) => void;
 }
 
 export function useCanvasLinking({
   addLinkFromDraft,
+  addLinksFromDrafts,
   clearLinkDraft,
   linkFromNodeId,
   linkFromOutputIndex,
@@ -58,10 +68,14 @@ export function useCanvasLinking({
 }: UseCanvasLinkingOptions) {
   const [isLinkingOnCanvas, setIsLinkingOnCanvas] = React.useState(false);
   const [draftCursor, setDraftCursor] = React.useState<WorldPoint | null>(null);
+  const [batchLinkSources, setBatchLinkSources] = React.useState<
+    Array<{ fromNodeId: string; fromOutputIndex: number }>
+  >([]);
 
   const resetCanvasLinkDraft = React.useCallback(() => {
     clearLinkDraft();
     setDraftCursor(null);
+    setBatchLinkSources([]);
     setIsLinkingOnCanvas(false);
   }, [clearLinkDraft]);
 
@@ -70,6 +84,26 @@ export function useCanvasLinking({
       setSelectedNodeId(nodeId);
       setLinkFromNodeId(nodeId);
       setLinkFromOutputIndex(outputIndex);
+      setLinkToNodeId("");
+      setLinkToInputIndex(0);
+      setDraftCursor(toWorld(clientX, clientY));
+      setIsLinkingOnCanvas(true);
+    },
+    [setSelectedNodeId, setLinkFromNodeId, setLinkFromOutputIndex, setLinkToNodeId, setLinkToInputIndex, toWorld]
+  );
+
+  const beginBatchCanvasLink = React.useCallback(
+    (
+      sources: Array<{ fromNodeId: string; fromOutputIndex: number }>,
+      clientX: number,
+      clientY: number
+    ) => {
+      const firstSource = sources[0];
+      if (!firstSource) return;
+      setSelectedNodeId(null);
+      setBatchLinkSources(sources);
+      setLinkFromNodeId(firstSource.fromNodeId);
+      setLinkFromOutputIndex(firstSource.fromOutputIndex);
       setLinkToNodeId("");
       setLinkToInputIndex(0);
       setDraftCursor(toWorld(clientX, clientY));
@@ -121,18 +155,30 @@ export function useCanvasLinking({
         return;
       }
 
-      const created = addLinkFromDraft({
-        fromNodeId: linkFromNodeId,
-        toNodeId: finalToNodeId,
-        fromOutputIndex: linkFromOutputIndex,
-        toInputIndex: finalToInputIndex,
-      });
+      const created =
+        batchLinkSources.length > 1 && addLinksFromDrafts
+          ? addLinksFromDrafts(
+              batchLinkSources.map((source) => ({
+                fromNodeId: source.fromNodeId,
+                fromOutputIndex: source.fromOutputIndex,
+                toNodeId: finalToNodeId,
+                toInputIndex: finalToInputIndex,
+              }))
+            ) > 0
+          : addLinkFromDraft({
+              fromNodeId: linkFromNodeId,
+              toNodeId: finalToNodeId,
+              fromOutputIndex: linkFromOutputIndex,
+              toInputIndex: finalToInputIndex,
+            });
 
-      if (created) showNotice("已通过拖拽建立连线");
+      if (created) showNotice(batchLinkSources.length > 1 ? "已批量建立连线" : "已通过拖拽建立连线");
       resetCanvasLinkDraft();
     },
     [
       addLinkFromDraft,
+      addLinksFromDrafts,
+      batchLinkSources,
       isLinkingOnCanvas,
       linkFromNodeId,
       linkFromOutputIndex,
@@ -228,6 +274,7 @@ export function useCanvasLinking({
           clientY: e.clientY,
           fromNodeId: linkFromNodeId,
           fromOutputIndex: linkFromOutputIndex,
+          sources: batchLinkSources.length > 1 ? batchLinkSources : undefined,
           worldPoint: toWorld(e.clientX, e.clientY),
         });
         resetCanvasLinkDraft();
@@ -242,9 +289,11 @@ export function useCanvasLinking({
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
     };
-  }, [isLinkingOnCanvas, toWorld, setDraftCursor, linkFromNodeId, linkFromOutputIndex, linkToNodeId, linkToInputIndex, nodes, links, setLinkToNodeId, setLinkToInputIndex, onBlankLinkDrop, resetCanvasLinkDraft]);
+  }, [batchLinkSources, isLinkingOnCanvas, toWorld, setDraftCursor, linkFromNodeId, linkFromOutputIndex, linkToNodeId, linkToInputIndex, nodes, links, setLinkToNodeId, setLinkToInputIndex, onBlankLinkDrop, resetCanvasLinkDraft]);
 
   return {
+    batchLinkSources,
+    beginBatchCanvasLink,
     beginCanvasLink,
     draftCursor,
     finishCanvasLink,
