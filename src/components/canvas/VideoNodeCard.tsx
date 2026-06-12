@@ -17,6 +17,7 @@ import {
   Video,
   Volume2,
   VolumeX,
+  Wand2,
 } from "lucide-react";
 import { GraphNode } from "../../types";
 import type { VideoFrameCaptureItem } from "../../features/video/frameCapture";
@@ -62,6 +63,7 @@ interface VideoNodeCardProps {
     currentIndex?: number
   ) => void;
   onAnalyzeVideo?: (node: GraphNode, captures: VideoFrameCaptureItem[]) => Promise<void> | void;
+  onReverseVideoPrompt?: (node: GraphNode, videoUrl: string) => Promise<void> | void;
   resolvedInputs?: Record<string, unknown>;
   onRun?: (nodeId: string) => void;
   isLinkingOnCanvas?: boolean;
@@ -220,6 +222,19 @@ export function resolveEmptyVideoNodeSize({
   };
 }
 
+export function getVideoNodePortTopStyle({
+  emptyVideoNodePortCenterY,
+  hasVideoPreview,
+  videoPortCenterY,
+}: {
+  emptyVideoNodePortCenterY: number;
+  hasVideoPreview: boolean;
+  videoPortCenterY?: number;
+}): number | string {
+  if (!hasVideoPreview) return emptyVideoNodePortCenterY;
+  return videoPortCenterY ?? "50%";
+}
+
 function formatTime(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds <= 0) return "0:00";
   const minutes = Math.floor(seconds / 60);
@@ -269,6 +284,7 @@ function VideoNodeCardImpl({
   onUpdateData,
   onPreview,
   onAnalyzeVideo,
+  onReverseVideoPrompt,
   resolvedInputs,
   onRun,
   isLinkingOnCanvas,
@@ -295,6 +311,7 @@ function VideoNodeCardImpl({
   const [muted, setMuted] = React.useState(false);
   const [frameMenuOpen, setFrameMenuOpen] = React.useState(false);
   const [isAnalyzingFrames, setIsAnalyzingFrames] = React.useState(false);
+  const [isReversingPrompt, setIsReversingPrompt] = React.useState(false);
   const [isUploadingVideo, setIsUploadingVideo] = React.useState(false);
   const isUploadingAsset = isNodeUploadingAsset || isUploadingVideo;
   const shouldShowUploadButton = shouldShowVideoUploadButton({
@@ -376,6 +393,12 @@ function VideoNodeCardImpl({
     () => resolveEmptyVideoNodeSize({ aspectRatio, resolution }),
     [aspectRatio, resolution]
   );
+  const hasVideoPreview = Boolean(videoUrl && !isRunning && !isUploadingAsset);
+  const portTopStyle = getVideoNodePortTopStyle({
+    emptyVideoNodePortCenterY: emptyVideoNodeSize.portCenterY,
+    hasVideoPreview,
+    videoPortCenterY: node.data?.videoPortCenterY,
+  });
   const naturalSizeLabel =
     naturalVideoSize && naturalVideoSize.width > 0 && naturalVideoSize.height > 0
       ? `${naturalVideoSize.width} × ${naturalVideoSize.height}`
@@ -474,7 +497,7 @@ function VideoNodeCardImpl({
   ]);
 
   React.useEffect(() => {
-    if (videoUrl) return;
+    if (hasVideoPreview) return;
     if (
       node.data?.videoDisplayWidth === emptyVideoNodeSize.displayWidth &&
       node.data?.videoDisplayHeight === emptyVideoNodeSize.displayHeight &&
@@ -505,7 +528,7 @@ function VideoNodeCardImpl({
     node.data?.videoPortCenterY,
     node.id,
     onUpdateData,
-    videoUrl,
+    hasVideoPreview,
   ]);
 
   React.useEffect(() => {
@@ -736,6 +759,35 @@ function VideoNodeCardImpl({
     }
   };
 
+  const reverseVideoPrompt = async () => {
+    if (!videoUrl || isReversingPrompt) return;
+    setIsReversingPrompt(true);
+    onUpdateData?.(node.id, {
+      error: undefined,
+      loading: true,
+      loadingOperation: "video-prompt",
+      status: "loading",
+    });
+    try {
+      await onReverseVideoPrompt?.(node, videoUrl);
+      onUpdateData?.(node.id, {
+        loading: false,
+        loadingOperation: undefined,
+        status: "success",
+        error: undefined,
+      });
+    } catch (error) {
+      onUpdateData?.(node.id, {
+        error: error instanceof Error ? error.message : "视频反推提示词失败",
+        loading: false,
+        loadingOperation: undefined,
+        status: "error",
+      });
+    } finally {
+      setIsReversingPrompt(false);
+    }
+  };
+
   const hasInputPorts = !isSourceAssetNode && node.inputs.length > 0;
   const portHandles = (
     <AnimatePresence>
@@ -748,7 +800,7 @@ function VideoNodeCardImpl({
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: 10 }}
                 className="absolute -left-11 z-10 -translate-y-1/2"
-                style={{ top: node.data?.videoPortCenterY ?? emptyVideoNodeSize.portCenterY }}
+                style={{ top: portTopStyle }}
               >
                 <div
                   role="button"
@@ -784,7 +836,7 @@ function VideoNodeCardImpl({
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -10 }}
               className="absolute -right-11 z-10 -translate-y-1/2"
-              style={{ top: node.data?.videoPortCenterY ?? emptyVideoNodeSize.portCenterY }}
+              style={{ top: portTopStyle }}
             >
               <div
                 role="button"
@@ -893,6 +945,20 @@ function VideoNodeCardImpl({
                       <Loader2 className="h-5 w-5 animate-spin" />
                     ) : (
                       <ScanSearch className="h-5 w-5" />
+                    )}
+                  </button>
+                </Tooltip>
+                <Tooltip content="反推提示词" position="top">
+                  <button
+                    type="button"
+                    onClick={reverseVideoPrompt}
+                    disabled={isReversingPrompt}
+                    className="flex h-9 w-9 items-center justify-center rounded-[12px] text-slate-400 transition-colors hover:bg-white/[0.06] hover:text-slate-100 disabled:cursor-wait disabled:text-violet-200"
+                  >
+                    {isReversingPrompt ? (
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                    ) : (
+                      <Wand2 className="h-5 w-5" />
                     )}
                   </button>
                 </Tooltip>

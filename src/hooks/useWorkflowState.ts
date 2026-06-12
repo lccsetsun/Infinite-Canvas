@@ -33,6 +33,7 @@ import {
   topologicalLevels,
 } from "../runtime/dataflow";
 import { createVideoFrameCaptureSnapshot } from "../utils/videoFrameCaptureLayout";
+import { createVideoPromptTextSnapshot } from "../utils/videoPromptTextLayout";
 import { collectImageReferenceUrls } from "../utils/textNodeReferences";
 import {
   createFrameImageChildSnapshot,
@@ -1785,6 +1786,43 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     [appendLog, links, nodeOutputs, nodes, pushHistory, syncCurrentWorkflowMeta]
   );
 
+  const addVideoPromptTextNode = useCallback(
+    (videoNodeId: string, prompt: string) => {
+      const snapshot = createVideoPromptTextSnapshot({
+        nodes,
+        links,
+        nodeOutputs,
+        sourceNodeId: videoNodeId,
+        prompt,
+        makeId,
+      });
+
+      if (!snapshot) {
+        appendLog("warning", "视频反推失败：未找到视频节点或提示词为空");
+        return null;
+      }
+
+      setNodes(snapshot.nodes);
+      setLinks(snapshot.links);
+      setNodeOutputs(snapshot.nodeOutputs);
+      setSelectedNodeId(snapshot.createdNode.id);
+      syncCurrentWorkflowMeta((wf) => ({
+        ...wf,
+        summary: { ...wf.summary, updatedAt: Date.now() },
+        data: {
+          ...wf.data,
+          nodes: snapshot.nodes,
+          links: snapshot.links,
+          nodeOutputs: mapToOutputs(snapshot.nodeOutputs),
+        },
+      }));
+      pushHistory({ nodes: snapshot.nodes, links: snapshot.links });
+      appendLog("success", "视频反推提示词完成：已生成文本节点");
+      return snapshot.createdNode;
+    },
+    [appendLog, links, nodeOutputs, nodes, pushHistory, syncCurrentWorkflowMeta]
+  );
+
   const updateSelectedProperty = (key: string, value: unknown) => {
     if (!selectedNodeId) return;
     updateNodeProperty(selectedNodeId, key, value);
@@ -2871,6 +2909,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     replaceExtractedFrameImage,
     replaceFrameImageUrl,
     addVideoFrameAnalysis,
+    addVideoPromptTextNode,
     clearCanvas,
     clearExecution,
     addLinkFromDraft,

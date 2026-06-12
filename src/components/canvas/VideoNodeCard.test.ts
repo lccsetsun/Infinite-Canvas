@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   fitVideoSize,
   getVideoDurationSliderPercent,
+  getVideoNodePortTopStyle,
   getVideoNodeInputReferences,
   normalizeVideoDurationSeconds,
   resolveEmptyVideoNodeSize,
@@ -34,6 +35,28 @@ describe("resolveEmptyVideoNodeSize", () => {
       nodeWidth: 304,
       portCenterY: 270,
     });
+  });
+});
+
+describe("getVideoNodePortTopStyle", () => {
+  it("uses the empty node center while the video preview is not visible", () => {
+    expect(
+      getVideoNodePortTopStyle({
+        emptyVideoNodePortCenterY: 270,
+        hasVideoPreview: false,
+        videoPortCenterY: 180,
+      })
+    ).toBe(270);
+  });
+
+  it("uses the measured video preview center when the preview is visible", () => {
+    expect(
+      getVideoNodePortTopStyle({
+        emptyVideoNodePortCenterY: 270,
+        hasVideoPreview: true,
+        videoPortCenterY: 180,
+      })
+    ).toBe(180);
   });
 });
 

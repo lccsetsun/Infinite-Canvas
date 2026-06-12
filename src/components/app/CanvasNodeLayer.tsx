@@ -52,6 +52,7 @@ interface CanvasNodeLayerProps {
     currentIndex?: number
   ) => void;
   onAnalyzeVideo?: (node: GraphNode, captures: VideoFrameCaptureItem[]) => Promise<void> | void;
+  onReverseVideoPrompt?: (node: GraphNode, videoUrl: string) => Promise<void> | void;
   onSelectNode: (nodeId: string, e?: React.MouseEvent) => void;
   onUpdateNodeData: (nodeId: string, data: any) => void;
   onUpdateNodeProperty: (nodeId: string, key: string, value: unknown) => void;
@@ -101,6 +102,7 @@ export default function CanvasNodeLayer({
   onNodeDragStart,
   onPreview,
   onAnalyzeVideo,
+  onReverseVideoPrompt,
   onSelectNode,
   onUpdateNodeData,
   onUpdateNodeProperty,
@@ -235,6 +237,7 @@ export default function CanvasNodeLayer({
                   onUpdateData={onUpdateNodeData}
                   onPreview={onPreview}
                   onAnalyzeVideo={onAnalyzeVideo}
+                  onReverseVideoPrompt={onReverseVideoPrompt}
                   resolvedInputs={resolvedInputsMap?.get(node.id)}
                   onRun={onRunNode}
                   // 连线相关

@@ -40,6 +40,7 @@ import { collectTextNodeReferences } from "./utils/textNodeReferences";
 import { ConfigProvider, theme } from "antd";
 import { GraphNode, NodeClass } from "./types";
 import type { VideoFrameCaptureItem } from "./features/video/frameCapture";
+import { fetchVideoPrompt } from "./features/video/videoPrompts";
 import {
   fetchAiModelCatalog,
   makeEmptyAiModelsByType,
@@ -183,6 +184,7 @@ export default function App({ onLoggedOut }: AppProps) {
     updateNodeData,
     setPrimaryImageResult,
     addVideoFrameAnalysis,
+    addVideoPromptTextNode,
     extractFrameImageNode,
     replaceFrameImageUrl,
     linkFromNodeId,
@@ -614,6 +616,19 @@ export default function App({ onLoggedOut }: AppProps) {
       );
     },
     [addVideoFrameAnalysis, showNotice]
+  );
+
+  const handleReverseVideoPrompt = React.useCallback(
+    async (node: GraphNode, videoUrl: string) => {
+      const prompt = await fetchVideoPrompt(videoUrl);
+      if (!prompt.trim()) {
+        showNotice("视频反推提示词接口没有返回可用内容。");
+        return;
+      }
+      addVideoPromptTextNode(node.id, prompt);
+      showNotice("已生成视频反推提示词文本节点。");
+    },
+    [addVideoPromptTextNode, showNotice]
   );
 
   const handleExtractFrameImage = React.useCallback(
@@ -1252,6 +1267,7 @@ export default function App({ onLoggedOut }: AppProps) {
               })
             }
             onAnalyzeVideo={handleAnalyzeVideo}
+            onReverseVideoPrompt={handleReverseVideoPrompt}
             onSelectNode={(nodeId, e) => handleSelectNode(nodeId, e)}
             onUpdateNodeData={updateNodeData}
             onUpdateNodeProperty={updateNodeProperty}

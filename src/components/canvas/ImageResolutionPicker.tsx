@@ -8,6 +8,10 @@ import {
   type ImageAspectRatio,
   type ImageResolution,
 } from "../../features/nodes/imageResolutionPresets";
+import {
+  getFloatingMenuPosition,
+  type FloatingMenuPosition,
+} from "../../utils/floatingMenuPosition";
 
 interface ImageResolutionPickerProps {
   resolution: string;
@@ -18,9 +22,10 @@ interface ImageResolutionPickerProps {
   panelTitle?: string;
 }
 
-const PANEL_WIDTH = 344;
+const PANEL_WIDTH = 430;
+const PANEL_MAX_HEIGHT = 430;
 const PANEL_GAP = 10;
-const VIEWPORT_MARGIN = 16;
+const PANEL_MARGIN = 16;
 
 function isImageResolution(value: string): value is ImageResolution {
   return IMAGE_RESOLUTION_PRESET_GROUPS.some((group) => group.resolution === value);
@@ -34,27 +39,65 @@ export function getResolutionPickerPanelTitle(panelTitle?: string) {
   return panelTitle || "Image Size";
 }
 
-function getPanelPosition(
-  anchorRect: DOMRect,
-  align: "left" | "right",
-  viewport: { width: number; height: number }
-) {
-  const maxHeight = Math.min(430, viewport.height - VIEWPORT_MARGIN * 2);
-  const availableAbove = anchorRect.top - VIEWPORT_MARGIN - PANEL_GAP;
-  const availableBelow = viewport.height - anchorRect.bottom - VIEWPORT_MARGIN - PANEL_GAP;
-  const opensAbove = availableAbove >= Math.min(340, maxHeight) || availableAbove > availableBelow;
-  const height = Math.max(260, Math.min(maxHeight, opensAbove ? availableAbove : availableBelow));
-  const top = opensAbove
-    ? Math.max(VIEWPORT_MARGIN, anchorRect.top - height - PANEL_GAP)
-    : Math.min(viewport.height - VIEWPORT_MARGIN - height, anchorRect.bottom + PANEL_GAP);
-  const preferredLeft =
-    align === "right" ? anchorRect.right - PANEL_WIDTH : anchorRect.left;
-  const left = Math.min(
-    viewport.width - VIEWPORT_MARGIN - PANEL_WIDTH,
-    Math.max(VIEWPORT_MARGIN, preferredLeft)
-  );
+function parseAspectRatioValue(aspectRatio: string) {
+  const [width, height] = aspectRatio.split(":").map((value) => Number.parseFloat(value));
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return 1;
+  }
+  return width / height;
+}
 
-  return { left, top, maxHeight: height };
+export function getAspectRatioPreviewStyle(aspectRatio: string): React.CSSProperties {
+  const ratio = parseAspectRatioValue(aspectRatio);
+  const maxWidth = 30;
+  const maxHeight = 22;
+  if (ratio >= 1) {
+    return {
+      width: Math.round(maxWidth),
+      height: Math.max(6, Math.round(maxWidth / ratio)),
+    };
+  }
+  return {
+    width: Math.max(6, Math.round(maxHeight * ratio)),
+    height: Math.round(maxHeight),
+  };
+}
+
+export function getResolutionPickerPanelPosition({
+  align,
+  anchorRect,
+  viewport,
+}: {
+  align: "left" | "right";
+  anchorRect: DOMRect;
+  viewport: { width: number; height: number };
+}): FloatingMenuPosition {
+  const alignedAnchorRect =
+    align === "right"
+      ? {
+          bottom: anchorRect.bottom,
+          left: anchorRect.right - PANEL_WIDTH,
+          right: anchorRect.right,
+          top: anchorRect.top,
+          width: PANEL_WIDTH,
+        }
+      : {
+          bottom: anchorRect.bottom,
+          left: anchorRect.left,
+          right: anchorRect.left + PANEL_WIDTH,
+          top: anchorRect.top,
+          width: PANEL_WIDTH,
+        };
+
+  return getFloatingMenuPosition({
+    anchorRect: alignedAnchorRect,
+    gap: PANEL_GAP,
+    margin: PANEL_MARGIN,
+    maxMenuHeight: PANEL_MAX_HEIGHT,
+    minMenuHeight: 260,
+    viewportHeight: viewport.height,
+    viewportWidth: viewport.width,
+  });
 }
 
 export function ImageResolutionPicker({
@@ -69,7 +112,7 @@ export function ImageResolutionPicker({
   const [activeResolution, setActiveResolution] = React.useState<ImageResolution>(() =>
     getFallbackResolution(resolution)
   );
-  const [position, setPosition] = React.useState({ left: 0, top: 0, maxHeight: 430 });
+  const [position, setPosition] = React.useState<FloatingMenuPosition | null>(null);
   const buttonRef = React.useRef<HTMLButtonElement | null>(null);
   const panelRef = React.useRef<HTMLDivElement | null>(null);
 
@@ -83,9 +126,13 @@ export function ImageResolutionPicker({
       const rect = buttonRef.current?.getBoundingClientRect();
       if (!rect) return;
       setPosition(
-        getPanelPosition(rect, panelAlign, {
-          width: window.innerWidth,
-          height: window.innerHeight,
+        getResolutionPickerPanelPosition({
+          align: panelAlign,
+          anchorRect: rect,
+          viewport: {
+            width: window.innerWidth,
+            height: window.innerHeight,
+          },
         })
       );
     };
@@ -153,6 +200,7 @@ export function ImageResolutionPicker({
         />
       </button>
       {open &&
+        position &&
         typeof document !== "undefined" &&
         createPortal(
           <div
@@ -162,24 +210,23 @@ export function ImageResolutionPicker({
             onPointerDown={(event) => event.stopPropagation()}
             onClick={(event) => event.stopPropagation()}
             onWheel={(event) => event.stopPropagation()}
-            className="fixed z-[160] overflow-hidden rounded-[18px] border border-cyan-100/14 bg-[#0c121c]/96 shadow-[0_28px_74px_-26px_rgba(0,0,0,0.98),0_0_0_1px_rgba(103,232,249,0.04),inset_0_1px_0_rgba(255,255,255,0.065)] backdrop-blur-2xl"
+            className="fixed z-[160] overflow-hidden rounded-2xl border border-cyan-100/14 bg-[#121923]/96 p-1.5 text-slate-100 shadow-[0_28px_70px_-28px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl"
             style={{
               left: position.left,
               top: position.top,
-              width: PANEL_WIDTH,
+              bottom: position.bottom,
+              width: position.width,
               maxHeight: position.maxHeight,
             }}
           >
-            <div className="border-b border-white/8 bg-[linear-gradient(180deg,rgba(20,31,46,0.98),rgba(11,17,27,0.92))] px-3 pb-3 pt-3">
-              <div className="mb-2 flex items-center justify-between">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-100/54">
-                  {getResolutionPickerPanelTitle(panelTitle)}
-                </div>
-                <div className="rounded-full border border-cyan-100/12 bg-cyan-100/[0.055] px-2 py-0.5 text-[11px] font-semibold text-cyan-50/82">
-                  {selectedPreset?.resolution} {selectedPreset?.aspectRatio}
-                </div>
+            <div
+              className="px-3.5 pb-3 pt-3"
+              aria-label={getResolutionPickerPanelTitle(panelTitle)}
+            >
+              <div className="mb-2 px-0.5 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-300/44">
+                清晰度
               </div>
-              <div className="grid grid-cols-4 gap-1 rounded-[12px] border border-white/7 bg-black/18 p-1">
+              <div className="grid grid-cols-4 gap-3">
                 {IMAGE_RESOLUTION_PRESET_GROUPS.map((group) => {
                   const isActive = group.resolution === activeResolution;
                   return (
@@ -187,10 +234,10 @@ export function ImageResolutionPicker({
                       key={group.resolution}
                       type="button"
                       onClick={() => setActiveResolution(group.resolution)}
-                      className={`h-8 rounded-[9px] text-[12px] font-bold transition-all ${
+                      className={`h-10 rounded-xl border text-[14px] font-semibold transition-colors ${
                         isActive
-                          ? "bg-cyan-200 text-[#07111b] shadow-[0_10px_24px_-16px_rgba(103,232,249,0.9)]"
-                          : "text-slate-300/70 hover:bg-white/[0.06] hover:text-slate-100"
+                          ? "border-cyan-100/20 bg-cyan-300/[0.13] text-cyan-50"
+                          : "border-cyan-100/10 text-slate-200/70 hover:border-cyan-100/18 hover:bg-white/[0.05] hover:text-white"
                       }`}
                     >
                       {group.resolution}
@@ -200,10 +247,13 @@ export function ImageResolutionPicker({
               </div>
             </div>
             <div
-              className="custom-scrollbar overflow-y-auto p-2.5"
-              style={{ maxHeight: Math.max(180, position.maxHeight - 88) }}
+              className="custom-scrollbar overflow-y-auto px-3.5 pb-3.5"
+              style={{ maxHeight: Math.max(210, position.maxHeight - 118) }}
             >
-              <div className="grid gap-1.5">
+              <div className="mb-2 px-0.5 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-300/44">
+                比例
+              </div>
+              <div className="grid grid-cols-4 gap-3">
                 {activeGroup.presets.map((preset) => {
                   const isActive =
                     preset.resolution === selectedPreset?.resolution &&
@@ -217,27 +267,35 @@ export function ImageResolutionPicker({
                         onChange(preset.resolution, preset.aspectRatio);
                         setOpen(false);
                       }}
-                      className={`group flex h-11 w-full items-center gap-3 rounded-[12px] px-3 text-left transition-all ${
+                      className={`group relative flex h-[82px] w-full flex-col items-center justify-center gap-2 rounded-xl border transition-colors ${
                         isActive
-                          ? "bg-cyan-300/[0.13] text-cyan-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
-                          : "text-slate-300/78 hover:bg-white/[0.055] hover:text-slate-100"
+                          ? "border-cyan-100/20 bg-cyan-300/[0.13] text-cyan-50"
+                          : "border-cyan-100/10 bg-slate-950/14 text-slate-200/70 hover:border-cyan-100/18 hover:bg-white/[0.05] hover:text-white"
                       }`}
                     >
-                      <span className="flex h-7 min-w-[72px] items-center justify-center rounded-[9px] border border-white/8 bg-white/[0.035] text-[13px] font-bold">
-                        {preset.aspectRatio}
-                      </span>
-                      <span className="min-w-0 flex-1 text-[13px] tabular-nums text-slate-400/88 group-hover:text-slate-200/90">
-                        {preset.width}×{preset.height}
+                      <span
+                        className={`grid h-[30px] w-[38px] place-items-center rounded-[8px] ${
+                          isActive ? "text-cyan-50" : "text-slate-300/62 group-hover:text-white"
+                        }`}
+                        aria-hidden="true"
+                      >
+                        <span
+                          className="block rounded-[3px] border-2 border-current"
+                          style={getAspectRatioPreviewStyle(preset.aspectRatio)}
+                        />
                       </span>
                       <span
-                        className={`grid h-5 w-5 place-items-center rounded-full border transition-colors ${
-                          isActive
-                            ? "border-cyan-200 bg-cyan-200 text-[#07111b]"
-                            : "border-slate-500/24 text-transparent group-hover:border-slate-300/38"
+                        className={`text-[13px] font-semibold leading-none ${
+                          isActive ? "text-cyan-50" : "text-slate-200/70 group-hover:text-white"
                         }`}
                       >
-                        <Check className="h-3.5 w-3.5" />
+                        {preset.aspectRatio}
                       </span>
+                      {isActive && (
+                        <span className="absolute right-2 top-2 grid h-[18px] w-[18px] place-items-center rounded-full text-cyan-100">
+                          <Check className="h-3.5 w-3.5" />
+                        </span>
+                      )}
                     </button>
                   );
                 })}

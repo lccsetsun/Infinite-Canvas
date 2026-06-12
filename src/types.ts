@@ -90,7 +90,7 @@ export interface GraphNode {
     uploadingAsset?: boolean;
     uploadedAssetName?: string;
     loading?: boolean;
-    loadingOperation?: "generate" | "frame-analysis";
+    loadingOperation?: "generate" | "frame-analysis" | "video-prompt";
     progress?: number;
     status?: string;
     error?: string;

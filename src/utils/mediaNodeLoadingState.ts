@@ -1,5 +1,5 @@
 export type MediaNodeLoadingType = "image" | "video" | "audio";
-export type MediaNodeLoadingOperation = "generate" | "frame-analysis";
+export type MediaNodeLoadingOperation = "generate" | "frame-analysis" | "video-prompt";
 
 export function isMediaNodeRunning({
   data,
@@ -26,6 +26,7 @@ export function getMediaNodeLoadingLabel({
 }) {
   if (isUploading) return "上传中";
   if (operation === "frame-analysis") return "正在逐帧分析";
+  if (operation === "video-prompt") return "正在反推提示词";
   if (mediaType === "image") return "正在生成图片";
   if (mediaType === "video") return "正在生成视频";
   return "正在生成音频";

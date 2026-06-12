@@ -29,6 +29,16 @@ describe("getMediaNodeLoadingLabel", () => {
       })
     ).toBe("正在逐帧分析");
   });
+
+  it("uses reverse prompt copy for video prompt extraction", () => {
+    expect(
+      getMediaNodeLoadingLabel({
+        mediaType: "video",
+        isUploading: false,
+        operation: "video-prompt",
+      })
+    ).toBe("正在反推提示词");
+  });
 });
 
 describe("isMediaNodeRunning", () => {
