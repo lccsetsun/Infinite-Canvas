@@ -32,6 +32,7 @@ import {
   replaceImageGridCell,
 } from "./utils/imageGridSplit";
 import { getCanvasViewportClassName } from "./utils/canvasViewportLayout";
+import { shouldDeferCanvasContentRender } from "./utils/canvasRenderReadiness";
 import {
   getBatchOutputDrafts,
   getNodesFullyInsideSelection,
@@ -1174,6 +1175,13 @@ export default function App({ onLoggedOut }: AppProps) {
     isCanvasProjectLoading,
     nodeCount: nodes.length,
   });
+  const shouldRenderCanvasContent = !shouldDeferCanvasContentRender({
+    activeWorkflowId,
+    currentView,
+    groupCount: groups.length,
+    linkCount: links.length,
+    nodeCount: nodes.length,
+  });
 
   if (isCanvasProjectLoading && !projectLoadError) {
     return panelFallback;
@@ -1278,24 +1286,27 @@ export default function App({ onLoggedOut }: AppProps) {
             if (isLinkingOnCanvas) resetCanvasLinkDraft();
           }}
         >
-          <LeaferCanvas
-            nodes={nodes}
-            links={links}
-            pan={pan}
-            zoom={zoom}
-            showGrid={showGrid}
-            selectedNodeId={selectedNodeId}
-            draftFromNodeId={linkFromNodeId}
-            draftToNodeId={linkToNodeId}
-            draftFromOutputIndex={linkFromOutputIndex}
-            draftToInputIndex={linkToInputIndex}
-            draftIssue={linkDraftIssue}
-            draftCursor={draftCursor}
-            renderDraftPreview={false}
-            animationsPaused={isCanvasPanning}
-          />
+          {shouldRenderCanvasContent && (
+            <LeaferCanvas
+              nodes={nodes}
+              nodeById={canvasGraphIndex.nodeById}
+              links={links}
+              pan={pan}
+              zoom={zoom}
+              showGrid={showGrid}
+              selectedNodeId={selectedNodeId}
+              draftFromNodeId={linkFromNodeId}
+              draftToNodeId={linkToNodeId}
+              draftFromOutputIndex={linkFromOutputIndex}
+              draftToInputIndex={linkToInputIndex}
+              draftIssue={linkDraftIssue}
+              draftCursor={draftCursor}
+              renderDraftPreview={false}
+              animationsPaused={isCanvasPanning}
+            />
+          )}
 
-          {!isLinkingOnCanvas && (
+          {shouldRenderCanvasContent && !isLinkingOnCanvas && (
             <LinkInteractionOverlay
               links={links}
               graphIndex={canvasGraphIndex}
@@ -1317,20 +1328,22 @@ export default function App({ onLoggedOut }: AppProps) {
             />
           )}
 
-          <GroupsLayer
-            groups={groups}
-            pan={pan}
-            zoom={zoom}
-            selectedNodeId={selectedNodeId}
-            selectedGroupId={selectedGroupId}
-            memberCountByGroup={memberCountByGroup}
-            onSelectGroup={(groupId) => applyCanvasSelection(selectCanvasGroup(groupId))}
-            onRunGroup={runGroup}
-            onUngroup={handleUngroup}
-            onDeleteGroup={handleUngroup}
-            onMoveGroup={moveGroup}
-            isRunning={isRunning}
-          />
+          {shouldRenderCanvasContent && (
+            <GroupsLayer
+              groups={groups}
+              pan={pan}
+              zoom={zoom}
+              selectedNodeId={selectedNodeId}
+              selectedGroupId={selectedGroupId}
+              memberCountByGroup={memberCountByGroup}
+              onSelectGroup={(groupId) => applyCanvasSelection(selectCanvasGroup(groupId))}
+              onRunGroup={runGroup}
+              onUngroup={handleUngroup}
+              onDeleteGroup={handleUngroup}
+              onMoveGroup={moveGroup}
+              isRunning={isRunning}
+            />
+          )}
 
           {showEmptyCanvasState && (
             <EmptyCanvasState
@@ -1511,73 +1524,79 @@ export default function App({ onLoggedOut }: AppProps) {
             setWorkflowName={setWorkflowName}
           />
 
-          <CanvasNodeLayer
-            apiConfig={{
-              baseUrl: "",
-              apiKey: "",
-              remoteModelsByType,
-            }}
-            imageResolutionGroups={generationDictionaries?.imageResolutionGroups}
-            videoResolutionGroups={generationDictionaries?.videoResolutionGroups}
-            isLinkingOnCanvas={isLinkingOnCanvas}
-            linkFromNodeId={linkFromNodeId}
-            linkFromOutputIndex={linkFromOutputIndex}
-            linkToInputIndex={linkToInputIndex}
-            linkToNodeId={linkToNodeId}
-            links={links}
-            graphIndex={canvasGraphIndex}
-            nodes={nodes}
-            pan={pan}
-            draggingNodeId={draggingNodeId}
-            selectedNodeId={selectedNodeId}
-            zoom={zoom}
-            getCanvasLinkTargetIssue={getCanvasLinkTargetIssue}
-            onBeginCanvasLink={handleBeginNodeCanvasLink}
-            onCanvasPointerDown={onCanvasPointerDown}
-            onDeleteNode={removeNode}
-            onDuplicateNode={duplicateNode}
-            onFinishCanvasLink={finishCanvasLink}
-            onHoverCanvasLinkTarget={hoverCanvasLinkTarget}
-            onLeaveCanvasLinkTarget={leaveCanvasLinkTarget}
-            onNodeContextMenu={handleNodeContextMenu}
-            onNodeDragStart={handleNodeDragStart}
-            onPreview={(content, title, nodeId, items, currentIndex) =>
-              setPreviewContent({
-                title: title || "棰勮鍐呭",
-                content,
-                nodeId,
-                items,
-                currentIndex,
-              })
-            }
-            onAnalyzeVideo={handleAnalyzeVideo}
-            onReverseVideoPrompt={handleReverseVideoPrompt}
-            onSelectNode={(nodeId, e) => handleSelectNode(nodeId, e)}
-            onUpdateNodeData={updateNodeData}
-            onUpdateNodeProperty={updateNodeProperty}
-            onSetPrimaryImageResult={setPrimaryImageResult}
-            onExtractFrameImage={handleExtractFrameImage}
-            onReplaceFrameImage={replaceFrameImageUrl}
-            onSyncImagePromptStarterLayout={syncImagePromptStarterLayout}
-            onSplitImageGrid={handleSplitImageGrid}
-            onReplaceImageGridCell={handleReplaceImageGridCell}
-            resolvedInputsMap={resolvedInputsMap}
-            textNodeReferencesMap={textNodeReferencesMap}
-            onRunNode={runNode}
-            onNotice={showNotice}
-          />
-          <MultiSelectionLayer
-            bounds={multiSelectionBounds}
-            dragRect={selectionDragRect}
-            hasLinkableSources={batchLinkSources.length > 1 && !isLinkingOnCanvas}
-            pan={pan}
-            zoom={zoom}
-            onBeginBatchLink={(clientX, clientY) => {
-              beginBatchCanvasLink(batchLinkSources, clientX, clientY);
-            }}
-            onBeginSelectionDrag={handleSelectionDragStart}
-          />
-          {isLinkingOnCanvas && (
+          {shouldRenderCanvasContent && (
+            <CanvasNodeLayer
+              apiConfig={{
+                baseUrl: "",
+                apiKey: "",
+                remoteModelsByType,
+              }}
+              canvasSize={canvasSize}
+              imageResolutionGroups={generationDictionaries?.imageResolutionGroups}
+              videoResolutionGroups={generationDictionaries?.videoResolutionGroups}
+              isLinkingOnCanvas={isLinkingOnCanvas}
+              linkFromNodeId={linkFromNodeId}
+              linkFromOutputIndex={linkFromOutputIndex}
+              linkToInputIndex={linkToInputIndex}
+              linkToNodeId={linkToNodeId}
+              links={links}
+              graphIndex={canvasGraphIndex}
+              nodes={nodes}
+              pan={pan}
+              draggingNodeId={draggingNodeId}
+              selectedNodeId={selectedNodeId}
+              selectedNodeIds={selectedNodeIds}
+              zoom={zoom}
+              getCanvasLinkTargetIssue={getCanvasLinkTargetIssue}
+              onBeginCanvasLink={handleBeginNodeCanvasLink}
+              onCanvasPointerDown={onCanvasPointerDown}
+              onDeleteNode={removeNode}
+              onDuplicateNode={duplicateNode}
+              onFinishCanvasLink={finishCanvasLink}
+              onHoverCanvasLinkTarget={hoverCanvasLinkTarget}
+              onLeaveCanvasLinkTarget={leaveCanvasLinkTarget}
+              onNodeContextMenu={handleNodeContextMenu}
+              onNodeDragStart={handleNodeDragStart}
+              onPreview={(content, title, nodeId, items, currentIndex) =>
+                setPreviewContent({
+                  title: title || "棰勮鍐呭",
+                  content,
+                  nodeId,
+                  items,
+                  currentIndex,
+                })
+              }
+              onAnalyzeVideo={handleAnalyzeVideo}
+              onReverseVideoPrompt={handleReverseVideoPrompt}
+              onSelectNode={(nodeId, e) => handleSelectNode(nodeId, e)}
+              onUpdateNodeData={updateNodeData}
+              onUpdateNodeProperty={updateNodeProperty}
+              onSetPrimaryImageResult={setPrimaryImageResult}
+              onExtractFrameImage={handleExtractFrameImage}
+              onReplaceFrameImage={replaceFrameImageUrl}
+              onSyncImagePromptStarterLayout={syncImagePromptStarterLayout}
+              onSplitImageGrid={handleSplitImageGrid}
+              onReplaceImageGridCell={handleReplaceImageGridCell}
+              resolvedInputsMap={resolvedInputsMap}
+              textNodeReferencesMap={textNodeReferencesMap}
+              onRunNode={runNode}
+              onNotice={showNotice}
+            />
+          )}
+          {shouldRenderCanvasContent && (
+            <MultiSelectionLayer
+              bounds={multiSelectionBounds}
+              dragRect={selectionDragRect}
+              hasLinkableSources={batchLinkSources.length > 1 && !isLinkingOnCanvas}
+              pan={pan}
+              zoom={zoom}
+              onBeginBatchLink={(clientX, clientY) => {
+                beginBatchCanvasLink(batchLinkSources, clientX, clientY);
+              }}
+              onBeginSelectionDrag={handleSelectionDragStart}
+            />
+          )}
+          {shouldRenderCanvasContent && isLinkingOnCanvas && (
             <DraftLinkOverlay
               nodes={nodes}
               nodeById={canvasGraphIndex.nodeById}
@@ -1592,16 +1611,19 @@ export default function App({ onLoggedOut }: AppProps) {
               draftCursor={draftCursor}
             />
           )}
-          {currentView === "canvas" && showMiniMap && miniMapConfig && (
-            <MiniMap
-              activeNodeId={selectedNodeId}
-              config={miniMapConfig}
-              onJumpToWorldPos={jumpToWorldPos}
-              onScrollToNode={scrollToNode}
-              onSelectNode={(nodeId) => applyCanvasSelection(selectCanvasNode(nodeId))}
-            />
-          )}
-          {currentView === "canvas" && (
+          {shouldRenderCanvasContent &&
+            currentView === "canvas" &&
+            showMiniMap &&
+            miniMapConfig && (
+              <MiniMap
+                activeNodeId={selectedNodeId}
+                config={miniMapConfig}
+                onJumpToWorldPos={jumpToWorldPos}
+                onScrollToNode={scrollToNode}
+                onSelectNode={(nodeId) => applyCanvasSelection(selectCanvasNode(nodeId))}
+              />
+            )}
+          {shouldRenderCanvasContent && currentView === "canvas" && (
             <CanvasControls
               showGrid={showGrid}
               showMiniMap={showMiniMap}

@@ -13,6 +13,7 @@ import { getCanvasNodeZIndex } from "../../utils/canvasNodeLayering";
 import type { AiModelsByType } from "../../features/api/aiModelCatalog";
 import type { CanvasGraphIndex } from "../../utils/canvasGraphIndex";
 import type { ImageResolutionPresetGroup } from "../../features/nodes/imageResolutionPresets";
+import { getVisibleCanvasNodeIds } from "../../utils/canvasViewportCulling";
 
 interface CanvasNodeLayerProps {
   apiConfig: {
@@ -20,6 +21,7 @@ interface CanvasNodeLayerProps {
     baseUrl: string;
     remoteModelsByType?: AiModelsByType;
   };
+  canvasSize: { width: number; height: number };
   isLinkingOnCanvas: boolean;
   linkFromNodeId: string;
   linkFromOutputIndex: number;
@@ -32,6 +34,8 @@ interface CanvasNodeLayerProps {
   pan: { x: number; y: number };
   draggingNodeId?: string | null;
   selectedNodeId: string | null;
+  selectedNodeIds?: Set<string>;
+  selectedGroupNodeIds?: Set<string>;
   videoResolutionGroups?: ImageResolutionPresetGroup[];
   zoom: number;
   getCanvasLinkTargetIssue: (nodeId: string, inputIndex: number) => string | null;
@@ -93,6 +97,7 @@ interface CanvasNodeLayerProps {
 
 export default function CanvasNodeLayer({
   apiConfig,
+  canvasSize,
   isLinkingOnCanvas,
   linkFromNodeId,
   linkFromOutputIndex,
@@ -105,6 +110,8 @@ export default function CanvasNodeLayer({
   pan,
   draggingNodeId,
   selectedNodeId,
+  selectedNodeIds,
+  selectedGroupNodeIds,
   videoResolutionGroups,
   zoom,
   getCanvasLinkTargetIssue,
@@ -134,6 +141,41 @@ export default function CanvasNodeLayer({
   onRunNode,
   onNotice,
 }: CanvasNodeLayerProps) {
+  const alwaysVisibleNodeIds = React.useMemo(() => {
+    const ids = new Set<string>();
+    if (selectedNodeId) ids.add(selectedNodeId);
+    if (draggingNodeId) ids.add(draggingNodeId);
+    if (linkFromNodeId) ids.add(linkFromNodeId);
+    if (linkToNodeId) ids.add(linkToNodeId);
+    selectedNodeIds?.forEach((nodeId) => ids.add(nodeId));
+    selectedGroupNodeIds?.forEach((nodeId) => ids.add(nodeId));
+    return ids;
+  }, [
+    draggingNodeId,
+    linkFromNodeId,
+    linkToNodeId,
+    selectedGroupNodeIds,
+    selectedNodeId,
+    selectedNodeIds,
+  ]);
+
+  const visibleNodeIds = React.useMemo(
+    () =>
+      getVisibleCanvasNodeIds({
+        alwaysVisibleNodeIds,
+        canvasSize,
+        nodes,
+        pan,
+        zoom,
+      }),
+    [alwaysVisibleNodeIds, canvasSize, nodes, pan, zoom]
+  );
+
+  const visibleNodes = React.useMemo(
+    () => nodes.filter((node) => visibleNodeIds.has(node.id)),
+    [nodes, visibleNodeIds]
+  );
+
   return (
     <div
       className="absolute inset-0 z-20 origin-top-left"
@@ -142,7 +184,7 @@ export default function CanvasNodeLayer({
       onPointerDown={onCanvasPointerDown}
     >
       <AnimatePresence>
-        {nodes.map((node) => {
+        {visibleNodes.map((node) => {
           return (
             <div
               key={node.id}
@@ -339,7 +381,7 @@ export default function CanvasNodeLayer({
         })}
       </AnimatePresence>
 
-      {nodes.map((node) => {
+      {visibleNodes.map((node) => {
         // LibTV 风格节点不再重复渲染外部端口按钮
         if (["text_node", "image_node", "video_node", "audio_node"].includes(node.type))
           return null;
@@ -375,7 +417,7 @@ export default function CanvasNodeLayer({
         });
       })}
 
-      {nodes.map((node) => {
+      {visibleNodes.map((node) => {
         // LibTV 风格节点不再重复渲染外部端口按钮
         if (["text_node", "image_node", "video_node", "audio_node"].includes(node.type))
           return null;

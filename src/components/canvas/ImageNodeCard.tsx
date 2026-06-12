@@ -44,6 +44,7 @@ import {
 import { cropImageGridCell } from "../../utils/imageGridSplit";
 import { stringifyInputReferenceValues } from "../../utils/inputReferenceValues";
 import { InlineNodePortHandle } from "./InlineNodePortHandle";
+import { getImageLoadingMode, getStripThumbnailLoadingMode } from "../../utils/mediaPreviewPolicy";
 
 interface ImageNodeCardProps {
   node: GraphNode;
@@ -1447,7 +1448,7 @@ function ImageNodeCardImpl({
       document.body.appendChild(root);
       imageFrameDropOverlayRef.current = { head, line, pulse, rail, root, softPulse, thumb };
     },
-    [destroyImageFrameDropOverlay]
+    [destroyImageFrameDropOverlay, node.id]
   );
   const setImageFrameDropHotTarget = React.useCallback(
     (target: HTMLElement | null) => {
@@ -2748,6 +2749,11 @@ function ImageNodeCardImpl({
                             src={url}
                             alt={`\u9010\u5e27\u5206\u6790 ${index + 1}`}
                             className="h-full w-full object-contain transition-all duration-200 group-hover/frame:brightness-110 group-hover/frame:saturate-110"
+                            loading={getStripThumbnailLoadingMode({
+                              activeIndex: activeImageIndex,
+                              index,
+                            })}
+                            decoding="async"
                             draggable={false}
                             onLoad={(event) => {
                               const img = event.currentTarget;
@@ -2804,6 +2810,8 @@ function ImageNodeCardImpl({
                   src={imageUrl}
                   alt="\u751f\u6210\u56fe\u7247"
                   className={`block h-full w-full transition-opacity duration-200 ${isStarterPlaceholder || isImageLoaded ? "opacity-100" : "opacity-0"} ${isStarterPlaceholder ? "object-cover" : "object-contain"}`}
+                  loading={getImageLoadingMode({ selected, visible: true })}
+                  decoding="async"
                   draggable={false}
                   onPointerDown={beginImageFrameDropDrag}
                   onLoad={(e) => {
@@ -2929,6 +2937,11 @@ function ImageNodeCardImpl({
                         src={url}
                         alt={`生成图片 ${index + 1}`}
                         className="h-full w-full object-cover"
+                        loading={getStripThumbnailLoadingMode({
+                          activeIndex: activeImageIndex,
+                          index,
+                        })}
+                        decoding="async"
                         draggable={false}
                       />
                       <div className="absolute inset-x-0 bottom-0 flex h-5 items-center justify-center bg-black/42 text-[10px] font-semibold text-white/90">

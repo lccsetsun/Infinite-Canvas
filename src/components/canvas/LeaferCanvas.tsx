@@ -8,6 +8,7 @@ import { CONNECTION_DRAFT_STYLE, CONNECTION_LINK_STYLE } from "../../utils/conne
 
 interface LeaferCanvasProps {
   nodes: GraphNode[];
+  nodeById?: Map<string, GraphNode>;
   links?: GraphLink[];
   pan: { x: number; y: number };
   zoom: number;
@@ -29,7 +30,6 @@ type LeaferScene = {
   app: Leafer;
   host: HTMLDivElement;
   world: Group;
-  grid: Group;
   links: Group;
   shells: Group;
   decorators: Group;
@@ -43,44 +43,17 @@ function getAdaptiveGridStep(zoom: number) {
   return worldStep;
 }
 
-function buildGrid(group: Group, pan: { x: number; y: number }, zoom: number, width: number, height: number) {
-  group.clear();
-  if (width <= 0 || height <= 0 || zoom <= 0) return;
-
-  const worldStep = getAdaptiveGridStep(zoom);
-  const startWorldX = Math.floor((-pan.x / zoom) / worldStep) * worldStep;
-  const startWorldY = Math.floor((-pan.y / zoom) / worldStep) * worldStep;
-  const endWorldX = ((width - pan.x) / zoom) + worldStep;
-  const endWorldY = ((height - pan.y) / zoom) + worldStep;
-
-  for (let worldY = startWorldY; worldY <= endWorldY; worldY += worldStep) {
-    for (let worldX = startWorldX; worldX <= endWorldX; worldX += worldStep) {
-      const screenX = Math.round(pan.x + worldX * zoom);
-      const screenY = Math.round(pan.y + worldY * zoom);
-      const isOrigin = Math.abs(worldX) < 0.001 && Math.abs(worldY) < 0.001;
-      const size = isOrigin ? 3.2 : 2.2;
-      const fill = isOrigin ? "rgba(96, 165, 250, 0.52)" : "rgba(148, 163, 184, 0.16)";
-
-      group.add(
-        new Ellipse({
-          x: screenX - size / 2,
-          y: screenY - size / 2,
-          width: size,
-          height: size,
-          fill,
-          hitFill: "none",
-        } as never)
-      );
-    }
-  }
-}
-
-function buildLinks(group: Group, nodes: GraphNode[], links: GraphLink[]) {
+function buildLinks(
+  group: Group,
+  nodes: GraphNode[],
+  links: GraphLink[],
+  nodeById?: Map<string, GraphNode>
+) {
   group.clear();
 
   links.forEach((link) => {
-    const fromNode = getNodeById(nodes, link.fromNodeId);
-    const toNode = getNodeById(nodes, link.toNodeId);
+    const fromNode = nodeById?.get(link.fromNodeId) ?? getNodeById(nodes, link.fromNodeId);
+    const toNode = nodeById?.get(link.toNodeId) ?? getNodeById(nodes, link.toNodeId);
     if (!fromNode || !toNode) {
       console.warn("[buildLinks] missing node for link", { link, fromNode: !!fromNode, toNode: !!toNode });
       return;
@@ -328,6 +301,7 @@ function buildDraftPreview(
 
 export default function LeaferCanvas({
   nodes,
+  nodeById,
   links = [],
   pan,
   zoom,
@@ -346,7 +320,6 @@ export default function LeaferCanvas({
 }: LeaferCanvasProps) {
   const hostRef = React.useRef<HTMLDivElement>(null);
   const sceneRef = React.useRef<LeaferScene | null>(null);
-  const viewportRef = React.useRef({ pan, showGrid, zoom });
   const gridOverlayStyle = React.useMemo<React.CSSProperties>(() => {
     const screenStep = getAdaptiveGridStep(zoom) * zoom;
     const minorX = ((pan.x % screenStep) + screenStep) % screenStep;
@@ -360,10 +333,6 @@ export default function LeaferCanvas({
   }, [pan.x, pan.y, zoom]);
 
   React.useEffect(() => {
-    viewportRef.current = { pan, showGrid, zoom };
-  }, [pan, showGrid, zoom]);
-
-  React.useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
 
@@ -372,7 +341,6 @@ export default function LeaferCanvas({
       host.style.backgroundColor = background;
     }
     const world = new Group();
-    const grid = new Group();
     const linksLayer = new Group();
     const shells = new Group();
     const decorators = new Group();
@@ -382,20 +350,13 @@ export default function LeaferCanvas({
     world.add(linksLayer);
     world.add(draft);
     world.add(decorators);
-    app.add(grid);
     app.add(world);
 
-    sceneRef.current = { app, host, world, grid, links: linksLayer, shells, decorators, draft };
-    const viewport = viewportRef.current;
-    if (viewport.showGrid) buildGrid(grid, viewport.pan, viewport.zoom, host.clientWidth, host.clientHeight);
-    grid.visible = viewport.showGrid;
+    sceneRef.current = { app, host, world, links: linksLayer, shells, decorators, draft };
 
     const resizeObserver = new ResizeObserver(() => {
       app.resize({ width: host.clientWidth, height: host.clientHeight });
-      const nextViewport = viewportRef.current;
-      if (sceneRef.current?.grid.visible && nextViewport.showGrid) {
-        buildGrid(sceneRef.current.grid, nextViewport.pan, nextViewport.zoom, host.clientWidth, host.clientHeight);
-      }
+      app.requestRender();
     });
 
     resizeObserver.observe(host);
@@ -416,9 +377,6 @@ export default function LeaferCanvas({
     scene.world.y = pan.y;
     scene.world.scaleX = zoom;
     scene.world.scaleY = zoom;
-    if (scene.grid.visible) {
-      buildGrid(scene.grid, pan, zoom, scene.host.clientWidth, scene.host.clientHeight);
-    }
     scene.app.requestRender();
   }, [pan, pan.x, pan.y, zoom]);
 
@@ -426,23 +384,7 @@ export default function LeaferCanvas({
     const scene = sceneRef.current;
     if (!scene) return;
 
-    if (showGrid) {
-      buildGrid(scene.grid, pan, zoom, scene.host.clientWidth, scene.host.clientHeight);
-      scene.grid.visible = true;
-      scene.grid.opacity = 1;
-    } else {
-      scene.grid.clear();
-      scene.grid.visible = false;
-      scene.grid.opacity = 0;
-    }
-    scene.app.requestRender();
-  }, [pan, showGrid, zoom]);
-
-  React.useEffect(() => {
-    const scene = sceneRef.current;
-    if (!scene) return;
-
-    buildLinks(scene.links, nodes, links);
+    buildLinks(scene.links, nodes, links, nodeById);
     buildNodeShells(scene.shells, nodes, selectedNodeId);
     if (renderDraftPreview) {
       buildDraftPreview(scene.draft, nodes, draftFromNodeId, draftToNodeId, draftFromOutputIndex, draftToInputIndex, draftIssue, draftCursor, animationsPaused);
@@ -473,6 +415,7 @@ export default function LeaferCanvas({
     draftToInputIndex,
     draftToNodeId,
     links,
+    nodeById,
     nodes,
     selectedNodeId,
     showNodeDecorators,
@@ -482,10 +425,12 @@ export default function LeaferCanvas({
 
   return (
     <div className="absolute inset-0 z-0 select-none" aria-hidden="true">
-      {showGrid && <div className="absolute inset-0 pointer-events-none" style={gridOverlayStyle} />}
       <div className="absolute inset-0">
         <div ref={hostRef} className="h-full w-full" />
       </div>
+      {showGrid && (
+        <div className="pointer-events-none absolute inset-0 z-10" style={gridOverlayStyle} />
+      )}
     </div>
   );
 }

@@ -21,6 +21,10 @@ type PendingDrag =
 
 const TEXT_NODE_FOCUS_WIDTH = 620;
 const TEXT_NODE_FOCUS_HEIGHT = 610;
+const FIT_VIEW_PADDING = 160;
+const FIT_VIEW_MIN_ZOOM = 0.15;
+const FIT_VIEW_MAX_ZOOM = 1.1;
+const FIT_VIEW_OFFSET_X = 30;
 
 function getNodeFocusBounds(node: GraphNode) {
   if (node.type === "text_node") {
@@ -148,6 +152,40 @@ export function getWheelPanPosition({
   };
 }
 
+export function getFitViewViewport({
+  canvasSize,
+  nodes,
+}: {
+  canvasSize: { width: number; height: number };
+  nodes: GraphNode[];
+}): CanvasViewport | null {
+  if (canvasSize.width <= 0 || canvasSize.height <= 0 || nodes.length === 0) return null;
+
+  const nodeBounds = nodes.map(getNodeFocusBounds);
+  const minX = Math.min(...nodeBounds.map((bounds) => bounds.minX));
+  const minY = Math.min(...nodeBounds.map((bounds) => bounds.minY));
+
+  const maxX = Math.max(...nodeBounds.map((bounds) => bounds.maxX));
+  const maxY = Math.max(...nodeBounds.map((bounds) => bounds.maxY));
+
+  const width = Math.max(1, maxX - minX);
+  const height = Math.max(1, maxY - minY);
+  const availableWidth = Math.max(1, canvasSize.width - FIT_VIEW_PADDING);
+  const availableHeight = Math.max(1, canvasSize.height - FIT_VIEW_PADDING);
+  const targetZoom = Math.max(
+    FIT_VIEW_MIN_ZOOM,
+    Math.min(FIT_VIEW_MAX_ZOOM, Math.min(availableWidth / width, availableHeight / height))
+  );
+
+  return {
+    zoom: targetZoom,
+    pan: {
+      x: canvasSize.width / 2 - (minX + width / 2) * targetZoom + FIT_VIEW_OFFSET_X,
+      y: canvasSize.height / 2 - (minY + height / 2) * targetZoom,
+    },
+  };
+}
+
 export function useCanvasInteraction({
   initialViewport,
   nodes,
@@ -166,14 +204,20 @@ export function useCanvasInteraction({
   const [draggingNodeId, setDraggingNodeId] = React.useState<string | null>(null);
   const [isCanvasPanning, setIsCanvasPanning] = React.useState(false);
 
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
     const nextKey = viewportKey ?? null;
     if (viewportKeyRef.current === nextKey) return;
 
     viewportKeyRef.current = nextKey;
     setPan(initialViewport?.pan ?? { x: 0, y: 0 });
     setZoom(initialViewport?.zoom ?? 1);
-  }, [initialViewport?.pan.x, initialViewport?.pan.y, initialViewport?.zoom, viewportKey]);
+  }, [
+    initialViewport?.pan,
+    initialViewport?.pan.x,
+    initialViewport?.pan.y,
+    initialViewport?.zoom,
+    viewportKey,
+  ]);
 
   const toWorld = React.useCallback(
     (clientX: number, clientY: number) => {
@@ -191,28 +235,14 @@ export function useCanvasInteraction({
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect || nodes.length === 0) return;
 
-    const nodeBounds = nodes.map(getNodeFocusBounds);
-    const minX = Math.min(...nodeBounds.map((bounds) => bounds.minX));
-    const minY = Math.min(...nodeBounds.map((bounds) => bounds.minY));
-
-    const maxX = Math.max(...nodeBounds.map((bounds) => bounds.maxX));
-    const maxY = Math.max(...nodeBounds.map((bounds) => bounds.maxY));
-
-    const width = Math.max(1, maxX - minX);
-    const height = Math.max(1, maxY - minY);
-
-    const padding = 160;
-    const targetZoom = Math.max(
-      0.35,
-      Math.min(1.1, Math.min((rect.width - padding) / width, (rect.height - padding) / height))
-    );
-
-    setZoom(targetZoom);
-
-    setPan({
-      x: rect.width / 2 - (minX + width / 2) * targetZoom + 30,
-      y: rect.height / 2 - (minY + height / 2) * targetZoom,
+    const viewport = getFitViewViewport({
+      canvasSize: { width: rect.width, height: rect.height },
+      nodes,
     });
+    if (!viewport) return;
+
+    setZoom(viewport.zoom);
+    setPan(viewport.pan);
   }, [nodes]);
 
   const scrollToNode = React.useCallback(
@@ -284,40 +314,39 @@ export function useCanvasInteraction({
     setTimeout(fitView, 0);
   }, [fitView, nodes, updateNodePosition]);
 
-  const onNodeDragStart = React.useCallback((
-    e: React.PointerEvent,
-    node: GraphNode,
-    options?: { batchNodes?: GraphNode[] }
-  ) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDraggingNodeId(node.id);
-    const batchStarts = options?.batchNodes?.map((candidate) => ({
-      nodeId: candidate.id,
-      x: candidate.x,
-      y: candidate.y,
-    }));
-    if (batchStarts && batchStarts.length > 1) {
+  const onNodeDragStart = React.useCallback(
+    (e: React.PointerEvent, node: GraphNode, options?: { batchNodes?: GraphNode[] }) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setDraggingNodeId(node.id);
+      const batchStarts = options?.batchNodes?.map((candidate) => ({
+        nodeId: candidate.id,
+        x: candidate.x,
+        y: candidate.y,
+      }));
+      if (batchStarts && batchStarts.length > 1) {
+        dragRef.current = {
+          mode: "nodes",
+          nodeId: node.id,
+          nodeStarts: batchStarts,
+          startX: e.clientX,
+          startY: e.clientY,
+        };
+        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+        return;
+      }
       dragRef.current = {
-        mode: "nodes",
+        mode: "node",
         nodeId: node.id,
-        nodeStarts: batchStarts,
         startX: e.clientX,
         startY: e.clientY,
+        nodeStartX: node.x,
+        nodeStartY: node.y,
       };
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-      return;
-    }
-    dragRef.current = {
-      mode: "node",
-      nodeId: node.id,
-      startX: e.clientX,
-      startY: e.clientY,
-      nodeStartX: node.x,
-      nodeStartY: node.y,
-    };
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-  }, []);
+    },
+    []
+  );
 
   const onNodesDragStart = React.useCallback((e: React.PointerEvent, batchNodes: GraphNode[]) => {
     const firstNode = batchNodes[0];

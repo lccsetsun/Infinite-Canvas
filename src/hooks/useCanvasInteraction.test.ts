@@ -1,10 +1,25 @@
 import { describe, expect, it } from "vitest";
 import {
+  getFitViewViewport,
   getDraggedNodePosition,
   getDraggedNodePositions,
   getWheelPanPosition,
   shouldStartCanvasPan,
 } from "./useCanvasInteraction";
+import type { GraphNode } from "../types";
+
+function makeNode(id: string, x: number, y: number): GraphNode {
+  return {
+    id,
+    title: id,
+    type: "image_node",
+    x,
+    y,
+    inputs: [],
+    outputs: [],
+    properties: {},
+  };
+}
 
 describe("getDraggedNodePosition", () => {
   it("allows nodes to be dragged past the current top-left viewport", () => {
@@ -99,5 +114,16 @@ describe("getWheelPanPosition", () => {
         pan: { x: 100, y: 240 },
       })
     ).toEqual({ x: 88, y: 160 });
+  });
+});
+
+describe("getFitViewViewport", () => {
+  it("allows very wide workflows to fit into the canvas at the saved minimum zoom", () => {
+    const viewport = getFitViewViewport({
+      canvasSize: { width: 2048, height: 1024 },
+      nodes: [makeNode("left", -1200, 120), makeNode("right", 11800, 620)],
+    });
+
+    expect(viewport?.zoom).toBe(0.15);
   });
 });

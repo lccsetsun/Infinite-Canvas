@@ -42,6 +42,11 @@ import type {
 } from "../features/workspace/remoteCanvas";
 import type { RemoteVideoTaskResult } from "../features/video/remoteVideoGeneration";
 import { queryRemoteVideoGenerationTask } from "../features/video/remoteVideoGeneration";
+import {
+  REMOTE_FULL_SNAPSHOT_MIN_INTERVAL_MS,
+  shouldPersistRemoteSnapshot,
+  type RemoteDirtyKind,
+} from "../utils/remotePersistPolicy";
 
 const HISTORY_LIMIT = 50;
 const PERSIST_DEBOUNCE_MS = 800;
@@ -1030,6 +1035,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     outputsToMap(initialWf?.data.nodeOutputs ?? [])
   );
   const [isRunning, setIsRunning] = useState(false);
+  const [remotePersistRetryTick, setRemotePersistRetryTick] = useState(0);
 
   const [historyState, setHistoryState] = useState<{ stack: HistorySnapshot[]; pointer: number }>(
     () => ({
@@ -1039,7 +1045,10 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
   );
   const skipNextRemotePersistRef = useRef(false);
   const lastRemotePersistSignatureRef = useRef("");
+  const lastRemotePersistedAtRef = useRef(0);
   const pendingLocalPersistSignatureRef = useRef("");
+  const remoteDirtyKindRef = useRef<RemoteDirtyKind>("none");
+  const remotePersistRetryTimeoutRef = useRef<number | null>(null);
   const currentWorkflowIdRef = useRef(initial.currentId);
   const currentNodesRef = useRef(initialNodes);
   const currentLinksRef = useRef(initialWf?.data.links ?? []);
@@ -1122,6 +1131,22 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     setLogs((prev) => [...prev, makeLog(type, message)].slice(-80));
   }, []);
 
+  const markRemoteDirty = useCallback(
+    (dirtyKind: RemoteDirtyKind) => {
+      if (!isRemoteMode || dirtyKind === "none") return;
+      const current = remoteDirtyKindRef.current;
+      if (current === "structure") return;
+      if (dirtyKind === "structure" || current === "none") {
+        remoteDirtyKindRef.current = dirtyKind;
+        return;
+      }
+      if (dirtyKind === "content" || current === "position") {
+        remoteDirtyKindRef.current = dirtyKind;
+      }
+    },
+    [isRemoteMode]
+  );
+
   const syncCurrentWorkflowMeta = useCallback((updater: (wf: Workflow) => Workflow) => {
     setWorkspace((prev) => {
       const wf = prev.workflows[prev.currentId];
@@ -1189,6 +1214,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     }
     currentNodesRef.current = nextNodes;
     currentLinksRef.current = nextLinks;
+    markRemoteDirty("structure");
     setNodes(nextNodes);
     setLinks(nextLinks);
     setSelectedNodeId(node.id);
@@ -1206,6 +1232,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     const node = nodes.find((n) => n.id === nodeId);
     const nextNodes = nodes.filter((n) => n.id !== nodeId);
     const nextLinks = links.filter((l) => l.fromNodeId !== nodeId && l.toNodeId !== nodeId);
+    markRemoteDirty("structure");
     setNodes(nextNodes);
     setLinks(nextLinks);
     setNodeOutputs((prev) => {
@@ -1242,6 +1269,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     currentNodesRef.current = nextNodes;
     currentLinksRef.current = nextLinks;
     currentNodeOutputsRef.current = nextNodeOutputs;
+    markRemoteDirty("structure");
     setNodes(nextNodes);
     setLinks(nextLinks);
     setNodeOutputs(nextNodeOutputs);
@@ -1271,6 +1299,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       getNextNumberedNodeTitle(nodes, src.type) || `${src.title} Copy`
     );
     const nextNodes = [...nodes, clone];
+    markRemoteDirty("structure");
     setNodes(nextNodes);
     setSelectedNodeId(id);
     syncCurrentWorkflowMeta((wf) => ({
@@ -1296,6 +1325,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
 
     currentNodesRef.current = nextNodes;
     currentLinksRef.current = nextLinks;
+    markRemoteDirty("structure");
     setNodes(nextNodes);
     setLinks(nextLinks);
     setSelectedNodeId(incomingNodes[0]?.id ?? null);
@@ -1314,7 +1344,12 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
 
   const updateNodePositions = (updates: NodePositionUpdate[]) => {
     if (updates.length === 0) return;
-    setNodes((prev) => applyNodePositionUpdates(prev, updates));
+    const nextNodes = applyNodePositionUpdates(currentNodesRef.current, updates);
+    if (nextNodes === currentNodesRef.current) return;
+    currentNodesRef.current = nextNodes;
+    markRemoteDirty("position");
+    markLocalRemotePersistPending({ nodes: nextNodes });
+    setNodes(nextNodes);
   };
 
   const layoutNodePositions = (updates: NodePositionUpdate[]) => {
@@ -1323,6 +1358,8 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     if (nextNodes === currentNodesRef.current) return false;
 
     currentNodesRef.current = nextNodes;
+    markRemoteDirty("position");
+    markLocalRemotePersistPending({ nodes: nextNodes });
     setNodes(nextNodes);
     syncCurrentWorkflowMeta((wf) => ({
       ...wf,
@@ -1343,6 +1380,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     currentLinksRef.current = [];
     currentGroupsRef.current = [];
     currentNodeOutputsRef.current = new Map();
+    markRemoteDirty("structure");
     setNodes([]);
     setLinks([]);
     setGroups([]);
@@ -1402,6 +1440,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
 
     const nextLinks = [...activeLinks, link];
     currentLinksRef.current = nextLinks;
+    markRemoteDirty("structure");
     setLinks(nextLinks);
     syncCurrentWorkflowMeta((wf) => ({
       ...wf,
@@ -1475,6 +1514,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     }
 
     currentLinksRef.current = nextLinks;
+    markRemoteDirty("structure");
     setLinks(nextLinks);
     syncCurrentWorkflowMeta((wf) => ({
       ...wf,
@@ -1553,6 +1593,8 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
 
     skipNextRemotePersistRef.current = true;
     lastRemotePersistSignatureRef.current = incomingRemotePersistSignature;
+    lastRemotePersistedAtRef.current = Date.now();
+    remoteDirtyKindRef.current = "none";
     setWorkspace(nextWorkspace);
     setNodes(nextNodes);
     setLinks(nextLinks);
@@ -1570,6 +1612,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       return;
     }
     const nextLinks = links.filter((l) => l.id !== linkId);
+    markRemoteDirty("structure");
     setLinks(nextLinks);
     syncCurrentWorkflowMeta((wf) => ({
       ...wf,
@@ -1612,6 +1655,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
                 }
               : node
           );
+          markRemoteDirty("content");
           setNodes(nextNodes);
           syncCurrentWorkflowMeta((wf) => ({
             ...wf,
@@ -1681,6 +1725,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         },
       ];
 
+      markRemoteDirty("structure");
       setNodes(nextNodes);
       setLinks(nextLinks);
       setSelectedNodeId(textNodeId);
@@ -1697,7 +1742,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         bounds: getImagePromptStarterFocusBounds(textNode, imageNodeX, imageNodeY),
       };
     },
-    [appendLog, links, nodes, pushHistory, syncCurrentWorkflowMeta]
+    [appendLog, links, markRemoteDirty, nodes, pushHistory, syncCurrentWorkflowMeta]
   );
 
   const createTextNodeStarterFlow = useCallback(
@@ -1711,6 +1756,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       });
       if (!result) return null;
 
+      markRemoteDirty("structure");
       setNodes(result.nodes);
       setLinks(result.links);
       setSelectedNodeId(textNodeId);
@@ -1726,7 +1772,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       );
       return result;
     },
-    [appendLog, links, nodes, pushHistory, syncCurrentWorkflowMeta]
+    [appendLog, links, markRemoteDirty, nodes, pushHistory, syncCurrentWorkflowMeta]
   );
 
   const syncImagePromptStarterLayout = useCallback(
@@ -1768,6 +1814,8 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
 
       if (!nextNodesSnapshot) return;
 
+      markRemoteDirty("position");
+      markLocalRemotePersistPending({ nodes: nextNodesSnapshot });
       syncCurrentWorkflowMeta((wf) => ({
         ...wf,
         summary: { ...wf.summary, updatedAt: Date.now() },
@@ -1775,10 +1823,11 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       }));
       pushHistory({ nodes: nextNodesSnapshot, links });
     },
-    [links, pushHistory, syncCurrentWorkflowMeta]
+    [links, markLocalRemotePersistPending, markRemoteDirty, pushHistory, syncCurrentWorkflowMeta]
   );
 
   const updateNodeProperty = (nodeId: string, key: string, value: unknown) => {
+    markRemoteDirty("content");
     setNodes((prev) => {
       const next = updateNodePropertySnapshot(prev, nodeId, key, value);
       markLocalRemotePersistPending({ nodes: next });
@@ -1788,17 +1837,19 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
 
   const updateNodeData = useCallback(
     (nodeId: string, data: Partial<GraphNode["data"]>) => {
+      markRemoteDirty("content");
       setNodes((prev) => {
         const next = updateNodeDataSnapshot(prev, nodeId, data);
         markLocalRemotePersistPending({ nodes: next });
         return next;
       });
     },
-    [markLocalRemotePersistPending]
+    [markLocalRemotePersistPending, markRemoteDirty]
   );
 
   const setPrimaryImageResult = useCallback(
     (nodeId: string, imageUrl: string, imageIndex: number) => {
+      markRemoteDirty("content");
       setNodes((prev) =>
         prev.map((n) =>
           n.id === nodeId
@@ -1824,7 +1875,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         return next;
       });
     },
-    []
+    [markRemoteDirty]
   );
 
   const extractFrameImageNode = useCallback(
@@ -1842,6 +1893,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         return null;
       }
 
+      markRemoteDirty("structure");
       setNodes(snapshot.nodes);
       setLinks(snapshot.links);
       setSelectedNodeId(snapshot.createdNode.id);
@@ -1862,7 +1914,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       appendLog("success", `已提取第 ${frameIndex + 1} 帧为图片节点`);
       return snapshot.createdNode.id;
     },
-    [appendLog, links, nodes, pushHistory, syncCurrentWorkflowMeta]
+    [appendLog, links, markRemoteDirty, nodes, pushHistory, syncCurrentWorkflowMeta]
   );
 
   const replaceExtractedFrameImage = useCallback(
@@ -1877,6 +1929,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         return false;
       }
 
+      markRemoteDirty("content");
       setNodes(snapshot.nodes);
       setNodeOutputs(snapshot.nodeOutputs);
       syncCurrentWorkflowMeta((wf) => ({
@@ -1888,7 +1941,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       appendLog("success", `已回填第 ${snapshot.frameIndex + 1} 帧`);
       return true;
     },
-    [appendLog, links, nodeOutputs, nodes, pushHistory, syncCurrentWorkflowMeta]
+    [appendLog, links, markRemoteDirty, nodeOutputs, nodes, pushHistory, syncCurrentWorkflowMeta]
   );
 
   const replaceFrameImageUrl = useCallback(
@@ -1905,6 +1958,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         return false;
       }
 
+      markRemoteDirty("content");
       setNodes(snapshot.nodes);
       setNodeOutputs(snapshot.nodeOutputs);
       syncCurrentWorkflowMeta((wf) => ({
@@ -1916,7 +1970,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       appendLog("success", `已覆盖第 ${snapshot.frameIndex + 1} 帧`);
       return true;
     },
-    [appendLog, links, nodeOutputs, nodes, pushHistory, syncCurrentWorkflowMeta]
+    [appendLog, links, markRemoteDirty, nodeOutputs, nodes, pushHistory, syncCurrentWorkflowMeta]
   );
 
   const addVideoFrameAnalysis = useCallback(
@@ -1938,6 +1992,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         return;
       }
 
+      markRemoteDirty("structure");
       setNodes(snapshot.nodes);
       setLinks(snapshot.links);
       setNodeOutputs(snapshot.nodeOutputs);
@@ -1958,7 +2013,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         `\u9010\u5e27\u5206\u6790\u5b8c\u6210\uff1a\u751f\u6210 ${captures.length} \u7ec4\u63a5\u53e3\u8282\u70b9`
       );
     },
-    [appendLog, links, nodeOutputs, nodes, pushHistory, syncCurrentWorkflowMeta]
+    [appendLog, links, markRemoteDirty, nodeOutputs, nodes, pushHistory, syncCurrentWorkflowMeta]
   );
 
   const addVideoPromptTextNode = useCallback(
@@ -1977,6 +2032,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         return null;
       }
 
+      markRemoteDirty("structure");
       setNodes(snapshot.nodes);
       setLinks(snapshot.links);
       setNodeOutputs(snapshot.nodeOutputs);
@@ -1995,7 +2051,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       appendLog("success", "视频反推提示词完成：已生成文本节点");
       return snapshot.createdNode;
     },
-    [appendLog, links, nodeOutputs, nodes, pushHistory, syncCurrentWorkflowMeta]
+    [appendLog, links, markRemoteDirty, nodeOutputs, nodes, pushHistory, syncCurrentWorkflowMeta]
   );
 
   const updateSelectedProperty = (key: string, value: unknown) => {
@@ -2032,6 +2088,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       };
       const nextGroups = [...groups, group];
       const nextNodes = nodes.map((n) => (nodeIds.includes(n.id) ? { ...n, groupId: id } : n));
+      markRemoteDirty("structure");
       setGroups(nextGroups);
       setNodes(nextNodes);
       syncCurrentWorkflowMeta((wf) => ({
@@ -2042,7 +2099,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       appendLog("success", `宸叉墦缁?"${group.title}" (${nodeIds.length} 鑺傜偣)`);
       return group;
     },
-    [nodes, groups, appendLog, syncCurrentWorkflowMeta]
+    [nodes, groups, appendLog, markRemoteDirty, syncCurrentWorkflowMeta]
   );
 
   const ungroup = useCallback(
@@ -2051,6 +2108,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       if (!group) return false;
       const nextGroups = groups.filter((g) => g.id !== groupId);
       const nextNodes = nodes.map((n) => (n.groupId === groupId ? { ...n, groupId: null } : n));
+      markRemoteDirty("structure");
       setGroups(nextGroups);
       setNodes(nextNodes);
       syncCurrentWorkflowMeta((wf) => ({
@@ -2061,12 +2119,13 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       appendLog("info", `宸茶В缁?"${group.title}"`);
       return true;
     },
-    [groups, nodes, appendLog, syncCurrentWorkflowMeta]
+    [groups, nodes, appendLog, markRemoteDirty, syncCurrentWorkflowMeta]
   );
 
   const updateGroup = useCallback(
     (groupId: string, patch: Partial<import("../types").GroupBox>): boolean => {
       const nextGroups = groups.map((g) => (g.id === groupId ? { ...g, ...patch } : g));
+      markRemoteDirty("content");
       setGroups(nextGroups);
       syncCurrentWorkflowMeta((wf) => ({
         ...wf,
@@ -2075,7 +2134,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       }));
       return true;
     },
-    [groups, syncCurrentWorkflowMeta]
+    [groups, markRemoteDirty, syncCurrentWorkflowMeta]
   );
 
   const writeNodeOutput = useCallback((nodeId: string, outputs: Record<number, unknown>) => {
@@ -2978,7 +3037,10 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      if (nodes.some((node) => hasNodeRuntimeState(node) && !isPendingRemoteVideoNode(node)))
+      const hasPendingRuntimeState = nodes.some(
+        (node) => hasNodeRuntimeState(node) && !isPendingRemoteVideoNode(node)
+      );
+      if (hasPendingRuntimeState)
         return;
       const persistableNodes = sanitizeNodesRuntimeState(nodes);
       const nextData = {
@@ -3023,9 +3085,36 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
           groups,
         });
         if (persistSignature === lastRemotePersistSignatureRef.current) return;
+        const dirtyKind =
+          remoteDirtyKindRef.current === "none" ? "content" : remoteDirtyKindRef.current;
+        const now = Date.now();
+        if (
+          !shouldPersistRemoteSnapshot({
+            dirtyKind,
+            hasPendingRuntimeState,
+            lastPersistedAt: lastRemotePersistedAtRef.current,
+            lastSignature: lastRemotePersistSignatureRef.current,
+            now,
+            nextSignature: persistSignature,
+          })
+        ) {
+          if (dirtyKind === "position" && lastRemotePersistedAtRef.current > 0) {
+            const retryDelay = Math.max(
+              0,
+              REMOTE_FULL_SNAPSHOT_MIN_INTERVAL_MS - (now - lastRemotePersistedAtRef.current)
+            );
+            remotePersistRetryTimeoutRef.current = window.setTimeout(() => {
+              remotePersistRetryTimeoutRef.current = null;
+              setRemotePersistRetryTick((tick) => tick + 1);
+            }, retryDelay);
+          }
+          return;
+        }
 
         lastRemotePersistSignatureRef.current = persistSignature;
+        lastRemotePersistedAtRef.current = now;
         pendingLocalPersistSignatureRef.current = persistSignature;
+        remoteDirtyKindRef.current = "none";
 
         void onRemotePersist(
           buildRemoteProjectSnapshot(currentWorkflowSummary, {
@@ -3035,8 +3124,23 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         return;
       }
     }, PERSIST_DEBOUNCE_MS);
-    return () => window.clearTimeout(timer);
-  }, [currentWorkflowSummary, groups, isRemoteMode, links, nodeOutputs, nodes, onRemotePersist]);
+    return () => {
+      window.clearTimeout(timer);
+      if (remotePersistRetryTimeoutRef.current !== null) {
+        window.clearTimeout(remotePersistRetryTimeoutRef.current);
+        remotePersistRetryTimeoutRef.current = null;
+      }
+    };
+  }, [
+    currentWorkflowSummary,
+    groups,
+    isRemoteMode,
+    links,
+    nodeOutputs,
+    nodes,
+    onRemotePersist,
+    remotePersistRetryTick,
+  ]);
 
   useEffect(() => {
     if (isRemoteMode) return;

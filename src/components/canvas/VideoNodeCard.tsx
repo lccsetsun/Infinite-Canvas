@@ -47,6 +47,7 @@ import {
 } from "../../utils/floatingMenuPosition";
 import { stringifyInputReferenceValues } from "../../utils/inputReferenceValues";
 import { InlineNodePortHandle } from "./InlineNodePortHandle";
+import { getVideoPreloadMode } from "../../utils/mediaPreviewPolicy";
 
 interface VideoNodeCardProps {
   node: GraphNode;
@@ -760,6 +761,7 @@ function VideoNodeCardImpl({
       setCurrentTime,
       setIsUploadingVideo,
       setMediaDuration,
+      setNaturalVideoSize,
     ]
   );
 
@@ -1036,7 +1038,11 @@ function VideoNodeCardImpl({
               key={videoUrl}
               ref={videoRef}
               src={videoUrl}
-              preload="metadata"
+              preload={getVideoPreloadMode({
+                hovered: isHovered,
+                playing: isPlaying,
+                selected,
+              })}
               className="block h-full w-full object-contain"
               muted={muted || !audioEnabled}
               playsInline
