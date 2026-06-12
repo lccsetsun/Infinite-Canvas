@@ -1,5 +1,6 @@
 import React from "react";
 import { GraphLink, GraphNode } from "../types";
+import type { CanvasGraphIndex } from "../utils/canvasGraphIndex";
 import { resolveAutoConnectTarget } from "../utils/autoConnectTarget";
 import { getLinkDraftIssue } from "../utils/linking";
 
@@ -29,6 +30,7 @@ interface UseCanvasLinkingOptions {
   linkToInputIndex: number;
   linkToNodeId: string;
   links: GraphLink[];
+  graphIndex?: CanvasGraphIndex;
   nodes: GraphNode[];
   setLinkFromNodeId: (nodeId: string) => void;
   setLinkFromOutputIndex: (outputIndex: number) => void;
@@ -56,6 +58,7 @@ export function useCanvasLinking({
   linkToInputIndex,
   linkToNodeId,
   links,
+  graphIndex,
   nodes,
   setLinkFromNodeId,
   setLinkFromOutputIndex,
@@ -120,6 +123,8 @@ export function useCanvasLinking({
         toNodeId: nodeId,
         fromOutputIndex: linkFromOutputIndex,
         toInputIndex: inputIndex,
+        linkKeySet: graphIndex?.linkKeySet,
+        nodeById: graphIndex?.nodeById,
         nodes,
         links,
       });
@@ -127,7 +132,7 @@ export function useCanvasLinking({
       setLinkToNodeId(nodeId);
       setLinkToInputIndex(inputIndex);
     },
-    [isLinkingOnCanvas, linkFromNodeId, linkFromOutputIndex, links, nodes, setLinkToNodeId, setLinkToInputIndex]
+    [graphIndex, isLinkingOnCanvas, linkFromNodeId, linkFromOutputIndex, links, nodes, setLinkToNodeId, setLinkToInputIndex]
   );
 
   const leaveCanvasLinkTarget = React.useCallback(
@@ -197,11 +202,13 @@ export function useCanvasLinking({
         toNodeId: nodeId,
         fromOutputIndex: linkFromOutputIndex,
         toInputIndex: inputIndex,
+        linkKeySet: graphIndex?.linkKeySet,
+        nodeById: graphIndex?.nodeById,
         nodes,
         links,
       });
     },
-    [isLinkingOnCanvas, linkFromNodeId, linkFromOutputIndex, nodes, links]
+    [graphIndex, isLinkingOnCanvas, linkFromNodeId, linkFromOutputIndex, nodes, links]
   );
 
   const finishCanvasLinkRef = React.useRef(finishCanvasLink);
@@ -223,7 +230,8 @@ export function useCanvasLinking({
 
       const nodeEl = target?.closest("[data-canvas-node-id]") as HTMLElement | null;
       const nodeId = nodeEl?.getAttribute("data-canvas-node-id") || "";
-      const node = nodes.find((candidate) => candidate.id === nodeId);
+      const node =
+        graphIndex?.nodeById.get(nodeId) ?? nodes.find((candidate) => candidate.id === nodeId);
       if (!node || node.inputs.length === 0) return null;
 
       return { inputIndex: 0, nodeId };
@@ -244,6 +252,7 @@ export function useCanvasLinking({
           candidateNodeId: inputTarget.nodeId,
           fromNodeId: linkFromNodeId,
           fromOutputIndex: linkFromOutputIndex,
+          graphIndex,
           links,
           nodes,
         });
@@ -289,7 +298,7 @@ export function useCanvasLinking({
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
     };
-  }, [batchLinkSources, isLinkingOnCanvas, toWorld, setDraftCursor, linkFromNodeId, linkFromOutputIndex, linkToNodeId, linkToInputIndex, nodes, links, setLinkToNodeId, setLinkToInputIndex, onBlankLinkDrop, resetCanvasLinkDraft]);
+  }, [batchLinkSources, graphIndex, isLinkingOnCanvas, toWorld, setDraftCursor, linkFromNodeId, linkFromOutputIndex, linkToNodeId, linkToInputIndex, nodes, links, setLinkToNodeId, setLinkToInputIndex, onBlankLinkDrop, resetCanvasLinkDraft]);
 
   return {
     batchLinkSources,

@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createNodeFromType } from "../features/nodes/nodeFactory";
 import { getExecutor } from "../features/nodes/nodeExecutors";
 import type { AiModelsByType } from "../features/api/aiModelCatalog";
@@ -20,6 +20,8 @@ import {
   getLinkDraftIssue,
   isDataTypeCompatible,
 } from "../utils/linking";
+import { applyNodePositionUpdates, type NodePositionUpdate } from "../utils/nodePositionUpdates";
+import { buildCanvasGraphIndex, getGraphLinkKey } from "../utils/canvasGraphIndex";
 import {
   duplicateNodeAsSource,
   isSourceNode,
@@ -1094,6 +1096,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     () => nodes.find((n) => n.id === selectedNodeId) ?? null,
     [nodes, selectedNodeId]
   );
+  const graphIndex = useMemo(() => buildCanvasGraphIndex(nodes, links), [links, nodes]);
 
   useEffect(() => {
     currentWorkflowIdRef.current = workspace.currentId;
@@ -1110,10 +1113,12 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         toNodeId: linkToNodeId,
         fromOutputIndex: linkFromOutputIndex,
         toInputIndex: linkToInputIndex,
+        linkKeySet: graphIndex.linkKeySet,
+        nodeById: graphIndex.nodeById,
         nodes,
         links,
       }),
-    [linkFromNodeId, linkToNodeId, linkFromOutputIndex, linkToInputIndex, nodes, links]
+    [graphIndex, linkFromNodeId, linkToNodeId, linkFromOutputIndex, linkToInputIndex, nodes, links]
   );
 
   const resolvedInputsMap = useMemo(
@@ -1247,8 +1252,13 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     appendLog("info", `宸插鍒惰妭鐐?${src.title}`);
   };
 
+  const updateNodePositions = (updates: NodePositionUpdate[]) => {
+    if (updates.length === 0) return;
+    setNodes((prev) => applyNodePositionUpdates(prev, updates));
+  };
+
   const updateNodePosition = (nodeId: string, x: number, y: number) => {
-    setNodes((prev) => prev.map((n) => (n.id === nodeId ? { ...n, x, y } : n)));
+    updateNodePositions([{ nodeId, x, y }]);
   };
 
   const clearCanvas = () => {
@@ -1271,8 +1281,11 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     fromOutputIndex: number;
     toInputIndex: number;
   }) => {
-    const fromNodeCandidate = nodes.find((n) => n.id === draft.fromNodeId);
-    const toNodeCandidate = nodes.find((n) => n.id === draft.toNodeId);
+    const activeNodes = currentNodesRef.current;
+    const activeLinks = currentLinksRef.current;
+    const activeGraphIndex = buildCanvasGraphIndex(activeNodes, activeLinks);
+    const fromNodeCandidate = activeGraphIndex.nodeById.get(draft.fromNodeId);
+    const toNodeCandidate = activeGraphIndex.nodeById.get(draft.toNodeId);
     const fromOutput = fromNodeCandidate?.outputs[draft.fromOutputIndex];
     const requestedInput = toNodeCandidate?.inputs[draft.toInputIndex];
     const normalizedInputIndex =
@@ -1283,14 +1296,20 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         ? findFirstCompatibleInputIndex(fromNodeCandidate, toNodeCandidate, draft.fromOutputIndex)
         : draft.toInputIndex;
     const normalizedDraft = { ...draft, toInputIndex: normalizedInputIndex };
-    const issue = getLinkDraftIssue({ ...normalizedDraft, nodes, links });
+    const issue = getLinkDraftIssue({
+      ...normalizedDraft,
+      linkKeySet: activeGraphIndex.linkKeySet,
+      nodeById: activeGraphIndex.nodeById,
+      nodes: activeNodes,
+      links: activeLinks,
+    });
     if (issue) {
       appendLog("warning", issue);
       return false;
     }
 
-    const fromNode = nodes.find((n) => n.id === normalizedDraft.fromNodeId)!;
-    const toNode = nodes.find((n) => n.id === normalizedDraft.toNodeId)!;
+    const fromNode = activeGraphIndex.nodeById.get(normalizedDraft.fromNodeId)!;
+    const toNode = activeGraphIndex.nodeById.get(normalizedDraft.toNodeId)!;
     const link: GraphLink = {
       id: makeId("link"),
       fromNodeId: normalizedDraft.fromNodeId,
@@ -1299,7 +1318,8 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       toInputIndex: normalizedDraft.toInputIndex,
     };
 
-    const nextLinks = [...links, link];
+    const nextLinks = [...activeLinks, link];
+    currentLinksRef.current = nextLinks;
     setLinks(nextLinks);
     syncCurrentWorkflowMeta((wf) => ({
       ...wf,
@@ -1322,13 +1342,17 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       toInputIndex: number;
     }>
   ) => {
+    const activeNodes = currentNodesRef.current;
+    const activeLinks = currentLinksRef.current;
+    const activeGraphIndex = buildCanvasGraphIndex(activeNodes, activeLinks);
     const createdLinks: GraphLink[] = [];
     const warnings: string[] = [];
-    let nextLinks = links;
+    let nextLinks = activeLinks;
+    const nextLinkKeySet = new Set(activeGraphIndex.linkKeySet);
 
     drafts.forEach((draft) => {
-      const fromNodeCandidate = nodes.find((n) => n.id === draft.fromNodeId);
-      const toNodeCandidate = nodes.find((n) => n.id === draft.toNodeId);
+      const fromNodeCandidate = activeGraphIndex.nodeById.get(draft.fromNodeId);
+      const toNodeCandidate = activeGraphIndex.nodeById.get(draft.toNodeId);
       const fromOutput = fromNodeCandidate?.outputs[draft.fromOutputIndex];
       const requestedInput = toNodeCandidate?.inputs[draft.toInputIndex];
       const normalizedInputIndex =
@@ -1339,7 +1363,13 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
           ? findFirstCompatibleInputIndex(fromNodeCandidate, toNodeCandidate, draft.fromOutputIndex)
           : draft.toInputIndex;
       const normalizedDraft = { ...draft, toInputIndex: normalizedInputIndex };
-      const issue = getLinkDraftIssue({ ...normalizedDraft, nodes, links: nextLinks });
+      const issue = getLinkDraftIssue({
+        ...normalizedDraft,
+        linkKeySet: nextLinkKeySet,
+        nodeById: activeGraphIndex.nodeById,
+        nodes: activeNodes,
+        links: nextLinks,
+      });
       if (issue) {
         warnings.push(issue);
         return;
@@ -1354,6 +1384,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       };
       createdLinks.push(link);
       nextLinks = [...nextLinks, link];
+      nextLinkKeySet.add(getGraphLinkKey(link));
     });
 
     if (createdLinks.length === 0) {
@@ -2964,6 +2995,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     removeNode,
     duplicateNode,
     updateNodePosition,
+    updateNodePositions,
     updateNodeProperty,
     updateNodeData,
     setPrimaryImageResult,

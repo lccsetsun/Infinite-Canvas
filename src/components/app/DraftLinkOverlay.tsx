@@ -4,9 +4,11 @@ import {
   CONNECTION_DRAFT_STYLE,
   getDraftLinkVisualState,
 } from "../../utils/connectionVisualTokens";
+import { getDraftLinkRenderPolicy } from "../../utils/linkRenderPolicy";
 
 interface DraftLinkOverlayProps {
   nodes: GraphNode[];
+  nodeById?: Map<string, GraphNode>;
   pan: { x: number; y: number };
   zoom: number;
   draftSources?: Array<{ fromNodeId: string; fromOutputIndex: number }>;
@@ -20,6 +22,7 @@ interface DraftLinkOverlayProps {
 
 export default function DraftLinkOverlay({
   nodes,
+  nodeById,
   pan,
   zoom,
   draftSources,
@@ -30,14 +33,16 @@ export default function DraftLinkOverlay({
   draftIssue,
   draftCursor = null,
 }: DraftLinkOverlayProps) {
-  const toNode = draftToNodeId ? getNodeById(nodes, draftToNodeId) : null;
+  const toNode = draftToNodeId ? (nodeById?.get(draftToNodeId) ?? getNodeById(nodes, draftToNodeId)) : null;
   const sources =
     draftSources && draftSources.length > 0
       ? draftSources
       : [{ fromNodeId: draftFromNodeId, fromOutputIndex: draftFromOutputIndex }];
   const renderedPaths = sources
     .map((source) => {
-      const fromNode = source.fromNodeId ? getNodeById(nodes, source.fromNodeId) : null;
+      const fromNode = source.fromNodeId
+        ? (nodeById?.get(source.fromNodeId) ?? getNodeById(nodes, source.fromNodeId))
+        : null;
       if (!fromNode || !fromNode.outputs[source.fromOutputIndex]) return null;
       const from = getOutputAnchor(fromNode, source.fromOutputIndex);
       const to =
@@ -52,6 +57,7 @@ export default function DraftLinkOverlay({
     })
     .filter((path): path is { key: string; path: string } => Boolean(path));
   if (renderedPaths.length === 0) return null;
+  const renderPolicy = getDraftLinkRenderPolicy({ draftPathCount: renderedPaths.length });
 
   const visualState = getDraftLinkVisualState({
     draftIssue,
@@ -111,7 +117,7 @@ export default function DraftLinkOverlay({
               strokeLinecap="round"
               strokeWidth={CONNECTION_DRAFT_STYLE.glow.strokeWidth}
               opacity="0.58"
-              filter="url(#draft-link-overlay-glow)"
+              filter={renderPolicy.renderGlowFilters ? "url(#draft-link-overlay-glow)" : undefined}
             />
             <path
               d={path}
@@ -129,23 +135,25 @@ export default function DraftLinkOverlay({
               strokeWidth={1.65}
               opacity={isValidTarget ? 0.95 : 0.82}
             />
-            <path
-              d={path}
-              className="link-energy-pulse"
-              pathLength={100}
-              fill="none"
-              stroke={
-                isInvalidTarget
-                  ? "url(#draft-link-rose-tail)"
-                  : "url(#draft-link-cyan-violet-tail)"
-              }
-              strokeDasharray={isInvalidTarget ? "54 260" : "34 66"}
-              strokeLinecap="round"
-              strokeWidth={isInvalidTarget ? 3.1 : isValidTarget ? 3.4 : 2.8}
-              opacity={isInvalidTarget ? 0.84 : 0.9}
-              filter="url(#draft-link-overlay-glow)"
-            />
-            {!isInvalidTarget && (
+            {renderPolicy.renderDraftAnimation && (
+              <path
+                d={path}
+                className="link-energy-pulse"
+                pathLength={100}
+                fill="none"
+                stroke={
+                  isInvalidTarget
+                    ? "url(#draft-link-rose-tail)"
+                    : "url(#draft-link-cyan-violet-tail)"
+                }
+                strokeDasharray={isInvalidTarget ? "54 260" : "34 66"}
+                strokeLinecap="round"
+                strokeWidth={isInvalidTarget ? 3.1 : isValidTarget ? 3.4 : 2.8}
+                opacity={isInvalidTarget ? 0.84 : 0.9}
+                filter={renderPolicy.renderGlowFilters ? "url(#draft-link-overlay-glow)" : undefined}
+              />
+            )}
+            {renderPolicy.renderDraftAnimation && !isInvalidTarget && (
               <path
                 d={path}
                 className="link-energy-pulse link-energy-pulse-soft"
@@ -157,7 +165,7 @@ export default function DraftLinkOverlay({
                 strokeWidth={1.45}
               />
             )}
-            {!isInvalidTarget && (
+            {renderPolicy.renderDraftAnimation && !isInvalidTarget && (
               <path
                 d={path}
                 className="link-energy-pulse-head"
@@ -167,7 +175,7 @@ export default function DraftLinkOverlay({
                 strokeDasharray="3 97"
                 strokeLinecap="round"
                 strokeWidth={isValidTarget ? 2.05 : 1.7}
-                filter="url(#draft-link-overlay-glow)"
+                filter={renderPolicy.renderGlowFilters ? "url(#draft-link-overlay-glow)" : undefined}
               />
             )}
           </g>

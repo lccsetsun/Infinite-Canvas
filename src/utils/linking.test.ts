@@ -7,6 +7,7 @@ import {
   isDataTypeCompatible,
 } from "./linking";
 import { GraphLink, GraphNode } from "../types";
+import { buildCanvasGraphIndex } from "./canvasGraphIndex";
 
 function mockNode(
   partial: Partial<GraphNode> & Pick<GraphNode, "id" | "title" | "type">
@@ -163,6 +164,32 @@ describe("getLinkDraftIssue", () => {
         toNodeId: "n2",
         fromOutputIndex: 0,
         toInputIndex: 0,
+        nodes: [from, to],
+        links,
+      })
+    ).toBe("该连线已存在。");
+  });
+
+  it("rejects duplicate links through the graph index", () => {
+    const links: GraphLink[] = [
+      {
+        id: "l1",
+        fromNodeId: "n1",
+        fromOutputIndex: 0,
+        toNodeId: "n2",
+        toInputIndex: 0,
+      },
+    ];
+    const graphIndex = buildCanvasGraphIndex([from, to], links);
+
+    expect(
+      getLinkDraftIssue({
+        fromNodeId: "n1",
+        toNodeId: "n2",
+        fromOutputIndex: 0,
+        toInputIndex: 0,
+        linkKeySet: graphIndex.linkKeySet,
+        nodeById: graphIndex.nodeById,
         nodes: [from, to],
         links,
       })

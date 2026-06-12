@@ -38,6 +38,17 @@ import {
   type Rect,
 } from "./utils/multiSelection";
 import {
+  clearCanvasSelection,
+  getLegacySelectionState,
+  selectCanvasGroup,
+  selectCanvasLink,
+  selectCanvasNode,
+  selectCanvasNodes,
+  toggleCanvasNodeSelection,
+  type CanvasSelection,
+} from "./utils/canvasSelection";
+import { buildCanvasGraphIndex } from "./utils/canvasGraphIndex";
+import {
   shouldShowCanvasProjectLoading,
   shouldShowEmptyCanvasState,
 } from "./utils/canvasLoadState";
@@ -190,6 +201,7 @@ export default function App({ onLoggedOut }: AppProps) {
     removeLink,
     duplicateNode,
     updateNodePosition,
+    updateNodePositions,
     updateNodeProperty,
     updateNodeData,
     setPrimaryImageResult,
@@ -370,6 +382,28 @@ export default function App({ onLoggedOut }: AppProps) {
     [selectionDrag]
   );
   const batchLinkSources = React.useMemo(() => getBatchOutputDrafts(selectedNodes), [selectedNodes]);
+  const canvasGraphIndex = React.useMemo(
+    () => buildCanvasGraphIndex(nodes, links),
+    [links, nodes]
+  );
+
+  const currentCanvasSelection = React.useMemo<CanvasSelection>(() => {
+    if (selectedLinkId) return selectCanvasLink(selectedLinkId, selectedLinkAnchor);
+    if (selectedGroupId) return selectCanvasGroup(selectedGroupId);
+    return selectCanvasNodes(Array.from(selectedNodeIds));
+  }, [selectedGroupId, selectedLinkAnchor, selectedLinkId, selectedNodeIds]);
+
+  const applyCanvasSelection = React.useCallback(
+    (selection: CanvasSelection) => {
+      const legacy = getLegacySelectionState(selection);
+      setSelectedNodeId(legacy.selectedNodeId);
+      setSelectedNodeIds(new Set(legacy.selectedNodeIds));
+      setSelectedGroupId(legacy.selectedGroupId);
+      setSelectedLinkId(legacy.selectedLinkId);
+      setSelectedLinkAnchor(legacy.selectedLinkAnchor);
+    },
+    [setSelectedNodeId]
+  );
 
   const handleCreateProjectFromWelcome = React.useCallback(() => {
     setIsWelcomeDismissed(true);
@@ -398,6 +432,7 @@ export default function App({ onLoggedOut }: AppProps) {
     nodes,
     snapToGridEnabled,
     updateNodePosition,
+    updateNodePositions,
     viewportKey: activeWorkflowId,
   });
 
@@ -432,6 +467,7 @@ export default function App({ onLoggedOut }: AppProps) {
     linkToInputIndex,
     linkToNodeId,
     links,
+    graphIndex: canvasGraphIndex,
     nodes,
     setLinkFromNodeId,
     setLinkFromOutputIndex,
@@ -553,45 +589,31 @@ export default function App({ onLoggedOut }: AppProps) {
       const dy = y - group.y;
       if (dx === 0 && dy === 0) return;
       updateGroup(groupId, { x, y });
-      const memberIds: string[] = nodes.filter((n) => n.groupId === groupId).map((n) => n.id);
-      memberIds.forEach((id: string) => {
-        const n = nodes.find((nn) => nn.id === id);
-        if (!n) return;
-        updateNodePosition(id, n.x + dx, n.y + dy);
-      });
+      updateNodePositions(
+        nodes
+          .filter((node) => node.groupId === groupId)
+          .map((node) => ({ nodeId: node.id, x: node.x + dx, y: node.y + dy }))
+      );
     },
-    [groups, nodes, updateGroup, updateNodePosition]
+    [groups, nodes, updateGroup, updateNodePositions]
   );
 
   const handleSelectNode = React.useCallback(
     (nodeId: string, e?: { shiftKey?: boolean }) => {
-      setSelectedGroupId(null);
-      setSelectedLinkId(null);
       if (e?.shiftKey) {
-        setSelectedNodeIds((prev) => {
-          const next = new Set(prev);
-          if (next.has(nodeId)) next.delete(nodeId);
-          else next.add(nodeId);
-          setSelectedNodeId(next.size === 1 ? Array.from(next)[0] : null);
-          return next;
-        });
+        applyCanvasSelection(toggleCanvasNodeSelection(currentCanvasSelection, nodeId));
         return;
       }
-      setSelectedNodeIds(new Set([nodeId]));
-      setSelectedNodeId(nodeId);
+      applyCanvasSelection(selectCanvasNode(nodeId));
     },
-    [setSelectedNodeId]
+    [applyCanvasSelection, currentCanvasSelection]
   );
 
   const handleSelectLink = React.useCallback(
     (linkId: string | null, anchor?: { x: number; y: number } | null) => {
-      setSelectedNodeId(null);
-      setSelectedNodeIds(new Set());
-      setSelectedGroupId(null);
-      setSelectedLinkId(linkId);
-      setSelectedLinkAnchor(linkId ? (anchor ?? null) : null);
+      applyCanvasSelection(linkId ? selectCanvasLink(linkId, anchor ?? null) : clearCanvasSelection());
     },
-    [setSelectedNodeId]
+    [applyCanvasSelection]
   );
 
   const isCanvasSelectionBlocked = React.useCallback((target: HTMLElement | null) => {
@@ -619,11 +641,7 @@ export default function App({ onLoggedOut }: AppProps) {
       event.stopPropagation();
       const rect = canvasRef.current?.getBoundingClientRect();
       const node = nodes.find((candidate) => candidate.id === nodeId);
-      setSelectedGroupId(null);
-      setSelectedLinkId(null);
-      setSelectedLinkAnchor(null);
-      setSelectedNodeIds(new Set([nodeId]));
-      setSelectedNodeId(nodeId);
+      applyCanvasSelection(selectCanvasNode(nodeId));
       setMenuPos(null);
       setPendingLinkMenuDraft(null);
       if (node?.type === "text_node") {
@@ -636,7 +654,7 @@ export default function App({ onLoggedOut }: AppProps) {
         y: event.clientY - (rect?.top ?? 0),
       });
     },
-    [canvasRef, nodes, setSelectedNodeId]
+    [applyCanvasSelection, canvasRef, nodes]
   );
 
   const closeNodeContextMenu = React.useCallback(() => {
@@ -684,20 +702,12 @@ export default function App({ onLoggedOut }: AppProps) {
       blankPointerDownRef.current = null;
 
       if (isClick) {
-        setSelectedNodeId(null);
-        setSelectedNodeIds(new Set());
-        setSelectedGroupId(null);
-        setSelectedLinkId(null);
-        setSelectedLinkAnchor(null);
+        applyCanvasSelection(clearCanvasSelection());
         closeNodeContextMenu();
       } else {
         const nextSelectedNodes = getNodesFullyInsideSelection(nodes, finalRect);
         const nextIds = nextSelectedNodes.map((node) => node.id);
-        setSelectedNodeIds(new Set(nextIds));
-        setSelectedNodeId(nextIds.length === 1 ? nextIds[0] : null);
-        setSelectedGroupId(null);
-        setSelectedLinkId(null);
-        setSelectedLinkAnchor(null);
+        applyCanvasSelection(selectCanvasNodes(nextIds));
         closeNodeContextMenu();
       }
 
@@ -705,7 +715,7 @@ export default function App({ onLoggedOut }: AppProps) {
       e.stopPropagation();
       return true;
     },
-    [closeNodeContextMenu, nodes, selectionDrag, setSelectedNodeId, toWorld]
+    [applyCanvasSelection, closeNodeContextMenu, nodes, selectionDrag, toWorld]
   );
 
   const handleCreateGroup = () => {
@@ -716,8 +726,7 @@ export default function App({ onLoggedOut }: AppProps) {
     }
     const group = createGroup(ids);
     if (group) {
-      setSelectedGroupId(group.id);
-      setSelectedNodeIds(new Set());
+      applyCanvasSelection(selectCanvasGroup(group.id));
     }
   };
 
@@ -765,9 +774,9 @@ export default function App({ onLoggedOut }: AppProps) {
   const handleUngroup = React.useCallback(
     (groupId: string) => {
       ungroup(groupId);
-      if (selectedGroupId === groupId) setSelectedGroupId(null);
+      if (selectedGroupId === groupId) applyCanvasSelection(clearCanvasSelection());
     },
-    [ungroup, selectedGroupId]
+    [applyCanvasSelection, ungroup, selectedGroupId]
   );
 
   const clearMenuCloseTimer = React.useCallback(() => {
@@ -932,7 +941,7 @@ export default function App({ onLoggedOut }: AppProps) {
       if (!isEditingField && (e.key === "Delete" || e.key === "Backspace") && selectedLinkId) {
         e.preventDefault();
         removeLink(selectedLinkId);
-        setSelectedLinkId(null);
+        applyCanvasSelection(clearCanvasSelection());
         return;
       }
       if (!isEditingField && (e.key === "Delete" || e.key === "Backspace") && selectedNodeId) {
@@ -955,6 +964,7 @@ export default function App({ onLoggedOut }: AppProps) {
     removeLink,
     selectedNodeId,
     removeNode,
+    applyCanvasSelection,
   ]);
 
   React.useEffect(() => {
@@ -1157,6 +1167,7 @@ export default function App({ onLoggedOut }: AppProps) {
           {!isLinkingOnCanvas && (
             <LinkInteractionOverlay
               links={links}
+              graphIndex={canvasGraphIndex}
               nodes={nodes}
               pan={pan}
               zoom={zoom}
@@ -1182,7 +1193,7 @@ export default function App({ onLoggedOut }: AppProps) {
             selectedNodeId={selectedNodeId}
             selectedGroupId={selectedGroupId}
             memberCountByGroup={memberCountByGroup}
-            onSelectGroup={setSelectedGroupId}
+            onSelectGroup={(groupId) => applyCanvasSelection(selectCanvasGroup(groupId))}
             onRunGroup={runGroup}
             onUngroup={handleUngroup}
             onDeleteGroup={handleUngroup}
@@ -1337,8 +1348,7 @@ export default function App({ onLoggedOut }: AppProps) {
                 className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left font-semibold text-rose-100/90 transition hover:bg-rose-400/12 hover:text-rose-50"
                 onClick={() => {
                   removeNode(nodeContextMenu.nodeId);
-                  setSelectedNodeIds(new Set());
-                  setSelectedLinkId(null);
+                  applyCanvasSelection(clearCanvasSelection());
                   closeNodeContextMenu();
                 }}
               >
@@ -1382,6 +1392,7 @@ export default function App({ onLoggedOut }: AppProps) {
             linkToInputIndex={linkToInputIndex}
             linkToNodeId={linkToNodeId}
             links={links}
+            graphIndex={canvasGraphIndex}
             nodes={nodes}
             pan={pan}
             draggingNodeId={draggingNodeId}
@@ -1435,6 +1446,7 @@ export default function App({ onLoggedOut }: AppProps) {
           {isLinkingOnCanvas && (
             <DraftLinkOverlay
               nodes={nodes}
+              nodeById={canvasGraphIndex.nodeById}
               pan={pan}
               zoom={zoom}
               draftSources={activeBatchLinkSources}
@@ -1452,7 +1464,7 @@ export default function App({ onLoggedOut }: AppProps) {
               config={miniMapConfig}
               onJumpToWorldPos={jumpToWorldPos}
               onScrollToNode={scrollToNode}
-              onSelectNode={setSelectedNodeId}
+              onSelectNode={(nodeId) => applyCanvasSelection(selectCanvasNode(nodeId))}
             />
           )}
           {currentView === "canvas" && (

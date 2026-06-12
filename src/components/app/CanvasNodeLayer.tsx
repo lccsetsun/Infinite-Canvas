@@ -11,6 +11,7 @@ import type { VideoFrameCaptureItem } from "../../features/video/frameCapture";
 import type { TextNodeReferenceItem } from "../../utils/textNodeReferences";
 import { getCanvasNodeZIndex } from "../../utils/canvasNodeLayering";
 import type { AiModelsByType } from "../../features/api/aiModelCatalog";
+import type { CanvasGraphIndex } from "../../utils/canvasGraphIndex";
 
 interface CanvasNodeLayerProps {
   apiConfig: {
@@ -24,6 +25,7 @@ interface CanvasNodeLayerProps {
   linkToInputIndex: number;
   linkToNodeId: string;
   links: GraphLink[];
+  graphIndex?: CanvasGraphIndex;
   nodes: GraphNode[];
   pan: { x: number; y: number };
   draggingNodeId?: string | null;
@@ -85,6 +87,7 @@ export default function CanvasNodeLayer({
   linkToInputIndex,
   linkToNodeId,
   links,
+  graphIndex,
   nodes,
   pan,
   draggingNodeId,
@@ -162,9 +165,14 @@ export default function CanvasNodeLayer({
                   onPreview={onPreview}
                   resolvedInputs={resolvedInputsMap?.get(node.id)}
                   references={textNodeReferencesMap?.get(node.id) ?? []}
-                  hasConnectedLinks={links.some(
-                    (link) => link.fromNodeId === node.id || link.toNodeId === node.id
-                  )}
+                  hasConnectedLinks={
+                    graphIndex
+                      ? Boolean(
+                          graphIndex.linksBySourceNodeId.get(node.id)?.length ||
+                            graphIndex.linksByTargetNodeId.get(node.id)?.length
+                        )
+                      : links.some((link) => link.fromNodeId === node.id || link.toNodeId === node.id)
+                  }
                   onRun={onRunNode}
                   // 连线相关
                   isLinkingOnCanvas={isLinkingOnCanvas}

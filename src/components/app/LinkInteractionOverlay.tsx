@@ -1,11 +1,14 @@
 import React from "react";
 import { Trash2 } from "lucide-react";
 import { GraphLink, GraphNode } from "../../types";
+import type { CanvasGraphIndex } from "../../utils/canvasGraphIndex";
 import { isLinkConnectedToNode } from "../../utils/linkAnimationState";
-import { getInputAnchor, getNodeById, getOutputAnchor, linkPath } from "../canvas/geometry";
+import { getLinkInteractionRenderPolicy } from "../../utils/linkRenderPolicy";
+import { getInputAnchor, getOutputAnchor, linkPath } from "../canvas/geometry";
 
 interface LinkInteractionOverlayProps {
   links: GraphLink[];
+  graphIndex?: CanvasGraphIndex;
   nodes: GraphNode[];
   pan: { x: number; y: number };
   zoom: number;
@@ -34,6 +37,7 @@ function getBezierMidpoint(from: { x: number; y: number }, to: { x: number; y: n
 
 export default function LinkInteractionOverlay({
   links,
+  graphIndex,
   nodes,
   pan,
   zoom,
@@ -45,10 +49,20 @@ export default function LinkInteractionOverlay({
   onDeleteLink,
 }: LinkInteractionOverlayProps) {
   const [hoveredLinkId, setHoveredLinkId] = React.useState<string | null>(null);
+  const renderPolicy = getLinkInteractionRenderPolicy({
+    animationsPaused,
+    linkCount: links.length,
+  });
   const renderedLinks = links
     .map((link) => {
-      const fromNode = getNodeById(nodes, link.fromNodeId);
-      const toNode = getNodeById(nodes, link.toNodeId);
+      const fromNode =
+        graphIndex?.nodeById.get(link.fromNodeId) ??
+        nodes.find((node) => node.id === link.fromNodeId) ??
+        null;
+      const toNode =
+        graphIndex?.nodeById.get(link.toNodeId) ??
+        nodes.find((node) => node.id === link.toNodeId) ??
+        null;
       if (!fromNode || !toNode) return null;
 
       const from = getOutputAnchor(fromNode, link.fromOutputIndex);
@@ -124,9 +138,32 @@ export default function LinkInteractionOverlay({
           {renderedLinks.map((link) => {
             const selected = link.id === selectedLinkId;
             const hovered = link.id === hoveredLinkId;
-            const active = !animationsPaused && isLinkConnectedToNode(link, selectedNodeId);
+            const connectedToSelectedNode = isLinkConnectedToNode(link, selectedNodeId);
+            const active = renderPolicy.renderActiveAnimation && connectedToSelectedNode;
+            const activeStatic =
+              renderPolicy.renderActiveStaticHighlight && connectedToSelectedNode && !active;
             return (
               <React.Fragment key={link.id}>
+                {activeStatic && (
+                  <>
+                    <path
+                      d={link.path}
+                      fill="none"
+                      stroke="rgba(129,140,248,0.22)"
+                      strokeLinecap="round"
+                      strokeWidth={5.4}
+                      opacity={0.36}
+                    />
+                    <path
+                      d={link.path}
+                      fill="none"
+                      stroke="rgba(224,231,255,0.72)"
+                      strokeLinecap="round"
+                      strokeWidth={1.4}
+                      opacity={0.72}
+                    />
+                  </>
+                )}
                 {active && (
                   <>
                     <path
@@ -136,7 +173,7 @@ export default function LinkInteractionOverlay({
                       strokeLinecap="round"
                       strokeWidth={7}
                       opacity={0.42}
-                      filter="url(#active-link-energy-glow)"
+                      filter={renderPolicy.renderGlowFilters ? "url(#active-link-energy-glow)" : undefined}
                     />
                     <path
                       d={link.path}
@@ -174,7 +211,7 @@ export default function LinkInteractionOverlay({
                       strokeDasharray="34 66"
                       strokeLinecap="round"
                       strokeWidth={3.1}
-                      filter="url(#active-link-energy-glow)"
+                      filter={renderPolicy.renderGlowFilters ? "url(#active-link-energy-glow)" : undefined}
                     />
                     <path
                       d={link.path}
@@ -195,7 +232,7 @@ export default function LinkInteractionOverlay({
                       strokeDasharray="3 97"
                       strokeLinecap="round"
                       strokeWidth={2.35}
-                      filter="url(#active-link-energy-glow)"
+                      filter={renderPolicy.renderGlowFilters ? "url(#active-link-energy-glow)" : undefined}
                     />
                   </>
                 )}

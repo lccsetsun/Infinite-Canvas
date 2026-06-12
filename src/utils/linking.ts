@@ -1,4 +1,5 @@
 import { DataType, GraphLink, GraphNode } from "../types";
+import { getGraphLinkKey } from "./canvasGraphIndex";
 import { isSourceNode } from "./sourceNodes";
 
 export type LinkDraftIssueCode =
@@ -56,10 +57,21 @@ export function getLinkDraftIssueDetail(args: {
   toNodeId: string;
   fromOutputIndex: number;
   toInputIndex: number;
+  linkKeySet?: Set<string>;
   nodes: GraphNode[];
+  nodeById?: Map<string, GraphNode>;
   links: GraphLink[];
 }): LinkDraftIssueDetail | null {
-  const { fromNodeId, toNodeId, fromOutputIndex, toInputIndex, nodes, links } = args;
+  const {
+    fromNodeId,
+    toNodeId,
+    fromOutputIndex,
+    toInputIndex,
+    linkKeySet,
+    nodes,
+    nodeById,
+    links,
+  } = args;
 
   if (!fromNodeId || !toNodeId) {
     return { code: "MISSING_ENDPOINTS", message: "请选择起点节点和终点节点。" };
@@ -68,8 +80,8 @@ export function getLinkDraftIssueDetail(args: {
     return { code: "SAME_NODE", message: "起点和终点不能是同一个节点。" };
   }
 
-  const fromNode = nodes.find((n) => n.id === fromNodeId);
-  const toNode = nodes.find((n) => n.id === toNodeId);
+  const fromNode = nodeById?.get(fromNodeId) ?? nodes.find((n) => n.id === fromNodeId);
+  const toNode = nodeById?.get(toNodeId) ?? nodes.find((n) => n.id === toNodeId);
   if (!fromNode || !toNode) {
     return { code: "NODE_NOT_FOUND", message: "节点不存在或已被删除。" };
   }
@@ -98,13 +110,15 @@ export function getLinkDraftIssueDetail(args: {
     };
   }
 
-  const exists = links.some(
-    (l) =>
-      l.fromNodeId === fromNodeId &&
-      l.fromOutputIndex === fromOutputIndex &&
-      l.toNodeId === toNodeId &&
-      l.toInputIndex === toInputIndex
-  );
+  const exists = linkKeySet
+    ? linkKeySet.has(getGraphLinkKey({ fromNodeId, fromOutputIndex, toNodeId, toInputIndex }))
+    : links.some(
+        (l) =>
+          l.fromNodeId === fromNodeId &&
+          l.fromOutputIndex === fromOutputIndex &&
+          l.toNodeId === toNodeId &&
+          l.toInputIndex === toInputIndex
+      );
   if (exists) {
     return { code: "DUPLICATE_LINK", message: "该连线已存在。" };
   }
@@ -117,7 +131,9 @@ export function getLinkDraftIssue(args: {
   toNodeId: string;
   fromOutputIndex: number;
   toInputIndex: number;
+  linkKeySet?: Set<string>;
   nodes: GraphNode[];
+  nodeById?: Map<string, GraphNode>;
   links: GraphLink[];
 }): string | null {
   return getLinkDraftIssueDetail(args)?.message ?? null;

@@ -1,4 +1,5 @@
 import { GraphLink, GraphNode } from "../types";
+import type { CanvasGraphIndex } from "./canvasGraphIndex";
 import { findFirstCompatibleInputIndex, getLinkDraftIssue, isDataTypeCompatible } from "./linking";
 
 export function resolveAutoConnectTarget(args: {
@@ -6,12 +7,13 @@ export function resolveAutoConnectTarget(args: {
   candidateNodeId: string;
   fromNodeId: string;
   fromOutputIndex: number;
+  graphIndex?: CanvasGraphIndex;
   links: GraphLink[];
   nodes: GraphNode[];
 }): { nodeId: string; inputIndex: number } | null {
-  const { candidateInputIndex = 0, candidateNodeId, fromNodeId, fromOutputIndex, links, nodes } = args;
-  const fromNode = nodes.find((node) => node.id === fromNodeId);
-  const toNode = nodes.find((node) => node.id === candidateNodeId);
+  const { candidateInputIndex = 0, candidateNodeId, fromNodeId, fromOutputIndex, graphIndex, links, nodes } = args;
+  const fromNode = graphIndex?.nodeById.get(fromNodeId) ?? nodes.find((node) => node.id === fromNodeId);
+  const toNode = graphIndex?.nodeById.get(candidateNodeId) ?? nodes.find((node) => node.id === candidateNodeId);
   const fromOutput = fromNode?.outputs[fromOutputIndex];
   if (!fromNode || !toNode || !fromOutput || toNode.inputs.length === 0) return null;
 
@@ -25,6 +27,8 @@ export function resolveAutoConnectTarget(args: {
     fromNodeId,
     toNodeId: candidateNodeId,
     fromOutputIndex,
+    linkKeySet: graphIndex?.linkKeySet,
+    nodeById: graphIndex?.nodeById,
     toInputIndex: inputIndex,
     nodes,
     links,

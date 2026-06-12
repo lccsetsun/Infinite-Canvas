@@ -47,6 +47,7 @@ interface UseCanvasInteractionOptions {
   initialViewport?: CanvasViewport | null;
   snapToGridEnabled?: boolean;
   updateNodePosition: (nodeId: string, x: number, y: number) => void;
+  updateNodePositions?: (updates: Array<{ nodeId: string; x: number; y: number }>) => void;
   viewportKey?: string | null;
 }
 
@@ -152,6 +153,7 @@ export function useCanvasInteraction({
   nodes,
   snapToGridEnabled = true,
   updateNodePosition,
+  updateNodePositions,
   viewportKey,
 }: UseCanvasInteractionOptions) {
   const canvasRef = React.useRef<HTMLDivElement>(null);
@@ -365,14 +367,17 @@ export function useCanvasInteraction({
       if (pending.mode === "canvas") {
         setPan({ x: pending.x, y: pending.y });
       } else if (pending.mode === "nodes") {
-        pending.positions.forEach((position) => {
-          updateNodePosition(position.nodeId, position.x, position.y);
-        });
+        if (updateNodePositions) updateNodePositions(pending.positions);
+        else {
+          pending.positions.forEach((position) => {
+            updateNodePosition(position.nodeId, position.x, position.y);
+          });
+        }
       } else {
         updateNodePosition(pending.nodeId, pending.x, pending.y);
       }
     });
-  }, [updateNodePosition]);
+  }, [updateNodePosition, updateNodePositions]);
 
   const onPointerMove = React.useCallback(
     (e: React.PointerEvent) => {
@@ -436,16 +441,19 @@ export function useCanvasInteraction({
       } else if (pending?.mode === "node") {
         updateNodePosition(pending.nodeId, pending.x, pending.y);
       } else if (pending?.mode === "nodes") {
-        pending.positions.forEach((position) => {
-          updateNodePosition(position.nodeId, position.x, position.y);
-        });
+        if (updateNodePositions) updateNodePositions(pending.positions);
+        else {
+          pending.positions.forEach((position) => {
+            updateNodePosition(position.nodeId, position.x, position.y);
+          });
+        }
       }
       pendingDragRef.current = null;
       setIsCanvasPanning(false);
       dragRef.current = { mode: null, startX: 0, startY: 0 };
       setDraggingNodeId(null);
     },
-    [updateNodePosition]
+    [updateNodePosition, updateNodePositions]
   );
 
   const onWheel = React.useCallback(
