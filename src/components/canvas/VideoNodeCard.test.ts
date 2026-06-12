@@ -6,6 +6,7 @@ import {
   getVideoNodeInputReferences,
   normalizeVideoDurationSeconds,
   resolveEmptyVideoNodeSize,
+  shouldShowVideoPreview,
   shouldShowVideoUploadButton,
 } from "./VideoNodeCard";
 
@@ -175,5 +176,37 @@ describe("shouldShowVideoUploadButton", () => {
         isUploadingVideo: false,
       })
     ).toBe(true);
+  });
+});
+
+describe("shouldShowVideoPreview", () => {
+  it("keeps an existing video preview visible during frame analysis", () => {
+    expect(
+      shouldShowVideoPreview({
+        hasVideoUrl: true,
+        isRunning: true,
+        isUploadingAsset: false,
+        loadingOperation: "frame-analysis",
+      })
+    ).toBe(true);
+  });
+
+  it("hides the preview for generate loading and uploads", () => {
+    expect(
+      shouldShowVideoPreview({
+        hasVideoUrl: true,
+        isRunning: true,
+        isUploadingAsset: false,
+        loadingOperation: "generate",
+      })
+    ).toBe(false);
+
+    expect(
+      shouldShowVideoPreview({
+        hasVideoUrl: true,
+        isRunning: false,
+        isUploadingAsset: true,
+      })
+    ).toBe(false);
   });
 });

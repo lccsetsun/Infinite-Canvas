@@ -266,6 +266,24 @@ describe("getImagePreviewNodeWidth", () => {
 });
 
 describe("getFrameStripAdaptiveLayout", () => {
+  it("can lock frame analysis tiles to the saved node size", () => {
+    const layout = getFrameStripAdaptiveLayout({
+      fallbackTileHeight: 432,
+      fallbackTileWidth: 248,
+      fixedTileSize: true,
+      imageSizes: Object.fromEntries(
+        Array.from({ length: 7 }, (_, index) => [index, { width: 496, height: 864 }])
+      ),
+      imageUrls: Array.from({ length: 7 }, (_, index) => `frame-${index + 1}.png`),
+      maxColumns: 5,
+    });
+
+    expect(layout.tiles).toHaveLength(7);
+    expect(layout.tiles[0]).toEqual({ height: 432, width: 248 });
+    expect(layout.width).toBe(5 * 248 + 4 + 20);
+    expect(layout.height).toBe(2 * 432 + 1 + 20);
+  });
+
   it("keeps five adaptive frames per row without fixed empty cells", () => {
     const layout = getFrameStripAdaptiveLayout({
       fallbackTileHeight: 160,

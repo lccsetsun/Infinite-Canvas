@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { formatGridCellLabel, getGridCellCrop, getGridChildNodePosition } from "./imageGridSplit";
+import {
+  formatGridCellLabel,
+  getGridCellCrop,
+  getGridChildNodePosition,
+  getGridCellReplacementDrawPlan,
+} from "./imageGridSplit";
 
 describe("image grid split helpers", () => {
   it("calculates the crop rectangle for a selected grid cell", () => {
@@ -44,5 +49,32 @@ describe("image grid split helpers", () => {
 
   it("formats rectangular-grid labels", () => {
     expect(formatGridCellLabel(2, 4, 3)).toBe("第 5 格 (2行2列)");
+  });
+
+  it("plans a permanent grid-cell replacement without changing the source image size", () => {
+    expect(
+      getGridCellReplacementDrawPlan(
+        { width: 1200, height: 800 },
+        { width: 1600, height: 900 },
+        3,
+        4
+      )
+    ).toEqual({
+      canvas: { width: 1200, height: 800 },
+      cell: {
+        sx: 400,
+        sy: 266,
+        sw: 400,
+        sh: 267,
+        row: 1,
+        col: 1,
+      },
+      replacementSource: {
+        sx: 126,
+        sy: 0,
+        sw: 1348,
+        sh: 900,
+      },
+    });
   });
 });

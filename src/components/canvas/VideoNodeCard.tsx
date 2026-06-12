@@ -27,7 +27,11 @@ import { isSourceNode } from "../../utils/sourceNodes";
 import { Tooltip } from "../common/Tooltip";
 import { downloadMediaAsset, extensionFromAssetUrl } from "../../utils/mediaAssets";
 import { uploadFileToOss } from "../../features/resource/ossApi";
-import { getMediaNodeLoadingLabel, isMediaNodeRunning } from "../../utils/mediaNodeLoadingState";
+import {
+  getMediaNodeLoadingLabel,
+  isMediaNodeRunning,
+  type MediaNodeLoadingOperation,
+} from "../../utils/mediaNodeLoadingState";
 import { ImageResolutionPicker } from "./ImageResolutionPicker";
 import { ReferencePreviewCard } from "./ReferencePreviewCard";
 import { PromptTokenEditor } from "./PromptTokenEditor";
@@ -274,6 +278,22 @@ export function shouldShowVideoUploadButton({
   return !isRunning && !isUploadingAsset && !isUploadingVideo;
 }
 
+export function shouldShowVideoPreview({
+  hasVideoUrl,
+  isRunning,
+  isUploadingAsset,
+  loadingOperation,
+}: {
+  hasVideoUrl: boolean;
+  isRunning: boolean;
+  isUploadingAsset: boolean;
+  loadingOperation?: MediaNodeLoadingOperation;
+}) {
+  if (!hasVideoUrl || isUploadingAsset) return false;
+  if (!isRunning) return true;
+  return loadingOperation === "frame-analysis" || loadingOperation === "video-prompt";
+}
+
 function VideoNodeCardImpl({
   node,
   selected,
@@ -354,6 +374,7 @@ function VideoNodeCardImpl({
   const hasNonTextInputReferences = inputReferences.some((reference) => reference.kind !== "text");
   const promptText = (node.properties.text as string) || "";
   const videoUrl = (node.data?.videoUrl as string) || (node.properties.videoUrl as string) || "";
+  const loadingOperation = node.data?.loadingOperation as MediaNodeLoadingOperation | undefined;
   const promptComposerVisible =
     !isRunning && !isSourceAssetNode && (isHovered || selected) && !videoUrl && !isUploadingAsset;
   const rawAspectRatio = (node.properties.aspect_ratio as string) || "16:9";
@@ -362,10 +383,11 @@ function VideoNodeCardImpl({
     resolutionPresetGroups?.find((group) => group.resolution === rawResolution) ??
     resolutionPresetGroups?.[0];
   const resolution = activeResolutionGroup?.resolution ?? rawResolution;
-  const aspectRatio =
-    activeResolutionGroup?.presets.some((preset) => preset.aspectRatio === rawAspectRatio)
-      ? rawAspectRatio
-      : activeResolutionGroup?.presets[0]?.aspectRatio ?? rawAspectRatio;
+  const aspectRatio = activeResolutionGroup?.presets.some(
+    (preset) => preset.aspectRatio === rawAspectRatio
+  )
+    ? rawAspectRatio
+    : (activeResolutionGroup?.presets[0]?.aspectRatio ?? rawAspectRatio);
   const durationSeconds = normalizeVideoDurationSeconds(node.properties.duration);
   const durationSliderPercent = getVideoDurationSliderPercent(durationSeconds);
   const audioEnabled = node.properties.audio !== false;
@@ -413,7 +435,13 @@ function VideoNodeCardImpl({
     () => resolveEmptyVideoNodeSize({ aspectRatio, resolution }),
     [aspectRatio, resolution]
   );
-  const hasVideoPreview = Boolean(videoUrl && !isRunning && !isUploadingAsset);
+  const hasVideoPreview = shouldShowVideoPreview({
+    hasVideoUrl: Boolean(videoUrl),
+    isRunning,
+    isUploadingAsset,
+    loadingOperation,
+  });
+  const shouldShowVideoLoadingOverlay = Boolean(isUploadingAsset || (isRunning && hasVideoPreview));
   const portTopStyle = getVideoNodePortTopStyle({
     emptyVideoNodePortCenterY: emptyVideoNodeSize.portCenterY,
     hasVideoPreview,
@@ -525,7 +553,7 @@ function VideoNodeCardImpl({
   ]);
 
   React.useEffect(() => {
-    if (hasVideoPreview) return;
+    if (videoUrl) return;
     if (
       node.data?.videoDisplayWidth === emptyVideoNodeSize.displayWidth &&
       node.data?.videoDisplayHeight === emptyVideoNodeSize.displayHeight &&
@@ -556,7 +584,7 @@ function VideoNodeCardImpl({
     node.data?.videoPortCenterY,
     node.id,
     onUpdateData,
-    hasVideoPreview,
+    videoUrl,
   ]);
 
   React.useEffect(() => {
@@ -876,7 +904,7 @@ function VideoNodeCardImpl({
     </AnimatePresence>
   );
 
-  if (videoUrl && !isRunning && !isUploadingAsset) {
+  if (hasVideoPreview) {
     return (
       <motion.div
         className="absolute text-left"
@@ -1047,11 +1075,21 @@ function VideoNodeCardImpl({
               onEnded={() => setIsPlaying(false)}
               draggable={false}
             />
-            {isUploadingAsset && (
-              <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-[#070b12]/42 backdrop-blur-[1px]">
-                <div className="flex items-center gap-2 rounded-full border border-cyan-100/18 bg-[#0b1220]/82 px-3 py-1.5 text-[12px] font-semibold text-cyan-50/86 shadow-[0_16px_42px_-22px_rgba(34,211,238,0.48),inset_0_1px_0_rgba(255,255,255,0.08)]">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  <span>上传中</span>
+            {shouldShowVideoLoadingOverlay && (
+              <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center overflow-hidden bg-[#050812]/20">
+                <div className="absolute inset-0 animate-[video-node-light-breathe_1.9s_ease-in-out_infinite] bg-[radial-gradient(circle_at_38%_34%,rgba(125,211,252,0.16),transparent_34%),radial-gradient(circle_at_68%_62%,rgba(167,139,250,0.14),transparent_38%)]" />
+                <div className="absolute inset-y-[-24%] left-[-52%] w-[44%] animate-[video-node-light-sweep_1.55s_ease-in-out_infinite] bg-[linear-gradient(90deg,transparent,rgba(224,242,254,0.08)_18%,rgba(255,255,255,0.38)_48%,rgba(103,232,249,0.12)_68%,transparent)] blur-[1px]" />
+                <div className="absolute inset-y-[-18%] left-[-46%] w-[24%] animate-[video-node-light-sweep_1.55s_ease-in-out_infinite] bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.42),transparent)] [animation-delay:0.18s]" />
+                <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-100/60 to-transparent" />
+                <div className="relative flex items-center gap-2 rounded-full border border-cyan-100/18 bg-[#08101d]/68 px-3 py-1.5 text-[12px] font-semibold text-cyan-50/88 shadow-[0_18px_46px_-24px_rgba(34,211,238,0.62),inset_0_1px_0_rgba(255,255,255,0.1)] backdrop-blur-md">
+                  <span className="h-1.5 w-1.5 rounded-full bg-cyan-100 shadow-[0_0_14px_rgba(165,243,252,0.9)]" />
+                  <span>
+                    {getMediaNodeLoadingLabel({
+                      isUploading: isUploadingAsset,
+                      mediaType: "video",
+                      operation: loadingOperation,
+                    })}
+                  </span>
                 </div>
               </div>
             )}

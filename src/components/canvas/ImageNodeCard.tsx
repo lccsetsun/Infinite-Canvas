@@ -41,6 +41,7 @@ import {
   getFloatingMenuPosition,
   type FloatingMenuPosition,
 } from "../../utils/floatingMenuPosition";
+import { cropImageGridCell } from "../../utils/imageGridSplit";
 import { stringifyInputReferenceValues } from "../../utils/inputReferenceValues";
 import { InlineNodePortHandle } from "./InlineNodePortHandle";
 
@@ -70,7 +71,16 @@ interface ImageNodeCardProps {
     imageUrl: string,
     gridRows: number,
     gridCols: number,
-    cellIndices: number[]
+    cellIndices: number[],
+    clientPoint?: { clientX: number; clientY: number }
+  ) => void;
+  onReplaceImageGridCell?: (
+    nodeId: string,
+    imageUrl: string,
+    replacementUrl: string,
+    gridRows: number,
+    gridCols: number,
+    cellIndex: number
   ) => void;
   onPreview?: (
     content: string,
@@ -140,6 +150,41 @@ const IMAGE_NODE_TEXT_INPUT_KEYS = new Set([
   "用户提示词",
   "user_prompt",
 ]);
+
+function getDragThumbAnchorX(clientX: number, originClientX: number, thumbWidth: number) {
+  return clientX + (clientX >= originClientX ? -1 : 1) * (thumbWidth / 2 + 8);
+}
+
+function getDragConnectorPath(
+  originClientX: number,
+  originClientY: number,
+  targetClientX: number,
+  targetClientY: number
+) {
+  return `M ${originClientX} ${originClientY} L ${targetClientX} ${targetClientY}`;
+}
+
+function getElementEdgeAnchor(element: HTMLElement, targetClientX: number, targetClientY: number) {
+  const rect = element.getBoundingClientRect();
+  const centerX = rect.left + rect.width / 2;
+  const centerY = rect.top + rect.height / 2;
+  const dx = targetClientX - centerX;
+  const dy = targetClientY - centerY;
+
+  if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) {
+    return { x: centerX, y: centerY };
+  }
+
+  const scaleX = Math.abs(dx) > 0.01 ? rect.width / 2 / Math.abs(dx) : Number.POSITIVE_INFINITY;
+  const scaleY = Math.abs(dy) > 0.01 ? rect.height / 2 / Math.abs(dy) : Number.POSITIVE_INFINITY;
+  const scale = Math.min(scaleX, scaleY);
+
+  return {
+    x: centerX + dx * scale,
+    y: centerY + dy * scale,
+  };
+}
+
 function getImageModelLabel(model: string) {
   return model;
 }
@@ -234,12 +279,14 @@ export function getImagePreviewNodeWidth({
 export function getFrameStripAdaptiveLayout({
   fallbackTileHeight,
   fallbackTileWidth,
+  fixedTileSize = false,
   imageSizes,
   imageUrls,
   maxColumns,
 }: {
   fallbackTileHeight: number;
   fallbackTileWidth: number;
+  fixedTileSize?: boolean;
   imageSizes?: Record<number, { width: number; height: number }>;
   imageUrls: string[];
   maxColumns: number;
@@ -250,6 +297,12 @@ export function getFrameStripAdaptiveLayout({
   const targetHeight = safeFallbackHeight * FRAME_STRIP_TILE_SCALE;
   const fallbackRatio = safeFallbackWidth / safeFallbackHeight;
   const tiles = imageUrls.map((_, index) => {
+    if (fixedTileSize) {
+      return {
+        height: safeFallbackHeight,
+        width: safeFallbackWidth,
+      };
+    }
     const size = imageSizes?.[index];
     const ratio =
       size && size.width > 0 && size.height > 0 ? size.width / size.height : fallbackRatio;
@@ -271,11 +324,12 @@ export function getFrameStripAdaptiveLayout({
     }
   }
   layoutWidth = Math.max(layoutWidth, safeFallbackWidth);
+  const rowTileHeight = fixedTileSize ? safeFallbackHeight : targetHeight;
 
   return {
     height: Math.max(
       safeFallbackHeight,
-      rowCount * targetHeight +
+      rowCount * rowTileHeight +
         Math.max(0, rowCount - 1) * FRAME_STRIP_TILE_GAP +
         FRAME_STRIP_PADDING * 2
     ),
@@ -530,6 +584,7 @@ function ImageNodeCardImpl({
   onReplaceFrameImage,
   onSyncImagePromptStarterLayout,
   onSplitImageGrid,
+  onReplaceImageGridCell,
   onPreview,
   resolvedInputs,
   resolutionPresetGroups,
@@ -592,8 +647,12 @@ function ImageNodeCardImpl({
   const imageElementRef = React.useRef<HTMLImageElement | null>(null);
   const uploadInputRef = React.useRef<HTMLInputElement | null>(null);
   const frameExtractionDragRef = React.useRef<{
+    mode: "frame" | "grid";
+    cellIndex?: number;
     element: HTMLElement;
     frameIndex: number;
+    gridCols?: number;
+    gridRows?: number;
     originClientX: number;
     originClientY: number;
     pointerId: number;
@@ -606,8 +665,12 @@ function ImageNodeCardImpl({
   } | null>(null);
   const frameExtractionDragCleanupRef = React.useRef<(() => void) | null>(null);
   const frameExtractionOverlayRef = React.useRef<{
-    line: SVGLineElement;
+    head: SVGPathElement;
+    line: SVGPathElement;
+    pulse: SVGPathElement;
     origin: SVGCircleElement;
+    rail: SVGPathElement;
+    softPulse: SVGPathElement;
     root: HTMLDivElement;
     thumb: HTMLDivElement;
   } | null>(null);
@@ -626,7 +689,11 @@ function ImageNodeCardImpl({
   } | null>(null);
   const imageFrameDropCleanupRef = React.useRef<(() => void) | null>(null);
   const imageFrameDropOverlayRef = React.useRef<{
-    line: SVGLineElement;
+    head: SVGPathElement;
+    line: SVGPathElement;
+    pulse: SVGPathElement;
+    rail: SVGPathElement;
+    softPulse: SVGPathElement;
     root: HTMLDivElement;
     thumb: HTMLDivElement;
   } | null>(null);
@@ -736,32 +803,107 @@ function ImageNodeCardImpl({
       merge.append(blurNode, sourceNode);
       filter.append(blur, merge);
       defs.append(filter);
+      const tailGradient = document.createElementNS("http://www.w3.org/2000/svg", "linearGradient");
+      tailGradient.setAttribute("id", `frame-drag-energy-tail-${node.id}`);
+      tailGradient.setAttribute("x1", "0%");
+      tailGradient.setAttribute("y1", "0%");
+      tailGradient.setAttribute("x2", "100%");
+      tailGradient.setAttribute("y2", "0%");
+      [
+        ["0%", "rgba(103,232,249,0)"],
+        ["30%", "rgba(103,232,249,0.18)"],
+        ["72%", "rgba(167,139,250,0.86)"],
+        ["100%", "rgba(224,231,255,0.18)"],
+      ].forEach(([offset, stopColor]) => {
+        const stop = document.createElementNS("http://www.w3.org/2000/svg", "stop");
+        stop.setAttribute("offset", offset);
+        stop.setAttribute("stop-color", stopColor);
+        tailGradient.appendChild(stop);
+      });
+      const headGradient = document.createElementNS("http://www.w3.org/2000/svg", "linearGradient");
+      headGradient.setAttribute("id", `frame-drag-energy-head-${node.id}`);
+      headGradient.setAttribute("x1", "0%");
+      headGradient.setAttribute("y1", "0%");
+      headGradient.setAttribute("x2", "100%");
+      headGradient.setAttribute("y2", "0%");
+      [
+        ["0%", "rgba(224,231,255,0.08)"],
+        ["46%", "rgba(255,255,255,0.98)"],
+        ["100%", "rgba(103,232,249,0.94)"],
+      ].forEach(([offset, stopColor]) => {
+        const stop = document.createElementNS("http://www.w3.org/2000/svg", "stop");
+        stop.setAttribute("offset", offset);
+        stop.setAttribute("stop-color", stopColor);
+        headGradient.appendChild(stop);
+      });
+      defs.append(tailGradient, headGradient);
 
-      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-      line.setAttribute("x1", String(drag.originClientX));
-      line.setAttribute("y1", String(drag.originClientY));
-      line.setAttribute("x2", String(clientX));
-      line.setAttribute("y2", String(clientY));
-      line.setAttribute("stroke", "rgba(165,180,252,0.96)");
-      line.setAttribute("stroke-width", "2.5");
-      line.setAttribute("stroke-dasharray", "8 8");
+      const thumbAnchorX = getDragThumbAnchorX(clientX, drag.originClientX, drag.thumbWidth);
+      const originAnchor = getElementEdgeAnchor(drag.element, thumbAnchorX, clientY);
+      const pathD = getDragConnectorPath(originAnchor.x, originAnchor.y, thumbAnchorX, clientY);
+      const rail = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      rail.setAttribute("d", pathD);
+      rail.setAttribute("fill", "none");
+      rail.setAttribute("stroke", "rgba(34,211,238,0.22)");
+      rail.setAttribute("stroke-width", "7");
+      rail.setAttribute("opacity", "0.46");
+      rail.setAttribute("filter", `url(#frame-drag-native-glow-${node.id})`);
+      rail.setAttribute("stroke-linecap", "round");
+      const line = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      line.setAttribute("d", pathD);
+      line.setAttribute("data-origin-x", String(originAnchor.x));
+      line.setAttribute("data-origin-y", String(originAnchor.y));
+      line.setAttribute("fill", "none");
+      line.setAttribute("stroke", "rgba(224,231,255,0.72)");
+      line.setAttribute("stroke-width", "1.65");
       line.setAttribute("stroke-linecap", "round");
-      line.setAttribute("filter", `url(#frame-drag-native-glow-${node.id})`);
+      const pulse = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      pulse.setAttribute("d", pathD);
+      pulse.setAttribute("class", "link-energy-pulse");
+      pulse.setAttribute("pathLength", "100");
+      pulse.setAttribute("fill", "none");
+      pulse.setAttribute("stroke", `url(#frame-drag-energy-tail-${node.id})`);
+      pulse.setAttribute("stroke-dasharray", "34 66");
+      pulse.setAttribute("stroke-linecap", "round");
+      pulse.setAttribute("stroke-width", "3");
+      pulse.setAttribute("filter", `url(#frame-drag-native-glow-${node.id})`);
+      const softPulse = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      softPulse.setAttribute("d", pathD);
+      softPulse.setAttribute("class", "link-energy-pulse link-energy-pulse-soft");
+      softPulse.setAttribute("pathLength", "100");
+      softPulse.setAttribute("fill", "none");
+      softPulse.setAttribute("stroke", "rgba(196,181,253,0.62)");
+      softPulse.setAttribute("stroke-dasharray", "16 84");
+      softPulse.setAttribute("stroke-linecap", "round");
+      softPulse.setAttribute("stroke-width", "1.45");
+      const head = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      head.setAttribute("d", pathD);
+      head.setAttribute("class", "link-energy-pulse-head");
+      head.setAttribute("pathLength", "100");
+      head.setAttribute("fill", "none");
+      head.setAttribute("stroke", `url(#frame-drag-energy-head-${node.id})`);
+      head.setAttribute("stroke-dasharray", "3 97");
+      head.setAttribute("stroke-linecap", "round");
+      head.setAttribute("stroke-width", "2");
+      head.setAttribute("filter", `url(#frame-drag-native-glow-${node.id})`);
       const origin = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      origin.setAttribute("cx", String(drag.originClientX));
-      origin.setAttribute("cy", String(drag.originClientY));
-      origin.setAttribute("r", "4.5");
-      origin.setAttribute("fill", "rgba(103,232,249,0.98)");
+      origin.setAttribute("cx", String(originAnchor.x));
+      origin.setAttribute("cy", String(originAnchor.y));
+      origin.setAttribute("r", "5.5");
+      origin.setAttribute("fill", "rgba(191,219,254,0.98)");
+      origin.setAttribute("stroke", "rgba(255,255,255,0.76)");
+      origin.setAttribute("stroke-width", "1.5");
       origin.setAttribute("filter", `url(#frame-drag-native-glow-${node.id})`);
-      svg.append(defs, line, origin);
+      svg.append(defs, rail, line, pulse, softPulse, head, origin);
 
       const thumb = document.createElement("div");
       thumb.setAttribute("data-frame-drag-thumb", "true");
       Object.assign(thumb.style, {
         background: "rgba(13,20,33,0.9)",
-        border: "1px solid rgba(207,250,254,0.28)",
+        border: "1px solid rgba(196,210,255,0.55)",
         borderRadius: "12px",
-        boxShadow: "0 16px 34px -18px rgba(0,0,0,0.95), 0 0 24px rgba(129,140,248,0.2)",
+        boxShadow:
+          "0 18px 38px -18px rgba(0,0,0,0.96), 0 0 0 1px rgba(129,140,248,0.22), 0 0 28px rgba(129,140,248,0.28)",
         height: `${drag.thumbHeight}px`,
         left: `${clientX - drag.thumbWidth / 2}px`,
         overflow: "hidden",
@@ -783,18 +925,42 @@ function ImageNodeCardImpl({
 
       root.append(svg, thumb);
       document.body.appendChild(root);
-      frameExtractionOverlayRef.current = { line, origin, root, thumb };
+      frameExtractionOverlayRef.current = {
+        head,
+        line,
+        origin,
+        pulse,
+        rail,
+        root,
+        softPulse,
+        thumb,
+      };
     },
     [destroyFrameExtractionOverlay, node.id]
   );
   const updateFrameExtractionOverlay = React.useCallback((clientX: number, clientY: number) => {
     const overlay = frameExtractionOverlayRef.current;
     if (!overlay) return;
-    overlay.line.setAttribute("x2", String(clientX));
-    overlay.line.setAttribute("y2", String(clientY));
     const drag = frameExtractionDragRef.current;
     const thumbWidth = drag?.thumbWidth ?? overlay.thumb.offsetWidth;
     const thumbHeight = drag?.thumbHeight ?? overlay.thumb.offsetHeight;
+    const fallbackOriginX = Number.parseFloat(overlay.origin.getAttribute("cx") || "0");
+    const fallbackOriginY = Number.parseFloat(overlay.origin.getAttribute("cy") || "0");
+    const originClientX = drag?.originClientX ?? fallbackOriginX;
+    const thumbAnchorX = getDragThumbAnchorX(clientX, originClientX, thumbWidth);
+    const originAnchor = drag?.element
+      ? getElementEdgeAnchor(drag.element, thumbAnchorX, clientY)
+      : { x: fallbackOriginX, y: fallbackOriginY };
+    const pathD = getDragConnectorPath(originAnchor.x, originAnchor.y, thumbAnchorX, clientY);
+    overlay.line.setAttribute("d", pathD);
+    overlay.line.setAttribute("data-origin-x", String(originAnchor.x));
+    overlay.line.setAttribute("data-origin-y", String(originAnchor.y));
+    overlay.rail.setAttribute("d", pathD);
+    overlay.pulse.setAttribute("d", pathD);
+    overlay.softPulse.setAttribute("d", pathD);
+    overlay.head.setAttribute("d", pathD);
+    overlay.origin.setAttribute("cx", String(originAnchor.x));
+    overlay.origin.setAttribute("cy", String(originAnchor.y));
     overlay.thumb.style.left = `${clientX - thumbWidth / 2}px`;
     overlay.thumb.style.top = `${clientY - thumbHeight / 2}px`;
   }, []);
@@ -823,21 +989,38 @@ function ImageNodeCardImpl({
       destroyFrameExtractionOverlay();
       if (canceled) return;
       if (drag.dragging) {
-        onExtractFrameImage?.(node.id, drag.frameIndex, {
-          clientX,
-          clientY,
-        });
+        if (drag.mode === "grid") {
+          const cellIndex = drag.cellIndex ?? drag.frameIndex;
+          const gridRows = drag.gridRows ?? activeGridSelection?.rows;
+          const gridCols = drag.gridCols ?? activeGridSelection?.cols;
+          if (gridRows && gridCols && imageUrl) {
+            onSplitImageGrid?.(node.id, imageUrl, gridRows, gridCols, [cellIndex], {
+              clientX,
+              clientY,
+            });
+          }
+        } else {
+          onExtractFrameImage?.(node.id, drag.frameIndex, {
+            clientX,
+            clientY,
+          });
+        }
         return;
       }
+      if (drag.mode === "grid") return;
       setActiveImageIndex(drag.frameIndex);
       onSetPrimaryImageResult?.(node.id, drag.url, drag.frameIndex);
     },
     [
+      activeGridSelection?.cols,
+      activeGridSelection?.rows,
       cleanupFrameExtractionDragListeners,
       destroyFrameExtractionOverlay,
+      imageUrl,
       node.id,
       onExtractFrameImage,
       onSetPrimaryImageResult,
+      onSplitImageGrid,
       setActiveImageIndex,
     ]
   );
@@ -852,6 +1035,7 @@ function ImageNodeCardImpl({
       frameExtractionDragRef.current = {
         element: event.currentTarget,
         frameIndex,
+        mode: "frame",
         originClientX: rect.left + rect.width / 2,
         originClientY: rect.top + rect.height / 2,
         pointerId: event.pointerId,
@@ -968,6 +1152,120 @@ function ImageNodeCardImpl({
     },
     [finishFrameExtractionDrag]
   );
+  const beginGridCellExtractionDrag = React.useCallback(
+    (event: React.PointerEvent<HTMLElement>, cellIndex: number) => {
+      if (!onSplitImageGrid || !activeGridSelection || !imageUrl || event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      cleanupFrameExtractionDragListeners();
+      event.currentTarget.setPointerCapture(event.pointerId);
+      const rect = event.currentTarget.getBoundingClientRect();
+      frameExtractionDragRef.current = {
+        cellIndex,
+        element: event.currentTarget,
+        frameIndex: cellIndex,
+        gridCols: activeGridSelection.cols,
+        gridRows: activeGridSelection.rows,
+        mode: "grid",
+        originClientX: rect.left + rect.width / 2,
+        originClientY: rect.top + rect.height / 2,
+        pointerId: event.pointerId,
+        startClientX: event.clientX,
+        startClientY: event.clientY,
+        thumbHeight: Math.max(1, Math.round(rect.height / 2)),
+        thumbWidth: Math.max(1, Math.round(rect.width / 2)),
+        url: imageUrl,
+        dragging: false,
+      };
+      let lastClientX = event.clientX;
+      let lastClientY = event.clientY;
+      frameExtractionLongPressTimerRef.current = window.setTimeout(() => {
+        const drag = frameExtractionDragRef.current;
+        if (!drag || drag.pointerId !== event.pointerId || drag.mode !== "grid") return;
+        drag.dragging = true;
+        frameExtractionLongPressTimerRef.current = null;
+        void cropImageGridCell(
+          imageUrl,
+          activeGridSelection.rows,
+          cellIndex,
+          activeGridSelection.cols
+        )
+          .then(({ dataUrl }) => {
+            const current = frameExtractionDragRef.current;
+            if (!current || current.pointerId !== event.pointerId || current.mode !== "grid")
+              return;
+            current.url = dataUrl;
+            updateFrameExtractionDragPreview(event.pointerId, lastClientX, lastClientY);
+          })
+          .catch(() => {
+            updateFrameExtractionDragPreview(event.pointerId, lastClientX, lastClientY);
+          });
+      }, IMAGE_FRAME_DROP_LONG_PRESS_MS);
+
+      const handleWindowPointerMove = (moveEvent: PointerEvent) => {
+        if (moveEvent.pointerId !== event.pointerId) return;
+        moveEvent.preventDefault();
+        moveEvent.stopPropagation();
+        lastClientX = moveEvent.clientX;
+        lastClientY = moveEvent.clientY;
+        const drag = frameExtractionDragRef.current;
+        if (
+          drag &&
+          !drag.dragging &&
+          hasFrameExtractionDragStarted({
+            clientX: moveEvent.clientX,
+            clientY: moveEvent.clientY,
+            startClientX: drag.startClientX,
+            startClientY: drag.startClientY,
+          })
+        ) {
+          if (drag.element.hasPointerCapture(moveEvent.pointerId)) {
+            drag.element.releasePointerCapture(moveEvent.pointerId);
+          }
+          cleanupFrameExtractionDragListeners();
+          frameExtractionDragRef.current = null;
+          destroyFrameExtractionOverlay();
+          return;
+        }
+        updateFrameExtractionDragPreview(moveEvent.pointerId, moveEvent.clientX, moveEvent.clientY);
+      };
+      const handleWindowPointerUp = (upEvent: PointerEvent) => {
+        if (upEvent.pointerId !== event.pointerId) return;
+        upEvent.preventDefault();
+        upEvent.stopPropagation();
+        finishFrameExtractionDrag(upEvent.pointerId, upEvent.clientX, upEvent.clientY);
+      };
+      const handleWindowPointerCancel = (cancelEvent: PointerEvent) => {
+        if (cancelEvent.pointerId !== event.pointerId) return;
+        cancelEvent.preventDefault();
+        cancelEvent.stopPropagation();
+        finishFrameExtractionDrag(
+          cancelEvent.pointerId,
+          cancelEvent.clientX,
+          cancelEvent.clientY,
+          true
+        );
+      };
+
+      window.addEventListener("pointermove", handleWindowPointerMove, true);
+      window.addEventListener("pointerup", handleWindowPointerUp, true);
+      window.addEventListener("pointercancel", handleWindowPointerCancel, true);
+      frameExtractionDragCleanupRef.current = () => {
+        window.removeEventListener("pointermove", handleWindowPointerMove, true);
+        window.removeEventListener("pointerup", handleWindowPointerUp, true);
+        window.removeEventListener("pointercancel", handleWindowPointerCancel, true);
+      };
+    },
+    [
+      activeGridSelection,
+      cleanupFrameExtractionDragListeners,
+      destroyFrameExtractionOverlay,
+      finishFrameExtractionDrag,
+      imageUrl,
+      onSplitImageGrid,
+      updateFrameExtractionDragPreview,
+    ]
+  );
   React.useEffect(
     () => () => {
       cleanupFrameExtractionDragListeners();
@@ -1018,24 +1316,115 @@ function ImageNodeCardImpl({
         position: "fixed",
         width: "100vw",
       });
-      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-      line.setAttribute("x1", String(drag.originClientX));
-      line.setAttribute("y1", String(drag.originClientY));
-      line.setAttribute("x2", String(clientX));
-      line.setAttribute("y2", String(clientY));
-      line.setAttribute("stroke", "rgba(165,180,252,0.96)");
-      line.setAttribute("stroke-width", "2.5");
-      line.setAttribute("stroke-dasharray", "8 8");
+      const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+      const filter = document.createElementNS("http://www.w3.org/2000/svg", "filter");
+      filter.setAttribute("id", `image-frame-drop-glow-${node.id}`);
+      filter.setAttribute("x", "-35%");
+      filter.setAttribute("y", "-80%");
+      filter.setAttribute("width", "170%");
+      filter.setAttribute("height", "260%");
+      const blur = document.createElementNS("http://www.w3.org/2000/svg", "feGaussianBlur");
+      blur.setAttribute("stdDeviation", "4.5");
+      blur.setAttribute("result", "blur");
+      const merge = document.createElementNS("http://www.w3.org/2000/svg", "feMerge");
+      const blurNode = document.createElementNS("http://www.w3.org/2000/svg", "feMergeNode");
+      blurNode.setAttribute("in", "blur");
+      const sourceNode = document.createElementNS("http://www.w3.org/2000/svg", "feMergeNode");
+      sourceNode.setAttribute("in", "SourceGraphic");
+      merge.append(blurNode, sourceNode);
+      filter.append(blur, merge);
+      const tailGradient = document.createElementNS("http://www.w3.org/2000/svg", "linearGradient");
+      tailGradient.setAttribute("id", `image-frame-drop-energy-tail-${node.id}`);
+      tailGradient.setAttribute("x1", "0%");
+      tailGradient.setAttribute("y1", "0%");
+      tailGradient.setAttribute("x2", "100%");
+      tailGradient.setAttribute("y2", "0%");
+      [
+        ["0%", "rgba(103,232,249,0)"],
+        ["30%", "rgba(103,232,249,0.18)"],
+        ["72%", "rgba(167,139,250,0.86)"],
+        ["100%", "rgba(224,231,255,0.18)"],
+      ].forEach(([offset, stopColor]) => {
+        const stop = document.createElementNS("http://www.w3.org/2000/svg", "stop");
+        stop.setAttribute("offset", offset);
+        stop.setAttribute("stop-color", stopColor);
+        tailGradient.appendChild(stop);
+      });
+      const headGradient = document.createElementNS("http://www.w3.org/2000/svg", "linearGradient");
+      headGradient.setAttribute("id", `image-frame-drop-energy-head-${node.id}`);
+      headGradient.setAttribute("x1", "0%");
+      headGradient.setAttribute("y1", "0%");
+      headGradient.setAttribute("x2", "100%");
+      headGradient.setAttribute("y2", "0%");
+      [
+        ["0%", "rgba(224,231,255,0.08)"],
+        ["46%", "rgba(255,255,255,0.98)"],
+        ["100%", "rgba(103,232,249,0.94)"],
+      ].forEach(([offset, stopColor]) => {
+        const stop = document.createElementNS("http://www.w3.org/2000/svg", "stop");
+        stop.setAttribute("offset", offset);
+        stop.setAttribute("stop-color", stopColor);
+        headGradient.appendChild(stop);
+      });
+      defs.append(filter, tailGradient, headGradient);
+      const thumbAnchorX = getDragThumbAnchorX(clientX, drag.originClientX, drag.thumbWidth);
+      const originAnchor = getElementEdgeAnchor(drag.element, thumbAnchorX, clientY);
+      const pathD = getDragConnectorPath(originAnchor.x, originAnchor.y, thumbAnchorX, clientY);
+      const rail = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      rail.setAttribute("d", pathD);
+      rail.setAttribute("fill", "none");
+      rail.setAttribute("stroke", "rgba(34,211,238,0.22)");
+      rail.setAttribute("stroke-width", "7");
+      rail.setAttribute("opacity", "0.46");
+      rail.setAttribute("filter", `url(#image-frame-drop-glow-${node.id})`);
+      rail.setAttribute("stroke-linecap", "round");
+      const line = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      line.setAttribute("d", pathD);
+      line.setAttribute("data-origin-x", String(originAnchor.x));
+      line.setAttribute("data-origin-y", String(originAnchor.y));
+      line.setAttribute("fill", "none");
+      line.setAttribute("stroke", "rgba(224,231,255,0.72)");
+      line.setAttribute("stroke-width", "1.65");
       line.setAttribute("stroke-linecap", "round");
-      svg.appendChild(line);
+      const pulse = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      pulse.setAttribute("d", pathD);
+      pulse.setAttribute("class", "link-energy-pulse");
+      pulse.setAttribute("pathLength", "100");
+      pulse.setAttribute("fill", "none");
+      pulse.setAttribute("stroke", `url(#image-frame-drop-energy-tail-${node.id})`);
+      pulse.setAttribute("stroke-dasharray", "34 66");
+      pulse.setAttribute("stroke-linecap", "round");
+      pulse.setAttribute("stroke-width", "3");
+      pulse.setAttribute("filter", `url(#image-frame-drop-glow-${node.id})`);
+      const softPulse = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      softPulse.setAttribute("d", pathD);
+      softPulse.setAttribute("class", "link-energy-pulse link-energy-pulse-soft");
+      softPulse.setAttribute("pathLength", "100");
+      softPulse.setAttribute("fill", "none");
+      softPulse.setAttribute("stroke", "rgba(196,181,253,0.62)");
+      softPulse.setAttribute("stroke-dasharray", "16 84");
+      softPulse.setAttribute("stroke-linecap", "round");
+      softPulse.setAttribute("stroke-width", "1.45");
+      const head = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      head.setAttribute("d", pathD);
+      head.setAttribute("class", "link-energy-pulse-head");
+      head.setAttribute("pathLength", "100");
+      head.setAttribute("fill", "none");
+      head.setAttribute("stroke", `url(#image-frame-drop-energy-head-${node.id})`);
+      head.setAttribute("stroke-dasharray", "3 97");
+      head.setAttribute("stroke-linecap", "round");
+      head.setAttribute("stroke-width", "2");
+      head.setAttribute("filter", `url(#image-frame-drop-glow-${node.id})`);
+      svg.append(defs, rail, line, pulse, softPulse, head);
 
       const thumb = document.createElement("div");
       thumb.setAttribute("data-image-frame-drop-thumb", "true");
       Object.assign(thumb.style, {
         background: "rgba(13,20,33,0.9)",
-        border: "1px solid rgba(207,250,254,0.28)",
+        border: "1px solid rgba(196,210,255,0.55)",
         borderRadius: "12px",
-        boxShadow: "0 16px 34px -18px rgba(0,0,0,0.95), 0 0 24px rgba(129,140,248,0.2)",
+        boxShadow:
+          "0 18px 38px -18px rgba(0,0,0,0.96), 0 0 0 1px rgba(129,140,248,0.22), 0 0 28px rgba(129,140,248,0.28)",
         height: `${drag.thumbHeight}px`,
         left: `${clientX - drag.thumbWidth / 2}px`,
         overflow: "hidden",
@@ -1056,7 +1445,7 @@ function ImageNodeCardImpl({
       thumb.appendChild(thumbImage);
       root.append(svg, thumb);
       document.body.appendChild(root);
-      imageFrameDropOverlayRef.current = { line, root, thumb };
+      imageFrameDropOverlayRef.current = { head, line, pulse, rail, root, softPulse, thumb };
     },
     [destroyImageFrameDropOverlay]
   );
@@ -1079,16 +1468,32 @@ function ImageNodeCardImpl({
     (clientX: number, clientY: number) => {
       const overlay = imageFrameDropOverlayRef.current;
       if (!overlay) return;
-      overlay.line.setAttribute("x2", String(clientX));
-      overlay.line.setAttribute("y2", String(clientY));
       const drag = imageFrameDropDragRef.current;
       const thumbWidth = drag?.thumbWidth ?? overlay.thumb.offsetWidth;
       const thumbHeight = drag?.thumbHeight ?? overlay.thumb.offsetHeight;
+      const originClientX =
+        drag?.originClientX ?? Number.parseFloat(overlay.line.getAttribute("data-origin-x") || "0");
+      const originClientY =
+        drag?.originClientY ?? Number.parseFloat(overlay.line.getAttribute("data-origin-y") || "0");
+      const thumbAnchorX = getDragThumbAnchorX(clientX, originClientX, thumbWidth);
+      const originAnchor = drag?.element
+        ? getElementEdgeAnchor(drag.element, thumbAnchorX, clientY)
+        : { x: originClientX, y: originClientY };
+      const pathD = getDragConnectorPath(originAnchor.x, originAnchor.y, thumbAnchorX, clientY);
+      overlay.line.setAttribute("d", pathD);
+      overlay.line.setAttribute("data-origin-x", String(originAnchor.x));
+      overlay.line.setAttribute("data-origin-y", String(originAnchor.y));
+      overlay.rail.setAttribute("d", pathD);
+      overlay.pulse.setAttribute("d", pathD);
+      overlay.softPulse.setAttribute("d", pathD);
+      overlay.head.setAttribute("d", pathD);
       overlay.thumb.style.left = `${clientX - thumbWidth / 2}px`;
       overlay.thumb.style.top = `${clientY - thumbHeight / 2}px`;
 
       const element = document.elementFromPoint(clientX, clientY) as HTMLElement | null;
-      const target = element?.closest("[data-frame-strip-cell='true']") as HTMLElement | null;
+      const target = element?.closest(
+        "[data-frame-strip-cell='true'],[data-grid-split-cell='true']"
+      ) as HTMLElement | null;
       setImageFrameDropHotTarget(target);
     },
     [setImageFrameDropHotTarget]
@@ -1128,6 +1533,36 @@ function ImageNodeCardImpl({
       imageFrameDropDragRef.current = null;
       destroyImageFrameDropOverlay();
       if (canceled || !drag.dragging || !hotTarget) return;
+      if (hotTarget.getAttribute("data-grid-split-cell") === "true") {
+        const targetNodeId = hotTarget.getAttribute("data-grid-node-id") || "";
+        const targetImageUrl = hotTarget.getAttribute("data-grid-image-url") || "";
+        const targetCellIndex = Number.parseInt(
+          hotTarget.getAttribute("data-grid-cell-index") || "-1",
+          10
+        );
+        const targetGridRows = Number.parseInt(hotTarget.getAttribute("data-grid-rows") || "0", 10);
+        const targetGridCols = Number.parseInt(hotTarget.getAttribute("data-grid-cols") || "0", 10);
+        if (
+          targetNodeId &&
+          targetImageUrl &&
+          Number.isInteger(targetCellIndex) &&
+          targetCellIndex >= 0 &&
+          Number.isInteger(targetGridRows) &&
+          targetGridRows > 0 &&
+          Number.isInteger(targetGridCols) &&
+          targetGridCols > 0
+        ) {
+          onReplaceImageGridCell?.(
+            targetNodeId,
+            targetImageUrl,
+            drag.url,
+            targetGridRows,
+            targetGridCols,
+            targetCellIndex
+          );
+        }
+        return;
+      }
       const targetNodeId = hotTarget.getAttribute("data-frame-node-id") || "";
       const targetFrameIndex = Number.parseInt(
         hotTarget.getAttribute("data-frame-index") || "-1",
@@ -1137,11 +1572,23 @@ function ImageNodeCardImpl({
         onReplaceFrameImage?.(targetNodeId, targetFrameIndex, drag.url);
       }
     },
-    [cleanupImageFrameDropListeners, destroyImageFrameDropOverlay, onReplaceFrameImage]
+    [
+      cleanupImageFrameDropListeners,
+      destroyImageFrameDropOverlay,
+      onReplaceFrameImage,
+      onReplaceImageGridCell,
+    ]
   );
   const beginImageFrameDropDrag = React.useCallback(
     (event: React.PointerEvent<HTMLElement>) => {
-      if (!onReplaceFrameImage || isFrameStrip || !imageUrl || event.button !== 0) return;
+      if (
+        (!onReplaceFrameImage && !onReplaceImageGridCell) ||
+        isFrameStrip ||
+        !imageUrl ||
+        event.button !== 0
+      ) {
+        return;
+      }
       cleanupImageFrameDropListeners();
       const rect = event.currentTarget.getBoundingClientRect();
       const element = event.currentTarget;
@@ -1219,6 +1666,7 @@ function ImageNodeCardImpl({
       imageUrl,
       isFrameStrip,
       onReplaceFrameImage,
+      onReplaceImageGridCell,
       updateImageFrameDropDrag,
     ]
   );
@@ -1243,10 +1691,11 @@ function ImageNodeCardImpl({
     resolutionPresetGroups?.find((group) => group.resolution === rawResolution) ??
     resolutionPresetGroups?.[0];
   const resolution = activeResolutionGroup?.resolution ?? rawResolution;
-  const aspectRatio =
-    activeResolutionGroup?.presets.some((preset) => preset.aspectRatio === rawAspectRatio)
-      ? rawAspectRatio
-      : activeResolutionGroup?.presets[0]?.aspectRatio ?? rawAspectRatio;
+  const aspectRatio = activeResolutionGroup?.presets.some(
+    (preset) => preset.aspectRatio === rawAspectRatio
+  )
+    ? rawAspectRatio
+    : (activeResolutionGroup?.presets[0]?.aspectRatio ?? rawAspectRatio);
   const quantity = (node.properties.quantity as string) || "1张";
   const imageModelOptionGroups = React.useMemo(
     () => getModelOptionGroups([], apiConfig?.remoteModelsByType?.[AI_MODEL_TYPES[1]] ?? []),
@@ -1333,11 +1782,19 @@ function ImageNodeCardImpl({
       getFrameStripAdaptiveLayout({
         fallbackTileHeight: frameTileHeight,
         fallbackTileWidth: frameTileWidth,
+        fixedTileSize: isFrameStrip,
         imageSizes: frameImageSizes,
         imageUrls: resolvedImageUrls,
         maxColumns: frameGridColumns,
       }),
-    [frameGridColumns, frameImageSizes, frameTileHeight, frameTileWidth, resolvedImageUrls]
+    [
+      frameGridColumns,
+      frameImageSizes,
+      frameTileHeight,
+      frameTileWidth,
+      isFrameStrip,
+      resolvedImageUrls,
+    ]
   );
   const frameStripSize = {
     width: frameStripLayout.width,
@@ -1446,6 +1903,35 @@ function ImageNodeCardImpl({
     resolvedImageUrls.length,
     mediaFrameSize.height,
     mediaFrameSize.width,
+  ]);
+
+  React.useEffect(() => {
+    if (!isFrameStrip) return;
+    if (
+      node.data?.imageNaturalWidth === frameStripSize.width &&
+      node.data?.imageNaturalHeight === frameStripSize.height &&
+      node.data?.imageDisplayWidth === frameStripSize.width &&
+      node.data?.imageDisplayHeight === frameStripSize.height
+    ) {
+      return;
+    }
+
+    onUpdateData?.(node.id, {
+      imageNaturalWidth: frameStripSize.width,
+      imageNaturalHeight: frameStripSize.height,
+      imageDisplayWidth: frameStripSize.width,
+      imageDisplayHeight: frameStripSize.height,
+    });
+  }, [
+    frameStripSize.height,
+    frameStripSize.width,
+    isFrameStrip,
+    node.data?.imageDisplayHeight,
+    node.data?.imageDisplayWidth,
+    node.data?.imageNaturalHeight,
+    node.data?.imageNaturalWidth,
+    node.id,
+    onUpdateData,
   ]);
 
   React.useEffect(() => {
@@ -1961,7 +2447,7 @@ function ImageNodeCardImpl({
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 8, scale: 0.96 }}
               transition={{ duration: 0.16, ease: "easeOut" }}
-              className="absolute left-1/2 top-0 z-40 flex h-14 -translate-x-1/2 -translate-y-[calc(100%+18px)] items-center gap-2 rounded-[20px] border border-slate-500/18 bg-[#121923]/95 px-4 shadow-[0_18px_44px_-24px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-2xl"
+              className="absolute left-1/2 top-0 z-[70] flex h-14 -translate-x-1/2 -translate-y-[calc(100%+18px)] items-center gap-2 rounded-[20px] border border-slate-500/18 bg-[#121923]/95 px-4 shadow-[0_18px_44px_-24px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-2xl"
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}
             >
@@ -2364,10 +2850,17 @@ function ImageNodeCardImpl({
                       <button
                         key={`split-cell-${index}`}
                         type="button"
+                        data-grid-split-cell="true"
+                        data-grid-node-id={node.id}
+                        data-grid-image-url={imageUrl}
+                        data-grid-cell-index={index}
+                        data-grid-rows={activeGridSelection.rows}
+                        data-grid-cols={activeGridSelection.cols}
                         onMouseEnter={() => setHoveredGridCell(index)}
                         onMouseLeave={() =>
                           setHoveredGridCell((current) => (current === index ? null : current))
                         }
+                        onPointerDown={(event) => beginGridCellExtractionDrag(event, index)}
                         onClick={(event) => handleGridCellClick(index, event.shiftKey)}
                         className={`relative min-h-0 min-w-0 border transition-colors focus-visible:outline-none ${
                           isSelected

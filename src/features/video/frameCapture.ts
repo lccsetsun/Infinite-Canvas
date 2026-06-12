@@ -13,16 +13,29 @@ type RawVideoFrameCaptureItem = {
   frame_images?: unknown;
 };
 
-function normalizeFrameCaptureItem(item: RawVideoFrameCaptureItem, fallbackIndex: number): VideoFrameCaptureItem | null {
+function normalizeFrameImageUrl(item: unknown) {
+  if (typeof item === "string") return item.trim();
+  if (item && typeof item === "object" && "url" in item) {
+    const url = (item as { url?: unknown }).url;
+    return typeof url === "string" ? url.trim() : "";
+  }
+  return "";
+}
+
+function normalizeFrameCaptureItem(
+  item: RawVideoFrameCaptureItem,
+  fallbackIndex: number
+): VideoFrameCaptureItem | null {
   const videoUrl = typeof item.video === "string" ? item.video.trim() : "";
   const frameImages = Array.isArray(item.frame_images)
-    ? item.frame_images.filter((url): url is string => typeof url === "string" && Boolean(url.trim()))
+    ? item.frame_images.map(normalizeFrameImageUrl).filter((url) => Boolean(url))
     : [];
 
   if (!videoUrl && frameImages.length === 0) return null;
 
   return {
-    index: typeof item.index === "number" && Number.isFinite(item.index) ? item.index : fallbackIndex,
+    index:
+      typeof item.index === "number" && Number.isFinite(item.index) ? item.index : fallbackIndex,
     videoUrl,
     frameImages,
   };

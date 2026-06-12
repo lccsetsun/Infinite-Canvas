@@ -74,7 +74,16 @@ interface CanvasNodeLayerProps {
     imageUrl: string,
     gridRows: number,
     gridCols: number,
-    cellIndices: number[]
+    cellIndices: number[],
+    clientPoint?: { clientX: number; clientY: number }
+  ) => void;
+  onReplaceImageGridCell?: (
+    nodeId: string,
+    imageUrl: string,
+    replacementUrl: string,
+    gridRows: number,
+    gridCols: number,
+    cellIndex: number
   ) => void;
   resolvedInputsMap?: Map<string, Record<string, unknown>>;
   textNodeReferencesMap?: Map<string, TextNodeReferenceItem[]>;
@@ -119,6 +128,7 @@ export default function CanvasNodeLayer({
   onReplaceFrameImage,
   onSyncImagePromptStarterLayout,
   onSplitImageGrid,
+  onReplaceImageGridCell,
   resolvedInputsMap,
   textNodeReferencesMap,
   onRunNode,
@@ -174,9 +184,11 @@ export default function CanvasNodeLayer({
                     graphIndex
                       ? Boolean(
                           graphIndex.linksBySourceNodeId.get(node.id)?.length ||
-                            graphIndex.linksByTargetNodeId.get(node.id)?.length
+                          graphIndex.linksByTargetNodeId.get(node.id)?.length
                         )
-                      : links.some((link) => link.fromNodeId === node.id || link.toNodeId === node.id)
+                      : links.some(
+                          (link) => link.fromNodeId === node.id || link.toNodeId === node.id
+                        )
                   }
                   onRun={onRunNode}
                   // 连线相关
@@ -214,6 +226,7 @@ export default function CanvasNodeLayer({
                   onReplaceFrameImage={onReplaceFrameImage}
                   onSyncImagePromptStarterLayout={onSyncImagePromptStarterLayout}
                   onSplitImageGrid={onSplitImageGrid}
+                  onReplaceImageGridCell={onReplaceImageGridCell}
                   onPreview={onPreview}
                   resolvedInputs={resolvedInputsMap?.get(node.id)}
                   onRun={onRunNode}

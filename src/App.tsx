@@ -26,7 +26,11 @@ import { useWorkflowState } from "./hooks/useWorkflowState";
 import { useAppUiState } from "./hooks/useAppUiState";
 import { shouldOpenCanvasContextMenu } from "./utils/canvasContextMenuPolicy";
 import { shouldFinishCanvasLinkOnCanvasPointerUp } from "./utils/canvasPointerPolicy";
-import { cropImageGridCell, getGridChildNodePosition } from "./utils/imageGridSplit";
+import {
+  cropImageGridCell,
+  getGridChildNodePosition,
+  replaceImageGridCell,
+} from "./utils/imageGridSplit";
 import { getCanvasViewportClassName } from "./utils/canvasViewportLayout";
 import {
   getBatchOutputDrafts,
@@ -552,7 +556,8 @@ export default function App({ onLoggedOut }: AppProps) {
       imageUrl: string,
       gridRows: number,
       gridCols: number,
-      cellIndices: number[]
+      cellIndices: number[],
+      clientPoint?: { clientX: number; clientY: number }
     ) => {
       const sourceNode = nodes.find((n) => n.id === nodeId);
       if (!sourceNode) {
@@ -570,7 +575,12 @@ export default function App({ onLoggedOut }: AppProps) {
             cellIndex,
             gridCols
           );
-          const position = getGridChildNodePosition(sourceNode, gridRows, cellIndex, gridCols);
+          const dropPosition = clientPoint
+            ? toWorld(clientPoint.clientX, clientPoint.clientY)
+            : null;
+          const position = dropPosition
+            ? snapPointToGrid({ x: dropPosition.x - 140, y: dropPosition.y - 120 })
+            : getGridChildNodePosition(sourceNode, gridRows, cellIndex, gridCols);
           addNode(
             "image_node",
             position.x,
@@ -597,7 +607,44 @@ export default function App({ onLoggedOut }: AppProps) {
         showNotice(message);
       }
     },
-    [addNode, nodes, showNotice]
+    [addNode, nodes, showNotice, toWorld]
+  );
+
+  const handleReplaceImageGridCell = React.useCallback(
+    async (
+      nodeId: string,
+      imageUrl: string,
+      replacementUrl: string,
+      gridRows: number,
+      gridCols: number,
+      cellIndex: number
+    ) => {
+      try {
+        const { dataUrl } = await replaceImageGridCell(
+          imageUrl,
+          replacementUrl,
+          gridRows,
+          cellIndex,
+          gridCols
+        );
+        updateNodeData(nodeId, {
+          imageUrl: dataUrl,
+          imageUrls: [dataUrl],
+          activeImageIndex: 0,
+          imageNaturalWidth: undefined,
+          imageNaturalHeight: undefined,
+          imageDisplayWidth: undefined,
+          imageDisplayHeight: undefined,
+        });
+        updateNodeProperty(nodeId, "imageUrl", dataUrl);
+        setPrimaryImageResult(nodeId, dataUrl, 0);
+        showNotice(`已永久替换第 ${cellIndex + 1} 个宫格`);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "图片切片替换失败";
+        showNotice(message);
+      }
+    },
+    [setPrimaryImageResult, showNotice, updateNodeData, updateNodeProperty]
   );
 
   const moveGroup = React.useCallback(
@@ -1513,6 +1560,7 @@ export default function App({ onLoggedOut }: AppProps) {
             onReplaceFrameImage={replaceFrameImageUrl}
             onSyncImagePromptStarterLayout={syncImagePromptStarterLayout}
             onSplitImageGrid={handleSplitImageGrid}
+            onReplaceImageGridCell={handleReplaceImageGridCell}
             resolvedInputsMap={resolvedInputsMap}
             textNodeReferencesMap={textNodeReferencesMap}
             onRunNode={runNode}

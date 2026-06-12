@@ -4,7 +4,6 @@ import type { GraphLink, GraphNode } from "../types";
 import type { VideoFrameCaptureItem } from "../features/video/frameCapture";
 
 const FRAME_GRID_COLUMNS = 5;
-const FRAME_TILE_WIDTH = 168;
 const CAPTURE_VIDEO_NODE_FOOTPRINT_WIDTH = 540;
 const CAPTURE_VIDEO_NODE_FOOTPRINT_HEIGHT = 540;
 const CAPTURE_VERTICAL_GAP = 96;
@@ -51,13 +50,18 @@ function getSourceVideoAspectRatio(sourceNode: GraphNode) {
   return 16 / 9;
 }
 
-function makeFrameGridSize(frameCount: number, sourceNode: GraphNode) {
+function makeFrameGridSize(
+  frameCount: number,
+  videoDisplaySize: { width: number; height: number }
+) {
   const rows = Math.max(1, Math.ceil(frameCount / FRAME_GRID_COLUMNS));
-  const tileHeight = Math.max(1, Math.round(FRAME_TILE_WIDTH / getSourceVideoAspectRatio(sourceNode)));
+  const tileWidth = Math.max(1, Math.round(videoDisplaySize.width / 2));
+  const tileHeight = Math.max(1, Math.round(videoDisplaySize.height / 2));
   return {
-    width: FRAME_GRID_COLUMNS * FRAME_TILE_WIDTH,
+    width: FRAME_GRID_COLUMNS * tileWidth,
     height: rows * tileHeight,
     rows,
+    tileWidth,
     tileHeight,
   };
 }
@@ -81,13 +85,20 @@ function makeCaptureVideoDisplaySize(sourceNode: GraphNode) {
     };
   }
 
+  const displayWidth = sourceNode.data?.videoDisplayWidth;
+  const displayHeight = sourceNode.data?.videoDisplayHeight;
+  if (
+    typeof displayWidth === "number" &&
+    typeof displayHeight === "number" &&
+    displayWidth > 0 &&
+    displayHeight > 0
+  ) {
+    return { width: displayWidth, height: displayHeight };
+  }
+
   return {
     width: CAPTURE_VIDEO_NODE_FOOTPRINT_WIDTH,
-    height:
-      typeof sourceNode.data?.videoDisplayHeight === "number" &&
-      sourceNode.data.videoDisplayHeight > 0
-        ? sourceNode.data.videoDisplayHeight
-        : undefined,
+    height: Math.round(CAPTURE_VIDEO_NODE_FOOTPRINT_WIDTH / getSourceVideoAspectRatio(sourceNode)),
   };
 }
 
@@ -130,8 +141,9 @@ export function createVideoFrameCaptureSnapshot({
     const displayIndex = captureIndex + 1;
     const segmentVideoUrl = capture.videoUrl || sourceVideoUrl;
     const frameImages = capture.frameImages;
-    const gridSize = frameImages.length > 0 ? makeFrameGridSize(frameImages.length, sourceNode) : null;
     const videoDisplaySize = makeCaptureVideoDisplaySize(sourceNode);
+    const gridSize =
+      frameImages.length > 0 ? makeFrameGridSize(frameImages.length, videoDisplaySize) : null;
     const y = nextY;
 
     const videoId = makeId("node");
@@ -186,7 +198,7 @@ export function createVideoFrameCaptureSnapshot({
         frameGridColumns: FRAME_GRID_COLUMNS,
         frameGridRows: gridSize.rows,
         frameTileHeight: gridSize.tileHeight,
-        frameTileWidth: FRAME_TILE_WIDTH,
+        frameTileWidth: gridSize.tileWidth,
         frameCaptureSourceNodeId: sourceNodeId,
         status: "success",
         loading: false,
