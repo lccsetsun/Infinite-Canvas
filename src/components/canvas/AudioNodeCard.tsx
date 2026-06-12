@@ -1,16 +1,6 @@
 import React from "react";
 import { AnimatePresence, motion } from "motion/react";
-import {
-  ArrowUp,
-  ChevronUp,
-  Download,
-  Eye,
-  Loader2,
-  Music2,
-  Plus,
-  Upload,
-  Wand2,
-} from "lucide-react";
+import { ArrowUp, ChevronUp, Download, Eye, Loader2, Music2, Upload, Wand2 } from "lucide-react";
 import { GraphNode } from "../../types";
 import { getNodeHeight, getNodeWidth } from "./geometry";
 import { findResolvedStringInput } from "../../utils/resolvedInputs";
@@ -23,6 +13,7 @@ import { ReferencePreviewCard } from "./ReferencePreviewCard";
 import { getMediaNodeLoadingLabel, isMediaNodeRunning } from "../../utils/mediaNodeLoadingState";
 import { PromptTokenEditor } from "./PromptTokenEditor";
 import { stringifyInputReferenceValues } from "../../utils/inputReferenceValues";
+import { InlineNodePortHandle } from "./InlineNodePortHandle";
 
 interface AudioNodeCardProps {
   node: GraphNode;
@@ -213,7 +204,7 @@ function AudioNodeCardImpl({
   const promptText = (node.properties.text as string) || "";
   const audioUrl = (node.data?.audioUrl as string) || (node.properties.audioUrl as string) || "";
   const promptComposerVisible =
-    !isSourceAssetNode && (isHovered || selected) && !audioUrl && !isUploadingAsset;
+    !isRunning && !isSourceAssetNode && (isHovered || selected) && !audioUrl && !isUploadingAsset;
   const nodeWidth = getNodeWidth(node);
   const nodeHeight = getNodeHeight(node);
   const voiceId = (node.properties.voice_id as string) || "male-qn-qingse";
@@ -340,7 +331,8 @@ function AudioNodeCardImpl({
   const hasInputPorts = !isSourceAssetNode && node.inputs.length > 0;
   const portHandles = (
     <AnimatePresence>
-      {!isUploadingAsset &&
+      {!isRunning &&
+        !isUploadingAsset &&
         shouldShowInlinePortHandles({ isHovered, isLinkingOnCanvas, selected }) && (
           <>
             {hasInputPorts && (
@@ -350,33 +342,18 @@ function AudioNodeCardImpl({
                 exit={{ opacity: 0, x: 10 }}
                 className="absolute -left-11 top-1/2 z-10 -translate-y-1/2"
               >
-                <div
-                  role="button"
-                  tabIndex={-1}
-                  data-node-action="true"
-                  data-port-role="input"
-                  data-node-id={node.id}
-                  data-port-index={0}
-                  className={`canvas-port-handle flex h-9 w-9 items-center justify-center rounded-full border transition-all duration-200 hover:scale-110 ${
+                <InlineNodePortHandle
+                  role="input"
+                  nodeId={node.id}
+                  portIndex={0}
+                  active={Boolean(
                     isLinkingOnCanvas && linkToNodeId === node.id && linkToInputIndex === 0
-                      ? "canvas-port-input canvas-port-hot scale-110"
-                      : "canvas-port-input"
-                  }`}
-                  onPointerEnter={() => onHoverCanvasLinkTarget?.(node.id, 0)}
-                  onPointerLeave={() => onLeaveCanvasLinkTarget?.(node.id, 0)}
-                  onPointerUp={(e) => {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    onFinishCanvasLink?.(node.id, 0);
-                  }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    e.preventDefault();
-                  }}
-                  title={getCanvasLinkTargetIssue?.(node.id, 0) || "输入端口: 点击此处完成连线"}
-                >
-                  <Plus className="h-4 w-4 pointer-events-none" />
-                </div>
+                  )}
+                  onHoverCanvasLinkTarget={onHoverCanvasLinkTarget}
+                  onLeaveCanvasLinkTarget={onLeaveCanvasLinkTarget}
+                  onFinishCanvasLink={onFinishCanvasLink}
+                  inputIssue={getCanvasLinkTargetIssue?.(node.id, 0)}
+                />
               </motion.div>
             )}
             <motion.div
@@ -385,32 +362,15 @@ function AudioNodeCardImpl({
               exit={{ opacity: 0, x: -10 }}
               className="absolute -right-11 top-1/2 z-10 -translate-y-1/2"
             >
-              <div
-                role="button"
-                tabIndex={-1}
-                data-node-action="true"
-                data-port-role="output"
-                data-node-id={node.id}
-                data-port-index={0}
-                className={`canvas-port-handle flex h-9 w-9 items-center justify-center rounded-full border transition-all duration-200 hover:scale-110 ${
+              <InlineNodePortHandle
+                role="output"
+                nodeId={node.id}
+                portIndex={0}
+                active={Boolean(
                   isLinkingOnCanvas && linkFromNodeId === node.id && linkFromOutputIndex === 0
-                    ? "canvas-port-output canvas-port-active scale-110"
-                    : "canvas-port-output"
-                }`}
-                onPointerDown={(e) => {
-                  e.stopPropagation();
-                  e.preventDefault();
-                  (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-                  onBeginCanvasLink?.(node.id, 0, e.clientX, e.clientY);
-                }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  e.preventDefault();
-                }}
-                title="输出端口: 按住并拖拽进行连线 (支持多条输出)"
-              >
-                <Plus className="h-4 w-4 pointer-events-none" />
-              </div>
+                )}
+                onBeginCanvasLink={onBeginCanvasLink}
+              />
             </motion.div>
           </>
         )}
@@ -805,9 +765,15 @@ function AudioNodeCardImpl({
                   handleRun();
                 }}
                 title={AUDIO_GENERATION_UNAVAILABLE ? "音频生成开发中" : undefined}
-                disabled={AUDIO_GENERATION_UNAVAILABLE || isRunning || (!upstreamPrompt && !promptText.trim())}
+                disabled={
+                  AUDIO_GENERATION_UNAVAILABLE ||
+                  isRunning ||
+                  (!upstreamPrompt && !promptText.trim())
+                }
                 className={`ml-auto flex h-10 w-10 items-center justify-center rounded-[14px] transition-all ${
-                  AUDIO_GENERATION_UNAVAILABLE || isRunning || (!upstreamPrompt && !promptText.trim())
+                  AUDIO_GENERATION_UNAVAILABLE ||
+                  isRunning ||
+                  (!upstreamPrompt && !promptText.trim())
                     ? "cursor-not-allowed border border-cyan-100/6 bg-slate-200/8 text-slate-200/28"
                     : "bg-cyan-50 text-[#0f172a] shadow-[0_14px_30px_-18px_rgba(103,232,249,0.9)] hover:bg-white"
                 }`}

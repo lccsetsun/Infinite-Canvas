@@ -38,6 +38,12 @@ import {
   type Rect,
 } from "./utils/multiSelection";
 import {
+  createMultiNodeClipboardPayload,
+  parseMultiNodeClipboardPayload,
+  pasteMultiNodeClipboardPayload,
+  type MultiNodeClipboardPayload,
+} from "./utils/multiSelectionOperations";
+import {
   clearCanvasSelection,
   getLegacySelectionState,
   selectCanvasGroup,
@@ -93,12 +99,7 @@ function readStoredCanvasViewport(workflowId: string | null): CanvasViewport | n
 
     const parsed = JSON.parse(raw) as Partial<CanvasViewport>;
     const pan = parsed.pan;
-    if (
-      !pan ||
-      !isFiniteNumber(pan.x) ||
-      !isFiniteNumber(pan.y) ||
-      !isFiniteNumber(parsed.zoom)
-    ) {
+    if (!pan || !isFiniteNumber(pan.x) || !isFiniteNumber(pan.y) || !isFiniteNumber(parsed.zoom)) {
       return null;
     }
 
@@ -114,10 +115,7 @@ function readStoredCanvasViewport(workflowId: string | null): CanvasViewport | n
 function writeStoredCanvasViewport(workflowId: string | null, viewport: CanvasViewport) {
   if (!workflowId || typeof localStorage === "undefined") return;
 
-  localStorage.setItem(
-    `${CANVAS_VIEWPORT_STORAGE_PREFIX}${workflowId}`,
-    JSON.stringify(viewport)
-  );
+  localStorage.setItem(`${CANVAS_VIEWPORT_STORAGE_PREFIX}${workflowId}`, JSON.stringify(viewport));
 }
 
 interface AppProps {
@@ -198,8 +196,10 @@ export default function App({ onLoggedOut }: AppProps) {
     addNode,
     syncImagePromptStarterLayout,
     removeNode,
+    removeNodes,
     removeLink,
     duplicateNode,
+    insertNodesAndLinks,
     updateNodePosition,
     updateNodePositions,
     updateNodeProperty,
@@ -230,7 +230,6 @@ export default function App({ onLoggedOut }: AppProps) {
     addLinkFromDraft,
     addLinksFromDrafts,
     groups,
-    createGroup,
     ungroup,
     updateGroup,
     runGroup,
@@ -322,6 +321,8 @@ export default function App({ onLoggedOut }: AppProps) {
     y: number;
   } | null>(null);
   const [selectedNodeIds, setSelectedNodeIds] = React.useState<Set<string>>(new Set());
+  const multiNodeClipboardRef = React.useRef<MultiNodeClipboardPayload | null>(null);
+  const pasteIdCounterRef = React.useRef(0);
   const [selectionDrag, setSelectionDrag] = React.useState<{
     start: Point;
     current: Point;
@@ -378,14 +379,15 @@ export default function App({ onLoggedOut }: AppProps) {
     [selectedNodes]
   );
   const selectionDragRect = React.useMemo<Rect | null>(
-    () => (selectionDrag ? normalizeSelectionRect(selectionDrag.start, selectionDrag.current) : null),
+    () =>
+      selectionDrag ? normalizeSelectionRect(selectionDrag.start, selectionDrag.current) : null,
     [selectionDrag]
   );
-  const batchLinkSources = React.useMemo(() => getBatchOutputDrafts(selectedNodes), [selectedNodes]);
-  const canvasGraphIndex = React.useMemo(
-    () => buildCanvasGraphIndex(nodes, links),
-    [links, nodes]
+  const batchLinkSources = React.useMemo(
+    () => getBatchOutputDrafts(selectedNodes),
+    [selectedNodes]
   );
+  const canvasGraphIndex = React.useMemo(() => buildCanvasGraphIndex(nodes, links), [links, nodes]);
 
   const currentCanvasSelection = React.useMemo<CanvasSelection>(() => {
     if (selectedLinkId) return selectCanvasLink(selectedLinkId, selectedLinkAnchor);
@@ -611,7 +613,9 @@ export default function App({ onLoggedOut }: AppProps) {
 
   const handleSelectLink = React.useCallback(
     (linkId: string | null, anchor?: { x: number; y: number } | null) => {
-      applyCanvasSelection(linkId ? selectCanvasLink(linkId, anchor ?? null) : clearCanvasSelection());
+      applyCanvasSelection(
+        linkId ? selectCanvasLink(linkId, anchor ?? null) : clearCanvasSelection()
+      );
     },
     [applyCanvasSelection]
   );
@@ -718,17 +722,59 @@ export default function App({ onLoggedOut }: AppProps) {
     [applyCanvasSelection, closeNodeContextMenu, nodes, selectionDrag, toWorld]
   );
 
-  const handleCreateGroup = () => {
-    const ids = Array.from(selectedNodeIds);
-    if (ids.length < 2) {
-      showNotice("Hold Shift and select at least 2 nodes before grouping.");
-      return;
+  const makePastedFragmentId = React.useCallback((prefix: "node" | "link") => {
+    pasteIdCounterRef.current += 1;
+    return `${prefix}_${Date.now().toString(36)}_${pasteIdCounterRef.current.toString(36)}`;
+  }, []);
+
+  const handleCopySelectedNodes = React.useCallback(() => {
+    if (selectedNodes.length === 0) return false;
+    const payload = createMultiNodeClipboardPayload(nodes, links, selectedNodeIds);
+    if (payload.nodes.length === 0) return false;
+    multiNodeClipboardRef.current = payload;
+    const text = JSON.stringify(payload);
+    if (navigator.clipboard?.writeText) {
+      void navigator.clipboard.writeText(text).catch(() => undefined);
     }
-    const group = createGroup(ids);
-    if (group) {
-      applyCanvasSelection(selectCanvasGroup(group.id));
-    }
-  };
+    showNotice(`已复制 ${payload.nodes.length} 个节点。`);
+    return true;
+  }, [links, nodes, selectedNodeIds, selectedNodes.length, showNotice]);
+
+  const handlePasteSelectedNodes = React.useCallback(
+    (payload: MultiNodeClipboardPayload, clientPoint?: { clientX: number; clientY: number }) => {
+      if (payload.nodes.length === 0) return false;
+      const anchorClient =
+        clientPoint ?? lastCanvasPointerRef.current ?? getCanvasCenterClientPosition();
+      const pasted = pasteMultiNodeClipboardPayload(payload, {
+        anchor: toWorld(anchorClient.clientX, anchorClient.clientY),
+        existingNodes: nodes,
+        idFactory: makePastedFragmentId,
+      });
+      if (pasted.nodes.length === 0) return false;
+      insertNodesAndLinks(pasted.nodes, pasted.links);
+      applyCanvasSelection(selectCanvasNodes(pasted.selectedNodeIds));
+      closeNodeContextMenu();
+      setMenuPos(null);
+      return true;
+    },
+    [
+      applyCanvasSelection,
+      closeNodeContextMenu,
+      getCanvasCenterClientPosition,
+      insertNodesAndLinks,
+      makePastedFragmentId,
+      nodes,
+      toWorld,
+    ]
+  );
+
+  const handleRemoveSelectedNodes = React.useCallback(() => {
+    const ids = Array.from(selectedNodeIds) as string[];
+    if (ids.length === 0) return false;
+    const removedCount = removeNodes(ids);
+    if (removedCount > 0) applyCanvasSelection(clearCanvasSelection());
+    return removedCount > 0;
+  }, [applyCanvasSelection, removeNodes, selectedNodeIds]);
 
   const handleAnalyzeVideo = React.useCallback(
     async (node: GraphNode, captures: VideoFrameCaptureItem[]) => {
@@ -894,23 +940,33 @@ export default function App({ onLoggedOut }: AppProps) {
       if (isEditableEventTarget(event.target)) return;
 
       const files = getFilesFromTransfer(event.clipboardData);
-      if (files.length === 0) return;
+      if (files.length > 0) {
+        event.preventDefault();
+        uploadFilesToCanvas(files, lastCanvasPointerRef.current ?? getCanvasCenterClientPosition());
+        return;
+      }
 
+      const clipboardText =
+        event.clipboardData?.getData("application/json") ||
+        event.clipboardData?.getData("text/plain") ||
+        "";
+      const payload =
+        parseMultiNodeClipboardPayload(clipboardText) ?? multiNodeClipboardRef.current;
+      if (!payload) return;
       event.preventDefault();
-      uploadFilesToCanvas(files, lastCanvasPointerRef.current ?? getCanvasCenterClientPosition());
+      handlePasteSelectedNodes(payload);
     };
 
     document.addEventListener("paste", handlePaste);
     return () => document.removeEventListener("paste", handlePaste);
-  }, [currentView, getCanvasCenterClientPosition, uploadFilesToCanvas]);
+  }, [currentView, getCanvasCenterClientPosition, handlePasteSelectedNodes, uploadFilesToCanvas]);
 
   React.useEffect(() => {
     const workflowId = currentWorkflowSummary?.id ?? null;
     const prev = autoFitStateRef.current;
     autoFitStateRef.current = { workflowId, nodeCount: nodes.length };
 
-    const shouldFit =
-      nodes.length === 1 && prev?.workflowId === workflowId && prev.nodeCount === 0;
+    const shouldFit = nodes.length === 1 && prev?.workflowId === workflowId && prev.nodeCount === 0;
     if (shouldFit) fitView();
   }, [currentWorkflowSummary?.id, fitView, nodes.length]);
 
@@ -938,11 +994,21 @@ export default function App({ onLoggedOut }: AppProps) {
         redo();
         return;
       }
+      if (!isEditingField && mod && (e.key === "c" || e.key === "C")) {
+        if (handleCopySelectedNodes()) e.preventDefault();
+        return;
+      }
       if (!isEditingField && (e.key === "Delete" || e.key === "Backspace") && selectedLinkId) {
         e.preventDefault();
         removeLink(selectedLinkId);
         applyCanvasSelection(clearCanvasSelection());
         return;
+      }
+      if (!isEditingField && (e.key === "Delete" || e.key === "Backspace")) {
+        if (handleRemoveSelectedNodes()) {
+          e.preventDefault();
+          return;
+        }
       }
       if (!isEditingField && (e.key === "Delete" || e.key === "Backspace") && selectedNodeId) {
         e.preventDefault();
@@ -965,6 +1031,8 @@ export default function App({ onLoggedOut }: AppProps) {
     selectedNodeId,
     removeNode,
     applyCanvasSelection,
+    handleCopySelectedNodes,
+    handleRemoveSelectedNodes,
   ]);
 
   React.useEffect(() => {
@@ -974,7 +1042,6 @@ export default function App({ onLoggedOut }: AppProps) {
       }
     };
   }, []);
-
 
   const handleCanvasContextMenu = React.useCallback(
     (e: React.MouseEvent) => {
@@ -1472,7 +1539,6 @@ export default function App({ onLoggedOut }: AppProps) {
               showGrid={showGrid}
               showMiniMap={showMiniMap}
               snapToGridEnabled={snapToGridEnabled}
-              selectedCount={selectedNodeIds.size}
               zoom={zoom}
               onFitView={() => {
                 fitView();
@@ -1490,7 +1556,6 @@ export default function App({ onLoggedOut }: AppProps) {
                 setSnapToGridEnabled((v) => !v);
                 showNotice(snapToGridEnabled ? "已关闭网格吸附" : "已开启网格吸附");
               }}
-              onCreateGroup={handleCreateGroup}
             />
           )}
           {currentView === "canvas" && (
@@ -1499,7 +1564,10 @@ export default function App({ onLoggedOut }: AppProps) {
               canRedo={canRedo}
               onUndo={undo}
               onRedo={redo}
-              onClearCanvas={clearCanvas}
+              onClearCanvas={() => {
+                clearCanvas();
+                applyCanvasSelection(clearCanvasSelection());
+              }}
             />
           )}
           {runNotice && (

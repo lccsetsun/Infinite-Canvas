@@ -99,6 +99,31 @@ describe("remote video generation task parsing", () => {
     });
   });
 
+  it("treats the generator poll response data url as a successful video result", async () => {
+    vi.mocked(devApiFetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          code: 200,
+          msg: "OK",
+          data: {
+            url: "https://kwyai1.oss-cn-beijing.aliyuncs.com/pic/2026/06/12/result.mp4",
+            ossId: "2065349696657846273",
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+
+    const result = await queryRemoteVideoGenerationTask("cgt-20260612162242-psz6j");
+
+    expect(result).toEqual({
+      status: "success",
+      videoUrl: "https://kwyai1.oss-cn-beijing.aliyuncs.com/pic/2026/06/12/result.mp4",
+      error: "",
+      rawStatus: "",
+    });
+  });
+
   it("treats the backend running 500 response as a pending video task", async () => {
     vi.mocked(devApiFetch).mockResolvedValue(
       new Response(
@@ -112,6 +137,28 @@ describe("remote video generation task parsing", () => {
     );
 
     const result = await queryRemoteVideoGenerationTask("cgt-20260612102951-jm5b5");
+
+    expect(result).toEqual({
+      status: "pending",
+      videoUrl: "",
+      error: "",
+      rawStatus: "running",
+    });
+  });
+
+  it("treats the backend generating 500 response as a pending video task", async () => {
+    vi.mocked(devApiFetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          code: 500,
+          msg: "视频生成中，请稍后...",
+          data: null,
+        }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      )
+    );
+
+    const result = await queryRemoteVideoGenerationTask("cgt-20260612164251-2cwlt");
 
     expect(result).toEqual({
       status: "pending",

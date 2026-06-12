@@ -1,5 +1,5 @@
 import React from "react";
-import { Box, Eye, Grid3X3, LocateFixed, Magnet } from "lucide-react";
+import { Eye, Grid3X3, LocateFixed, Magnet } from "lucide-react";
 import { motion } from "motion/react";
 import { Tooltip } from "../common/Tooltip";
 
@@ -7,13 +7,11 @@ interface CanvasControlsProps {
   showGrid: boolean;
   showMiniMap: boolean;
   snapToGridEnabled: boolean;
-  selectedCount: number;
   zoom: number;
   onFitView: () => void;
   onToggleGrid: () => void;
   onToggleMiniMap: () => void;
   onToggleSnapToGrid: () => void;
-  onCreateGroup: () => void;
 }
 
 function ControlButton({
@@ -49,13 +47,11 @@ export default function CanvasControls({
   showGrid,
   showMiniMap,
   snapToGridEnabled,
-  selectedCount,
   zoom,
   onFitView,
   onToggleGrid,
   onToggleMiniMap,
   onToggleSnapToGrid,
-  onCreateGroup,
 }: CanvasControlsProps) {
   return (
     <motion.div
@@ -108,30 +104,6 @@ export default function CanvasControls({
       >
         <Eye className="h-4 w-4" />
       </ControlButton>
-
-      {selectedCount >= 2 ? (
-        <>
-          <div className="h-4 w-px bg-white/[0.06]" />
-          <Tooltip content={`将 ${selectedCount} 个节点打组`}>
-            <motion.button
-              initial={{ scale: 0.94, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              onPointerDown={(event) => event.stopPropagation()}
-              onClick={(event) => {
-                event.stopPropagation();
-                onCreateGroup();
-              }}
-              className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-xl px-2 text-[11px] font-medium text-slate-200 transition hover:bg-white/[0.04]"
-            >
-              <Box className="h-3.5 w-3.5" />
-              <span>打组</span>
-              <span className="rounded-full bg-white/[0.06] px-1.5 py-0.5 text-[10px] text-slate-300">
-                {selectedCount}
-              </span>
-            </motion.button>
-          </Tooltip>
-        </>
-      ) : null}
 
       <div className="h-4 w-px bg-white/[0.06]" />
 

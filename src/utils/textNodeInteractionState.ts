@@ -7,6 +7,7 @@ interface TextNodeInteractionStateInput {
   inlineEditing: boolean;
   isHovered: boolean;
   isMultimodalMode: boolean;
+  isRunning?: boolean;
   hasReferences?: boolean;
   responseText: string;
   selected: boolean;
@@ -30,6 +31,7 @@ export function getTextNodeInteractionState({
   inlineEditing,
   isHovered,
   isMultimodalMode,
+  isRunning = false,
   responseText,
   selected,
   textMode,
@@ -52,7 +54,7 @@ export function getTextNodeInteractionState({
     contentViewKey: isPlainMode ? (showInlineEditor ? "plain-editing" : "plain-readonly") : "",
     isPlainMode,
     showInlineEditor,
-    showPromptComposer: !isPlainMode && (isHovered || selected || forceComposerOpen),
+    showPromptComposer: !isRunning && !isPlainMode && (isHovered || selected || forceComposerOpen),
     showSkeleton: !isPlainMode && !isComposerEditing && !showStarterGuide && !hasResponse && !hasError,
     showStarterGuide,
   };

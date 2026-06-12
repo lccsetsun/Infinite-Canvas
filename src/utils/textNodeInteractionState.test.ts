@@ -119,4 +119,20 @@ describe("getTextNodeInteractionState", () => {
     expect(state.showSkeleton).toBe(false);
     expect(state.showStarterGuide).toBe(false);
   });
+
+  it("does not show the prompt composer while the node is running", () => {
+    const state = getTextNodeInteractionState({
+      errorText: "",
+      forceComposerOpen: true,
+      inlineEditing: false,
+      isHovered: true,
+      isMultimodalMode: false,
+      isRunning: true,
+      responseText: "",
+      selected: true,
+      textMode: undefined,
+    });
+
+    expect(state.showPromptComposer).toBe(false);
+  });
 });

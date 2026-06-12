@@ -13,7 +13,6 @@ import {
   Grid3X3,
   Image as ImageIcon,
   Loader2,
-  Plus,
   Undo2,
   Upload,
   Wand2,
@@ -39,6 +38,7 @@ import {
   type FloatingMenuPosition,
 } from "../../utils/floatingMenuPosition";
 import { stringifyInputReferenceValues } from "../../utils/inputReferenceValues";
+import { InlineNodePortHandle } from "./InlineNodePortHandle";
 
 interface ImageNodeCardProps {
   node: GraphNode;
@@ -645,17 +645,21 @@ function ImageNodeCardImpl({
   );
   const hasNonTextInputReferences = inputReferences.some((reference) => reference.kind !== "text");
   const promptText = (node.properties.text as string) || "";
-  const imageUrls =
-    Array.isArray(node.data?.imageUrls) && node.data?.imageUrls.length
-      ? node.data.imageUrls.filter((url): url is string => typeof url === "string" && Boolean(url))
-      : [];
+  const imageUrls = React.useMemo(
+    () =>
+      Array.isArray(node.data?.imageUrls) && node.data?.imageUrls.length
+        ? node.data.imageUrls.filter(
+            (url): url is string => typeof url === "string" && Boolean(url)
+          )
+        : [],
+    [node.data]
+  );
   const fallbackImageUrl =
     (node.data?.imageUrl as string) || (node.properties.imageUrl as string) || "";
-  const resolvedImageUrls = imageUrls.length
-    ? imageUrls
-    : fallbackImageUrl
-      ? [fallbackImageUrl]
-      : [];
+  const resolvedImageUrls = React.useMemo(
+    () => (imageUrls.length ? imageUrls : fallbackImageUrl ? [fallbackImageUrl] : []),
+    [fallbackImageUrl, imageUrls]
+  );
   const imageUrl = resolvedImageUrls[activeImageIndex] || resolvedImageUrls[0] || "";
   const isSourceAssetNode = isSourceNode(node);
   const isFrameStrip = node.data?.isFrameStrip === true;
@@ -663,10 +667,6 @@ function ImageNodeCardImpl({
     typeof node.data?.extractedFrameSourceNodeId === "string" &&
     typeof node.data?.extractedFrameIndex === "number";
   const frameGridColumns = Math.max(1, Math.min(8, Math.round(node.data?.frameGridColumns ?? 5)));
-  const frameGridRows = Math.max(
-    1,
-    Math.ceil(Math.max(1, resolvedImageUrls.length) / frameGridColumns)
-  );
   const frameTileWidth =
     typeof node.data?.frameTileWidth === "number" && node.data.frameTileWidth > 0
       ? Math.round(node.data.frameTileWidth)
@@ -832,6 +832,7 @@ function ImageNodeCardImpl({
       node.id,
       onExtractFrameImage,
       onSetPrimaryImageResult,
+      setActiveImageIndex,
     ]
   );
   const beginFrameExtractionDrag = React.useCallback(
@@ -921,6 +922,7 @@ function ImageNodeCardImpl({
     },
     [
       cleanupFrameExtractionDragListeners,
+      destroyFrameExtractionOverlay,
       finishFrameExtractionDrag,
       onExtractFrameImage,
       updateFrameExtractionDragPreview,
@@ -948,7 +950,7 @@ function ImageNodeCardImpl({
       event.stopPropagation();
       finishFrameExtractionDrag(event.pointerId, event.clientX, event.clientY);
     },
-    [finishFrameExtractionDrag, node.id, onSetPrimaryImageResult]
+    [finishFrameExtractionDrag, node.id, onSetPrimaryImageResult, setActiveImageIndex]
   );
   const cancelFrameExtractionDrag = React.useCallback(
     (event: React.PointerEvent<HTMLElement>) => {
@@ -1133,8 +1135,7 @@ function ImageNodeCardImpl({
   );
   const beginImageFrameDropDrag = React.useCallback(
     (event: React.PointerEvent<HTMLElement>) => {
-      if (!onReplaceFrameImage || isFrameStrip || !imageUrl || event.button !== 0)
-        return;
+      if (!onReplaceFrameImage || isFrameStrip || !imageUrl || event.button !== 0) return;
       cleanupImageFrameDropListeners();
       const rect = event.currentTarget.getBoundingClientRect();
       const element = event.currentTarget;
@@ -1232,11 +1233,7 @@ function ImageNodeCardImpl({
   const resolution = (node.properties.resolution as string) || "1K";
   const quantity = (node.properties.quantity as string) || "1张";
   const imageModelOptionGroups = React.useMemo(
-    () =>
-      getModelOptionGroups(
-        [],
-        apiConfig?.remoteModelsByType?.[AI_MODEL_TYPES[1]] ?? []
-      ),
+    () => getModelOptionGroups([], apiConfig?.remoteModelsByType?.[AI_MODEL_TYPES[1]] ?? []),
     [apiConfig?.remoteModelsByType]
   );
   const imageModelOptions = React.useMemo(
@@ -1253,11 +1250,6 @@ function ImageNodeCardImpl({
   const nodeBadgeTitle =
     node.title === "图片节点" || node.title === "图片" ? "图片节点 1" : node.title;
   const nodeBadgeMatch = nodeBadgeTitle.match(/^(.*?)(\s+\d+)$/);
-  const resultImageBounds = getResultImageBounds(
-    aspectRatio,
-    node.data?.isUploadPlaceholder === true,
-    isExtractedFrameNode
-  );
   const resultImageSize = React.useMemo(
     () =>
       resolveResultImageSize(
@@ -1319,7 +1311,9 @@ function ImageNodeCardImpl({
   const frameStripRows = React.useMemo(
     () =>
       Array.from(
-        { length: Math.max(1, Math.ceil(Math.max(1, resolvedImageUrls.length) / frameGridColumns)) },
+        {
+          length: Math.max(1, Math.ceil(Math.max(1, resolvedImageUrls.length) / frameGridColumns)),
+        },
         (_, rowIndex) =>
           resolvedImageUrls
             .slice(rowIndex * frameGridColumns, (rowIndex + 1) * frameGridColumns)
@@ -1335,13 +1329,7 @@ function ImageNodeCardImpl({
               };
             })
       ),
-    [
-      frameGridColumns,
-      frameStripLayout.tiles,
-      frameTileHeight,
-      frameTileWidth,
-      resolvedImageUrls,
-    ]
+    [frameGridColumns, frameStripLayout.tiles, frameTileHeight, frameTileWidth, resolvedImageUrls]
   );
   const mediaFrameSize = isFrameStrip ? frameStripSize : resultImageSize;
   const previewNodeWidth = getImagePreviewNodeWidth({
@@ -1695,7 +1683,6 @@ function ImageNodeCardImpl({
       }
     },
     [
-      aspectRatio,
       node.data?.imagePromptStarter,
       node.id,
       onNotice,
@@ -1703,10 +1690,11 @@ function ImageNodeCardImpl({
       onSyncImagePromptStarterLayout,
       onUpdateData,
       onUpdateProperty,
-      resultImageBounds.maxHeight,
-      resultImageBounds.maxWidth,
       resultImageSize.height,
       resultImageSize.width,
+      setActiveImageIndex,
+      setIsUploadingAsset,
+      setNaturalImageSize,
     ]
   );
 
@@ -1719,7 +1707,14 @@ function ImageNodeCardImpl({
       setNaturalImageSize(null);
       onSetPrimaryImageResult?.(node.id, resolvedImageUrls[nextIndex], nextIndex);
     },
-    [activeImageIndex, node.id, onSetPrimaryImageResult, resolvedImageUrls]
+    [
+      activeImageIndex,
+      node.id,
+      onSetPrimaryImageResult,
+      resolvedImageUrls,
+      setActiveImageIndex,
+      setNaturalImageSize,
+    ]
   );
 
   const visibleThumbnailItems = React.useMemo(() => {
@@ -1833,7 +1828,8 @@ function ImageNodeCardImpl({
   });
   const portHandles = (
     <AnimatePresence>
-      {!isUploadingNodeAsset &&
+      {!isRunning &&
+        !isUploadingNodeAsset &&
         shouldShowInlinePortHandles({ isHovered, isLinkingOnCanvas, selected }) && (
           <>
             {hasInputPorts && (
@@ -1844,33 +1840,18 @@ function ImageNodeCardImpl({
                 className="absolute -left-11 z-10"
                 style={getImagePortHandleWrapperStyle(portTopStyle)}
               >
-                <div
-                  role="button"
-                  tabIndex={-1}
-                  data-node-action="true"
-                  data-port-role="input"
-                  data-node-id={node.id}
-                  data-port-index={0}
-                  className={`canvas-port-handle flex h-9 w-9 items-center justify-center rounded-full border transition-all duration-200 hover:scale-110 ${
+                <InlineNodePortHandle
+                  role="input"
+                  nodeId={node.id}
+                  portIndex={0}
+                  active={Boolean(
                     isLinkingOnCanvas && linkToNodeId === node.id && linkToInputIndex === 0
-                      ? "canvas-port-input canvas-port-hot scale-110"
-                      : "canvas-port-input"
-                  }`}
-                  onPointerEnter={() => onHoverCanvasLinkTarget?.(node.id, 0)}
-                  onPointerLeave={() => onLeaveCanvasLinkTarget?.(node.id, 0)}
-                  onPointerUp={(e) => {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    onFinishCanvasLink?.(node.id, 0);
-                  }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    e.preventDefault();
-                  }}
-                  title={getCanvasLinkTargetIssue?.(node.id, 0) || "输入端口: 点击此处完成连线"}
-                >
-                  <Plus className="h-4 w-4 pointer-events-none" />
-                </div>
+                  )}
+                  onHoverCanvasLinkTarget={onHoverCanvasLinkTarget}
+                  onLeaveCanvasLinkTarget={onLeaveCanvasLinkTarget}
+                  onFinishCanvasLink={onFinishCanvasLink}
+                  inputIssue={getCanvasLinkTargetIssue?.(node.id, 0)}
+                />
               </motion.div>
             )}
             <motion.div
@@ -1880,32 +1861,15 @@ function ImageNodeCardImpl({
               className="absolute -right-11 z-10"
               style={getImagePortHandleWrapperStyle(portTopStyle)}
             >
-              <div
-                role="button"
-                tabIndex={-1}
-                data-node-action="true"
-                data-port-role="output"
-                data-node-id={node.id}
-                data-port-index={0}
-                className={`canvas-port-handle flex h-9 w-9 items-center justify-center rounded-full border transition-all duration-200 hover:scale-110 ${
+              <InlineNodePortHandle
+                role="output"
+                nodeId={node.id}
+                portIndex={0}
+                active={Boolean(
                   isLinkingOnCanvas && linkFromNodeId === node.id && linkFromOutputIndex === 0
-                    ? "canvas-port-output canvas-port-active scale-110"
-                    : "canvas-port-output"
-                }`}
-                onPointerDown={(e) => {
-                  e.stopPropagation();
-                  e.preventDefault();
-                  (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-                  onBeginCanvasLink?.(node.id, 0, e.clientX, e.clientY);
-                }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  e.preventDefault();
-                }}
-                title="输出端口: 按住并拖拽进行连线 (支持多条输出)"
-              >
-                <Plus className="h-4 w-4 pointer-events-none" />
-              </div>
+                )}
+                onBeginCanvasLink={onBeginCanvasLink}
+              />
             </motion.div>
           </>
         )}
@@ -2242,72 +2206,72 @@ function ImageNodeCardImpl({
                           role="button"
                           tabIndex={0}
                           data-node-action="true"
-                      data-frame-strip-cell="true"
-                      data-frame-node-id={node.id}
-                      data-frame-index={index}
-                      aria-label={`第 ${index + 1} 帧，拖拽到画布生成图片子节点`}
-                      onPointerDown={(event) => beginFrameExtractionDrag(event, index, url)}
-                      onPointerMove={moveFrameExtractionDrag}
-                      onPointerUp={(event) => endFrameExtractionDrag(event, index, url)}
-                      onPointerCancel={cancelFrameExtractionDrag}
-                      onKeyDown={(event) => {
-                        if (event.key !== "Enter" && event.key !== " ") return;
-                        event.preventDefault();
-                        setActiveImageIndex(index);
-                        onSetPrimaryImageResult?.(node.id, url, index);
-                      }}
-                      className={`group/frame relative shrink-0 overflow-hidden bg-[#050914] shadow-[inset_0_0_0_1px_rgba(15,23,42,0.92),inset_0_0_32px_rgba(15,23,42,0.3)] transition-all duration-200 group-hover/framegrid:opacity-70 hover:z-10 hover:scale-[1.018] hover:opacity-100 hover:shadow-[0_0_0_2px_rgba(125,211,252,0.88),0_18px_44px_-22px_rgba(34,211,238,0.78),inset_0_0_0_1px_rgba(236,254,255,0.34)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300/70 ${onExtractFrameImage ? "cursor-grab active:cursor-grabbing" : ""}`}
-                      style={{ height: tileSize.height, width: tileSize.width }}
-                    >
-                      <img
-                        src={url}
-                        alt={`\u9010\u5e27\u5206\u6790 ${index + 1}`}
-                        className="h-full w-full object-contain transition-all duration-200 group-hover/frame:brightness-110 group-hover/frame:saturate-110"
-                        draggable={false}
-                        onLoad={(event) => {
-                          const img = event.currentTarget;
-                          if (!img.naturalWidth || !img.naturalHeight) return;
-                          setFrameImageSizes((current) => {
-                            const previous = current[index];
-                            if (
-                              previous?.width === img.naturalWidth &&
-                              previous?.height === img.naturalHeight
-                            ) {
-                              return current;
-                            }
-                            return {
-                              ...current,
-                              [index]: {
-                                width: img.naturalWidth,
-                                height: img.naturalHeight,
-                              },
-                            };
-                          });
-                        }}
-                      />
-                      <span className="pointer-events-none absolute right-2 top-2 z-10 flex h-6 min-w-[24px] items-center justify-center rounded-full border border-white/18 bg-[#0b1018]/82 px-1.5 text-[11px] font-bold tabular-nums text-white shadow-[0_8px_18px_-12px_rgba(0,0,0,0.95)] transition-all duration-200 group-hover/frame:border-cyan-100/42 group-hover/frame:bg-cyan-100/18 group-hover/frame:text-cyan-50 group-hover/frame:shadow-[0_0_20px_rgba(103,232,249,0.26)]">
-                        {index + 1}
-                      </span>
-                      {onExtractFrameImage && (
-                        <>
-                          <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(236,254,255,0.1)_0%,rgba(236,254,255,0.04)_38%,rgba(2,12,22,0.62)_100%)] opacity-0 transition-opacity duration-200 group-hover/frame:opacity-100" />
-                          <span className="pointer-events-none absolute inset-0 opacity-0 shadow-[inset_0_0_0_1px_rgba(236,254,255,0.42)] transition-opacity duration-200 group-hover/frame:opacity-100" />
-                          <button
-                            type="button"
-                            data-node-action="true"
-                            className="absolute bottom-3 left-1/2 z-20 flex h-8 -translate-x-1/2 translate-y-1 items-center justify-center rounded-full border border-cyan-100/18 bg-[#0b1320]/82 px-3.5 text-[12px] font-semibold text-cyan-50/92 opacity-0 shadow-[0_12px_28px_-18px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-md transition-all duration-200 hover:border-cyan-100/32 hover:bg-[#101b2b]/92 hover:text-white group-hover/frame:translate-y-0 group-hover/frame:opacity-100"
-                            onPointerDown={(event) => {
-                              event.stopPropagation();
-                            }}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              onExtractFrameImage(node.id, index);
+                          data-frame-strip-cell="true"
+                          data-frame-node-id={node.id}
+                          data-frame-index={index}
+                          aria-label={`第 ${index + 1} 帧，拖拽到画布生成图片子节点`}
+                          onPointerDown={(event) => beginFrameExtractionDrag(event, index, url)}
+                          onPointerMove={moveFrameExtractionDrag}
+                          onPointerUp={(event) => endFrameExtractionDrag(event, index, url)}
+                          onPointerCancel={cancelFrameExtractionDrag}
+                          onKeyDown={(event) => {
+                            if (event.key !== "Enter" && event.key !== " ") return;
+                            event.preventDefault();
+                            setActiveImageIndex(index);
+                            onSetPrimaryImageResult?.(node.id, url, index);
                           }}
+                          className={`group/frame relative shrink-0 overflow-hidden bg-[#050914] shadow-[inset_0_0_0_1px_rgba(15,23,42,0.92),inset_0_0_32px_rgba(15,23,42,0.3)] transition-all duration-200 group-hover/framegrid:opacity-70 hover:z-10 hover:scale-[1.018] hover:opacity-100 hover:shadow-[0_0_0_2px_rgba(125,211,252,0.88),0_18px_44px_-22px_rgba(34,211,238,0.78),inset_0_0_0_1px_rgba(236,254,255,0.34)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300/70 ${onExtractFrameImage ? "cursor-grab active:cursor-grabbing" : ""}`}
+                          style={{ height: tileSize.height, width: tileSize.width }}
                         >
-                            提取
-                          </button>
-                        </>
-                      )}
+                          <img
+                            src={url}
+                            alt={`\u9010\u5e27\u5206\u6790 ${index + 1}`}
+                            className="h-full w-full object-contain transition-all duration-200 group-hover/frame:brightness-110 group-hover/frame:saturate-110"
+                            draggable={false}
+                            onLoad={(event) => {
+                              const img = event.currentTarget;
+                              if (!img.naturalWidth || !img.naturalHeight) return;
+                              setFrameImageSizes((current) => {
+                                const previous = current[index];
+                                if (
+                                  previous?.width === img.naturalWidth &&
+                                  previous?.height === img.naturalHeight
+                                ) {
+                                  return current;
+                                }
+                                return {
+                                  ...current,
+                                  [index]: {
+                                    width: img.naturalWidth,
+                                    height: img.naturalHeight,
+                                  },
+                                };
+                              });
+                            }}
+                          />
+                          <span className="pointer-events-none absolute right-2 top-2 z-10 flex h-6 min-w-[24px] items-center justify-center rounded-full border border-white/18 bg-[#0b1018]/82 px-1.5 text-[11px] font-bold tabular-nums text-white shadow-[0_8px_18px_-12px_rgba(0,0,0,0.95)] transition-all duration-200 group-hover/frame:border-cyan-100/42 group-hover/frame:bg-cyan-100/18 group-hover/frame:text-cyan-50 group-hover/frame:shadow-[0_0_20px_rgba(103,232,249,0.26)]">
+                            {index + 1}
+                          </span>
+                          {onExtractFrameImage && (
+                            <>
+                              <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(236,254,255,0.1)_0%,rgba(236,254,255,0.04)_38%,rgba(2,12,22,0.62)_100%)] opacity-0 transition-opacity duration-200 group-hover/frame:opacity-100" />
+                              <span className="pointer-events-none absolute inset-0 opacity-0 shadow-[inset_0_0_0_1px_rgba(236,254,255,0.42)] transition-opacity duration-200 group-hover/frame:opacity-100" />
+                              <button
+                                type="button"
+                                data-node-action="true"
+                                className="absolute bottom-3 left-1/2 z-20 flex h-8 -translate-x-1/2 translate-y-1 items-center justify-center rounded-full border border-cyan-100/18 bg-[#0b1320]/82 px-3.5 text-[12px] font-semibold text-cyan-50/92 opacity-0 shadow-[0_12px_28px_-18px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-md transition-all duration-200 hover:border-cyan-100/32 hover:bg-[#101b2b]/92 hover:text-white group-hover/frame:translate-y-0 group-hover/frame:opacity-100"
+                                onPointerDown={(event) => {
+                                  event.stopPropagation();
+                                }}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  onExtractFrameImage(node.id, index);
+                                }}
+                              >
+                                提取
+                              </button>
+                            </>
+                          )}
                         </div>
                       ))}
                     </div>

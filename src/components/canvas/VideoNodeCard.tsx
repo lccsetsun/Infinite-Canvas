@@ -11,7 +11,6 @@ import {
   Loader2,
   Pause,
   Play,
-  Plus,
   ScanSearch,
   Upload,
   Video,
@@ -42,6 +41,7 @@ import {
   type FloatingMenuPosition,
 } from "../../utils/floatingMenuPosition";
 import { stringifyInputReferenceValues } from "../../utils/inputReferenceValues";
+import { InlineNodePortHandle } from "./InlineNodePortHandle";
 
 interface VideoNodeCardProps {
   node: GraphNode;
@@ -352,18 +352,14 @@ function VideoNodeCardImpl({
   const promptText = (node.properties.text as string) || "";
   const videoUrl = (node.data?.videoUrl as string) || (node.properties.videoUrl as string) || "";
   const promptComposerVisible =
-    !isSourceAssetNode && (isHovered || selected) && !videoUrl && !isUploadingAsset;
+    !isRunning && !isSourceAssetNode && (isHovered || selected) && !videoUrl && !isUploadingAsset;
   const aspectRatio = (node.properties.aspect_ratio as string) || "16:9";
   const resolution = (node.properties.resolution as string) || "1K";
   const durationSeconds = normalizeVideoDurationSeconds(node.properties.duration);
   const durationSliderPercent = getVideoDurationSliderPercent(durationSeconds);
   const audioEnabled = node.properties.audio !== false;
   const videoModelOptionGroups = React.useMemo(
-    () =>
-      getModelOptionGroups(
-        [],
-        apiConfig?.remoteModelsByType?.[AI_MODEL_TYPES[2]] ?? []
-      ),
+    () => getModelOptionGroups([], apiConfig?.remoteModelsByType?.[AI_MODEL_TYPES[2]] ?? []),
     [apiConfig?.remoteModelsByType]
   );
   const videoModelOptions = React.useMemo(
@@ -411,6 +407,14 @@ function VideoNodeCardImpl({
       typeof width === "number" && typeof height === "number" ? { width, height } : null
     );
   }, [node.data?.videoNaturalHeight, node.data?.videoNaturalWidth, videoUrl]);
+
+  React.useEffect(() => {
+    setCurrentTime(0);
+    setIsPlaying(false);
+    setMediaDuration(0);
+    setFrameMenuOpen(false);
+    videoRef.current?.load();
+  }, [videoUrl]);
 
   React.useEffect(() => {
     if (node.properties.model !== currentModel) {
@@ -695,7 +699,16 @@ function VideoNodeCardImpl({
         setIsUploadingVideo(false);
       }
     },
-    [aspectRatio, node.id, onUpdateData, onUpdateProperty, readLocalVideoMetadata]
+    [
+      aspectRatio,
+      node.id,
+      onUpdateData,
+      onUpdateProperty,
+      readLocalVideoMetadata,
+      setCurrentTime,
+      setIsUploadingVideo,
+      setMediaDuration,
+    ]
   );
 
   const uploadControl = (
@@ -791,7 +804,8 @@ function VideoNodeCardImpl({
   const hasInputPorts = !isSourceAssetNode && node.inputs.length > 0;
   const portHandles = (
     <AnimatePresence>
-      {!isUploadingAsset &&
+      {!isRunning &&
+        !isUploadingAsset &&
         shouldShowInlinePortHandles({ isHovered, isLinkingOnCanvas, selected }) && (
           <>
             {hasInputPorts && (
@@ -802,33 +816,18 @@ function VideoNodeCardImpl({
                 className="absolute -left-11 z-10 -translate-y-1/2"
                 style={{ top: portTopStyle }}
               >
-                <div
-                  role="button"
-                  tabIndex={-1}
-                  data-node-action="true"
-                  data-port-role="input"
-                  data-node-id={node.id}
-                  data-port-index={0}
-                  className={`canvas-port-handle flex h-9 w-9 items-center justify-center rounded-full border transition-all duration-200 hover:scale-110 ${
+                <InlineNodePortHandle
+                  role="input"
+                  nodeId={node.id}
+                  portIndex={0}
+                  active={Boolean(
                     isLinkingOnCanvas && linkToNodeId === node.id && linkToInputIndex === 0
-                      ? "canvas-port-input canvas-port-hot scale-110"
-                      : "canvas-port-input"
-                  }`}
-                  onPointerEnter={() => onHoverCanvasLinkTarget?.(node.id, 0)}
-                  onPointerLeave={() => onLeaveCanvasLinkTarget?.(node.id, 0)}
-                  onPointerUp={(e) => {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    onFinishCanvasLink?.(node.id, 0);
-                  }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    e.preventDefault();
-                  }}
-                  title={getCanvasLinkTargetIssue?.(node.id, 0) || "输入端口: 点击此处完成连线"}
-                >
-                  <Plus className="h-4 w-4 pointer-events-none" />
-                </div>
+                  )}
+                  onHoverCanvasLinkTarget={onHoverCanvasLinkTarget}
+                  onLeaveCanvasLinkTarget={onLeaveCanvasLinkTarget}
+                  onFinishCanvasLink={onFinishCanvasLink}
+                  inputIssue={getCanvasLinkTargetIssue?.(node.id, 0)}
+                />
               </motion.div>
             )}
             <motion.div
@@ -838,32 +837,15 @@ function VideoNodeCardImpl({
               className="absolute -right-11 z-10 -translate-y-1/2"
               style={{ top: portTopStyle }}
             >
-              <div
-                role="button"
-                tabIndex={-1}
-                data-node-action="true"
-                data-port-role="output"
-                data-node-id={node.id}
-                data-port-index={0}
-                className={`canvas-port-handle flex h-9 w-9 items-center justify-center rounded-full border transition-all duration-200 hover:scale-110 ${
+              <InlineNodePortHandle
+                role="output"
+                nodeId={node.id}
+                portIndex={0}
+                active={Boolean(
                   isLinkingOnCanvas && linkFromNodeId === node.id && linkFromOutputIndex === 0
-                    ? "canvas-port-output canvas-port-active scale-110"
-                    : "canvas-port-output"
-                }`}
-                onPointerDown={(e) => {
-                  e.stopPropagation();
-                  e.preventDefault();
-                  (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-                  onBeginCanvasLink?.(node.id, 0, e.clientX, e.clientY);
-                }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  e.preventDefault();
-                }}
-                title="输出端口: 按住并拖拽进行连线 (支持多条输出)"
-              >
-                <Plus className="h-4 w-4 pointer-events-none" />
-              </div>
+                )}
+                onBeginCanvasLink={onBeginCanvasLink}
+              />
             </motion.div>
           </>
         )}
@@ -999,8 +981,10 @@ function VideoNodeCardImpl({
             style={{ width: resultVideoSize.width, height: resultVideoSize.height }}
           >
             <video
+              key={videoUrl}
               ref={videoRef}
               src={videoUrl}
+              preload="metadata"
               className="block h-full w-full object-contain"
               muted={muted || !audioEnabled}
               playsInline

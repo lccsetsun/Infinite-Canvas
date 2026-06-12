@@ -3,13 +3,7 @@ import { createNodeFromType } from "../features/nodes/nodeFactory";
 import { getExecutor } from "../features/nodes/nodeExecutors";
 import type { AiModelsByType } from "../features/api/aiModelCatalog";
 import { WORKFLOW_TEMPLATES } from "../features/templates/workflowTemplates";
-import {
-  ExecutionLog,
-  GraphLink,
-  GraphNode,
-  GroupBox,
-  NodeClass,
-} from "../types";
+import { ExecutionLog, GraphLink, GraphNode, GroupBox, NodeClass } from "../types";
 import type { VideoFrameCaptureItem } from "../features/video/frameCapture";
 import {
   IMAGE_PROMPT_STARTER_GAP_X,
@@ -1051,9 +1045,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
   const currentLinksRef = useRef(initialWf?.data.links ?? []);
   const currentGroupsRef = useRef<import("../types").GroupBox[]>(initialWf?.data.groups ?? []);
   const currentNodeOutputsRef = useRef(outputsToMap(initialWf?.data.nodeOutputs ?? []));
-  const remoteVideoPollsRef = useRef(
-    new Map<string, { cancelled: boolean; timeoutId?: number }>()
-  );
+  const remoteVideoPollsRef = useRef(new Map<string, { cancelled: boolean; timeoutId?: number }>());
   const canUndo = historyState.pointer > 0;
   const canRedo = historyState.pointer < historyState.stack.length - 1;
 
@@ -1231,6 +1223,44 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     appendLog("warning", `宸插垹闄よ妭鐐?${node?.title ?? nodeId}`);
   };
 
+  const removeNodes = (nodeIds: Iterable<string>) => {
+    const idSet = new Set(nodeIds);
+    if (idSet.size === 0) return 0;
+
+    const activeNodes = currentNodesRef.current;
+    const activeLinks = currentLinksRef.current;
+    const removedNodes = activeNodes.filter((node) => idSet.has(node.id));
+    if (removedNodes.length === 0) return 0;
+
+    const nextNodes = activeNodes.filter((node) => !idSet.has(node.id));
+    const nextLinks = activeLinks.filter(
+      (link) => !idSet.has(link.fromNodeId) && !idSet.has(link.toNodeId)
+    );
+    const nextNodeOutputs: NodeOutputMap = new Map(currentNodeOutputsRef.current);
+    idSet.forEach((nodeId) => nextNodeOutputs.delete(nodeId));
+
+    currentNodesRef.current = nextNodes;
+    currentLinksRef.current = nextLinks;
+    currentNodeOutputsRef.current = nextNodeOutputs;
+    setNodes(nextNodes);
+    setLinks(nextLinks);
+    setNodeOutputs(nextNodeOutputs);
+    if (selectedNodeId && idSet.has(selectedNodeId)) setSelectedNodeId(null);
+    syncCurrentWorkflowMeta((wf) => ({
+      ...wf,
+      summary: { ...wf.summary, updatedAt: Date.now() },
+      data: {
+        ...wf.data,
+        links: nextLinks,
+        nodeOutputs: mapToOutputs(nextNodeOutputs),
+        nodes: nextNodes,
+      },
+    }));
+    pushHistory({ nodes: nextNodes, links: nextLinks });
+    appendLog("warning", `已删除 ${removedNodes.length} 个节点。`);
+    return removedNodes.length;
+  };
+
   const duplicateNode = (nodeId: string) => {
     const src = nodes.find((n) => n.id === nodeId);
     if (!src) return;
@@ -1252,9 +1282,56 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     appendLog("info", `宸插鍒惰妭鐐?${src.title}`);
   };
 
+  const insertNodesAndLinks = (incomingNodes: GraphNode[], incomingLinks: GraphLink[] = []) => {
+    if (incomingNodes.length === 0) return [];
+
+    const activeNodes = currentNodesRef.current;
+    const activeLinks = currentLinksRef.current;
+    const nextNodes = [...activeNodes, ...incomingNodes];
+    const incomingNodeIds = new Set(incomingNodes.map((node) => node.id));
+    const sanitizedLinks = incomingLinks.filter(
+      (link) => incomingNodeIds.has(link.fromNodeId) && incomingNodeIds.has(link.toNodeId)
+    );
+    const nextLinks = [...activeLinks, ...sanitizedLinks];
+
+    currentNodesRef.current = nextNodes;
+    currentLinksRef.current = nextLinks;
+    setNodes(nextNodes);
+    setLinks(nextLinks);
+    setSelectedNodeId(incomingNodes[0]?.id ?? null);
+    syncCurrentWorkflowMeta((wf) => ({
+      ...wf,
+      summary: { ...wf.summary, updatedAt: Date.now() },
+      data: { ...wf.data, links: nextLinks, nodes: nextNodes },
+    }));
+    pushHistory({ nodes: nextNodes, links: nextLinks });
+    appendLog(
+      "success",
+      `已粘贴 ${incomingNodes.length} 个节点${sanitizedLinks.length ? `，保留 ${sanitizedLinks.length} 条内部连线` : ""}。`
+    );
+    return incomingNodes.map((node) => node.id);
+  };
+
   const updateNodePositions = (updates: NodePositionUpdate[]) => {
     if (updates.length === 0) return;
     setNodes((prev) => applyNodePositionUpdates(prev, updates));
+  };
+
+  const layoutNodePositions = (updates: NodePositionUpdate[]) => {
+    if (updates.length === 0) return false;
+    const nextNodes = applyNodePositionUpdates(currentNodesRef.current, updates);
+    if (nextNodes === currentNodesRef.current) return false;
+
+    currentNodesRef.current = nextNodes;
+    setNodes(nextNodes);
+    syncCurrentWorkflowMeta((wf) => ({
+      ...wf,
+      summary: { ...wf.summary, updatedAt: Date.now() },
+      data: { ...wf.data, nodes: nextNodes },
+    }));
+    pushHistory({ nodes: nextNodes, links: currentLinksRef.current });
+    appendLog("info", `已调整 ${updates.length} 个节点的位置。`);
+    return true;
   };
 
   const updateNodePosition = (nodeId: string, x: number, y: number) => {
@@ -1262,14 +1339,19 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
   };
 
   const clearCanvas = () => {
+    currentNodesRef.current = [];
+    currentLinksRef.current = [];
+    currentGroupsRef.current = [];
+    currentNodeOutputsRef.current = new Map();
     setNodes([]);
     setLinks([]);
+    setGroups([]);
     setSelectedNodeId(null);
     setNodeOutputs(new Map());
     syncCurrentWorkflowMeta((wf) => ({
       ...wf,
       summary: { ...wf.summary, updatedAt: Date.now() },
-      data: { nodes: [], links: [], nodeOutputs: [] },
+      data: { groups: [], nodes: [], links: [], nodeOutputs: [] },
     }));
     pushHistory({ nodes: [], links: [] });
     appendLog("warning", "Canvas cleared.");
@@ -2111,7 +2193,11 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       const poll = async () => {
         if (entry.cancelled) return;
         const latestNode = currentNodesRef.current.find((candidate) => candidate.id === node.id);
-        if (!latestNode || latestNode.data?.remoteVideoTaskId !== taskId || !isPendingRemoteVideoNode(latestNode)) {
+        if (
+          !latestNode ||
+          latestNode.data?.remoteVideoTaskId !== taskId ||
+          !isPendingRemoteVideoNode(latestNode)
+        ) {
           stopPoll(key);
           return;
         }
@@ -2892,7 +2978,8 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      if (nodes.some((node) => hasNodeRuntimeState(node) && !isPendingRemoteVideoNode(node))) return;
+      if (nodes.some((node) => hasNodeRuntimeState(node) && !isPendingRemoteVideoNode(node)))
+        return;
       const persistableNodes = sanitizeNodesRuntimeState(nodes);
       const nextData = {
         nodes: persistableNodes,
@@ -2993,9 +3080,12 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     createTextNodeStarterFlow,
     syncImagePromptStarterLayout,
     removeNode,
+    removeNodes,
     duplicateNode,
+    insertNodesAndLinks,
     updateNodePosition,
     updateNodePositions,
+    layoutNodePositions,
     updateNodeProperty,
     updateNodeData,
     setPrimaryImageResult,

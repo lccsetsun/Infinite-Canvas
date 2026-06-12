@@ -11,7 +11,6 @@ import {
   FileText,
   Loader2,
   MessageSquareText,
-  Plus,
 } from "lucide-react";
 import { GraphNode } from "../../types";
 import { getNodeHeight, getNodeWidth } from "./geometry";
@@ -32,6 +31,7 @@ import {
 import { ReferencePreviewCard } from "./ReferencePreviewCard";
 import { calculateTextNodeResize } from "../../utils/textNodeResize";
 import { PromptTokenEditor, type PromptTokenEditorHandle } from "./PromptTokenEditor";
+import { InlineNodePortHandle } from "./InlineNodePortHandle";
 
 interface TextNodeCardProps {
   node: GraphNode;
@@ -246,6 +246,7 @@ function TextNodeCardImpl({
     inlineEditing,
     isHovered,
     isMultimodalMode,
+    isRunning,
     responseText,
     selected,
     textMode: node.properties.textMode,
@@ -670,14 +671,14 @@ function TextNodeCardImpl({
             className="absolute -left-11 top-1/2 z-10 -translate-y-1/2"
             onMouseEnter={() => setIsHovered(true)}
           >
-            <motion.div
-              ref={inputPortRef}
-              role="button"
-              tabIndex={-1}
-              data-node-action="true"
-              data-port-role="input"
-              data-node-id={node.id}
-              data-port-index={inputPortIndex}
+            <InlineNodePortHandle
+              handleRef={inputPortRef}
+              role="input"
+              nodeId={node.id}
+              portIndex={inputPortIndex}
+              active={Boolean(
+                isLinkingOnCanvas && linkToNodeId === node.id && linkToInputIndex === inputPortIndex
+              )}
               animate={{
                 opacity: showPortHandles ? 1 : 0,
                 scale: showPortHandles ? 1 : 0.72,
@@ -685,42 +686,25 @@ function TextNodeCardImpl({
                 y: portMagnet.input.y,
               }}
               transition={{ duration: 0.18, ease: "easeOut" }}
-              className={`canvas-port-handle flex h-9 w-9 items-center justify-center rounded-full border transition-all duration-200 hover:scale-110 will-change-transform ${
-                isLinkingOnCanvas && linkToNodeId === node.id && linkToInputIndex === inputPortIndex
-                  ? "canvas-port-input canvas-port-hot scale-110"
-                  : "canvas-port-input"
-              }`}
-              onPointerEnter={() => onHoverCanvasLinkTarget?.(node.id, inputPortIndex)}
-              onPointerLeave={() => onLeaveCanvasLinkTarget?.(node.id, inputPortIndex)}
-              onPointerUp={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                onFinishCanvasLink?.(node.id, inputPortIndex);
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-              }}
-              title={
-                getCanvasLinkTargetIssue?.(node.id, inputPortIndex) || "输入端口: 点击此处完成连线"
-              }
-            >
-              <Plus className="h-4 w-4 pointer-events-none" />
-            </motion.div>
+              onHoverCanvasLinkTarget={onHoverCanvasLinkTarget}
+              onLeaveCanvasLinkTarget={onLeaveCanvasLinkTarget}
+              onFinishCanvasLink={onFinishCanvasLink}
+              inputIssue={getCanvasLinkTargetIssue?.(node.id, inputPortIndex)}
+            />
           </div>
         )}
         <div
           className="absolute -right-11 top-1/2 z-10 -translate-y-1/2"
           onMouseEnter={() => setIsHovered(true)}
         >
-          <motion.div
-            ref={outputPortRef}
-            role="button"
-            tabIndex={-1}
-            data-node-action="true"
-            data-port-role="output"
-            data-node-id={node.id}
-            data-port-index={0}
+          <InlineNodePortHandle
+            handleRef={outputPortRef}
+            role="output"
+            nodeId={node.id}
+            portIndex={0}
+            active={Boolean(
+              isLinkingOnCanvas && linkFromNodeId === node.id && linkFromOutputIndex === 0
+            )}
             animate={{
               opacity: showPortHandles ? 1 : 0,
               scale: showPortHandles ? 1 : 0.72,
@@ -728,25 +712,8 @@ function TextNodeCardImpl({
               y: portMagnet.output.y,
             }}
             transition={{ duration: 0.18, ease: "easeOut" }}
-            className={`canvas-port-handle flex h-9 w-9 items-center justify-center rounded-full border transition-all duration-200 hover:scale-110 will-change-transform ${
-              isLinkingOnCanvas && linkFromNodeId === node.id && linkFromOutputIndex === 0
-                ? "canvas-port-output canvas-port-active scale-110"
-                : "canvas-port-output"
-            }`}
-            onPointerDown={(e) => {
-              e.stopPropagation();
-              e.preventDefault();
-              (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-              onBeginCanvasLink?.(node.id, 0, e.clientX, e.clientY);
-            }}
-            onClick={(e) => {
-              e.stopPropagation();
-              e.preventDefault();
-            }}
-            title="输出端口: 按住并拖拽进行连线 (支持多条输出)"
-          >
-            <Plus className="h-4 w-4 pointer-events-none" />
-          </motion.div>
+            onBeginCanvasLink={onBeginCanvasLink}
+          />
         </div>
 
         <div className="absolute -top-8 left-0 z-30 flex items-center gap-1.5 text-slate-300/82 drop-shadow-[0_1px_10px_rgba(15,23,42,0.9)]">

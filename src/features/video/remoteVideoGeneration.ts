@@ -140,7 +140,9 @@ export function parseRemoteVideoTaskResult(data: unknown): RemoteVideoTaskResult
   return { status: "pending", videoUrl: "", error: "", rawStatus };
 }
 
-async function parseRemoteVideoRunningError(response: Response): Promise<RemoteVideoTaskResult | null> {
+async function parseRemoteVideoRunningError(
+  response: Response
+): Promise<RemoteVideoTaskResult | null> {
   const rawText = await response.text().catch(() => "");
   if (!rawText) return null;
 
@@ -154,7 +156,9 @@ async function parseRemoteVideoRunningError(response: Response): Promise<RemoteV
   if (!isRecord(parsed)) return null;
   const code = typeof parsed.code === "number" ? parsed.code : undefined;
   const message = firstString(parsed.msg, parsed.message);
-  if (code !== 500 || !/未知任务状态[:：]\s*running/i.test(message)) return null;
+  const isRunningMessage =
+    /未知任务状态[:：]\s*running/i.test(message) || /视频生成中[，,]?\s*请稍后/i.test(message);
+  if (code !== 500 || !isRunningMessage) return null;
 
   return {
     status: "pending",
