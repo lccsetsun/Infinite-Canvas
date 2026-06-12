@@ -34,6 +34,10 @@ import {
   type AiModelsByType,
 } from "../../features/api/aiModelCatalog";
 import {
+  getImageResolutionPreset,
+  type ImageResolutionPresetGroup,
+} from "../../features/nodes/imageResolutionPresets";
+import {
   getFloatingMenuPosition,
   type FloatingMenuPosition,
 } from "../../utils/floatingMenuPosition";
@@ -76,6 +80,7 @@ interface ImageNodeCardProps {
     currentIndex?: number
   ) => void;
   resolvedInputs?: Record<string, unknown>;
+  resolutionPresetGroups?: ImageResolutionPresetGroup[];
   onRun?: (nodeId: string) => void;
   onNotice?: (message: string) => void;
   isLinkingOnCanvas?: boolean;
@@ -527,6 +532,7 @@ function ImageNodeCardImpl({
   onSplitImageGrid,
   onPreview,
   resolvedInputs,
+  resolutionPresetGroups,
   onRun,
   onNotice,
   isLinkingOnCanvas,
@@ -1229,8 +1235,18 @@ function ImageNodeCardImpl({
   const isImageLoadFailed = Boolean(
     imageUrl && imageLoadState.url === imageUrl && imageLoadState.status === "error"
   );
-  const aspectRatio = (node.properties.aspect_ratio as string) || "16:9";
-  const resolution = (node.properties.resolution as string) || "1K";
+  const rawAspectRatio = (node.properties.aspect_ratio as string) || "16:9";
+  const rawResolution = (node.properties.resolution as string) || "1K";
+  const currentCustomSize =
+    typeof node.properties.customSize === "string" ? node.properties.customSize : "";
+  const activeResolutionGroup =
+    resolutionPresetGroups?.find((group) => group.resolution === rawResolution) ??
+    resolutionPresetGroups?.[0];
+  const resolution = activeResolutionGroup?.resolution ?? rawResolution;
+  const aspectRatio =
+    activeResolutionGroup?.presets.some((preset) => preset.aspectRatio === rawAspectRatio)
+      ? rawAspectRatio
+      : activeResolutionGroup?.presets[0]?.aspectRatio ?? rawAspectRatio;
   const quantity = (node.properties.quantity as string) || "1张";
   const imageModelOptionGroups = React.useMemo(
     () => getModelOptionGroups([], apiConfig?.remoteModelsByType?.[AI_MODEL_TYPES[1]] ?? []),
@@ -1250,6 +1266,25 @@ function ImageNodeCardImpl({
   const nodeBadgeTitle =
     node.title === "图片节点" || node.title === "图片" ? "图片节点 1" : node.title;
   const nodeBadgeMatch = nodeBadgeTitle.match(/^(.*?)(\s+\d+)$/);
+  React.useEffect(() => {
+    if (!resolutionPresetGroups?.length) return;
+    if (rawResolution !== resolution) onUpdateProperty?.(node.id, "resolution", resolution);
+    if (rawAspectRatio !== aspectRatio) onUpdateProperty?.(node.id, "aspect_ratio", aspectRatio);
+    const preset = getImageResolutionPreset(resolution, aspectRatio, resolutionPresetGroups);
+    const nextCustomSize = preset ? `${preset.width}x${preset.height}` : "";
+    if (nextCustomSize && currentCustomSize !== nextCustomSize) {
+      onUpdateProperty?.(node.id, "customSize", nextCustomSize);
+    }
+  }, [
+    aspectRatio,
+    currentCustomSize,
+    node.id,
+    onUpdateProperty,
+    rawAspectRatio,
+    rawResolution,
+    resolution,
+    resolutionPresetGroups,
+  ]);
   const resultImageSize = React.useMemo(
     () =>
       resolveResultImageSize(
@@ -2685,9 +2720,18 @@ function ImageNodeCardImpl({
                 <ImageResolutionPicker
                   resolution={resolution}
                   aspectRatio={aspectRatio}
+                  presetGroups={resolutionPresetGroups}
                   onChange={(nextResolution, nextAspectRatio) => {
                     onUpdateProperty?.(node.id, "resolution", nextResolution);
                     onUpdateProperty?.(node.id, "aspect_ratio", nextAspectRatio);
+                    const preset = getImageResolutionPreset(
+                      nextResolution,
+                      nextAspectRatio,
+                      resolutionPresetGroups
+                    );
+                    if (preset) {
+                      onUpdateProperty?.(node.id, "customSize", `${preset.width}x${preset.height}`);
+                    }
                     if (!imageUrl && !isFrameStrip) {
                       const nextNodeSize = resolveEmptyImageNodeSize({
                         aspectRatio: nextAspectRatio,

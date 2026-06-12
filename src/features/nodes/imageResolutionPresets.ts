@@ -1,5 +1,5 @@
-export type ImageResolution = "1K" | "2K" | "3K" | "4K";
-export type ImageAspectRatio = "1:1" | "4:3" | "3:4" | "16:9" | "9:16" | "3:2" | "2:3" | "21:9";
+export type ImageResolution = string;
+export type ImageAspectRatio = string;
 
 export interface ImageResolutionPreset {
   resolution: ImageResolution;
@@ -82,23 +82,46 @@ export const IMAGE_ASPECT_RATIO_OPTIONS = Array.from(
 
 export function getImageResolutionPreset(
   resolution: string,
-  aspectRatio: string
+  aspectRatio: string,
+  groups: ImageResolutionPresetGroup[] = IMAGE_RESOLUTION_PRESET_GROUPS
 ): ImageResolutionPreset | undefined {
-  return IMAGE_RESOLUTION_PRESETS.find(
+  return groups.flatMap((group) => group.presets).find(
     (preset) => preset.resolution === resolution && preset.aspectRatio === aspectRatio
   );
 }
 
-function getFallbackImageResolutionPreset() {
-  return getImageResolutionPreset("1K", "16:9") ?? IMAGE_RESOLUTION_PRESETS[0];
+function getFallbackImageResolutionPreset(
+  groups: ImageResolutionPresetGroup[] = IMAGE_RESOLUTION_PRESET_GROUPS
+) {
+  return (
+    getImageResolutionPreset("1K", "16:9", groups) ??
+    groups[0]?.presets[0] ??
+    IMAGE_RESOLUTION_PRESETS[0]
+  );
 }
 
-export function formatImageResolutionPreset(resolution: string, aspectRatio: string) {
-  const preset = getImageResolutionPreset(resolution, aspectRatio) ?? getFallbackImageResolutionPreset();
-  return `${preset.aspectRatio} · ${preset.width}×${preset.height}`;
+export function formatImageResolutionPreset(
+  resolution: string,
+  aspectRatio: string,
+  groups: ImageResolutionPresetGroup[] = IMAGE_RESOLUTION_PRESET_GROUPS
+) {
+  const preset =
+    getImageResolutionPreset(resolution, aspectRatio, groups) ??
+    getFallbackImageResolutionPreset(groups);
+  return preset.width > 0 && preset.height > 0
+    ? `${preset.aspectRatio} · ${preset.width}×${preset.height}`
+    : preset.aspectRatio;
 }
 
-export function formatImageResolutionPresetOption(resolution: string, aspectRatio: string) {
-  const preset = getImageResolutionPreset(resolution, aspectRatio) ?? getFallbackImageResolutionPreset();
-  return `${preset.resolution} ${preset.aspectRatio} · ${preset.width}×${preset.height}`;
+export function formatImageResolutionPresetOption(
+  resolution: string,
+  aspectRatio: string,
+  groups: ImageResolutionPresetGroup[] = IMAGE_RESOLUTION_PRESET_GROUPS
+) {
+  const preset =
+    getImageResolutionPreset(resolution, aspectRatio, groups) ??
+    getFallbackImageResolutionPreset(groups);
+  return preset.width > 0 && preset.height > 0
+    ? `${preset.resolution} ${preset.aspectRatio} · ${preset.width}×${preset.height}`
+    : `${preset.resolution} ${preset.aspectRatio}`;
 }

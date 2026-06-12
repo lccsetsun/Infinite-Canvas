@@ -12,6 +12,7 @@ import type { TextNodeReferenceItem } from "../../utils/textNodeReferences";
 import { getCanvasNodeZIndex } from "../../utils/canvasNodeLayering";
 import type { AiModelsByType } from "../../features/api/aiModelCatalog";
 import type { CanvasGraphIndex } from "../../utils/canvasGraphIndex";
+import type { ImageResolutionPresetGroup } from "../../features/nodes/imageResolutionPresets";
 
 interface CanvasNodeLayerProps {
   apiConfig: {
@@ -26,10 +27,12 @@ interface CanvasNodeLayerProps {
   linkToNodeId: string;
   links: GraphLink[];
   graphIndex?: CanvasGraphIndex;
+  imageResolutionGroups?: ImageResolutionPresetGroup[];
   nodes: GraphNode[];
   pan: { x: number; y: number };
   draggingNodeId?: string | null;
   selectedNodeId: string | null;
+  videoResolutionGroups?: ImageResolutionPresetGroup[];
   zoom: number;
   getCanvasLinkTargetIssue: (nodeId: string, inputIndex: number) => string | null;
   onBeginCanvasLink: (
@@ -88,10 +91,12 @@ export default function CanvasNodeLayer({
   linkToNodeId,
   links,
   graphIndex,
+  imageResolutionGroups,
   nodes,
   pan,
   draggingNodeId,
   selectedNodeId,
+  videoResolutionGroups,
   zoom,
   getCanvasLinkTargetIssue,
   onBeginCanvasLink,
@@ -213,6 +218,7 @@ export default function CanvasNodeLayer({
                   resolvedInputs={resolvedInputsMap?.get(node.id)}
                   onRun={onRunNode}
                   onNotice={onNotice}
+                  resolutionPresetGroups={imageResolutionGroups}
                   // 连线相关
                   isLinkingOnCanvas={isLinkingOnCanvas}
                   linkFromNodeId={linkFromNodeId}
@@ -248,6 +254,7 @@ export default function CanvasNodeLayer({
                   onReverseVideoPrompt={onReverseVideoPrompt}
                   resolvedInputs={resolvedInputsMap?.get(node.id)}
                   onRun={onRunNode}
+                  resolutionPresetGroups={videoResolutionGroups}
                   // 连线相关
                   isLinkingOnCanvas={isLinkingOnCanvas}
                   linkFromNodeId={linkFromNodeId}

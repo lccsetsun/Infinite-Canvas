@@ -1,12 +1,13 @@
 import React from "react";
 import { createPortal } from "react-dom";
-import { Check, ChevronDown, Image } from "lucide-react";
+import { Check, ChevronDown, Image, type LucideIcon } from "lucide-react";
 import {
   IMAGE_RESOLUTION_PRESET_GROUPS,
   formatImageResolutionPreset,
   getImageResolutionPreset,
   type ImageAspectRatio,
   type ImageResolution,
+  type ImageResolutionPresetGroup,
 } from "../../features/nodes/imageResolutionPresets";
 import {
   getFloatingMenuPosition,
@@ -20,6 +21,8 @@ interface ImageResolutionPickerProps {
   buttonClassName?: string;
   panelAlign?: "left" | "right";
   panelTitle?: string;
+  presetGroups?: ImageResolutionPresetGroup[];
+  triggerIcon?: LucideIcon;
 }
 
 const PANEL_WIDTH = 430;
@@ -27,12 +30,20 @@ const PANEL_MAX_HEIGHT = 430;
 const PANEL_GAP = 10;
 const PANEL_MARGIN = 16;
 
-function isImageResolution(value: string): value is ImageResolution {
-  return IMAGE_RESOLUTION_PRESET_GROUPS.some((group) => group.resolution === value);
+function isImageResolution(
+  value: string,
+  presetGroups: ImageResolutionPresetGroup[]
+): value is ImageResolution {
+  return presetGroups.some((group) => group.resolution === value);
 }
 
-function getFallbackResolution(value: string): ImageResolution {
-  return isImageResolution(value) ? value : "1K";
+function getFallbackResolution(
+  value: string,
+  presetGroups: ImageResolutionPresetGroup[]
+): ImageResolution {
+  return isImageResolution(value, presetGroups)
+    ? value
+    : presetGroups[0]?.resolution || "1K";
 }
 
 export function getResolutionPickerPanelTitle(panelTitle?: string) {
@@ -107,18 +118,20 @@ export function ImageResolutionPicker({
   buttonClassName = "",
   panelAlign = "left",
   panelTitle,
+  presetGroups = IMAGE_RESOLUTION_PRESET_GROUPS,
+  triggerIcon: TriggerIcon = Image,
 }: ImageResolutionPickerProps) {
   const [open, setOpen] = React.useState(false);
   const [activeResolution, setActiveResolution] = React.useState<ImageResolution>(() =>
-    getFallbackResolution(resolution)
+    getFallbackResolution(resolution, presetGroups)
   );
   const [position, setPosition] = React.useState<FloatingMenuPosition | null>(null);
   const buttonRef = React.useRef<HTMLButtonElement | null>(null);
   const panelRef = React.useRef<HTMLDivElement | null>(null);
 
   React.useEffect(() => {
-    if (open) setActiveResolution(getFallbackResolution(resolution));
-  }, [open, resolution]);
+    if (open) setActiveResolution(getFallbackResolution(resolution, presetGroups));
+  }, [open, presetGroups, resolution]);
 
   React.useLayoutEffect(() => {
     if (!open || !buttonRef.current) return;
@@ -171,10 +184,10 @@ export function ImageResolutionPicker({
   }, [open]);
 
   const activeGroup =
-    IMAGE_RESOLUTION_PRESET_GROUPS.find((group) => group.resolution === activeResolution) ??
-    IMAGE_RESOLUTION_PRESET_GROUPS[0];
+    presetGroups.find((group) => group.resolution === activeResolution) ?? presetGroups[0];
   const selectedPreset =
-    getImageResolutionPreset(resolution, aspectRatio) ?? getImageResolutionPreset("1K", "16:9");
+    getImageResolutionPreset(resolution, aspectRatio, presetGroups) ??
+    getImageResolutionPreset(presetGroups[0]?.resolution || "1K", activeGroup?.presets[0]?.aspectRatio || "16:9", presetGroups);
 
   return (
     <>
@@ -189,9 +202,9 @@ export function ImageResolutionPicker({
         }}
         className={buttonClassName}
       >
-        <Image className="h-3.5 w-3.5 shrink-0 text-cyan-100/52" />
+        <TriggerIcon className="h-3.5 w-3.5 shrink-0 text-cyan-100/52" />
         <span className="min-w-0 truncate">
-          {resolution} · {formatImageResolutionPreset(resolution, aspectRatio)}
+          {resolution} · {formatImageResolutionPreset(resolution, aspectRatio, presetGroups)}
         </span>
         <ChevronDown
           className={`ml-auto h-3.5 w-3.5 shrink-0 text-slate-300/56 transition-transform ${
@@ -227,7 +240,7 @@ export function ImageResolutionPicker({
                 清晰度
               </div>
               <div className="grid grid-cols-4 gap-3">
-                {IMAGE_RESOLUTION_PRESET_GROUPS.map((group) => {
+                {presetGroups.map((group) => {
                   const isActive = group.resolution === activeResolution;
                   return (
                     <button
@@ -254,7 +267,7 @@ export function ImageResolutionPicker({
                 比例
               </div>
               <div className="grid grid-cols-4 gap-3">
-                {activeGroup.presets.map((preset) => {
+                {(activeGroup?.presets ?? []).map((preset) => {
                   const isActive =
                     preset.resolution === selectedPreset?.resolution &&
                     preset.aspectRatio === selectedPreset?.aspectRatio;

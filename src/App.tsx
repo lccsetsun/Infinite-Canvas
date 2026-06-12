@@ -73,6 +73,10 @@ import {
   makeEmptyAiModelsByType,
   type AiModelsByType,
 } from "./features/api/aiModelCatalog";
+import {
+  fetchCanvasGenerationDictionaries,
+  type CanvasGenerationDictionaries,
+} from "./features/api/canvasGenerationDictionaries";
 import { clearAuthSession } from "./features/auth/authStorage";
 import { logout } from "./features/auth/authApi";
 import { performOptimisticLogout } from "./features/auth/logoutFlow";
@@ -148,6 +152,8 @@ export default function App({ onLoggedOut }: AppProps) {
   const [remoteModelsByType, setRemoteModelsByType] = React.useState<AiModelsByType>(() =>
     makeEmptyAiModelsByType()
   );
+  const [generationDictionaries, setGenerationDictionaries] =
+    React.useState<CanvasGenerationDictionaries | null>(null);
 
   const refreshRemoteProject = React.useCallback(
     (showLoading = true) => {
@@ -294,6 +300,17 @@ export default function App({ onLoggedOut }: AppProps) {
       .catch((error) => {
         if (!cancelled) {
           console.warn("Failed to load remote AI model catalog", error);
+        }
+      })
+      .finally(() => undefined);
+
+    void fetchCanvasGenerationDictionaries()
+      .then((dictionaries) => {
+        if (!cancelled) setGenerationDictionaries(dictionaries);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          console.warn("Failed to load remote canvas dictionaries", error);
         }
       });
 
@@ -1453,6 +1470,8 @@ export default function App({ onLoggedOut }: AppProps) {
               apiKey: "",
               remoteModelsByType,
             }}
+            imageResolutionGroups={generationDictionaries?.imageResolutionGroups}
+            videoResolutionGroups={generationDictionaries?.videoResolutionGroups}
             isLinkingOnCanvas={isLinkingOnCanvas}
             linkFromNodeId={linkFromNodeId}
             linkFromOutputIndex={linkFromOutputIndex}

@@ -36,6 +36,7 @@ import {
   getModelOptionGroups,
   type AiModelsByType,
 } from "../../features/api/aiModelCatalog";
+import type { ImageResolutionPresetGroup } from "../../features/nodes/imageResolutionPresets";
 import {
   getFloatingMenuPosition,
   type FloatingMenuPosition,
@@ -65,6 +66,7 @@ interface VideoNodeCardProps {
   onAnalyzeVideo?: (node: GraphNode, captures: VideoFrameCaptureItem[]) => Promise<void> | void;
   onReverseVideoPrompt?: (node: GraphNode, videoUrl: string) => Promise<void> | void;
   resolvedInputs?: Record<string, unknown>;
+  resolutionPresetGroups?: ImageResolutionPresetGroup[];
   onRun?: (nodeId: string) => void;
   isLinkingOnCanvas?: boolean;
   linkFromNodeId?: string | null;
@@ -286,6 +288,7 @@ function VideoNodeCardImpl({
   onAnalyzeVideo,
   onReverseVideoPrompt,
   resolvedInputs,
+  resolutionPresetGroups,
   onRun,
   isLinkingOnCanvas,
   linkFromNodeId,
@@ -353,8 +356,16 @@ function VideoNodeCardImpl({
   const videoUrl = (node.data?.videoUrl as string) || (node.properties.videoUrl as string) || "";
   const promptComposerVisible =
     !isRunning && !isSourceAssetNode && (isHovered || selected) && !videoUrl && !isUploadingAsset;
-  const aspectRatio = (node.properties.aspect_ratio as string) || "16:9";
-  const resolution = (node.properties.resolution as string) || "1K";
+  const rawAspectRatio = (node.properties.aspect_ratio as string) || "16:9";
+  const rawResolution = (node.properties.resolution as string) || "480p";
+  const activeResolutionGroup =
+    resolutionPresetGroups?.find((group) => group.resolution === rawResolution) ??
+    resolutionPresetGroups?.[0];
+  const resolution = activeResolutionGroup?.resolution ?? rawResolution;
+  const aspectRatio =
+    activeResolutionGroup?.presets.some((preset) => preset.aspectRatio === rawAspectRatio)
+      ? rawAspectRatio
+      : activeResolutionGroup?.presets[0]?.aspectRatio ?? rawAspectRatio;
   const durationSeconds = normalizeVideoDurationSeconds(node.properties.duration);
   const durationSliderPercent = getVideoDurationSliderPercent(durationSeconds);
   const audioEnabled = node.properties.audio !== false;
@@ -375,6 +386,19 @@ function VideoNodeCardImpl({
   const nodeBadgeTitle =
     node.title === "视频节点" || node.title === "视频" ? "视频节点 1" : node.title;
   const nodeBadgeMatch = nodeBadgeTitle.match(/^(.*?)(\s+\d+)$/);
+  React.useEffect(() => {
+    if (!resolutionPresetGroups?.length) return;
+    if (rawResolution !== resolution) onUpdateProperty?.(node.id, "resolution", resolution);
+    if (rawAspectRatio !== aspectRatio) onUpdateProperty?.(node.id, "aspect_ratio", aspectRatio);
+  }, [
+    aspectRatio,
+    node.id,
+    onUpdateProperty,
+    rawAspectRatio,
+    rawResolution,
+    resolution,
+    resolutionPresetGroups,
+  ]);
   const resultVideoSize = React.useMemo(
     () =>
       fitVideoSize(
@@ -1359,6 +1383,8 @@ function VideoNodeCardImpl({
                 resolution={resolution}
                 aspectRatio={aspectRatio}
                 panelTitle="Video Size"
+                presetGroups={resolutionPresetGroups}
+                triggerIcon={Video}
                 onChange={(nextResolution, nextAspectRatio) => {
                   onUpdateProperty?.(node.id, "resolution", nextResolution);
                   onUpdateProperty?.(node.id, "aspect_ratio", nextAspectRatio);
