@@ -5,6 +5,7 @@ import {
   getVideoNodeInputReferences,
   normalizeVideoDurationSeconds,
   resolveEmptyVideoNodeSize,
+  shouldShowVideoUploadButton,
 } from "./VideoNodeCard";
 
 describe("fitVideoSize", () => {
@@ -112,5 +113,44 @@ describe("getVideoDurationSliderPercent", () => {
     expect(getVideoDurationSliderPercent(1)).toBe(0);
     expect(getVideoDurationSliderPercent(8)).toBe(50);
     expect(getVideoDurationSliderPercent(15)).toBe(100);
+  });
+});
+
+describe("shouldShowVideoUploadButton", () => {
+  it("hides the upload button while the node is running", () => {
+    expect(
+      shouldShowVideoUploadButton({
+        isRunning: true,
+        isUploadingAsset: false,
+        isUploadingVideo: false,
+      })
+    ).toBe(false);
+  });
+
+  it("hides the upload button while a video upload is in progress", () => {
+    expect(
+      shouldShowVideoUploadButton({
+        isRunning: false,
+        isUploadingAsset: true,
+        isUploadingVideo: false,
+      })
+    ).toBe(false);
+    expect(
+      shouldShowVideoUploadButton({
+        isRunning: false,
+        isUploadingAsset: false,
+        isUploadingVideo: true,
+      })
+    ).toBe(false);
+  });
+
+  it("shows the upload button while the node is idle", () => {
+    expect(
+      shouldShowVideoUploadButton({
+        isRunning: false,
+        isUploadingAsset: false,
+        isUploadingVideo: false,
+      })
+    ).toBe(true);
   });
 });

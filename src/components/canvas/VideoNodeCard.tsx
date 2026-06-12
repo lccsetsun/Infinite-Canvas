@@ -245,6 +245,18 @@ export function getVideoDurationSliderPercent(value: number): number {
   );
 }
 
+export function shouldShowVideoUploadButton({
+  isRunning,
+  isUploadingAsset,
+  isUploadingVideo = false,
+}: {
+  isRunning: boolean;
+  isUploadingAsset: boolean;
+  isUploadingVideo?: boolean;
+}) {
+  return !isRunning && !isUploadingAsset && !isUploadingVideo;
+}
+
 function VideoNodeCardImpl({
   node,
   selected,
@@ -285,6 +297,11 @@ function VideoNodeCardImpl({
   const [isAnalyzingFrames, setIsAnalyzingFrames] = React.useState(false);
   const [isUploadingVideo, setIsUploadingVideo] = React.useState(false);
   const isUploadingAsset = isNodeUploadingAsset || isUploadingVideo;
+  const shouldShowUploadButton = shouldShowVideoUploadButton({
+    isRunning,
+    isUploadingAsset,
+    isUploadingVideo,
+  });
   const modelMenuRef = React.useRef<HTMLDivElement | null>(null);
   const modelMenuPortalRef = React.useRef<HTMLDivElement | null>(null);
   const [modelMenuOpen, setModelMenuOpen] = React.useState(false);
@@ -672,7 +689,7 @@ function VideoNodeCardImpl({
         data-node-action="true"
         aria-label={videoUrl ? "上传替换视频" : "上传视频"}
         onClick={handleUploadClick}
-        disabled={isUploadingAsset || isUploadingVideo}
+        disabled={isRunning || isUploadingAsset || isUploadingVideo}
         className="flex h-9 items-center justify-center gap-1.5 rounded-[12px] bg-[#101824]/54 px-3 text-slate-300/82 shadow-[0_10px_28px_-22px_rgba(0,0,0,0.95)] backdrop-blur-xl transition-colors hover:bg-white/[0.065] hover:text-slate-50 disabled:cursor-wait"
       >
         {isUploadingAsset || isUploadingVideo ? (
@@ -828,7 +845,7 @@ function VideoNodeCardImpl({
         >
           {portHandles}
           <AnimatePresence>
-            {selected && !isUploadingAsset && !isUploadingVideo && (
+            {selected && shouldShowUploadButton && (
               <motion.div
                 data-node-action="true"
                 initial={{ opacity: 0, y: 8, scale: 0.96 }}
@@ -1091,7 +1108,7 @@ function VideoNodeCardImpl({
         )}
         {portHandles}
         <AnimatePresence>
-          {selected && !isUploadingAsset && (
+          {selected && shouldShowUploadButton && (
             <motion.div
               data-node-action="true"
               initial={{ opacity: 0, y: 8, scale: 0.96 }}

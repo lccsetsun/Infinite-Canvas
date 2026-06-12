@@ -140,6 +140,30 @@ export function parseRemoteVideoTaskResult(data: unknown): RemoteVideoTaskResult
   return { status: "pending", videoUrl: "", error: "", rawStatus };
 }
 
+async function parseRemoteVideoRunningError(response: Response): Promise<RemoteVideoTaskResult | null> {
+  const rawText = await response.text().catch(() => "");
+  if (!rawText) return null;
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawText);
+  } catch {
+    return null;
+  }
+
+  if (!isRecord(parsed)) return null;
+  const code = typeof parsed.code === "number" ? parsed.code : undefined;
+  const message = firstString(parsed.msg, parsed.message);
+  if (code !== 500 || !/未知任务状态[:：]\s*running/i.test(message)) return null;
+
+  return {
+    status: "pending",
+    videoUrl: "",
+    error: "",
+    rawStatus: "running",
+  };
+}
+
 export async function createRemoteVideoGenerationTask({
   prompt,
   duration,
@@ -186,6 +210,9 @@ export async function queryRemoteVideoGenerationTask(
   const response = await devApiFetch(`/system/generator/video/${encodeURIComponent(taskId)}`, {
     method: "GET",
   });
+  const runningResult = await parseRemoteVideoRunningError(response.clone());
+  if (runningResult) return runningResult;
+
   const parsed = await parseDevApiEnvelope<unknown>(response);
   return parseRemoteVideoTaskResult(parsed.data);
 }

@@ -99,6 +99,28 @@ describe("remote video generation task parsing", () => {
     });
   });
 
+  it("treats the backend running 500 response as a pending video task", async () => {
+    vi.mocked(devApiFetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          code: 500,
+          msg: "未知任务状态：running",
+          data: null,
+        }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      )
+    );
+
+    const result = await queryRemoteVideoGenerationTask("cgt-20260612102951-jm5b5");
+
+    expect(result).toEqual({
+      status: "pending",
+      videoUrl: "",
+      error: "",
+      rawStatus: "running",
+    });
+  });
+
   it("treats nested result urls as successful query results", () => {
     expect(
       parseRemoteVideoTaskResult({

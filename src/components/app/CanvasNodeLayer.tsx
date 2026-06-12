@@ -70,11 +70,6 @@ interface CanvasNodeLayerProps {
     gridCols: number,
     cellIndices: number[]
   ) => void;
-  onCropImage?: (
-    nodeId: string,
-    dataUrl: string,
-    crop: { sx: number; sy: number; sw: number; sh: number }
-  ) => Promise<void> | void;
   resolvedInputsMap?: Map<string, Record<string, unknown>>;
   textNodeReferencesMap?: Map<string, TextNodeReferenceItem[]>;
   onRunNode?: (nodeId: string) => void;
@@ -114,7 +109,6 @@ export default function CanvasNodeLayer({
   onReplaceFrameImage,
   onSyncImagePromptStarterLayout,
   onSplitImageGrid,
-  onCropImage,
   resolvedInputsMap,
   textNodeReferencesMap,
   onRunNode,
@@ -205,7 +199,6 @@ export default function CanvasNodeLayer({
                   onReplaceFrameImage={onReplaceFrameImage}
                   onSyncImagePromptStarterLayout={onSyncImagePromptStarterLayout}
                   onSplitImageGrid={onSplitImageGrid}
-                  onCropImage={onCropImage}
                   onPreview={onPreview}
                   resolvedInputs={resolvedInputsMap?.get(node.id)}
                   onRun={onRunNode}

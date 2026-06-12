@@ -188,6 +188,24 @@ describe("getImageNodePortTopStyle", () => {
 });
 
 describe("resolveEmptyImageNodeSize", () => {
+  it("uses uploaded image display dimensions while the upload preview is still loading", () => {
+    expect(
+      resolveEmptyImageNodeSize({
+        aspectRatio: "16:9",
+        displayHeight: 476,
+        displayWidth: 220,
+        isUploadPlaceholder: true,
+        resolution: "1K",
+      })
+    ).toEqual({
+      displayHeight: 476,
+      displayWidth: 220,
+      nodeHeight: 476,
+      nodeWidth: 220,
+      portCenterY: 238,
+    });
+  });
+
   it("fits empty image nodes into the text-node footprint by aspect ratio", () => {
     expect(resolveEmptyImageNodeSize({ resolution: "1K", aspectRatio: "16:9" })).toEqual({
       displayHeight: 304,
@@ -310,6 +328,18 @@ describe("shouldShowImageUploadButton", () => {
         isImageLoaded: true,
         isImageLoadFailed: false,
         isUploadingNodeAsset: true,
+      })
+    ).toBe(false);
+  });
+
+  it("hides the upload button while the node is running", () => {
+    expect(
+      shouldShowImageUploadButton({
+        hasImageUrl: true,
+        isImageLoaded: true,
+        isImageLoadFailed: false,
+        isRunning: true,
+        isUploadingNodeAsset: false,
       })
     ).toBe(false);
   });

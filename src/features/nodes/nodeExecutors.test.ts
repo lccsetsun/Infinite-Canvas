@@ -119,6 +119,49 @@ describe("image_node remote executor", () => {
     expect(result?.patch?.ossId).toBe("oss-a");
   });
 
+  it("extracts image urls and oss ids from generator image item arrays", async () => {
+    vi.mocked(devApiFetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          code: 200,
+          msg: "OK",
+          data: [
+            {
+              url: "https://kwyai1.oss-cn-beijing.aliyuncs.com/pic/2026/06/12/ff496aeb95a9453bb861fdcb2e73324a.png",
+              ossId: "2065257184861634561",
+            },
+          ],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+    const remoteModelsByType = makeEmptyAiModelsByType();
+    remoteModelsByType[AI_MODEL_TYPES[1]] = [
+      {
+        id: "image-remote-1",
+        apiId: "2062435940867551234",
+        modelId: "wan2.7-image-pro",
+        modelType: AI_MODEL_TYPES[1],
+      },
+    ];
+
+    const executor = getExecutor("image_node");
+    const result = await executor?.({
+      inputs: { prompt: "Generate references" },
+      properties: { model: "wan2.7-image-pro", aspect_ratio: "1:1", resolution: "1K" },
+      apiConfig: { baseUrl: "", apiKey: "", remoteModelsByType },
+    });
+
+    expect(result?.outputs[0]).toBe(
+      "https://kwyai1.oss-cn-beijing.aliyuncs.com/pic/2026/06/12/ff496aeb95a9453bb861fdcb2e73324a.png"
+    );
+    expect(result?.patch?.imageUrl).toBe(
+      "https://kwyai1.oss-cn-beijing.aliyuncs.com/pic/2026/06/12/ff496aeb95a9453bb861fdcb2e73324a.png"
+    );
+    expect(result?.patch?.ossId).toBe("2065257184861634561");
+    expect(result?.patch?.ossIds).toEqual(["2065257184861634561"]);
+  });
+
   it("rejects legacy MiniMax image models when they are not in the remote catalog", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch");
     const executor = getExecutor("image_node");
