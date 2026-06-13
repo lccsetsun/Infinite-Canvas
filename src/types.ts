@@ -85,6 +85,7 @@ export interface GraphNode {
     frameCaptureSourceNodeId?: string;
     extractedFrameSourceNodeId?: string;
     extractedFrameIndex?: number;
+    videoFrameCaptureChild?: boolean;
     audioUrl?: string;
     audioDuration?: number;
     uploadingAsset?: boolean;

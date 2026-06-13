@@ -28,15 +28,18 @@ describe("buildInitialCanvasFileNodeData", () => {
   it("precomputes video dimensions without exposing the local preview before OSS upload finishes", () => {
     expect(
       buildInitialCanvasFileNodeData("video", "videoUrl", "blob:video", "video.mp4", {
-        videoNaturalWidth: 1000,
-        videoNaturalHeight: 500,
+        videoNaturalWidth: 800,
+        videoNaturalHeight: 600,
       })
     ).toMatchObject({
       isSourceNode: true,
-      videoNaturalWidth: 1000,
-      videoNaturalHeight: 500,
+      videoNaturalWidth: 800,
+      videoNaturalHeight: 600,
       videoDisplayWidth: 540,
-      videoDisplayHeight: 270,
+      videoDisplayHeight: 405,
+      videoNodeWidth: 540,
+      videoNodeHeight: 405,
+      videoPortCenterY: 203,
       uploadingAsset: true,
     });
     expect(

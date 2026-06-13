@@ -36,6 +36,13 @@ import {
   replaceFrameImageFromChildSnapshot,
   replaceFrameImageUrlSnapshot,
 } from "../utils/frameImageExtraction";
+import {
+  completeVideoFrameImageChildSnapshot,
+  createVideoFrameImageChildSnapshot,
+  failVideoFrameImageChildSnapshot,
+  relayoutVideoFrameImageChildSnapshots,
+  type VideoFrameImageCaptureMode,
+} from "../utils/videoFrameImageExtraction";
 import type {
   RemoteCanvasProject,
   RemoteCanvasWorkflowData,
@@ -1230,7 +1237,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
 
   const removeNode = (nodeId: string) => {
     const node = nodes.find((n) => n.id === nodeId);
-    const nextNodes = nodes.filter((n) => n.id !== nodeId);
+    const nextNodes = relayoutVideoFrameImageChildSnapshots(nodes.filter((n) => n.id !== nodeId));
     const nextLinks = links.filter((l) => l.fromNodeId !== nodeId && l.toNodeId !== nodeId);
     markRemoteDirty("structure");
     setNodes(nextNodes);
@@ -1259,7 +1266,9 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     const removedNodes = activeNodes.filter((node) => idSet.has(node.id));
     if (removedNodes.length === 0) return 0;
 
-    const nextNodes = activeNodes.filter((node) => !idSet.has(node.id));
+    const nextNodes = relayoutVideoFrameImageChildSnapshots(
+      activeNodes.filter((node) => !idSet.has(node.id))
+    );
     const nextLinks = activeLinks.filter(
       (link) => !idSet.has(link.fromNodeId) && !idSet.has(link.toNodeId)
     );
@@ -1915,6 +1924,96 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       return snapshot.createdNode.id;
     },
     [appendLog, links, markRemoteDirty, nodes, pushHistory, syncCurrentWorkflowMeta]
+  );
+
+  const createVideoFrameImageNode = useCallback(
+    (
+      sourceNodeId: string,
+      captureMode: VideoFrameImageCaptureMode,
+      preview: { url: string; width: number; height: number }
+    ) => {
+      const snapshot = createVideoFrameImageChildSnapshot({
+        captureMode,
+        links: currentLinksRef.current,
+        makeId,
+        naturalSize: { width: preview.width, height: preview.height },
+        nodes: currentNodesRef.current,
+        previewUrl: preview.url,
+        sourceNodeId,
+      });
+      if (!snapshot) {
+        appendLog("warning", "无法创建视频截帧图片节点");
+        return null;
+      }
+
+      currentNodesRef.current = snapshot.nodes;
+      currentLinksRef.current = snapshot.links;
+      markRemoteDirty("structure");
+      setNodes(snapshot.nodes);
+      setLinks(snapshot.links);
+      setSelectedNodeId(snapshot.createdNode.id);
+      setNodeOutputs((prev) => {
+        const next = new Map(prev);
+        next.set(
+          snapshot.createdNode.id,
+          new Map([[0, snapshot.createdNode.data?.imageUrl || ""]])
+        );
+        return next;
+      });
+      syncCurrentWorkflowMeta((wf) => ({
+        ...wf,
+        summary: { ...wf.summary, updatedAt: Date.now() },
+        data: { ...wf.data, nodes: snapshot.nodes, links: snapshot.links },
+      }));
+      pushHistory({ nodes: snapshot.nodes, links: snapshot.links });
+      appendLog("success", `已创建${snapshot.createdNode.title}图片节点`);
+      return snapshot.createdNode.id;
+    },
+    [appendLog, markRemoteDirty, pushHistory, syncCurrentWorkflowMeta]
+  );
+
+  const completeVideoFrameImageNode = useCallback(
+    (nodeId: string, uploaded: { url: string; ossId?: string }) => {
+      const result = completeVideoFrameImageChildSnapshot({
+        nodeId,
+        nodes: currentNodesRef.current,
+        ossId: uploaded.ossId,
+        uploadedUrl: uploaded.url,
+      });
+      currentNodesRef.current = result.nodes;
+      markRemoteDirty("content");
+      setNodes(result.nodes);
+      setNodeOutputs((prev) => {
+        const next = new Map(prev);
+        next.set(nodeId, new Map([[0, result.nodeOutputValue]]));
+        return next;
+      });
+      syncCurrentWorkflowMeta((wf) => ({
+        ...wf,
+        summary: { ...wf.summary, updatedAt: Date.now() },
+        data: { ...wf.data, nodes: result.nodes },
+      }));
+    },
+    [markRemoteDirty, syncCurrentWorkflowMeta]
+  );
+
+  const failVideoFrameImageNode = useCallback(
+    (nodeId: string, error: string) => {
+      const nextNodes = failVideoFrameImageChildSnapshot({
+        error,
+        nodeId,
+        nodes: currentNodesRef.current,
+      });
+      currentNodesRef.current = nextNodes;
+      markRemoteDirty("content");
+      setNodes(nextNodes);
+      syncCurrentWorkflowMeta((wf) => ({
+        ...wf,
+        summary: { ...wf.summary, updatedAt: Date.now() },
+        data: { ...wf.data, nodes: nextNodes },
+      }));
+    },
+    [markRemoteDirty, syncCurrentWorkflowMeta]
   );
 
   const replaceExtractedFrameImage = useCallback(
@@ -3040,8 +3139,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       const hasPendingRuntimeState = nodes.some(
         (node) => hasNodeRuntimeState(node) && !isPendingRemoteVideoNode(node)
       );
-      if (hasPendingRuntimeState)
-        return;
+      if (hasPendingRuntimeState) return;
       const persistableNodes = sanitizeNodesRuntimeState(nodes);
       const nextData = {
         nodes: persistableNodes,
@@ -3194,6 +3292,9 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     updateNodeData,
     setPrimaryImageResult,
     extractFrameImageNode,
+    createVideoFrameImageNode,
+    completeVideoFrameImageNode,
+    failVideoFrameImageNode,
     replaceExtractedFrameImage,
     replaceFrameImageUrl,
     addVideoFrameAnalysis,

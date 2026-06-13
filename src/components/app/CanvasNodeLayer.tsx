@@ -14,6 +14,7 @@ import type { AiModelsByType } from "../../features/api/aiModelCatalog";
 import type { CanvasGraphIndex } from "../../utils/canvasGraphIndex";
 import type { ImageResolutionPresetGroup } from "../../features/nodes/imageResolutionPresets";
 import { getVisibleCanvasNodeIds } from "../../utils/canvasViewportCulling";
+import type { VideoFrameImageCaptureMode } from "../../utils/videoFrameImageExtraction";
 
 interface CanvasNodeLayerProps {
   apiConfig: {
@@ -71,6 +72,13 @@ interface CanvasNodeLayerProps {
     frameIndex: number,
     clientPoint?: { clientX: number; clientY: number }
   ) => void;
+  onCreateVideoFrameImage?: (
+    sourceNodeId: string,
+    captureMode: VideoFrameImageCaptureMode,
+    preview: { url: string; width: number; height: number }
+  ) => string | null;
+  onCompleteVideoFrameImage?: (nodeId: string, uploaded: { url: string; ossId?: string }) => void;
+  onFailVideoFrameImage?: (nodeId: string, error: string) => void;
   onReplaceFrameImage?: (nodeId: string, frameIndex: number, replacementUrl: string) => void;
   onSyncImagePromptStarterLayout?: (nodeId: string, imageNodeWidth: number) => void;
   onSplitImageGrid?: (
@@ -132,6 +140,9 @@ export default function CanvasNodeLayer({
   onUpdateNodeProperty,
   onSetPrimaryImageResult,
   onExtractFrameImage,
+  onCreateVideoFrameImage,
+  onCompleteVideoFrameImage,
+  onFailVideoFrameImage,
   onReplaceFrameImage,
   onSyncImagePromptStarterLayout,
   onSplitImageGrid,
@@ -307,6 +318,9 @@ export default function CanvasNodeLayer({
                   onPreview={onPreview}
                   onAnalyzeVideo={onAnalyzeVideo}
                   onReverseVideoPrompt={onReverseVideoPrompt}
+                  onCreateVideoFrameImage={onCreateVideoFrameImage}
+                  onCompleteVideoFrameImage={onCompleteVideoFrameImage}
+                  onFailVideoFrameImage={onFailVideoFrameImage}
                   resolvedInputs={resolvedInputsMap?.get(node.id)}
                   onRun={onRunNode}
                   resolutionPresetGroups={videoResolutionGroups}

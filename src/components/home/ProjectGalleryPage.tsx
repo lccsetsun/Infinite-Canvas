@@ -1,7 +1,17 @@
 import React from "react";
 import { motion } from "motion/react";
 import { createPortal } from "react-dom";
-import { AlertTriangle, ArrowRight, FolderOpen, Image as ImageIcon, Loader2, MoreHorizontal, Plus, Trash2, Upload } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowRight,
+  FolderOpen,
+  Image as ImageIcon,
+  Loader2,
+  MoreHorizontal,
+  Plus,
+  Trash2,
+  Upload,
+} from "lucide-react";
 import AppHeader from "../app/AppHeader";
 import type { HomeProjectCard } from "../../features/workspace/projectTypes";
 import { uploadFileToOss } from "../../features/resource/ossApi";
@@ -154,7 +164,11 @@ function ProjectTile({
   onDuplicate,
   onDelete,
 }: ProjectTileProps) {
-  const menuState = getHomeProjectMenuState(project.id, hovered ? project.id : null, menuOpen ? project.id : null);
+  const menuState = getHomeProjectMenuState(
+    project.id,
+    hovered ? project.id : null,
+    menuOpen ? project.id : null
+  );
   const triggerRef = React.useRef<HTMLButtonElement | null>(null);
   const [menuStyle, setMenuStyle] = React.useState<{ left: number; top: number } | null>(null);
   const hoverLeaveTimerRef = React.useRef<number | null>(null);
@@ -196,7 +210,11 @@ function ProjectTile({
 
   return (
     <motion.div whileHover={{ y: -1 }} transition={{ duration: 0.16 }} className="group">
-      <button type="button" onClick={() => onOpen(project.id)} className="block w-full cursor-pointer text-left">
+      <button
+        type="button"
+        onClick={() => onOpen(project.id)}
+        className="block w-full cursor-pointer text-left"
+      >
         <div className={projectFrameClass}>
           <div className="aspect-[1.7/1] overflow-hidden bg-[#16191f]">
             {project.previewUrl ? (
@@ -222,7 +240,11 @@ function ProjectTile({
           </div>
         </div>
 
-        <div className="relative shrink-0" onMouseEnter={handleHoverStart} onMouseLeave={handleHoverEnd}>
+        <div
+          className="relative shrink-0"
+          onMouseEnter={handleHoverStart}
+          onMouseLeave={handleHoverEnd}
+        >
           <button
             ref={triggerRef}
             type="button"
@@ -377,7 +399,11 @@ function EditProjectDialog({
               disabled={isBusy}
               className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-2xl border border-dashed border-white/[0.12] bg-[#16191f] px-4 py-3 text-sm font-medium text-slate-200 transition hover:border-white/[0.22] hover:bg-[#1a1e26] disabled:cursor-not-allowed disabled:opacity-70"
             >
-              {isUploadingCover ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+              {isUploadingCover ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Upload className="h-4 w-4" />
+              )}
               {isUploadingCover ? "正在上传" : state.coverUrl ? "重新上传封面" : "上传封面图片"}
             </button>
 
@@ -385,9 +411,15 @@ function EditProjectDialog({
 
             <div className="mt-3 overflow-hidden rounded-2xl border border-white/[0.08] bg-[#16191f]">
               {state.coverUrl ? (
-                <img src={state.coverUrl} alt={`${state.name} 封面预览`} className="h-48 w-full object-cover" />
+                <img
+                  src={state.coverUrl}
+                  alt={`${state.name} 封面预览`}
+                  className="h-48 w-full object-cover"
+                />
               ) : (
-                <div className="flex h-48 items-center justify-center text-sm text-slate-500">还没有封面图片</div>
+                <div className="flex h-48 items-center justify-center text-sm text-slate-500">
+                  还没有封面图片
+                </div>
               )}
             </div>
           </div>
@@ -462,7 +494,11 @@ function DeleteProjectDialog({
             onClick={onConfirm}
             className="inline-flex h-11 min-w-28 items-center justify-center gap-2 rounded-2xl bg-rose-500 px-5 text-sm font-semibold text-white shadow-[0_14px_32px_rgba(244,63,94,0.22)] transition hover:bg-rose-400 disabled:cursor-not-allowed disabled:opacity-70"
           >
-            {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+            {isDeleting ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Trash2 className="h-4 w-4" />
+            )}
             {isDeleting ? "删除中..." : "确认删除"}
           </button>
         </div>
@@ -529,7 +565,12 @@ export default function ProjectGalleryPage({
     if (!menuOpenId) return;
 
     const handlePointerDown = (event: PointerEvent) => {
-      if (!isHomeProjectMenuInteractionInside(event.target, [menuHostRef.current, activeMenuRef.current])) {
+      if (
+        !isHomeProjectMenuInteractionInside(event.target, [
+          menuHostRef.current,
+          activeMenuRef.current,
+        ])
+      ) {
         setMenuOpenId(null);
         setHoveredMenuId(null);
       }
@@ -549,7 +590,6 @@ export default function ProjectGalleryPage({
     setIsSubmittingEdit(false);
     setCoverUploadError("");
   }, []);
-
 
   const handleOpenProject = React.useCallback(
     (projectId: string) => {
@@ -625,21 +665,24 @@ export default function ProjectGalleryPage({
     setDeleteDialogState(null);
   }, [isDeletingProject]);
 
-  const handleCoverFileSelection = React.useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
-    try {
-      const file = consumeSingleImageUploadSelection(event.target);
-      if (!file) return;
+  const handleCoverFileSelection = React.useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
+      try {
+        const file = consumeSingleImageUploadSelection(event.target);
+        if (!file) return;
 
-      setCoverUploadError("");
-      setIsUploadingCover(true);
-      const asset = await uploadFileToOss(file);
-      setEditDialogState((current) => (current ? { ...current, coverUrl: asset.url } : current));
-    } catch (error) {
-      setCoverUploadError(error instanceof Error ? error.message : "封面上传失败");
-    } finally {
-      setIsUploadingCover(false);
-    }
-  }, []);
+        setCoverUploadError("");
+        setIsUploadingCover(true);
+        const asset = await uploadFileToOss(file);
+        setEditDialogState((current) => (current ? { ...current, coverUrl: asset.url } : current));
+      } catch (error) {
+        setCoverUploadError(error instanceof Error ? error.message : "封面上传失败");
+      } finally {
+        setIsUploadingCover(false);
+      }
+    },
+    []
+  );
 
   const handleSubmitEditDialog = React.useCallback(() => {
     if (!editDialogState || isUploadingCover || isSubmittingEdit) return;
@@ -665,12 +708,16 @@ export default function ProjectGalleryPage({
 
       try {
         if (shouldRename) {
-          const renameResult = await Promise.resolve(onRenameProject?.(currentState.projectId, nextName));
+          const renameResult = await Promise.resolve(
+            onRenameProject?.(currentState.projectId, nextName)
+          );
           if (renameResult !== false) changed = true;
         }
 
         if (shouldUpdateCover) {
-          const coverResult = await Promise.resolve(onChangeProjectCover?.(currentState.projectId, nextCoverUrl));
+          const coverResult = await Promise.resolve(
+            onChangeProjectCover?.(currentState.projectId, nextCoverUrl)
+          );
           if (coverResult !== false) changed = true;
         }
 
@@ -681,7 +728,15 @@ export default function ProjectGalleryPage({
         setIsSubmittingEdit(false);
       }
     })();
-  }, [editDialogState, isSubmittingEdit, isUploadingCover, onChangeProjectCover, onProjectsChanged, onRenameProject, resetEditDialogFeedback]);
+  }, [
+    editDialogState,
+    isSubmittingEdit,
+    isUploadingCover,
+    onChangeProjectCover,
+    onProjectsChanged,
+    onRenameProject,
+    resetEditDialogFeedback,
+  ]);
 
   return (
     <div className="project-scrollbar h-screen overflow-x-hidden overflow-y-auto bg-[#0d0f13] text-slate-100">
@@ -698,7 +753,9 @@ export default function ProjectGalleryPage({
           <div className="mb-6 space-y-3">
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-4">
-                <div className="text-[26px] font-semibold tracking-[-0.04em] text-white">{title}</div>
+                <div className="text-[26px] font-semibold tracking-[-0.04em] text-white">
+                  {title}
+                </div>
 
                 {topActionLabel && onTopAction ? (
                   <button
@@ -722,7 +779,6 @@ export default function ProjectGalleryPage({
                   {primaryActionLabel}
                 </button>
               ) : null}
-
             </div>
 
             <div className="max-w-xl text-[13px] leading-6 text-slate-500">{subtitle}</div>
@@ -745,14 +801,18 @@ export default function ProjectGalleryPage({
                     上一页
                   </button>
                   <div className="inline-flex h-8 items-center gap-2 rounded-xl bg-black/16 px-3 text-[12px] text-slate-500">
-                    <span className="font-mono text-sm font-bold text-white">{pagination.pageNum}</span>
+                    <span className="font-mono text-sm font-bold text-white">
+                      {pagination.pageNum}
+                    </span>
                     <span className="text-slate-600">/</span>
                     <span className="font-mono text-sm text-slate-400">{pageCount}</span>
                   </div>
                   <button
                     type="button"
                     disabled={!canGoNext}
-                    onClick={() => pagination.onPageChange(Math.min(pageCount, pagination.pageNum + 1))}
+                    onClick={() =>
+                      pagination.onPageChange(Math.min(pageCount, pagination.pageNum + 1))
+                    }
                     className="inline-flex h-8 items-center justify-center rounded-xl px-3 text-[12px] font-semibold text-slate-300 transition hover:bg-white/[0.04] hover:text-white disabled:cursor-not-allowed disabled:text-slate-700 disabled:hover:bg-transparent"
                   >
                     下一页
@@ -762,14 +822,10 @@ export default function ProjectGalleryPage({
             </div>
           ) : null}
 
-          {loading && projects.length > 0 ? (
-            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-xs text-slate-400">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              正在刷新项目列表...
-            </div>
-          ) : null}
-
-          <section ref={menuHostRef} className="grid grid-cols-1 gap-x-6 gap-y-8 md:grid-cols-2 xl:grid-cols-4">
+          <section
+            ref={menuHostRef}
+            className="grid grid-cols-1 gap-x-6 gap-y-8 md:grid-cols-2 xl:grid-cols-4"
+          >
             {showCreateTile ? <CreateProjectTile onCreate={handleCreateProject} /> : null}
             {projects.map((project) => (
               <div key={project.id}>
@@ -790,7 +846,9 @@ export default function ProjectGalleryPage({
               </div>
             ))}
             {loading && projects.length === 0
-              ? Array.from({ length: showCreateTile ? 3 : 4 }, (_, index) => <ProjectSkeletonTile key={`skeleton-${index}`} />)
+              ? Array.from({ length: showCreateTile ? 3 : 4 }, (_, index) => (
+                  <ProjectSkeletonTile key={`skeleton-${index}`} />
+                ))
               : null}
           </section>
 
@@ -819,7 +877,9 @@ export default function ProjectGalleryPage({
         isUploadingCover={isUploadingCover}
         isSubmitting={isSubmittingEdit}
         uploadError={coverUploadError}
-        onNameChange={(value) => setEditDialogState((current) => (current ? { ...current, name: value } : current))}
+        onNameChange={(value) =>
+          setEditDialogState((current) => (current ? { ...current, name: value } : current))
+        }
         onSelectCoverFile={(event) => void handleCoverFileSelection(event)}
         onClose={() => {
           setEditDialogState(null);
@@ -834,7 +894,6 @@ export default function ProjectGalleryPage({
         onClose={handleCloseDeleteDialog}
         onConfirm={handleConfirmDeleteProject}
       />
-
     </div>
   );
 }

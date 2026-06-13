@@ -31,6 +31,7 @@ import {
   getGridChildNodePosition,
   replaceImageGridCell,
 } from "./utils/imageGridSplit";
+import { getPointerAlignedNodePosition } from "./utils/dropAlignedNodePosition";
 import { getCanvasViewportClassName } from "./utils/canvasViewportLayout";
 import { shouldDeferCanvasContentRender } from "./utils/canvasRenderReadiness";
 import {
@@ -219,6 +220,9 @@ export default function App({ onLoggedOut }: AppProps) {
     addVideoFrameAnalysis,
     addVideoPromptTextNode,
     extractFrameImageNode,
+    createVideoFrameImageNode,
+    completeVideoFrameImageNode,
+    failVideoFrameImageNode,
     replaceFrameImageUrl,
     linkFromNodeId,
     linkToNodeId,
@@ -580,7 +584,7 @@ export default function App({ onLoggedOut }: AppProps) {
             ? toWorld(clientPoint.clientX, clientPoint.clientY)
             : null;
           const position = dropPosition
-            ? snapPointToGrid({ x: dropPosition.x - 140, y: dropPosition.y - 120 })
+            ? getPointerAlignedNodePosition(dropPosition)
             : getGridChildNodePosition(sourceNode, gridRows, cellIndex, gridCols);
           addNode(
             "image_node",
@@ -874,9 +878,7 @@ export default function App({ onLoggedOut }: AppProps) {
   const handleExtractFrameImage = React.useCallback(
     (nodeId: string, frameIndex: number, clientPoint?: { clientX: number; clientY: number }) => {
       const worldPoint = clientPoint ? toWorld(clientPoint.clientX, clientPoint.clientY) : null;
-      const position = worldPoint
-        ? snapPointToGrid({ x: worldPoint.x - 180, y: worldPoint.y - 140 })
-        : undefined;
+      const position = worldPoint ? getPointerAlignedNodePosition(worldPoint) : undefined;
       extractFrameImageNode(nodeId, frameIndex, position);
     },
     [extractFrameImageNode, toWorld]
@@ -1573,6 +1575,9 @@ export default function App({ onLoggedOut }: AppProps) {
               onUpdateNodeProperty={updateNodeProperty}
               onSetPrimaryImageResult={setPrimaryImageResult}
               onExtractFrameImage={handleExtractFrameImage}
+              onCreateVideoFrameImage={createVideoFrameImageNode}
+              onCompleteVideoFrameImage={completeVideoFrameImageNode}
+              onFailVideoFrameImage={failVideoFrameImageNode}
               onReplaceFrameImage={replaceFrameImageUrl}
               onSyncImagePromptStarterLayout={syncImagePromptStarterLayout}
               onSplitImageGrid={handleSplitImageGrid}

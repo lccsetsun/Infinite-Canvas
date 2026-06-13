@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
   fitVideoSize,
+  getVideoControlDisplayTime,
   getVideoDurationSliderPercent,
+  getVideoFrameCaptureTime,
+  getVideoFrameCaptureSourceUrl,
   getVideoNodePortTopStyle,
+  getVideoProgressPercent,
   getVideoNodeInputReferences,
   normalizeVideoDurationSeconds,
   resolveEmptyVideoNodeSize,
   shouldShowVideoPreview,
+  shouldUseEmptyVideoNodeSize,
   shouldShowVideoUploadButton,
 } from "./VideoNodeCard";
 
@@ -140,6 +145,59 @@ describe("getVideoDurationSliderPercent", () => {
   });
 });
 
+describe("getVideoProgressPercent", () => {
+  it("clamps playback progress for the custom video control track", () => {
+    expect(getVideoProgressPercent({ currentTime: 2.5, duration: 5 })).toBe(50);
+    expect(getVideoProgressPercent({ currentTime: -1, duration: 5 })).toBe(0);
+    expect(getVideoProgressPercent({ currentTime: 9, duration: 5 })).toBe(100);
+    expect(getVideoProgressPercent({ currentTime: 2, duration: 0 })).toBe(0);
+  });
+});
+
+describe("getVideoControlDisplayTime", () => {
+  it("shows the full duration when playback is effectively at the tail frame", () => {
+    expect(getVideoControlDisplayTime({ currentTime: 4.95, duration: 5 })).toBe(5);
+    expect(getVideoControlDisplayTime({ currentTime: 4.8, duration: 5 })).toBe(4.8);
+  });
+});
+
+describe("getVideoFrameCaptureTime", () => {
+  it("maps capture menu modes to stable video seconds", () => {
+    expect(getVideoFrameCaptureTime({ mode: "first", currentTime: 4.8, duration: 8 })).toBe(0);
+    expect(getVideoFrameCaptureTime({ mode: "current", currentTime: 4.8, duration: 8 })).toBe(4.8);
+    expect(getVideoFrameCaptureTime({ mode: "last", currentTime: 4.8, duration: 8 })).toBe(7.95);
+  });
+
+  it("clamps capture seconds for very short or unknown videos", () => {
+    expect(getVideoFrameCaptureTime({ mode: "first", currentTime: 0, duration: 0.6 })).toBe(0);
+    expect(getVideoFrameCaptureTime({ mode: "last", currentTime: 0, duration: 0.6 })).toBe(0.55);
+    expect(getVideoFrameCaptureTime({ mode: "current", currentTime: 99, duration: 5 })).toBe(4.95);
+    expect(getVideoFrameCaptureTime({ mode: "first", currentTime: 0, duration: 0 })).toBe(0);
+  });
+});
+
+describe("getVideoFrameCaptureSourceUrl", () => {
+  it("routes cross-origin videos through the same-origin frame source proxy", () => {
+    expect(
+      getVideoFrameCaptureSourceUrl(
+        "https://kwyai1.oss-cn-beijing.aliyuncs.com/pic/demo.mp4",
+        "http://localhost:3000"
+      )
+    ).toBe(
+      "/api/video-frame-source?url=https%3A%2F%2Fkwyai1.oss-cn-beijing.aliyuncs.com%2Fpic%2Fdemo.mp4"
+    );
+  });
+
+  it("keeps same-origin and blob videos unchanged", () => {
+    expect(getVideoFrameCaptureSourceUrl("/assets/demo.mp4", "http://localhost:3000")).toBe(
+      "http://localhost:3000/assets/demo.mp4"
+    );
+    expect(
+      getVideoFrameCaptureSourceUrl("blob:http://localhost:3000/video", "http://localhost:3000")
+    ).toBe("blob:http://localhost:3000/video");
+  });
+});
+
 describe("shouldShowVideoUploadButton", () => {
   it("hides the upload button while the node is running", () => {
     expect(
@@ -208,5 +266,27 @@ describe("shouldShowVideoPreview", () => {
         isUploadingAsset: true,
       })
     ).toBe(false);
+  });
+});
+
+describe("shouldUseEmptyVideoNodeSize", () => {
+  it("keeps known uploaded video dimensions while the upload is still running", () => {
+    expect(
+      shouldUseEmptyVideoNodeSize({
+        hasVideoUrl: false,
+        isUploadingAsset: true,
+        hasKnownVideoSize: true,
+      })
+    ).toBe(false);
+  });
+
+  it("uses the configured empty size when no video dimensions are known", () => {
+    expect(
+      shouldUseEmptyVideoNodeSize({
+        hasVideoUrl: false,
+        isUploadingAsset: true,
+        hasKnownVideoSize: false,
+      })
+    ).toBe(true);
   });
 });

@@ -167,6 +167,9 @@ export function buildInitialCanvasFileNodeData(
     });
     data.videoDisplayWidth = displaySize.width;
     data.videoDisplayHeight = displaySize.height;
+    data.videoNodeWidth = displaySize.width;
+    data.videoNodeHeight = displaySize.height;
+    data.videoPortCenterY = Math.round(displaySize.height / 2);
   }
 
   return data;

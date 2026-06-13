@@ -479,6 +479,74 @@ body {
     animation: none;
   }
 
+  .video-node-range {
+    --video-progress: 0%;
+    appearance: none;
+    background: linear-gradient(
+      90deg,
+      rgba(103, 232, 249, 0.96) 0%,
+      rgba(167, 139, 250, 0.92) var(--video-progress),
+      rgba(148, 163, 184, 0.22) var(--video-progress),
+      rgba(148, 163, 184, 0.22) 100%
+    );
+    border-radius: 999px;
+    height: 4px;
+    outline: none;
+    transition:
+      height 160ms ease,
+      filter 160ms ease,
+      background 160ms ease;
+  }
+
+  .video-node-range:hover,
+  .video-node-range:focus-visible {
+    filter: drop-shadow(0 0 9px rgba(34, 211, 238, 0.32));
+    height: 6px;
+  }
+
+  .video-node-range::-webkit-slider-runnable-track {
+    appearance: none;
+    background: transparent;
+    border-radius: 999px;
+    height: 6px;
+  }
+
+  .video-node-range::-webkit-slider-thumb {
+    appearance: none;
+    width: 13px;
+    height: 13px;
+    margin-top: -3.5px;
+    border: 2px solid rgba(255, 255, 255, 0.92);
+    border-radius: 999px;
+    background: linear-gradient(135deg, #ecfeff, #c4b5fd);
+    box-shadow:
+      0 0 0 4px rgba(34, 211, 238, 0.1),
+      0 0 18px rgba(34, 211, 238, 0.28);
+  }
+
+  .video-node-range::-moz-range-track {
+    background: transparent;
+    border: 0;
+    height: 6px;
+  }
+
+  .video-node-range::-moz-range-progress {
+    background: linear-gradient(90deg, rgba(103, 232, 249, 0.96), rgba(167, 139, 250, 0.92));
+    border-radius: 999px;
+    height: 6px;
+  }
+
+  .video-node-range::-moz-range-thumb {
+    width: 13px;
+    height: 13px;
+    border: 2px solid rgba(255, 255, 255, 0.92);
+    border-radius: 999px;
+    background: linear-gradient(135deg, #ecfeff, #c4b5fd);
+    box-shadow:
+      0 0 0 4px rgba(34, 211, 238, 0.1),
+      0 0 18px rgba(34, 211, 238, 0.28);
+  }
+
   .link-energy-pulse-head-aura {
     animation:
       link-energy-flow 1.04s linear infinite,
