@@ -350,6 +350,14 @@ describe("VideoNodeCard preview branch", () => {
     expect(source).toContain("if (!videoUrl || isAuxiliaryVideoTaskRunning) return;");
     expect(source).toContain("disabled={isAuxiliaryVideoTaskRunning}");
   });
+
+  it("rerenders when input reference thumbnails change", () => {
+    const source = readFileSync(new URL("./VideoNodeCard.tsx", import.meta.url), "utf8");
+    const memoSource = source.slice(source.indexOf("const VideoNodeCard = React.memo"));
+
+    expect(memoSource).toContain("prev.references === next.references");
+    expect(memoSource).toContain("prev.resolvedInputs === next.resolvedInputs");
+  });
 });
 
 describe("shouldUseEmptyVideoNodeSize", () => {

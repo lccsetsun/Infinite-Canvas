@@ -34,6 +34,15 @@ describe("CanvasHeader remote project loading", () => {
     expect(source).toContain("border-violet-200/[0.10]");
     expect(source).not.toContain("hover:border-cyan-100/[0.13]");
   });
+
+  it("reserves right-side space when the assistant drawer is open", () => {
+    const source = readFileSync(new URL("./CanvasHeader.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain("assistantPanelOpen?: boolean");
+    expect(source).toContain("assistantPanelOpen");
+    expect(source).toContain("pr-[704px]");
+    expect(source).toContain("transition-[padding]");
+  });
 });
 
 describe("resolveCanvasProjectRename", () => {

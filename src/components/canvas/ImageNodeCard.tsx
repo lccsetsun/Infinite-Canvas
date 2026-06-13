@@ -25,7 +25,7 @@ import { isSourceNode } from "../../utils/sourceNodes";
 import { Tooltip } from "../common/Tooltip";
 import { downloadMediaAsset, extensionFromAssetUrl } from "../../utils/mediaAssets";
 import { uploadFileToOss } from "../../features/resource/ossApi";
-import { ReferencePreviewCard } from "./ReferencePreviewCard";
+import { ReferencePreviewCard, type ReferencePreviewItem } from "./ReferencePreviewCard";
 import { getMediaNodeLoadingLabel, isMediaNodeRunning } from "../../utils/mediaNodeLoadingState";
 import { ImageResolutionPicker } from "./ImageResolutionPicker";
 import { PromptTokenEditor } from "./PromptTokenEditor";
@@ -92,9 +92,11 @@ interface ImageNodeCardProps {
     currentIndex?: number
   ) => void;
   resolvedInputs?: Record<string, unknown>;
+  references?: ReferencePreviewItem[];
   resolutionPresetGroups?: ImageResolutionPresetGroup[];
   onRun?: (nodeId: string) => void;
   onNotice?: (message: string) => void;
+  onRemoveInputReference?: (linkId: string, value: string) => void;
   isLinkingOnCanvas?: boolean;
   linkFromNodeId?: string | null;
   linkFromOutputIndex?: number | null;
@@ -610,10 +612,12 @@ function ImageNodeCardImpl({
   onSplitImageGrid,
   onReplaceImageGridCell,
   onPreview,
+  references,
   resolvedInputs,
   resolutionPresetGroups,
   onRun,
   onNotice,
+  onRemoveInputReference,
   isLinkingOnCanvas,
   linkFromNodeId,
   linkFromOutputIndex,
@@ -738,8 +742,14 @@ function ImageNodeCardImpl({
     "用户提示词",
   ]);
   const inputReferences = React.useMemo(
-    () => getImageNodeInputReferences(resolvedInputs),
-    [resolvedInputs]
+    () => (references && references.length > 0 ? references : getImageNodeInputReferences(resolvedInputs)),
+    [references, resolvedInputs]
+  );
+  const removeInputReference = React.useCallback(
+    (reference: ReferencePreviewItem) => {
+      if (reference.linkId) onRemoveInputReference?.(reference.linkId, reference.value);
+    },
+    [onRemoveInputReference]
   );
   const hasNonTextInputReferences = inputReferences.some((reference) => reference.kind !== "text");
   const promptText = (node.properties.text as string) || "";
@@ -1898,7 +1908,9 @@ function ImageNodeCardImpl({
     if (!imageUrl || !previewNodeRef.current) return;
 
     const syncNodeBounds = () => {
-      const nextWidth = Math.round(previewNodeRef.current?.offsetWidth ?? 0);
+      const nextWidth = Math.round(
+        mediaFrameRef.current?.offsetWidth ?? previewNodeRef.current?.offsetWidth ?? 0
+      );
       const nextHeight = Math.round(previewNodeRef.current?.offsetHeight ?? 0);
       const nextPortCenterY = Math.round(
         (mediaFrameRef.current?.offsetTop ?? 0) + (mediaFrameRef.current?.offsetHeight ?? 0) / 2
@@ -2524,7 +2536,11 @@ function ImageNodeCardImpl({
                       <div className="flex max-h-[126px] flex-wrap items-center gap-2 overflow-y-auto pr-1 custom-scrollbar">
                         {inputReferences.map((reference, index) => (
                           <React.Fragment key={`${reference.key}-${reference.value}-${index}`}>
-                            <ReferencePreviewCard reference={reference} index={index} />
+                            <ReferencePreviewCard
+                              reference={reference}
+                              index={index}
+                              onRemove={removeInputReference}
+                            />
                           </React.Fragment>
                         ))}
                       </div>
@@ -3493,7 +3509,11 @@ function ImageNodeCardImpl({
                   <div className="flex flex-wrap items-center gap-2">
                     {inputReferences.map((reference, index) => (
                       <React.Fragment key={`${reference.key}-${reference.value}-${index}`}>
-                        <ReferencePreviewCard reference={reference} index={index} />
+                        <ReferencePreviewCard
+                          reference={reference}
+                          index={index}
+                          onRemove={removeInputReference}
+                        />
                       </React.Fragment>
                     ))}
                   </div>
@@ -3753,7 +3773,8 @@ const ImageNodeCard = React.memo(
     prev.node === next.node &&
     prev.selected === next.selected &&
     prev.apiConfig?.remoteModelsByType === next.apiConfig?.remoteModelsByType &&
-    prev.resolvedInputs === next.resolvedInputs
+    prev.resolvedInputs === next.resolvedInputs &&
+    prev.references === next.references
 );
 
 export default ImageNodeCard;

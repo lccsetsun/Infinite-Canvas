@@ -111,6 +111,7 @@ export interface GraphLink {
   fromOutputIndex: number;
   toNodeId: string;
   toInputIndex: number;
+  excludedInputValues?: string[];
   locked?: boolean;
 }
 

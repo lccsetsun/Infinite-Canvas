@@ -1,5 +1,6 @@
 import type { GraphLink, GraphNode } from "../types";
 import type { NodeOutputMap } from "../runtime/dataflow";
+import { isLinkInputValueExcluded } from "./inputReferenceExclusions";
 
 export type TextNodeReferenceKind = "image" | "video" | "audio" | "text" | "asset";
 
@@ -7,6 +8,7 @@ export interface TextNodeReferenceItem {
   id: string;
   kind: TextNodeReferenceKind;
   label: string;
+  linkId?: string;
   title: string;
   value: string;
 }
@@ -62,16 +64,20 @@ export function collectImageReferenceUrls(sourceNode: GraphNode, outputValue?: u
 }
 
 function inferReferencesFromNode(
+  link: GraphLink,
   sourceNode: GraphNode,
   outputValue: unknown
 ): TextNodeReferenceItem[] {
   const imageUrls = collectImageReferenceUrls(sourceNode, outputValue);
-  if (imageUrls.length > 0) {
-    return imageUrls.map((value, index) => ({
-      id: imageUrls.length === 1 ? sourceNode.id : `${sourceNode.id}:${index}`,
+  const visibleImageUrls = imageUrls.filter((value) => !isLinkInputValueExcluded(link, value));
+  if (visibleImageUrls.length > 0) {
+    return visibleImageUrls.map((value, index) => ({
+      id: visibleImageUrls.length === 1 ? link.id : `${link.id}:${index}`,
       kind: "image",
       label: "Image",
-      title: imageUrls.length === 1 ? sourceNode.title : `${sourceNode.title} · ${index + 1}`,
+      linkId: link.id,
+      title:
+        visibleImageUrls.length === 1 ? sourceNode.title : `${sourceNode.title} · ${index + 1}`,
       value,
     }));
   }
@@ -86,6 +92,7 @@ function inferReferencesFromNode(
     stringifyReferenceValue(sourceNode.properties.response) ||
     stringifyReferenceValue(sourceNode.properties.text);
   if (!value) return [];
+  if (isLinkInputValueExcluded(link, value)) return [];
 
   const urlKind = getUrlKind(value);
   const kind =
@@ -97,7 +104,7 @@ function inferReferencesFromNode(
 
   return [
     {
-      id: sourceNode.id,
+      id: link.id,
       kind,
       label:
         kind === "image"
@@ -107,10 +114,36 @@ function inferReferencesFromNode(
             : kind === "audio"
               ? "Audio"
               : "Text",
+      linkId: link.id,
       title: sourceNode.title,
       value,
     },
   ];
+}
+
+export function collectNodeInputReferences({
+  links,
+  nodeOutputs,
+  nodes,
+  targetNodeId,
+}: {
+  links: GraphLink[];
+  nodeOutputs: NodeOutputMap;
+  nodes: GraphNode[];
+  targetNodeId: string;
+}): TextNodeReferenceItem[] {
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const references: TextNodeReferenceItem[] = [];
+
+  links.forEach((link) => {
+    if (link.toNodeId !== targetNodeId) return;
+    const sourceNode = nodeById.get(link.fromNodeId);
+    if (!sourceNode) return;
+    const outputValue = nodeOutputs.get(link.fromNodeId)?.get(link.fromOutputIndex);
+    references.push(...inferReferencesFromNode(link, sourceNode, outputValue));
+  });
+
+  return references;
 }
 
 export function collectTextNodeReferences({
@@ -124,20 +157,5 @@ export function collectTextNodeReferences({
   nodes: GraphNode[];
   textNodeId: string;
 }): TextNodeReferenceItem[] {
-  const nodeById = new Map(nodes.map((node) => [node.id, node]));
-  const references: TextNodeReferenceItem[] = [];
-
-  links.forEach((link) => {
-    if (link.toNodeId !== textNodeId) return;
-    const sourceNode = nodeById.get(link.fromNodeId);
-    if (!sourceNode) return;
-    const outputValue = nodeOutputs.get(link.fromNodeId)?.get(link.fromOutputIndex);
-    inferReferencesFromNode(sourceNode, outputValue).forEach((reference) => {
-      if (!references.some((item) => item.id === reference.id && item.value === reference.value)) {
-        references.push(reference);
-      }
-    });
-  });
-
-  return references;
+  return collectNodeInputReferences({ links, nodeOutputs, nodes, targetNodeId: textNodeId });
 }

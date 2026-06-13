@@ -24,4 +24,12 @@ describe("TextNodeCard prompt composer fullscreen editor", () => {
 
     expect(modelMenuSource).not.toContain("<Check");
   });
+
+  it("rerenders when input reference thumbnails change", () => {
+    const source = readFileSync(new URL("./TextNodeCard.tsx", import.meta.url), "utf8");
+    const memoSource = source.slice(source.indexOf("const TextNodeCard = React.memo"));
+
+    expect(memoSource).toContain("prev.references === next.references");
+    expect(memoSource).toContain("prev.resolvedInputs === next.resolvedInputs");
+  });
 });

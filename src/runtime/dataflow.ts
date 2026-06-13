@@ -1,4 +1,5 @@
 import { GraphLink, GraphNode } from "../types";
+import { filterLinkInputValue } from "../utils/inputReferenceExclusions";
 
 export type NodeOutputMap = Map<string, Map<number, unknown>>;
 
@@ -20,14 +21,14 @@ export function resolveNodeInputs(
         const extractedFrameInput = sourceNode
           ? getExtractedFrameInputOutput(target, sourceNode)
           : undefined;
-        if (extractedFrameInput !== undefined) return extractedFrameInput;
+        if (extractedFrameInput !== undefined) return filterLinkInputValue(link, extractedFrameInput);
         const groupedSourceOutput = sourceNode ? getGroupedNodeOutput(sourceNode) : undefined;
-        if (groupedSourceOutput !== undefined) return groupedSourceOutput;
+        if (groupedSourceOutput !== undefined) return filterLinkInputValue(link, groupedSourceOutput);
         const sourceOutputs = nodeOutputs.get(link.fromNodeId);
         if (sourceOutputs?.has(link.fromOutputIndex)) {
-          return sourceOutputs.get(link.fromOutputIndex);
+          return filterLinkInputValue(link, sourceOutputs.get(link.fromOutputIndex));
         }
-        return sourceNode ? getNodePropertyOutputFallback(sourceNode) : undefined;
+        return sourceNode ? filterLinkInputValue(link, getNodePropertyOutputFallback(sourceNode)) : undefined;
       })
       .filter((value) => value !== undefined);
     if (values.length === 0) return;

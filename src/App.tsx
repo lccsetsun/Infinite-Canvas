@@ -74,7 +74,7 @@ import {
   transferHasFiles,
   uploadCanvasFileAsNode,
 } from "./utils/canvasFileUpload";
-import { collectTextNodeReferences } from "./utils/textNodeReferences";
+import { collectNodeInputReferences } from "./utils/textNodeReferences";
 import { ConfigProvider, theme } from "antd";
 import { GraphNode, NodeClass } from "./types";
 import type { VideoFrameCaptureItem } from "./features/video/frameCapture";
@@ -245,6 +245,7 @@ export default function App({ onLoggedOut }: AppProps) {
     removeNode,
     removeNodes,
     removeLink,
+    removeInputReference,
     duplicateNode,
     insertNodesAndLinks,
     updateNodePosition,
@@ -304,13 +305,12 @@ export default function App({ onLoggedOut }: AppProps) {
     },
   });
 
-  const textNodeReferencesMap = React.useMemo(() => {
-    const map = new Map<string, ReturnType<typeof collectTextNodeReferences>>();
+  const inputReferencesMap = React.useMemo(() => {
+    const map = new Map<string, ReturnType<typeof collectNodeInputReferences>>();
     nodes.forEach((node) => {
-      if (node.type !== "text_node") return;
       map.set(
         node.id,
-        collectTextNodeReferences({ links, nodeOutputs, nodes, textNodeId: node.id })
+        collectNodeInputReferences({ links, nodeOutputs, nodes, targetNodeId: node.id })
       );
     });
     return map;
@@ -374,6 +374,7 @@ export default function App({ onLoggedOut }: AppProps) {
     sources?: Array<{ fromNodeId: string; fromOutputIndex: number }>;
   } | null>(null);
   const [previewContent, setPreviewContent] = React.useState<PreviewContent | null>(null);
+  const [assistantPanelOpen, setAssistantPanelOpen] = React.useState(false);
   const [canvasSize, setCanvasSize] = React.useState({ width: 0, height: 0 });
   const [selectedGroupId, setSelectedGroupId] = React.useState<string | null>(null);
   const [selectedLinkId, setSelectedLinkId] = React.useState<string | null>(null);
@@ -1246,10 +1247,12 @@ export default function App({ onLoggedOut }: AppProps) {
     >
       <div
         className="relative w-full h-screen bg-[#202637] text-[#e2e8f0] overflow-hidden select-none font-sans"
+        data-assistant-panel-open={assistantPanelOpen ? "true" : undefined}
         data-canvas-panning={isCanvasPanning ? "true" : undefined}
         onContextMenu={handleCanvasContextMenu}
       >
         <CanvasHeader
+          assistantPanelOpen={assistantPanelOpen}
           projectName={remoteProject?.name}
           onProjectRenamed={(name) => {
             setRemoteProject((project) => (project ? { ...project, name } : project));
@@ -1618,7 +1621,8 @@ export default function App({ onLoggedOut }: AppProps) {
               onSplitImageGrid={handleSplitImageGrid}
               onReplaceImageGridCell={handleReplaceImageGridCell}
               resolvedInputsMap={resolvedInputsMap}
-              textNodeReferencesMap={textNodeReferencesMap}
+              inputReferencesMap={inputReferencesMap}
+              onRemoveInputReference={removeInputReference}
               onRunNode={runNode}
               onNotice={showNotice}
             />
@@ -1699,7 +1703,9 @@ export default function App({ onLoggedOut }: AppProps) {
               }}
             />
           )}
-          {currentView === "canvas" && <FloatingAssistantButton />}
+          {currentView === "canvas" && (
+            <FloatingAssistantButton onPanelOpenChange={setAssistantPanelOpen} />
+          )}
           {runNotice && (
             <div className="absolute right-6 top-20 z-50 px-3 py-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-emerald-200 text-xs">
               {runNotice}

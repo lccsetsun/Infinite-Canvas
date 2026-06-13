@@ -56,6 +56,7 @@ interface TextNodeCardProps {
   ) => void;
   resolvedInputs?: Record<string, unknown>;
   references?: TextNodeReferenceItem[];
+  onRemoveInputReference?: (linkId: string, value: string) => void;
   hasConnectedLinks?: boolean;
   onRun?: (nodeId: string) => void;
   // 连线相关
@@ -145,6 +146,7 @@ function TextNodeCardImpl({
   onPreview,
   resolvedInputs,
   references = [],
+  onRemoveInputReference,
   hasConnectedLinks = false,
   onRun,
   isLinkingOnCanvas,
@@ -216,6 +218,12 @@ function TextNodeCardImpl({
     }
     return merged;
   }, [node.id, references, upstreamImageInput]);
+  const removeInputReference = React.useCallback(
+    (reference: TextNodeReferenceItem) => {
+      if (reference.linkId) onRemoveInputReference?.(reference.linkId, reference.value);
+    },
+    [onRemoveInputReference]
+  );
   const upstreamTextPrompt = upstreamImageInput ? null : upstreamPrompt;
   const mentionableReferences = React.useMemo(
     () =>
@@ -663,7 +671,11 @@ function TextNodeCardImpl({
                       <div className="flex max-h-[126px] flex-wrap items-center gap-2 overflow-y-auto pr-1 custom-scrollbar">
                         {composerReferences.map((reference, index) => (
                           <React.Fragment key={`${reference.id}-${reference.value}-${index}`}>
-                            <ReferencePreviewCard reference={reference} index={index} />
+                            <ReferencePreviewCard
+                              reference={reference}
+                              index={index}
+                              onRemove={removeInputReference}
+                            />
                           </React.Fragment>
                         ))}
                       </div>
@@ -1165,7 +1177,11 @@ function TextNodeCardImpl({
                 <div className="flex flex-wrap items-center gap-2">
                   {composerReferences.map((reference, index) => (
                     <React.Fragment key={`${reference.id}-${reference.value}-${index}`}>
-                      <ReferencePreviewCard reference={reference} index={index} />
+                      <ReferencePreviewCard
+                        reference={reference}
+                        index={index}
+                        onRemove={removeInputReference}
+                      />
                     </React.Fragment>
                   ))}
                 </div>
@@ -1314,7 +1330,9 @@ const TextNodeCard = React.memo(
   (prev, next) =>
     prev.node === next.node &&
     prev.selected === next.selected &&
-    prev.apiConfig?.remoteModelsByType === next.apiConfig?.remoteModelsByType
+    prev.apiConfig?.remoteModelsByType === next.apiConfig?.remoteModelsByType &&
+    prev.resolvedInputs === next.resolvedInputs &&
+    prev.references === next.references
 );
 
 export default TextNodeCard;

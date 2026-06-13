@@ -11,7 +11,8 @@ import {
 
 interface CanvasHeaderProps {
   projectName?: string;
-  username?: string;
+  username?: string;
+  assistantPanelOpen?: boolean;
   onLogout?: () => void;
   onProjectRenamed?: (name: string) => void;
   onNotice?: (message: string) => void;
@@ -109,7 +110,8 @@ function MenuSection({ label }: { label: string }) {
 
 export default function CanvasHeader({
   projectName: loadedProjectName,
-  username = "lccsetsun",
+  username = "lccsetsun",
+  assistantPanelOpen = false,
   onLogout,
   onProjectRenamed,
   onNotice,
@@ -219,7 +221,9 @@ export default function CanvasHeader({
       initial={{ y: -24, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       transition={{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }}
-      className="relative z-[120] flex h-16 items-center justify-between overflow-visible px-5"
+      className={`relative z-[120] flex h-16 items-center justify-between overflow-visible px-5 transition-[padding] duration-300 ease-out ${
+        assistantPanelOpen ? "pr-[704px]" : ""
+      }`}
     >
       <motion.div
         ref={menuRef}

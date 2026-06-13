@@ -30,7 +30,7 @@ import {
 } from "../runtime/dataflow";
 import { createVideoFrameCaptureSnapshot } from "../utils/videoFrameCaptureLayout";
 import { createVideoPromptTextSnapshot } from "../utils/videoPromptTextLayout";
-import { collectImageReferenceUrls } from "../utils/textNodeReferences";
+import { collectImageReferenceUrls, collectNodeInputReferences } from "../utils/textNodeReferences";
 import {
   createFrameImageChildSnapshot,
   replaceFrameImageFromChildSnapshot,
@@ -1644,12 +1644,55 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
   }, [remoteProject, clearLinkDraft, resetHistory]);
 
   const removeLink = (linkId: string) => {
-    const link = links.find((l) => l.id === linkId);
+    const activeLinks = currentLinksRef.current;
+    const activeNodes = currentNodesRef.current;
+    const link = activeLinks.find((l) => l.id === linkId);
     if (link?.locked) {
       appendLog("warning", "This link was created by a quick template and cannot be removed.");
       return;
     }
-    const nextLinks = links.filter((l) => l.id !== linkId);
+    const nextLinks = activeLinks.filter((l) => l.id !== linkId);
+    markRemoteDirty("structure");
+    currentLinksRef.current = nextLinks;
+    setLinks(nextLinks);
+    syncCurrentWorkflowMeta((wf) => ({
+      ...wf,
+      summary: { ...wf.summary, updatedAt: Date.now() },
+      data: { ...wf.data, links: nextLinks },
+    }));
+    pushHistory({ nodes: activeNodes, links: nextLinks });
+    appendLog("warning", `宸茬Щ闄よ繛绾?${linkId}`);
+  };
+
+  const removeInputReference = (linkId: string, value: string) => {
+    const activeLinks = currentLinksRef.current;
+    const activeNodes = currentNodesRef.current;
+    const activeNodeOutputs = currentNodeOutputsRef.current;
+    const link = activeLinks.find((l) => l.id === linkId);
+    if (!link) return;
+    if (link.locked) {
+      appendLog("warning", "This link was created by a quick template and cannot be removed.");
+      return;
+    }
+
+    const visibleReferences = collectNodeInputReferences({
+      links: activeLinks,
+      nodeOutputs: activeNodeOutputs,
+      nodes: activeNodes,
+      targetNodeId: link.toNodeId,
+    }).filter((reference) => reference.linkId === linkId);
+    if (visibleReferences.length <= 1) {
+      removeLink(linkId);
+      return;
+    }
+
+    const excludedInputValues = Array.from(
+      new Set([...(link.excludedInputValues ?? []), value].filter(Boolean))
+    );
+    const nextLinks = activeLinks.map((item) =>
+      item.id === linkId ? { ...item, excludedInputValues } : item
+    );
+    currentLinksRef.current = nextLinks;
     markRemoteDirty("structure");
     setLinks(nextLinks);
     syncCurrentWorkflowMeta((wf) => ({
@@ -1657,8 +1700,8 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       summary: { ...wf.summary, updatedAt: Date.now() },
       data: { ...wf.data, links: nextLinks },
     }));
-    pushHistory({ nodes, links: nextLinks });
-    appendLog("warning", `宸茬Щ闄よ繛绾?${linkId}`);
+    pushHistory({ nodes: activeNodes, links: nextLinks });
+    appendLog("warning", `宸茬Щ闄よ緭鍏ヨ祫婧?${linkId}`);
   };
 
   const createImagePromptStarter = useCallback(
@@ -3353,6 +3396,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     addLinksFromDrafts,
     addLink,
     removeLink,
+    removeInputReference,
     updateSelectedProperty,
     createGroup,
     ungroup,

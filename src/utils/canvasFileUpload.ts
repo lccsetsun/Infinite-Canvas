@@ -154,6 +154,9 @@ export function buildInitialCanvasFileNodeData(
       });
       data.imageDisplayWidth = displaySize.width;
       data.imageDisplayHeight = displaySize.height;
+      data.imageNodeWidth = displaySize.width;
+      data.imageNodeHeight = displaySize.height;
+      data.imagePortCenterY = Math.round(displaySize.height / 2);
     }
   }
 

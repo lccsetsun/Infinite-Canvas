@@ -98,7 +98,8 @@ interface CanvasNodeLayerProps {
     cellIndex: number
   ) => void;
   resolvedInputsMap?: Map<string, Record<string, unknown>>;
-  textNodeReferencesMap?: Map<string, TextNodeReferenceItem[]>;
+  inputReferencesMap?: Map<string, TextNodeReferenceItem[]>;
+  onRemoveInputReference?: (linkId: string, value: string) => void;
   onRunNode?: (nodeId: string) => void;
   onNotice?: (message: string) => void;
 }
@@ -148,7 +149,8 @@ export default function CanvasNodeLayer({
   onSplitImageGrid,
   onReplaceImageGridCell,
   resolvedInputsMap,
-  textNodeReferencesMap,
+  inputReferencesMap,
+  onRemoveInputReference,
   onRunNode,
   onNotice,
 }: CanvasNodeLayerProps) {
@@ -232,7 +234,8 @@ export default function CanvasNodeLayer({
                   onSetPrimaryImageResult={onSetPrimaryImageResult}
                   onPreview={onPreview}
                   resolvedInputs={resolvedInputsMap?.get(node.id)}
-                  references={textNodeReferencesMap?.get(node.id) ?? []}
+                  references={inputReferencesMap?.get(node.id) ?? []}
+                  onRemoveInputReference={onRemoveInputReference}
                   hasConnectedLinks={
                     graphIndex
                       ? Boolean(
@@ -281,7 +284,9 @@ export default function CanvasNodeLayer({
                   onSplitImageGrid={onSplitImageGrid}
                   onReplaceImageGridCell={onReplaceImageGridCell}
                   onPreview={onPreview}
+                  references={inputReferencesMap?.get(node.id) ?? []}
                   resolvedInputs={resolvedInputsMap?.get(node.id)}
+                  onRemoveInputReference={onRemoveInputReference}
                   onRun={onRunNode}
                   onNotice={onNotice}
                   resolutionPresetGroups={imageResolutionGroups}
@@ -321,7 +326,9 @@ export default function CanvasNodeLayer({
                   onCreateVideoFrameImage={onCreateVideoFrameImage}
                   onCompleteVideoFrameImage={onCompleteVideoFrameImage}
                   onFailVideoFrameImage={onFailVideoFrameImage}
+                  references={inputReferencesMap?.get(node.id) ?? []}
                   resolvedInputs={resolvedInputsMap?.get(node.id)}
+                  onRemoveInputReference={onRemoveInputReference}
                   onRun={onRunNode}
                   resolutionPresetGroups={videoResolutionGroups}
                   // 连线相关

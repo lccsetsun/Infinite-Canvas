@@ -174,6 +174,43 @@ describe("resolveNodeInputs", () => {
     expect(inputs.source_image).toEqual(frameImages);
   });
 
+  it("filters excluded frame images while keeping the grouped link connected", () => {
+    const frameImages = Array.from(
+      { length: 3 },
+      (_, index) => `https://oss.example.com/frame-${index + 1}.png`
+    );
+    const frameGrid = makeImageGroupNode("frame-grid", frameImages);
+    const target: GraphNode = {
+      id: "image-target",
+      type: "image_node",
+      title: "image target",
+      x: 0,
+      y: 0,
+      inputs: [{ name: "source_image", type: "IMAGE" }],
+      outputs: [{ name: "image", type: "IMAGE" }],
+      properties: {},
+      data: {},
+    };
+
+    const inputs = resolveNodeInputs(
+      target,
+      [
+        {
+          id: "link-frames",
+          excludedInputValues: [frameImages[1]],
+          fromNodeId: frameGrid.id,
+          fromOutputIndex: 0,
+          toNodeId: target.id,
+          toInputIndex: 0,
+        },
+      ],
+      new Map(),
+      [frameGrid, target]
+    );
+
+    expect(inputs.source_image).toEqual([frameImages[0], frameImages[2]]);
+  });
+
   it("prefers the full image group when stale outputs only contain the first image", () => {
     const frameImages = Array.from(
       { length: 7 },

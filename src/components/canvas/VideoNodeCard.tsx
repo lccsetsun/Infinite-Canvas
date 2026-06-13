@@ -35,7 +35,7 @@ import {
   type MediaNodeLoadingOperation,
 } from "../../utils/mediaNodeLoadingState";
 import { ImageResolutionPicker } from "./ImageResolutionPicker";
-import { ReferencePreviewCard } from "./ReferencePreviewCard";
+import { ReferencePreviewCard, type ReferencePreviewItem } from "./ReferencePreviewCard";
 import { PromptTokenEditor } from "./PromptTokenEditor";
 import {
   AI_MODEL_TYPES,
@@ -81,8 +81,10 @@ interface VideoNodeCardProps {
   onAnalyzeVideo?: (node: GraphNode, captures: VideoFrameCaptureItem[]) => Promise<void> | void;
   onReverseVideoPrompt?: (node: GraphNode, videoUrl: string) => Promise<void> | void;
   resolvedInputs?: Record<string, unknown>;
+  references?: ReferencePreviewItem[];
   resolutionPresetGroups?: ImageResolutionPresetGroup[];
   onRun?: (nodeId: string) => void;
+  onRemoveInputReference?: (linkId: string, value: string) => void;
   isLinkingOnCanvas?: boolean;
   linkFromNodeId?: string | null;
   linkFromOutputIndex?: number | null;
@@ -420,9 +422,11 @@ function VideoNodeCardImpl({
   onFailVideoFrameImage,
   onAnalyzeVideo,
   onReverseVideoPrompt,
+  references,
   resolvedInputs,
   resolutionPresetGroups,
   onRun,
+  onRemoveInputReference,
   isLinkingOnCanvas,
   linkFromNodeId,
   linkFromOutputIndex,
@@ -500,8 +504,14 @@ function VideoNodeCardImpl({
     "用户提示词",
   ]);
   const inputReferences = React.useMemo(
-    () => getVideoNodeInputReferences(resolvedInputs),
-    [resolvedInputs]
+    () => (references && references.length > 0 ? references : getVideoNodeInputReferences(resolvedInputs)),
+    [references, resolvedInputs]
+  );
+  const removeInputReference = React.useCallback(
+    (reference: ReferencePreviewItem) => {
+      if (reference.linkId) onRemoveInputReference?.(reference.linkId, reference.value);
+    },
+    [onRemoveInputReference]
   );
   const hasNonTextInputReferences = inputReferences.some((reference) => reference.kind !== "text");
   const promptText = (node.properties.text as string) || "";
@@ -852,7 +862,11 @@ function VideoNodeCardImpl({
                       <div className="flex max-h-[126px] flex-wrap items-center gap-2 overflow-y-auto pr-1 custom-scrollbar">
                         {inputReferences.map((reference, index) => (
                           <React.Fragment key={`${reference.key}-${reference.value}-${index}`}>
-                            <ReferencePreviewCard reference={reference} index={index} />
+                            <ReferencePreviewCard
+                              reference={reference}
+                              index={index}
+                              onRemove={removeInputReference}
+                            />
                           </React.Fragment>
                         ))}
                       </div>
@@ -1702,7 +1716,11 @@ function VideoNodeCardImpl({
               <div className="flex flex-wrap items-center gap-2">
                 {inputReferences.map((reference, index) => (
                   <React.Fragment key={`${reference.key}-${reference.value}-${index}`}>
-                    <ReferencePreviewCard reference={reference} index={index} />
+                    <ReferencePreviewCard
+                      reference={reference}
+                      index={index}
+                      onRemove={removeInputReference}
+                    />
                   </React.Fragment>
                 ))}
               </div>
@@ -2136,7 +2154,11 @@ function VideoNodeCardImpl({
                 <div className="flex flex-wrap items-center gap-2">
                   {inputReferences.map((reference, index) => (
                     <React.Fragment key={`${reference.key}-${reference.value}-${index}`}>
-                      <ReferencePreviewCard reference={reference} index={index} />
+                      <ReferencePreviewCard
+                        reference={reference}
+                        index={index}
+                        onRemove={removeInputReference}
+                      />
                     </React.Fragment>
                   ))}
                 </div>
@@ -2352,7 +2374,9 @@ const VideoNodeCard = React.memo(
   (prev, next) =>
     prev.node === next.node &&
     prev.selected === next.selected &&
-    prev.apiConfig?.remoteModelsByType === next.apiConfig?.remoteModelsByType
+    prev.apiConfig?.remoteModelsByType === next.apiConfig?.remoteModelsByType &&
+    prev.resolvedInputs === next.resolvedInputs &&
+    prev.references === next.references
 );
 
 export default VideoNodeCard;

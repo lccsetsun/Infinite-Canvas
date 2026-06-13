@@ -14,6 +14,9 @@ describe("buildInitialCanvasFileNodeData", () => {
       imageNaturalHeight: 500,
       imageDisplayWidth: 540,
       imageDisplayHeight: 270,
+      imageNodeWidth: 540,
+      imageNodeHeight: 270,
+      imagePortCenterY: 135,
       activeImageIndex: 0,
       uploadingAsset: true,
     });

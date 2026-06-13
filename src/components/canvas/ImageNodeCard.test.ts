@@ -149,6 +149,21 @@ describe("ImageNodeCard prompt composer fullscreen editor", () => {
 
     expect(modelMenuSource).not.toContain("<Check");
   });
+
+  it("syncs image node width from the rendered media frame instead of outer chrome", () => {
+    const source = readFileSync(new URL("./ImageNodeCard.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain(
+      "mediaFrameRef.current?.offsetWidth ?? previewNodeRef.current?.offsetWidth"
+    );
+  });
+
+  it("rerenders when input reference thumbnails change", () => {
+    const source = readFileSync(new URL("./ImageNodeCard.tsx", import.meta.url), "utf8");
+    const memoSource = source.slice(source.indexOf("const ImageNodeCard = React.memo"));
+
+    expect(memoSource).toContain("prev.references === next.references");
+  });
 });
 
 describe("getResultImageBounds", () => {
