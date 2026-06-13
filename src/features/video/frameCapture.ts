@@ -5,6 +5,7 @@ export type VideoFrameCaptureItem = {
   index: number;
   videoUrl: string;
   frameImages: string[];
+  frameImageOssIds: string[];
 };
 
 type RawVideoFrameCaptureItem = {
@@ -22,14 +23,31 @@ function normalizeFrameImageUrl(item: unknown) {
   return "";
 }
 
+function normalizeFrameImageOssId(item: unknown) {
+  if (!item || typeof item !== "object") return "";
+  const record = item as Record<string, unknown>;
+  const value = record.ossId ?? record.oss_id ?? record.ossID ?? record.id;
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" && Number.isFinite(value)) return String(Math.trunc(value));
+  if (typeof value === "bigint") return String(value);
+  return "";
+}
+
 function normalizeFrameCaptureItem(
   item: RawVideoFrameCaptureItem,
   fallbackIndex: number
 ): VideoFrameCaptureItem | null {
   const videoUrl = typeof item.video === "string" ? item.video.trim() : "";
-  const frameImages = Array.isArray(item.frame_images)
-    ? item.frame_images.map(normalizeFrameImageUrl).filter((url) => Boolean(url))
+  const normalizedFrameImages = Array.isArray(item.frame_images)
+    ? item.frame_images
+        .map((frameImage) => ({
+          ossId: normalizeFrameImageOssId(frameImage),
+          url: normalizeFrameImageUrl(frameImage),
+        }))
+        .filter((frameImage) => Boolean(frameImage.url))
     : [];
+  const frameImages = normalizedFrameImages.map((frameImage) => frameImage.url);
+  const frameImageOssIds = normalizedFrameImages.map((frameImage) => frameImage.ossId);
 
   if (!videoUrl && frameImages.length === 0) return null;
 
@@ -38,6 +56,7 @@ function normalizeFrameCaptureItem(
       typeof item.index === "number" && Number.isFinite(item.index) ? item.index : fallbackIndex,
     videoUrl,
     frameImages,
+    frameImageOssIds,
   };
 }
 

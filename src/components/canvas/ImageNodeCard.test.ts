@@ -3,6 +3,8 @@ import {
   getImageNodeInputReferences,
   getImagePreviewFrameClassName,
   getImagePreviewNodeWidth,
+  getImageNodeDownloadVisibility,
+  getFrameStripDownloadFilename,
   getImagePortHandleWrapperStyle,
   getImageNodePortTopStyle,
   getFrameStripAdaptiveLayout,
@@ -262,6 +264,35 @@ describe("getImagePreviewNodeWidth", () => {
         resultImageWidth: 780,
       })
     ).toBe(780);
+  });
+});
+
+describe("getImageNodeDownloadVisibility", () => {
+  it("hides the top toolbar download action for frame analysis strips", () => {
+    expect(getImageNodeDownloadVisibility({ isFrameStrip: true })).toEqual({
+      showFrameTileDownload: true,
+      showTopToolbarDownload: false,
+    });
+  });
+
+  it("keeps the top toolbar download action for regular image nodes", () => {
+    expect(getImageNodeDownloadVisibility({ isFrameStrip: false })).toEqual({
+      showFrameTileDownload: false,
+      showTopToolbarDownload: true,
+    });
+  });
+});
+
+describe("getFrameStripDownloadFilename", () => {
+  it("builds a stable per-frame image filename", () => {
+    expect(
+      getFrameStripDownloadFilename({
+        frameIndex: 1,
+        nodeTitle: "逐帧分析 1",
+        timestamp: 1710000000000,
+        url: "https://oss.example.com/frame-2.webp?x=1",
+      })
+    ).toBe("逐帧分析-1-frame-2-1710000000000.webp");
   });
 });
 

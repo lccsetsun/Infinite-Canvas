@@ -39,6 +39,7 @@ describe("createVideoFrameCaptureSnapshot", () => {
             { length: 8 },
             (_, index) => `https://oss.example.com/${index + 1}.png`
           ),
+          frameImageOssIds: Array.from({ length: 8 }, (_, index) => `frame-oss-${index + 1}`),
         },
       ],
       makeId: (prefix) => `${prefix}-${Math.random().toString(36).slice(2, 8)}`,
@@ -58,6 +59,16 @@ describe("createVideoFrameCaptureSnapshot", () => {
     expect(frameGrid?.title).toBe("逐帧分析 1");
     expect(frameGrid?.x).toBeGreaterThanOrEqual((segmentVideo?.x ?? 0) + 424);
     expect(frameGrid?.data?.imageUrls).toHaveLength(8);
+    expect(frameGrid?.data?.frameImageOssIds).toEqual([
+      "frame-oss-1",
+      "frame-oss-2",
+      "frame-oss-3",
+      "frame-oss-4",
+      "frame-oss-5",
+      "frame-oss-6",
+      "frame-oss-7",
+      "frame-oss-8",
+    ]);
     expect(frameGrid?.data?.isFrameStrip).toBe(true);
     expect(frameGrid?.data?.frameGridColumns).toBe(5);
     expect(frameGrid?.data?.imageDisplayWidth).toBe(760);
@@ -160,6 +171,7 @@ describe("createVideoFrameCaptureSnapshot", () => {
           index: 0,
           videoUrl: "https://oss.example.com/new-segment.mp4",
           frameImages: ["https://oss.example.com/new-frame.png"],
+          frameImageOssIds: ["new-frame-oss"],
         },
       ],
       makeId: (prefix) => `${prefix}-${(nextId += 1)}`,

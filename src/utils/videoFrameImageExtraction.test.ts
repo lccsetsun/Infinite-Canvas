@@ -100,7 +100,7 @@ describe("createVideoFrameImageChildSnapshot", () => {
     expect(result.createdNode.y).toBe(200);
   });
 
-  it("centers multiple captures as a group beside the source video", () => {
+  it("stacks multiple captures without auto-centering while adaptive layout is disabled", () => {
     const first = createVideoFrameImageChildSnapshot({
       captureMode: "first",
       links: [],
@@ -129,20 +129,14 @@ describe("createVideoFrameImageChildSnapshot", () => {
       naturalSize: { width: 640, height: 360 },
     })!;
 
-    const firstAfterSecond = second.nodes.find((node) => node.id === first.createdNode.id);
-    const firstAfterThird = third.nodes.find((node) => node.id === first.createdNode.id);
-    const secondAfterThird = third.nodes.find((node) => node.id === second.createdNode.id);
-
-    expect(firstAfterSecond?.y).toBe(28);
-    expect(second.createdNode.y).toBe(428);
-    expect(firstAfterThird?.y).toBe(-172);
-    expect(secondAfterThird?.y).toBe(228);
-    expect(third.createdNode.y).toBe(628);
-    expect(firstAfterThird?.x).toBe(secondAfterThird?.x);
-    expect(secondAfterThird?.x).toBe(third.createdNode.x);
+    expect(first.createdNode.y).toBe(200);
+    expect(second.createdNode.y).toBe(600);
+    expect(third.createdNode.y).toBe(1000);
+    expect(first.createdNode.x).toBe(second.createdNode.x);
+    expect(second.createdNode.x).toBe(third.createdNode.x);
   });
 
-  it("recenters remaining captures after one capture child is deleted", () => {
+  it("does not recenter remaining captures while adaptive layout is disabled", () => {
     const first = createVideoFrameImageChildSnapshot({
       captureMode: "first",
       links: [],
@@ -177,8 +171,8 @@ describe("createVideoFrameImageChildSnapshot", () => {
     const remainingFirst = relaidOut.find((node) => node.id === first.createdNode.id);
     const remainingLast = relaidOut.find((node) => node.id === third.createdNode.id);
 
-    expect(remainingFirst?.y).toBe(28);
-    expect(remainingLast?.y).toBe(428);
+    expect(remainingFirst?.y).toBe(200);
+    expect(remainingLast?.y).toBe(1000);
   });
 });
 

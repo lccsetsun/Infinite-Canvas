@@ -141,6 +141,7 @@ export function createVideoFrameCaptureSnapshot({
     const displayIndex = captureIndex + 1;
     const segmentVideoUrl = capture.videoUrl || sourceVideoUrl;
     const frameImages = capture.frameImages;
+    const frameImageOssIds = capture.frameImageOssIds;
     const videoDisplaySize = makeCaptureVideoDisplaySize(sourceNode);
     const gridSize =
       frameImages.length > 0 ? makeFrameGridSize(frameImages.length, videoDisplaySize) : null;
@@ -189,6 +190,7 @@ export function createVideoFrameCaptureSnapshot({
         ...(frameNode.data || {}),
         imageUrl: frameImages[0],
         imageUrls: frameImages,
+        frameImageOssIds,
         activeImageIndex: 0,
         imageNaturalWidth: gridSize.width,
         imageNaturalHeight: gridSize.height,

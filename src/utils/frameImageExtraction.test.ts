@@ -7,7 +7,7 @@ import {
   replaceFrameImageUrlSnapshot,
 } from "./frameImageExtraction";
 
-function makeFrameNode(imageUrls: string[]): GraphNode {
+function makeFrameNode(imageUrls: string[], frameImageOssIds: string[] = []): GraphNode {
   return {
     id: "frames",
     type: "image_node",
@@ -20,6 +20,7 @@ function makeFrameNode(imageUrls: string[]): GraphNode {
     data: {
       imageUrl: imageUrls[0],
       imageUrls,
+      frameImageOssIds,
       activeImageIndex: 0,
       isFrameStrip: true,
       frameGridColumns: 5,
@@ -64,6 +65,24 @@ describe("createFrameImageChildSnapshot", () => {
         locked: true,
       },
     ]);
+  });
+
+  it("copies the selected frame oss id onto the extracted image node", () => {
+    const result = createFrameImageChildSnapshot({
+      nodes: [
+        makeFrameNode(
+          ["https://oss.example.com/1.png", "https://oss.example.com/2.png"],
+          ["oss-frame-1", "oss-frame-2"]
+        ),
+      ],
+      links: [],
+      sourceNodeId: "frames",
+      frameIndex: 1,
+      makeId: (prefix) => (prefix === "link" ? "link-child" : "child"),
+    });
+
+    expect(result?.createdNode.properties.ossId).toBe("oss-frame-2");
+    expect(result?.createdNode.data?.ossId).toBe("oss-frame-2");
   });
 
   it("uses the requested drop position when one is provided", () => {

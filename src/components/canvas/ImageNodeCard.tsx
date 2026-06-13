@@ -277,6 +277,28 @@ export function getImagePreviewNodeWidth({
   return isFrameStrip ? frameStripWidth : resultImageWidth;
 }
 
+export function getImageNodeDownloadVisibility({ isFrameStrip }: { isFrameStrip: boolean }) {
+  return {
+    showFrameTileDownload: isFrameStrip,
+    showTopToolbarDownload: !isFrameStrip,
+  };
+}
+
+export function getFrameStripDownloadFilename({
+  frameIndex,
+  nodeTitle,
+  timestamp,
+  url,
+}: {
+  frameIndex: number;
+  nodeTitle: string;
+  timestamp: number;
+  url: string;
+}) {
+  const baseName = nodeTitle.replace(/\s+/g, "-") || "frame-analysis";
+  return `${baseName}-frame-${frameIndex + 1}-${timestamp}.${extensionFromAssetUrl(url, "png")}`;
+}
+
 export function getFrameStripAdaptiveLayout({
   fallbackTileHeight,
   fallbackTileWidth,
@@ -2127,6 +2149,18 @@ function ImageNodeCardImpl({
     await downloadMediaAsset(imageUrl, filename);
   };
 
+  const downloadFrameImage = async (url: string, frameIndex: number) => {
+    const filename = getFrameStripDownloadFilename({
+      frameIndex,
+      nodeTitle: nodeBadgeTitle,
+      timestamp: Date.now(),
+      url,
+    });
+    await downloadMediaAsset(url, filename);
+  };
+
+  const downloadVisibility = getImageNodeDownloadVisibility({ isFrameStrip });
+
   const handleUploadClick = React.useCallback((event: React.MouseEvent) => {
     event.stopPropagation();
     uploadInputRef.current?.click();
@@ -2475,15 +2509,17 @@ function ImageNodeCardImpl({
                 </>
               ) : (
                 <>
-                  <Tooltip content="下载图片" position="top">
-                    <button
-                      type="button"
-                      onClick={downloadImage}
-                      className="flex h-9 w-9 items-center justify-center rounded-[12px] text-slate-400 transition-colors hover:bg-white/[0.06] hover:text-slate-100"
-                    >
-                      <Download className="h-5 w-5" />
-                    </button>
-                  </Tooltip>
+                  {downloadVisibility.showTopToolbarDownload && (
+                    <Tooltip content="下载图片" position="top">
+                      <button
+                        type="button"
+                        onClick={downloadImage}
+                        className="flex h-9 w-9 items-center justify-center rounded-[12px] text-slate-400 transition-colors hover:bg-white/[0.06] hover:text-slate-100"
+                      >
+                        <Download className="h-5 w-5" />
+                      </button>
+                    </Tooltip>
+                  )}
                   <div className="relative" ref={gridMenuRef}>
                     <button
                       type="button"
@@ -2779,24 +2815,45 @@ function ImageNodeCardImpl({
                           <span className="pointer-events-none absolute right-2 top-2 z-10 flex h-6 min-w-[24px] items-center justify-center rounded-full border border-white/18 bg-[#0b1018]/82 px-1.5 text-[11px] font-bold tabular-nums text-white shadow-[0_8px_18px_-12px_rgba(0,0,0,0.95)] transition-all duration-200 group-hover/frame:border-cyan-100/42 group-hover/frame:bg-cyan-100/18 group-hover/frame:text-cyan-50 group-hover/frame:shadow-[0_0_20px_rgba(103,232,249,0.26)]">
                             {index + 1}
                           </span>
-                          {onExtractFrameImage && (
+                          {(onExtractFrameImage || downloadVisibility.showFrameTileDownload) && (
                             <>
                               <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(236,254,255,0.1)_0%,rgba(236,254,255,0.04)_38%,rgba(2,12,22,0.62)_100%)] opacity-0 transition-opacity duration-200 group-hover/frame:opacity-100" />
                               <span className="pointer-events-none absolute inset-0 opacity-0 shadow-[inset_0_0_0_1px_rgba(236,254,255,0.42)] transition-opacity duration-200 group-hover/frame:opacity-100" />
-                              <button
-                                type="button"
-                                data-node-action="true"
-                                className="absolute bottom-3 left-1/2 z-20 flex h-8 -translate-x-1/2 translate-y-1 items-center justify-center rounded-full border border-cyan-100/18 bg-[#0b1320]/82 px-3.5 text-[12px] font-semibold text-cyan-50/92 opacity-0 shadow-[0_12px_28px_-18px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-md transition-all duration-200 hover:border-cyan-100/32 hover:bg-[#101b2b]/92 hover:text-white group-hover/frame:translate-y-0 group-hover/frame:opacity-100"
-                                onPointerDown={(event) => {
-                                  event.stopPropagation();
-                                }}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  onExtractFrameImage(node.id, index);
-                                }}
-                              >
-                                提取
-                              </button>
+                              <div className="absolute bottom-3 left-1/2 z-20 flex -translate-x-1/2 translate-y-1 items-center gap-2 opacity-0 transition-all duration-200 group-hover/frame:translate-y-0 group-hover/frame:opacity-100">
+                                {onExtractFrameImage && (
+                                  <button
+                                    type="button"
+                                    data-node-action="true"
+                                    className="flex h-8 items-center justify-center rounded-full border border-cyan-100/18 bg-[#0b1320]/82 px-3.5 text-[12px] font-semibold text-cyan-50/92 shadow-[0_12px_28px_-18px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-md transition-all duration-200 hover:border-cyan-100/32 hover:bg-[#101b2b]/92 hover:text-white"
+                                    onPointerDown={(event) => {
+                                      event.stopPropagation();
+                                    }}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      onExtractFrameImage(node.id, index);
+                                    }}
+                                  >
+                                    提取
+                                  </button>
+                                )}
+                                {downloadVisibility.showFrameTileDownload && (
+                                  <button
+                                    type="button"
+                                    data-node-action="true"
+                                    aria-label={`下载第 ${index + 1} 帧图片`}
+                                    className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-100/16 bg-[#0b1320]/82 text-slate-100/88 shadow-[0_12px_28px_-18px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-md transition-all duration-200 hover:border-violet-100/34 hover:bg-[#141d2d]/92 hover:text-white"
+                                    onPointerDown={(event) => {
+                                      event.stopPropagation();
+                                    }}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      void downloadFrameImage(url, index);
+                                    }}
+                                  >
+                                    <Download className="h-4 w-4" />
+                                  </button>
+                                )}
+                              </div>
                             </>
                           )}
                         </div>

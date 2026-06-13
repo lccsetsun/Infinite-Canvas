@@ -579,9 +579,27 @@ describe("collectLinkedMediaReferences", () => {
     const references = collectLinkedMediaReferences({
       nodeId: target.id,
       links: [
-        { id: "l-a", fromNodeId: sourceA.id, fromOutputIndex: 0, toNodeId: target.id, toInputIndex: 1 },
-        { id: "l-b", fromNodeId: sourceB.id, fromOutputIndex: 0, toNodeId: target.id, toInputIndex: 1 },
-        { id: "l-c", fromNodeId: sourceC.id, fromOutputIndex: 0, toNodeId: target.id, toInputIndex: 1 },
+        {
+          id: "l-a",
+          fromNodeId: sourceA.id,
+          fromOutputIndex: 0,
+          toNodeId: target.id,
+          toInputIndex: 1,
+        },
+        {
+          id: "l-b",
+          fromNodeId: sourceB.id,
+          fromOutputIndex: 0,
+          toNodeId: target.id,
+          toInputIndex: 1,
+        },
+        {
+          id: "l-c",
+          fromNodeId: sourceC.id,
+          fromOutputIndex: 0,
+          toNodeId: target.id,
+          toInputIndex: 1,
+        },
       ],
       nodes: [target, sourceA, sourceB, sourceC],
       nodeOutputs: new Map(),
@@ -595,6 +613,41 @@ describe("collectLinkedMediaReferences", () => {
     ]);
   });
 
+  it("collects the oss id carried by an extracted frame image node", () => {
+    const target = { ...makeTextNode("target"), type: "image_node" as const };
+    const extractedFrame: GraphNode = {
+      ...makeTextNode("frame-child"),
+      type: "image_node",
+      data: {
+        imageUrl: "https://example.com/frame-12.png",
+        imageUrls: ["https://example.com/frame-12.png"],
+        ossId: "oss-frame-12",
+        extractedFrameSourceNodeId: "frame-strip",
+        extractedFrameIndex: 11,
+      },
+    };
+
+    const references = collectLinkedMediaReferences({
+      nodeId: target.id,
+      links: [
+        {
+          id: "l-frame-child",
+          fromNodeId: extractedFrame.id,
+          fromOutputIndex: 0,
+          toNodeId: target.id,
+          toInputIndex: 1,
+        },
+      ],
+      nodes: [target, extractedFrame],
+      nodeOutputs: new Map([
+        [extractedFrame.id, new Map([[0, "https://example.com/frame-12.png"]])],
+      ]),
+    });
+
+    expect(references.imageUrls).toEqual(["https://example.com/frame-12.png"]);
+    expect(references.ossIds).toEqual(["oss-frame-12"]);
+  });
+
   it("does not treat plain output urls as oss ids", () => {
     const target = { ...makeTextNode("target"), type: "image_node" as const };
     const source: GraphNode = {
@@ -606,7 +659,13 @@ describe("collectLinkedMediaReferences", () => {
     const references = collectLinkedMediaReferences({
       nodeId: target.id,
       links: [
-        { id: "l-a", fromNodeId: source.id, fromOutputIndex: 0, toNodeId: target.id, toInputIndex: 1 },
+        {
+          id: "l-a",
+          fromNodeId: source.id,
+          fromOutputIndex: 0,
+          toNodeId: target.id,
+          toInputIndex: 1,
+        },
       ],
       nodes: [target, source],
       nodeOutputs: new Map([[source.id, new Map([[0, "https://example.com/a.png"]])]]),

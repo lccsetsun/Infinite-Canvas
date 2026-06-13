@@ -9,13 +9,16 @@ function fitExtractedFrameChildSize(sourceNode: GraphNode) {
   const width =
     typeof sourceNode.data?.imageNaturalWidth === "number" && sourceNode.data.imageNaturalWidth > 0
       ? sourceNode.data.imageNaturalWidth
-      : typeof sourceNode.data?.imageDisplayWidth === "number" && sourceNode.data.imageDisplayWidth > 0
+      : typeof sourceNode.data?.imageDisplayWidth === "number" &&
+          sourceNode.data.imageDisplayWidth > 0
         ? sourceNode.data.imageDisplayWidth
         : 16;
   const height =
-    typeof sourceNode.data?.imageNaturalHeight === "number" && sourceNode.data.imageNaturalHeight > 0
+    typeof sourceNode.data?.imageNaturalHeight === "number" &&
+    sourceNode.data.imageNaturalHeight > 0
       ? sourceNode.data.imageNaturalHeight
-      : typeof sourceNode.data?.imageDisplayHeight === "number" && sourceNode.data.imageDisplayHeight > 0
+      : typeof sourceNode.data?.imageDisplayHeight === "number" &&
+          sourceNode.data.imageDisplayHeight > 0
         ? sourceNode.data.imageDisplayHeight
         : 9;
   const ratio = width / height;
@@ -38,6 +41,15 @@ function getImageUrls(node: GraphNode): string[] {
       ? node.properties.imageUrls
       : [];
   return raw.filter((url): url is string => typeof url === "string" && url.trim().length > 0);
+}
+
+function getFrameImageOssIds(node: GraphNode): string[] {
+  const raw = Array.isArray(node.data?.frameImageOssIds)
+    ? node.data.frameImageOssIds
+    : Array.isArray(node.properties.frameImageOssIds)
+      ? node.properties.frameImageOssIds
+      : [];
+  return raw.map((id) => (typeof id === "string" ? id.trim() : ""));
 }
 
 function getNodeImageUrl(node: GraphNode): string {
@@ -71,6 +83,7 @@ export function createFrameImageChildSnapshot({
   const imageUrls = getImageUrls(sourceNode);
   const imageUrl = imageUrls[frameIndex];
   if (!imageUrl) return null;
+  const frameOssId = getFrameImageOssIds(sourceNode)[frameIndex];
 
   const id = makeId("node");
   const sourceWidth =
@@ -88,12 +101,14 @@ export function createFrameImageChildSnapshot({
   childNode.properties = {
     ...childNode.properties,
     imageUrl,
+    ...(frameOssId ? { ossId: frameOssId } : {}),
     text: "",
   };
   childNode.data = {
     ...(childNode.data || {}),
     imageUrl,
     imageUrls: [imageUrl],
+    ...(frameOssId ? { ossId: frameOssId, ossIds: [frameOssId] } : {}),
     activeImageIndex: 0,
     extractedFrameSourceNodeId: sourceNode.id,
     extractedFrameIndex: frameIndex,

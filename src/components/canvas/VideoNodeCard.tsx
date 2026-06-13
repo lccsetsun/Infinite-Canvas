@@ -1406,10 +1406,15 @@ function VideoNodeCardImpl({
                   <Volume2 className="h-[18px] w-[18px]" />
                 )}
               </button>
-              <div className="relative" data-video-frame-menu="true">
+              <div
+                className="relative"
+                data-video-frame-menu="true"
+                onMouseEnter={() => setFrameMenuOpen(true)}
+                onMouseLeave={() => setFrameMenuOpen(false)}
+              >
                 <button
                   type="button"
-                  onClick={() => setFrameMenuOpen((open) => !open)}
+                  onClick={() => captureFrame("current")}
                   className={`grid h-8 w-8 shrink-0 place-items-center rounded-full transition ${
                     frameMenuOpen
                       ? "bg-violet-300/[0.14] text-violet-50"
@@ -1433,13 +1438,6 @@ function VideoNodeCardImpl({
                         onClick={() => captureFrame("first")}
                       >
                         截取首帧
-                      </button>
-                      <button
-                        type="button"
-                        className="block w-full rounded-[9px] px-3 py-2 text-left transition hover:bg-white/[0.08] hover:text-white"
-                        onClick={() => captureFrame("current")}
-                      >
-                        截取当前帧
                       </button>
                       <button
                         type="button"

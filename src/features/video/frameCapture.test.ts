@@ -32,6 +32,7 @@ describe("fetchVideoFrameCapture", () => {
         index: 0,
         videoUrl: "https://oss.example.com/segment.mp4",
         frameImages: ["https://oss.example.com/1.png", "https://oss.example.com/2.png"],
+        frameImageOssIds: ["", ""],
       },
     ]);
 
@@ -78,6 +79,7 @@ describe("fetchVideoFrameCapture", () => {
         index: 0,
         videoUrl: "https://oss.example.com/segment.mp4",
         frameImages: ["https://oss.example.com/1.png", "https://oss.example.com/2.png"],
+        frameImageOssIds: ["frame-1", "frame-2"],
       },
     ]);
   });

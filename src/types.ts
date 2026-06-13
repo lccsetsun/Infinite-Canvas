@@ -51,6 +51,7 @@ export interface GraphNode {
     imageUrls?: string[];
     ossId?: string;
     ossIds?: string[];
+    frameImageOssIds?: string[];
     activeImageIndex?: number;
     imageNodeWidth?: number;
     imageNodeHeight?: number;

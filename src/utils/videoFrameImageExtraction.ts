@@ -4,6 +4,9 @@ import type { GraphLink, GraphNode } from "../types";
 const VIDEO_FRAME_IMAGE_MAX_WIDTH = 540;
 const VIDEO_FRAME_IMAGE_MAX_HEIGHT = 540;
 const VIDEO_FRAME_IMAGE_CHILD_GAP = 96;
+// Temporarily disabled: auto-align one child with the source video and center multiple
+// capture children as a group. Keep the helpers below so the layout can be restored later.
+const VIDEO_FRAME_IMAGE_AUTO_LAYOUT_ENABLED = false;
 
 export type VideoFrameImageCaptureMode = "current" | "first" | "last";
 
@@ -95,6 +98,8 @@ function layoutVideoFrameImageChildren({
 }
 
 export function relayoutVideoFrameImageChildSnapshots(nodes: GraphNode[]): GraphNode[] {
+  if (!VIDEO_FRAME_IMAGE_AUTO_LAYOUT_ENABLED) return nodes;
+
   const sourceNodeIds = new Set(
     nodes
       .filter((node) => node.data?.videoFrameCaptureChild === true)
@@ -139,11 +144,12 @@ export function createVideoFrameImageChildSnapshot({
 
   const id = makeId("node");
   const displaySize = fitVideoFrameImageSize(naturalSize);
+  const existingChildCount = getVideoFrameImageChildren(nodes, sourceNode.id).length;
   const childNode = createNodeFromType(
     "image_node",
     id,
     sourceNode.x + VIDEO_FRAME_IMAGE_MAX_WIDTH + 120,
-    sourceNode.y
+    sourceNode.y + existingChildCount * (displaySize.height + VIDEO_FRAME_IMAGE_CHILD_GAP)
   );
   childNode.title = `${sourceNode.title} ${CAPTURE_MODE_LABEL[captureMode]}`;
   childNode.properties = {
@@ -177,11 +183,13 @@ export function createVideoFrameImageChildSnapshot({
     locked: true,
   };
 
-  const nextNodes = layoutVideoFrameImageChildren({
-    childDisplayHeight: displaySize.height,
-    nodes: [...nodes, childNode],
-    sourceNode,
-  });
+  const nextNodes = VIDEO_FRAME_IMAGE_AUTO_LAYOUT_ENABLED
+    ? layoutVideoFrameImageChildren({
+        childDisplayHeight: displaySize.height,
+        nodes: [...nodes, childNode],
+        sourceNode,
+      })
+    : [...nodes, childNode];
   const createdNode = nextNodes.find((node) => node.id === childNode.id) ?? childNode;
 
   return {
