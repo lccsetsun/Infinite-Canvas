@@ -10,7 +10,9 @@ import {
   Eye,
   FileText,
   Loader2,
+  Maximize2,
   MessageSquareText,
+  X,
 } from "lucide-react";
 import { GraphNode } from "../../types";
 import { getNodeHeight, getNodeWidth } from "./geometry";
@@ -115,7 +117,7 @@ function stripReasoningBlocks(text: string) {
 function TextSkeleton({ active: _active }: { active: boolean }) {
   return (
     <div className="flex w-full items-center justify-center">
-      <div className="relative flex h-[96px] w-[96px] items-center justify-center text-cyan-100/58">
+      <div className="relative flex h-[96px] w-[96px] items-center justify-center text-violet-100/58">
         <FileText className="h-14 w-14" strokeWidth={1.55} />
       </div>
     </div>
@@ -161,6 +163,7 @@ function TextNodeCardImpl({
   const [isHovered, setIsHovered] = React.useState(false);
   const [outputMenuPos, setOutputMenuPos] = React.useState<{ x: number; y: number } | null>(null);
   const [modelMenuOpen, setModelMenuOpen] = React.useState(false);
+  const [expandedPromptEditorOpen, setExpandedPromptEditorOpen] = React.useState(false);
   const [forceComposerOpen, setForceComposerOpen] = React.useState(false);
   const promptEditorRef = React.useRef<PromptTokenEditorHandle | null>(null);
   const inlineEditorRef = React.useRef<PromptTokenEditorHandle | null>(null);
@@ -228,7 +231,10 @@ function TextNodeCardImpl({
   const promptText = (node.properties.text as string) || "";
   const displayPromptText = promptText || upstreamTextPrompt?.value || "";
   const canRunPrompt = Boolean(
-    promptText.trim() || upstreamTextPrompt?.value.trim() || upstreamImageInput?.value.trim()
+    promptText.trim() ||
+      upstreamTextPrompt?.value.trim() ||
+      upstreamImageInput?.value.trim() ||
+      composerReferences.length > 0
   );
   const rawResponseText =
     (node.data?.response as string) || (node.properties.response as string) || "";
@@ -295,6 +301,11 @@ function TextNodeCardImpl({
   const hasCompactContent = Boolean(responseText || errorText || isPlainMode);
   const promptComposerVisible =
     showPromptComposer && !responseEditing && !isResizingTextNode && !isRunning;
+  const promptComposerPlaceholder = upstreamTextPrompt
+    ? "输入你想如何处理上游内容，例如：总结、改写或回答它。"
+    : upstreamImageInput
+      ? "根据图片生成结构化中文提示词，包括主体描述、环境、光影、镜头语言与风格关键词。"
+      : "写下你想讲的故事、场景或角色设定。例如：一个来自未来的机器人，在城市屋顶看着星星。";
 
   React.useEffect(() => {
     if (!resizeDraftSize) return;
@@ -475,11 +486,25 @@ function TextNodeCardImpl({
   React.useEffect(() => {
     if (!isRunning) return;
     setForceComposerOpen(false);
+    setExpandedPromptEditorOpen(false);
     setInlineEditing(false);
     setModelMenuOpen(false);
     setOutputMenuPos(null);
     setResponseEditing(false);
   }, [isRunning]);
+
+  React.useEffect(() => {
+    if (!promptComposerVisible) setExpandedPromptEditorOpen(false);
+  }, [promptComposerVisible]);
+
+  React.useEffect(() => {
+    if (!expandedPromptEditorOpen) return;
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setExpandedPromptEditorOpen(false);
+    };
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [expandedPromptEditorOpen]);
 
   React.useEffect(() => {
     if (node.data?.forceComposerOpen !== true) return;
@@ -570,6 +595,218 @@ function TextNodeCardImpl({
     setIsHovered(false);
     setPortMagnet({ input: { x: 0, y: 0 }, output: { x: 0, y: 0 } });
   };
+
+  const expandPromptEditorButton = (
+    <button
+      type="button"
+      aria-label="放大编辑"
+      title="放大编辑"
+      onClick={(event) => {
+        event.stopPropagation();
+        setExpandedPromptEditorOpen(true);
+      }}
+      className="flex h-8 w-8 items-center justify-center rounded-[11px] bg-slate-950/22 text-slate-200/78 transition hover:bg-violet-200/10 hover:text-white"
+    >
+      <Maximize2 className="h-3.5 w-3.5" />
+    </button>
+  );
+
+  const expandedPromptEditorNode =
+    typeof document !== "undefined"
+      ? createPortal(
+          <AnimatePresence>
+            {expandedPromptEditorOpen && promptComposerVisible && (
+              <motion.div
+                data-node-action="true"
+                className="fixed inset-0 z-[220] flex items-center justify-center bg-[#101626]/56 px-8 py-8 backdrop-blur-md"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.16, ease: "easeOut" }}
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => event.stopPropagation()}
+                onWheel={(event) => event.stopPropagation()}
+              >
+                <motion.div
+                  initial={{ opacity: 0, y: 14, scale: 0.985 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 10, scale: 0.985 }}
+                  transition={{ duration: 0.18, ease: "easeOut" }}
+                  className="relative flex h-[min(760px,calc(100vh-80px))] w-[min(1120px,calc(100vw-80px))] flex-col overflow-hidden rounded-[22px] border border-violet-200/16 bg-[#182131]/96 shadow-[0_34px_120px_-42px_rgba(0,0,0,0.94),0_0_0_1px_rgba(196,181,253,0.08),inset_0_1px_0_rgba(255,255,255,0.07)] backdrop-blur-2xl"
+                >
+                  <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-violet-100/26 to-transparent" />
+                  <div className="flex h-16 shrink-0 items-center justify-between border-b border-violet-100/10 px-5">
+                    <div className="min-w-0">
+                      <div className="truncate text-[15px] font-semibold text-slate-50">
+                        {nodeBadgeTitle}
+                      </div>
+                      <div className="mt-0.5 truncate text-[12px] text-slate-300/58">
+                        内容会实时同步到节点输入面板
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      aria-label="关闭全屏编辑"
+                      title="关闭全屏编辑"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setExpandedPromptEditorOpen(false);
+                      }}
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[12px] border border-white/10 bg-white/[0.045] text-slate-200/72 transition hover:border-violet-200/28 hover:bg-violet-200/10 hover:text-white"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  {composerReferences.length > 0 && (
+                    <div className="mx-5 mt-4 shrink-0 rounded-2xl border border-white/8 bg-[#20293a]/70 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+                      <div className="flex max-h-[126px] flex-wrap items-center gap-2 overflow-y-auto pr-1 custom-scrollbar">
+                        {composerReferences.map((reference, index) => (
+                          <React.Fragment key={`${reference.id}-${reference.value}-${index}`}>
+                            <ReferencePreviewCard reference={reference} index={index} />
+                          </React.Fragment>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="min-h-0 flex-1 overflow-hidden px-5 py-4">
+                    <PromptTokenEditor
+                      value={promptText}
+                      resources={mentionableReferences}
+                      onChange={handleComposerPromptChange}
+                      onEscape={() => setExpandedPromptEditorOpen(false)}
+                      placeholder={promptComposerPlaceholder}
+                      className="h-full min-h-0 overflow-y-auto pr-3 text-[16px] leading-8 custom-scrollbar"
+                    />
+                  </div>
+
+                  <div className="flex h-[76px] shrink-0 flex-nowrap items-center gap-3 border-t border-violet-100/10 px-5">
+                    <div className="relative min-w-0 flex-[1_1_230px]" ref={modelMenuRef}>
+                      <button
+                        type="button"
+                        data-node-action="true"
+                        onPointerDown={(event) => event.stopPropagation()}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          const rect = modelMenuRef.current?.getBoundingClientRect();
+                          if (rect) {
+                            setModelMenuPosition(
+                              getFloatingMenuPosition({
+                                anchorRect: rect,
+                                viewportHeight: window.innerHeight,
+                                viewportWidth: window.innerWidth,
+                              })
+                            );
+                          }
+                          setModelMenuOpen((open) => !open);
+                        }}
+                        className={`flex h-11 w-full min-w-0 items-center gap-2 rounded-[15px] border px-3 text-[14px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors ${
+                          modelMenuOpen
+                            ? "border-violet-300/28 bg-violet-500/[0.13] text-violet-50"
+                            : "border-slate-400/16 bg-[#111827]/52 text-slate-200/82 hover:border-violet-200/22 hover:bg-violet-500/[0.08]"
+                        }`}
+                      >
+                        <span className="min-w-0 flex-1 truncate text-left">{currentModel}</span>
+                        <ChevronDown
+                          className={`h-4 w-4 shrink-0 text-slate-300/56 transition-transform ${modelMenuOpen ? "rotate-180" : ""}`}
+                        />
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleRun();
+                      }}
+                      disabled={isRunning || !canRunPrompt}
+                      className={`ml-auto flex h-11 w-14 shrink-0 items-center justify-center rounded-[16px] transition-all ${
+                        isRunning || !canRunPrompt
+                          ? "cursor-not-allowed border border-cyan-100/6 bg-slate-200/8 text-slate-200/28"
+                          : "bg-slate-100 text-[#111827] shadow-[0_14px_34px_-18px_rgba(226,232,240,0.78)] hover:bg-white"
+                      }`}
+                    >
+                      {isRunning ? (
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                      ) : (
+                        <ArrowUp className="h-5 w-5" />
+                      )}
+                    </button>
+                  </div>
+                  {expandedPromptEditorOpen &&
+                    createPortal(
+                      <AnimatePresence>
+                        {modelMenuOpen && modelMenuPosition && (
+                          <motion.div
+                            ref={modelMenuPortalRef}
+                            initial={{
+                              opacity: 0,
+                              y: modelMenuPosition.placement === "bottom" ? 8 : -8,
+                              scale: 0.98,
+                            }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{
+                              opacity: 0,
+                              y: modelMenuPosition.placement === "bottom" ? 8 : -8,
+                              scale: 0.98,
+                            }}
+                            transition={{ duration: 0.16, ease: "easeOut" }}
+                            className="fixed z-[240] overflow-y-auto rounded-2xl border border-slate-400/16 bg-[#121923]/96 p-1.5 shadow-[0_28px_70px_-28px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl custom-scrollbar"
+                            style={{
+                              left: modelMenuPosition.left,
+                              maxHeight: modelMenuPosition.maxHeight,
+                              top: modelMenuPosition.top,
+                              bottom: modelMenuPosition.bottom,
+                              width: modelMenuPosition.width,
+                            }}
+                            onPointerDown={(event) => event.stopPropagation()}
+                            onClick={(event) => event.stopPropagation()}
+                            onWheel={(event) => event.stopPropagation()}
+                          >
+                            {[
+                              { label: "内置模型", models: modelOptionGroups.builtIn },
+                              { label: "远程模型", models: modelOptionGroups.remote },
+                            ]
+                              .filter((group) => group.models.length > 0)
+                              .map((group) => (
+                                <div key={group.label} className="py-0.5">
+                                  <div className="px-2 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-300/44">
+                                    {group.label}
+                                  </div>
+                                  {group.models.map((model) => {
+                                    const isActive = currentModel === model;
+                                    return (
+                                      <button
+                                        key={`${group.label}-${model}`}
+                                        type="button"
+                                        onClick={() => {
+                                          onUpdateProperty?.(node.id, "model", model);
+                                          setModelMenuOpen(false);
+                                        }}
+                                        className={`flex h-9 w-full items-center gap-2 rounded-xl px-3 text-left text-[13px] font-medium transition-colors ${
+                                          isActive
+                                            ? "bg-violet-500/[0.16] text-violet-50"
+                                            : "text-slate-200/82 hover:bg-white/[0.05] hover:text-white"
+                                        }`}
+                                      >
+                                        <span className="min-w-0 flex-1 truncate">{model}</span>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              ))}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>,
+                      document.body
+                    )}
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>,
+          document.body
+        )
+      : null;
 
   return (
     <motion.div
@@ -717,7 +954,7 @@ function TextNodeCardImpl({
         </div>
 
         <div className="absolute -top-8 left-0 z-30 flex items-center gap-1.5 text-slate-300/82 drop-shadow-[0_1px_10px_rgba(15,23,42,0.9)]">
-          <FileText className="h-4 w-4 text-cyan-100/58" />
+          <FileText className="h-4 w-4 text-violet-100/58" />
           <span className="text-[15px] font-medium tracking-tight">
             {nodeBadgeMatch ? (
               <>
@@ -752,7 +989,7 @@ function TextNodeCardImpl({
                     {copied ? (
                       <Check className="h-4 w-4 text-emerald-300" />
                     ) : (
-                      <Copy className="h-4 w-4 text-cyan-100/58" />
+                      <Copy className="h-4 w-4 text-violet-100/58" />
                     )}
                     <span>{copied ? "已复制" : "复制内容"}</span>
                   </button>
@@ -761,7 +998,7 @@ function TextNodeCardImpl({
                     onClick={handlePreview}
                     className="flex h-9 w-full items-center gap-2.5 rounded-xl px-3 text-left text-[13px] font-medium text-slate-200/82 transition-colors hover:bg-cyan-100/8 hover:text-cyan-50"
                   >
-                    <MessageSquareText className="h-4 w-4 text-cyan-100/58" />
+                    <MessageSquareText className="h-4 w-4 text-violet-100/58" />
                     <span>展开查看</span>
                   </button>
                 </motion.div>
@@ -789,7 +1026,7 @@ function TextNodeCardImpl({
                         <TextSkeleton active />
                       </div>
                       <div className="flex items-center gap-2 text-[13px] font-medium text-slate-100/80">
-                        <Loader2 className="h-4 w-4 animate-spin text-cyan-100/72" />
+                        <Loader2 className="h-4 w-4 animate-spin text-violet-100/72" />
                         <span>正在请求大模型</span>
                       </div>
                     </div>
@@ -872,7 +1109,7 @@ function TextNodeCardImpl({
                     </div>
                   ) : showStarterGuide ? (
                     <div className="flex min-h-[166px] w-full items-center justify-center px-1 py-1">
-                      <div className="flex h-[116px] w-[116px] items-center justify-center text-cyan-100/58">
+                      <div className="flex h-[116px] w-[116px] items-center justify-center text-violet-100/58">
                         <FileText className="h-16 w-16" strokeWidth={1.55} />
                       </div>
                     </div>
@@ -901,7 +1138,7 @@ function TextNodeCardImpl({
             aria-label="调整文本节点大小"
             title="拖拽调整文本节点大小"
             onPointerDown={handleResizePointerDown}
-            className={`absolute bottom-0 right-0 z-30 h-14 w-14 cursor-nwse-resize rounded-br-[18px] rounded-tl-[30px] text-slate-300/42 opacity-0 transition-all duration-200 hover:bg-[#0a1019]/62 hover:text-cyan-100/74 focus-visible:bg-[#0a1019]/72 focus-visible:text-cyan-100/78 focus-visible:opacity-100 group-hover:opacity-100 ${
+            className={`absolute bottom-0 right-0 z-30 h-14 w-14 cursor-nwse-resize rounded-br-[18px] rounded-tl-[30px] text-slate-300/42 opacity-0 transition-all duration-200 hover:bg-[#0a1019]/62 hover:text-violet-100/74 focus-visible:bg-[#0a1019]/72 focus-visible:text-violet-100/78 focus-visible:opacity-100 group-hover:opacity-100 ${
               selected ? "opacity-100" : ""
             }`}
           >
@@ -923,8 +1160,8 @@ function TextNodeCardImpl({
             className="relative node-card left-1/2 mt-5 w-[690px] -translate-x-1/2 overflow-visible rounded-[18px] border border-[#2b3142]/90 bg-[#121723]/88 px-5 pb-3 pt-4 shadow-[0_28px_70px_-26px_rgba(0,0,0,0.92),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl"
           >
             <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-slate-100/22 to-transparent" />
-            {composerReferences.length > 0 && (
-              <div className="mb-3 rounded-2xl border border-white/6 bg-[#0d1117]/46 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+            <div className="mb-3 flex items-start gap-3">
+              {composerReferences.length > 0 && (
                 <div className="flex flex-wrap items-center gap-2">
                   {composerReferences.map((reference, index) => (
                     <React.Fragment key={`${reference.id}-${reference.value}-${index}`}>
@@ -932,21 +1169,16 @@ function TextNodeCardImpl({
                     </React.Fragment>
                   ))}
                 </div>
-              </div>
-            )}
+              )}
+              <div className="ml-auto shrink-0">{expandPromptEditorButton}</div>
+            </div>
             <div className="relative">
               <PromptTokenEditor
                 ref={promptEditorRef}
                 value={promptText}
                 resources={mentionableReferences}
                 onChange={handleComposerPromptChange}
-                placeholder={
-                  upstreamTextPrompt
-                    ? "输入你想如何处理上游内容，例如：总结、改写或回答它。"
-                    : upstreamImageInput
-                      ? "根据图片生成结构化中文提示词，包括主体描述、环境、光影、镜头语言与风格关键词。"
-                      : "写下你想讲的故事、场景或角色设定。例如：一个来自未来的机器人，在城市屋顶看着星星。"
-                }
+                placeholder={promptComposerPlaceholder}
                 className="h-[88px] text-[15px] leading-7 custom-scrollbar"
               />
             </div>
@@ -981,7 +1213,8 @@ function TextNodeCardImpl({
                     />
                   </button>
                 </div>
-                {typeof document !== "undefined" &&
+                {!expandedPromptEditorOpen &&
+                  typeof document !== "undefined" &&
                   createPortal(
                     <AnimatePresence>
                       {modelMenuOpen && modelMenuPosition && (
@@ -1071,6 +1304,7 @@ function TextNodeCardImpl({
           </motion.div>
         )}
       </AnimatePresence>
+      {expandedPromptEditorNode}
     </motion.div>
   );
 }

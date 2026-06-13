@@ -325,6 +325,8 @@ describe("VideoNodeCard preview branch", () => {
     expect(source).toContain("aria-label=\"关闭全屏编辑\"");
     expect(source).toContain("onEscape={() => setExpandedPromptEditorOpen(false)}");
     expect(source).toContain("fixed inset-0 z-[220]");
+    expect(source).toContain("panelLayerClassName=\"z-[240]\"");
+    expect(source).toContain("bg-violet-500/[0.16] text-violet-50");
     expect(source).toContain("overflow-y-auto pr-3 text-[16px] leading-8 custom-scrollbar");
     expect(source).toContain("panelTitle=\"Video Size\"");
     expect(source).toContain("durationSliderPercent");
@@ -337,6 +339,16 @@ describe("VideoNodeCard preview branch", () => {
     expect(source).toContain("const canRunVideoPrompt = Boolean(");
     expect(source).toContain("inputReferences.length > 0");
     expect(source).toContain("disabled={isRunning || !canRunVideoPrompt}");
+  });
+
+  it("keeps same-node frame analysis and prompt reversal mutually exclusive", () => {
+    const source = readFileSync(new URL("./VideoNodeCard.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain(
+      "const isAuxiliaryVideoTaskRunning = isAnalyzingFrames || isReversingPrompt"
+    );
+    expect(source).toContain("if (!videoUrl || isAuxiliaryVideoTaskRunning) return;");
+    expect(source).toContain("disabled={isAuxiliaryVideoTaskRunning}");
   });
 });
 

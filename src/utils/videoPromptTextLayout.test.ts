@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createNodeFromType } from "../features/nodes/nodeFactory";
 import type { NodeOutputMap } from "../runtime/dataflow";
 import type { GraphNode } from "../types";
+import { createVideoFrameCaptureSnapshot } from "./videoFrameCaptureLayout";
 import { createVideoPromptTextSnapshot } from "./videoPromptTextLayout";
 
 function makeVideoNode(): GraphNode {
@@ -56,5 +57,49 @@ describe("createVideoPromptTextSnapshot", () => {
         makeId: (prefix) => prefix,
       })
     ).toBeNull();
+  });
+
+  it("preserves frame analysis nodes and links when a reversed prompt is added afterwards", () => {
+    const videoNode = makeVideoNode();
+    let nextId = 0;
+
+    const frameSnapshot = createVideoFrameCaptureSnapshot({
+      nodes: [videoNode],
+      links: [],
+      nodeOutputs: new Map() as NodeOutputMap,
+      sourceNodeId: videoNode.id,
+      captures: [
+        {
+          index: 0,
+          videoUrl: "https://oss.example.com/segment.mp4",
+          frameImages: ["https://oss.example.com/frame-1.png"],
+          frameImageOssIds: ["oss-frame-1"],
+        },
+      ],
+      makeId: (prefix) => `${prefix}-${(nextId += 1)}`,
+    });
+
+    expect(frameSnapshot).not.toBeNull();
+
+    const promptSnapshot = createVideoPromptTextSnapshot({
+      nodes: frameSnapshot?.nodes || [],
+      links: frameSnapshot?.links || [],
+      nodeOutputs: frameSnapshot?.nodeOutputs || (new Map() as NodeOutputMap),
+      sourceNodeId: videoNode.id,
+      prompt: "reverse prompt",
+      makeId: (prefix) => `${prefix}-${(nextId += 1)}`,
+    });
+
+    const frameNodeIds = new Set(frameSnapshot?.createdNodes.map((node) => node.id));
+    const frameLinkIds = new Set(frameSnapshot?.links.map((link) => link.id));
+
+    expect(promptSnapshot).not.toBeNull();
+    expect(promptSnapshot?.nodes).toEqual(
+      expect.arrayContaining([...frameNodeIds].map((id) => expect.objectContaining({ id })))
+    );
+    expect(promptSnapshot?.links).toEqual(
+      expect.arrayContaining([...frameLinkIds].map((id) => expect.objectContaining({ id })))
+    );
+    expect(promptSnapshot?.createdNode.type).toBe("text_node");
   });
 });

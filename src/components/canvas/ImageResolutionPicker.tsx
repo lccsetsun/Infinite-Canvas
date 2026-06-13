@@ -20,6 +20,7 @@ interface ImageResolutionPickerProps {
   onChange: (resolution: ImageResolution, aspectRatio: ImageAspectRatio) => void;
   buttonClassName?: string;
   panelAlign?: "left" | "right";
+  panelLayerClassName?: string;
   panelTitle?: string;
   presetGroups?: ImageResolutionPresetGroup[];
   triggerIcon?: LucideIcon;
@@ -117,6 +118,7 @@ export function ImageResolutionPicker({
   onChange,
   buttonClassName = "",
   panelAlign = "left",
+  panelLayerClassName = "z-[160]",
   panelTitle,
   presetGroups = IMAGE_RESOLUTION_PRESET_GROUPS,
   triggerIcon: TriggerIcon = Image,
@@ -202,7 +204,7 @@ export function ImageResolutionPicker({
         }}
         className={buttonClassName}
       >
-        <TriggerIcon className="h-3.5 w-3.5 shrink-0 text-cyan-100/52" />
+        <TriggerIcon className="h-3.5 w-3.5 shrink-0 text-violet-200/58" />
         <span className="min-w-0 truncate">
           {resolution} · {formatImageResolutionPreset(resolution, aspectRatio, presetGroups)}
         </span>
@@ -223,7 +225,7 @@ export function ImageResolutionPicker({
             onPointerDown={(event) => event.stopPropagation()}
             onClick={(event) => event.stopPropagation()}
             onWheel={(event) => event.stopPropagation()}
-            className="fixed z-[160] overflow-hidden rounded-2xl border border-cyan-100/14 bg-[#121923]/96 p-1.5 text-slate-100 shadow-[0_28px_70px_-28px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl"
+            className={`fixed ${panelLayerClassName} overflow-hidden rounded-2xl border border-slate-400/16 bg-[#121923]/96 p-1.5 text-slate-100 shadow-[0_28px_70px_-28px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl`}
             style={{
               left: position.left,
               top: position.top,
@@ -249,8 +251,8 @@ export function ImageResolutionPicker({
                       onClick={() => setActiveResolution(group.resolution)}
                       className={`h-10 rounded-xl border text-[14px] font-semibold transition-colors ${
                         isActive
-                          ? "border-cyan-100/20 bg-cyan-300/[0.13] text-cyan-50"
-                          : "border-cyan-100/10 text-slate-200/70 hover:border-cyan-100/18 hover:bg-white/[0.05] hover:text-white"
+                          ? "border-violet-300/24 bg-violet-500/[0.16] text-violet-50"
+                          : "border-slate-400/12 text-slate-200/70 hover:border-violet-200/22 hover:bg-violet-500/[0.08] hover:text-white"
                       }`}
                     >
                       {group.resolution}
@@ -282,13 +284,13 @@ export function ImageResolutionPicker({
                       }}
                       className={`group relative flex h-[82px] w-full flex-col items-center justify-center gap-2 rounded-xl border transition-colors ${
                         isActive
-                          ? "border-cyan-100/20 bg-cyan-300/[0.13] text-cyan-50"
-                          : "border-cyan-100/10 bg-slate-950/14 text-slate-200/70 hover:border-cyan-100/18 hover:bg-white/[0.05] hover:text-white"
+                          ? "border-violet-300/24 bg-violet-500/[0.16] text-violet-50"
+                          : "border-slate-400/12 bg-slate-950/14 text-slate-200/70 hover:border-violet-200/22 hover:bg-violet-500/[0.08] hover:text-white"
                       }`}
                     >
                       <span
                         className={`grid h-[30px] w-[38px] place-items-center rounded-[8px] ${
-                          isActive ? "text-cyan-50" : "text-slate-300/62 group-hover:text-white"
+                          isActive ? "text-violet-50" : "text-slate-300/62 group-hover:text-white"
                         }`}
                         aria-hidden="true"
                       >
@@ -299,13 +301,13 @@ export function ImageResolutionPicker({
                       </span>
                       <span
                         className={`text-[13px] font-semibold leading-none ${
-                          isActive ? "text-cyan-50" : "text-slate-200/70 group-hover:text-white"
+                          isActive ? "text-violet-50" : "text-slate-200/70 group-hover:text-white"
                         }`}
                       >
                         {preset.aspectRatio}
                       </span>
                       {isActive && (
-                        <span className="absolute right-2 top-2 grid h-[18px] w-[18px] place-items-center rounded-full text-cyan-100">
+                        <span className="absolute right-2 top-2 grid h-[18px] w-[18px] place-items-center rounded-full text-violet-100">
                           <Check className="h-3.5 w-3.5" />
                         </span>
                       )}

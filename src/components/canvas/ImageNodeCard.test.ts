@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   getImageNodeInputReferences,
@@ -112,6 +113,41 @@ describe("getImageNodeInputReferences", () => {
     expect(references).toHaveLength(7);
     expect(references.map((reference) => reference.kind)).toEqual(Array(7).fill("image"));
     expect(references.map((reference) => reference.value)).toEqual(frameImages);
+  });
+});
+
+describe("ImageNodeCard prompt composer fullscreen editor", () => {
+  it("provides a temporary fullscreen prompt editor with the same image controls", () => {
+    const source = readFileSync(new URL("./ImageNodeCard.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain("const [expandedPromptEditorOpen, setExpandedPromptEditorOpen]");
+    expect(source).toContain("aria-label=\"放大编辑\"");
+    expect(source).toContain("aria-label=\"关闭全屏编辑\"");
+    expect(source).toContain("onEscape={() => setExpandedPromptEditorOpen(false)}");
+    expect(source).toContain("fixed inset-0 z-[220]");
+    expect(source).toContain("{expandedPromptEditorNode}");
+    expect(source).toContain("panelLayerClassName=\"z-[240]\"");
+    expect(source).toContain("bg-violet-500/[0.16] text-violet-50");
+    expect(source).toContain("overflow-y-auto pr-3 text-[16px] leading-8 custom-scrollbar");
+    expect(source).toContain("Image Size");
+    expect(source).toContain("QUANTITY_OPTIONS.map");
+  });
+
+  it("allows image generation when linked input resources exist before prompt text is typed", () => {
+    const source = readFileSync(new URL("./ImageNodeCard.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain("const canRunImagePrompt = Boolean(");
+    expect(source).toContain("inputReferences.length > 0");
+    expect(source).toContain("disabled={isRunning || !canRunImagePrompt}");
+  });
+
+  it("does not render check icons inside image model option rows", () => {
+    const source = readFileSync(new URL("./ImageNodeCard.tsx", import.meta.url), "utf8");
+    const firstModelMenu = source.indexOf("imageModelOptionGroups.builtIn");
+    const nextControl = source.indexOf("ImageResolutionPicker", firstModelMenu);
+    const modelMenuSource = source.slice(firstModelMenu, nextControl);
+
+    expect(modelMenuSource).not.toContain("<Check");
   });
 });
 

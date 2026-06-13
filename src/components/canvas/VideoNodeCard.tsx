@@ -449,6 +449,7 @@ function VideoNodeCardImpl({
   const [frameMenuOpen, setFrameMenuOpen] = React.useState(false);
   const [isAnalyzingFrames, setIsAnalyzingFrames] = React.useState(false);
   const [isReversingPrompt, setIsReversingPrompt] = React.useState(false);
+  const isAuxiliaryVideoTaskRunning = isAnalyzingFrames || isReversingPrompt;
   const [isUploadingVideo, setIsUploadingVideo] = React.useState(false);
   const isUploadingAsset = isNodeUploadingAsset || isUploadingVideo;
   const shouldShowUploadButton = shouldShowVideoUploadButton({
@@ -789,7 +790,7 @@ function VideoNodeCardImpl({
         event.stopPropagation();
         setExpandedPromptEditorOpen(true);
       }}
-      className="flex h-8 w-8 items-center justify-center rounded-[11px] bg-slate-950/22 text-cyan-50/72 transition hover:bg-violet-200/10 hover:text-white"
+      className="flex h-8 w-8 items-center justify-center rounded-[11px] bg-slate-950/22 text-slate-200/78 transition hover:bg-violet-200/10 hover:text-white"
     >
       <Maximize2 className="h-3.5 w-3.5" />
     </button>
@@ -895,11 +896,11 @@ function VideoNodeCardImpl({
                         }}
                         className={`flex h-11 w-full min-w-0 items-center gap-2 rounded-[15px] border px-3 text-[14px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors ${
                           modelMenuOpen
-                            ? "border-cyan-100/34 bg-cyan-100/[0.075] text-cyan-50"
-                            : "border-cyan-100/8 bg-slate-950/18 text-cyan-50/78 hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
+                            ? "border-violet-300/28 bg-violet-500/[0.13] text-violet-50"
+                            : "border-slate-400/16 bg-[#111827]/52 text-slate-200/82 hover:border-violet-200/22 hover:bg-violet-500/[0.08]"
                         }`}
                       >
-                        <Video className="h-4 w-4 shrink-0 text-cyan-100/50" />
+                        <Video className="h-4 w-4 shrink-0 text-violet-200/58" />
                         <span className="min-w-0 flex-1 truncate text-left">{currentModel}</span>
                         <ChevronDown
                           className={`h-4 w-4 shrink-0 text-slate-300/56 transition-transform ${modelMenuOpen ? "rotate-180" : ""}`}
@@ -909,6 +910,7 @@ function VideoNodeCardImpl({
                     <ImageResolutionPicker
                       resolution={resolution}
                       aspectRatio={aspectRatio}
+                      panelLayerClassName="z-[240]"
                       panelTitle="Video Size"
                       presetGroups={resolutionPresetGroups}
                       triggerIcon={Video}
@@ -929,19 +931,19 @@ function VideoNodeCardImpl({
                           });
                         }
                       }}
-                      buttonClassName="relative inline-flex h-11 w-[286px] shrink-0 items-center justify-center gap-2 rounded-[15px] border border-cyan-100/8 bg-slate-950/18 px-3 text-[14px] font-medium text-cyan-50/76 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
+                      buttonClassName="relative inline-flex h-11 w-[286px] shrink-0 items-center justify-center gap-2 rounded-[15px] border border-slate-400/16 bg-slate-950/18 px-3 text-[14px] font-medium text-slate-200/82 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors hover:border-violet-200/22 hover:bg-violet-500/[0.08]"
                     />
                     <div
                       data-node-action="true"
-                      className="flex h-11 w-[178px] shrink-0 items-center gap-3 rounded-[15px] border border-cyan-100/8 bg-slate-950/18 px-3 text-cyan-50/72 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
+                      className="flex h-11 w-[178px] shrink-0 items-center gap-3 rounded-[15px] border border-slate-400/16 bg-slate-950/18 px-3 text-slate-200/78 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors hover:border-violet-200/22 hover:bg-violet-500/[0.08]"
                       onPointerDown={(event) => event.stopPropagation()}
                       onClick={(event) => event.stopPropagation()}
                     >
                       <div className="flex w-10 shrink-0 items-baseline justify-end gap-0.5 tabular-nums">
-                        <span className="text-[15px] font-semibold text-cyan-50/86">
+                        <span className="text-[15px] font-semibold text-slate-100/86">
                           {durationSeconds}
                         </span>
-                        <span className="text-[10px] font-medium text-cyan-50/45">s</span>
+                        <span className="text-[10px] font-medium text-slate-400/68">s</span>
                       </div>
                       <input
                         type="range"
@@ -953,7 +955,7 @@ function VideoNodeCardImpl({
                         onChange={(event) => {
                           onUpdateProperty?.(node.id, "duration", `${event.currentTarget.value}s`);
                         }}
-                        className="h-1.5 min-w-0 flex-1 cursor-pointer appearance-none rounded-full bg-slate-700/70 accent-cyan-100 outline-none transition"
+                        className="h-1.5 min-w-0 flex-1 cursor-pointer appearance-none rounded-full bg-slate-700/70 accent-violet-200 outline-none transition"
                         style={{
                           background: `linear-gradient(90deg, rgba(207,250,254,0.88) ${durationSliderPercent}%, rgba(51,65,85,0.78) ${durationSliderPercent}%)`,
                         }}
@@ -965,7 +967,7 @@ function VideoNodeCardImpl({
                         event.stopPropagation();
                         onUpdateProperty?.(node.id, "audio", !audioEnabled);
                       }}
-                      className="inline-flex h-11 w-[98px] shrink-0 items-center justify-center rounded-[15px] border border-cyan-100/8 bg-slate-950/18 px-3 text-[14px] font-medium text-cyan-50/68 transition-colors hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
+                      className="inline-flex h-11 w-[98px] shrink-0 items-center justify-center rounded-[15px] border border-slate-400/16 bg-slate-950/18 px-3 text-[14px] font-medium text-slate-200/74 transition-colors hover:border-violet-200/22 hover:bg-violet-500/[0.08]"
                     >
                       {audioEnabled ? "音频开" : "音频关"}
                     </button>
@@ -979,7 +981,7 @@ function VideoNodeCardImpl({
                       className={`ml-auto flex h-11 w-14 shrink-0 items-center justify-center rounded-[16px] transition-all ${
                         isRunning || !canRunVideoPrompt
                           ? "cursor-not-allowed border border-cyan-100/6 bg-slate-200/8 text-slate-200/28"
-                          : "bg-cyan-50 text-[#0f172a] shadow-[0_14px_34px_-18px_rgba(103,232,249,0.92)] hover:bg-white"
+                          : "bg-slate-100 text-[#111827] shadow-[0_14px_34px_-18px_rgba(226,232,240,0.78)] hover:bg-white"
                       }`}
                     >
                       {isRunning ? (
@@ -1008,7 +1010,7 @@ function VideoNodeCardImpl({
                               scale: 0.98,
                             }}
                             transition={{ duration: 0.16, ease: "easeOut" }}
-                            className="fixed z-[240] overflow-y-auto rounded-2xl border border-cyan-100/14 bg-[#121923]/96 p-1.5 shadow-[0_28px_70px_-28px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl custom-scrollbar"
+                            className="fixed z-[240] overflow-y-auto rounded-2xl border border-slate-400/16 bg-[#121923]/96 p-1.5 shadow-[0_28px_70px_-28px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl custom-scrollbar"
                             style={{
                               left: modelMenuPosition.left,
                               maxHeight: modelMenuPosition.maxHeight,
@@ -1042,13 +1044,13 @@ function VideoNodeCardImpl({
                                         }}
                                         className={`flex h-9 w-full items-center gap-2 rounded-xl px-3 text-left text-[13px] font-medium transition-colors ${
                                           isActive
-                                            ? "bg-cyan-300/[0.13] text-cyan-50"
+                                            ? "bg-violet-500/[0.16] text-violet-50"
                                             : "text-slate-200/82 hover:bg-white/[0.05] hover:text-white"
                                         }`}
                                       >
                                         <span className="min-w-0 flex-1 truncate">{model}</span>
                                         {isActive && (
-                                          <Check className="h-3.5 w-3.5 text-cyan-100" />
+                                          <Check className="h-3.5 w-3.5 text-violet-100" />
                                         )}
                                       </button>
                                     );
@@ -1387,7 +1389,7 @@ function VideoNodeCardImpl({
   );
 
   const analyzeFrames = async () => {
-    if (!videoUrl || isAnalyzingFrames) return;
+    if (!videoUrl || isAuxiliaryVideoTaskRunning) return;
     setIsAnalyzingFrames(true);
     onUpdateData?.(node.id, {
       error: undefined,
@@ -1421,7 +1423,7 @@ function VideoNodeCardImpl({
   };
 
   const reverseVideoPrompt = async () => {
-    if (!videoUrl || isReversingPrompt) return;
+    if (!videoUrl || isAuxiliaryVideoTaskRunning) return;
     setIsReversingPrompt(true);
     onUpdateData?.(node.id, {
       error: undefined,
@@ -1523,11 +1525,11 @@ function VideoNodeCardImpl({
           }}
           className={`flex h-10 w-full min-w-0 items-center gap-2 rounded-[14px] border px-3 text-[13px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors ${
             modelMenuOpen
-              ? "border-cyan-100/34 bg-cyan-100/[0.075] text-cyan-50"
-              : "border-cyan-100/8 bg-slate-950/18 text-cyan-50/78 hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
+              ? "border-violet-300/28 bg-violet-500/[0.13] text-violet-50"
+              : "border-slate-400/16 bg-[#111827]/52 text-slate-200/82 hover:border-violet-200/22 hover:bg-violet-500/[0.08]"
           }`}
         >
-          <Video className="h-3.5 w-3.5 shrink-0 text-cyan-100/50" />
+          <Video className="h-3.5 w-3.5 shrink-0 text-violet-200/58" />
           <span className="min-w-0 flex-1 truncate text-left">{currentModel}</span>
           <ChevronDown
             className={`h-3.5 w-3.5 shrink-0 text-slate-300/56 transition-transform ${modelMenuOpen ? "rotate-180" : ""}`}
@@ -1552,7 +1554,7 @@ function VideoNodeCardImpl({
                     scale: 0.98,
                   }}
                   transition={{ duration: 0.16, ease: "easeOut" }}
-                  className="fixed z-[160] overflow-y-auto rounded-2xl border border-cyan-100/14 bg-[#121923]/96 p-1.5 shadow-[0_28px_70px_-28px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl custom-scrollbar"
+                  className="fixed z-[160] overflow-y-auto rounded-2xl border border-slate-400/16 bg-[#121923]/96 p-1.5 shadow-[0_28px_70px_-28px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl custom-scrollbar"
                   style={{
                     left: modelMenuPosition.left,
                     maxHeight: modelMenuPosition.maxHeight,
@@ -1586,12 +1588,12 @@ function VideoNodeCardImpl({
                               }}
                               className={`flex h-9 w-full items-center gap-2 rounded-xl px-3 text-left text-[13px] font-medium transition-colors ${
                                 isActive
-                                  ? "bg-cyan-300/[0.13] text-cyan-50"
+                                  ? "bg-violet-500/[0.16] text-violet-50"
                                   : "text-slate-200/82 hover:bg-white/[0.05] hover:text-white"
                               }`}
                             >
                               <span className="min-w-0 flex-1 truncate">{model}</span>
-                              {isActive && <Check className="h-3.5 w-3.5 text-cyan-100" />}
+                              {isActive && <Check className="h-3.5 w-3.5 text-violet-100" />}
                             </button>
                           );
                         })}
@@ -1626,17 +1628,17 @@ function VideoNodeCardImpl({
             });
           }
         }}
-        buttonClassName="relative inline-flex h-10 w-[246px] shrink-0 items-center justify-center gap-2 rounded-[14px] border border-cyan-100/8 bg-slate-950/18 px-3 text-[13px] font-medium text-cyan-50/76 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
+        buttonClassName="relative inline-flex h-10 w-[246px] shrink-0 items-center justify-center gap-2 rounded-[14px] border border-slate-400/16 bg-slate-950/18 px-3 text-[13px] font-medium text-slate-200/82 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors hover:border-violet-200/22 hover:bg-violet-500/[0.08]"
       />
       <div
         data-node-action="true"
-        className="flex h-10 w-[168px] shrink-0 items-center gap-3 rounded-[14px] border border-cyan-100/8 bg-slate-950/18 px-3 text-cyan-50/72 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
+        className="flex h-10 w-[168px] shrink-0 items-center gap-3 rounded-[14px] border border-slate-400/16 bg-slate-950/18 px-3 text-slate-200/78 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors hover:border-violet-200/22 hover:bg-violet-500/[0.08]"
         onPointerDown={(event) => event.stopPropagation()}
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex w-10 shrink-0 items-baseline justify-end gap-0.5 tabular-nums">
-          <span className="text-[14px] font-semibold text-cyan-50/86">{durationSeconds}</span>
-          <span className="text-[10px] font-medium text-cyan-50/45">s</span>
+          <span className="text-[14px] font-semibold text-slate-100/86">{durationSeconds}</span>
+          <span className="text-[10px] font-medium text-slate-400/68">s</span>
         </div>
         <input
           type="range"
@@ -1648,7 +1650,7 @@ function VideoNodeCardImpl({
           onChange={(event) => {
             onUpdateProperty?.(node.id, "duration", `${event.currentTarget.value}s`);
           }}
-          className="h-1.5 min-w-0 flex-1 cursor-pointer appearance-none rounded-full bg-slate-700/70 accent-cyan-100 outline-none transition"
+          className="h-1.5 min-w-0 flex-1 cursor-pointer appearance-none rounded-full bg-slate-700/70 accent-violet-200 outline-none transition"
           style={{
             background: `linear-gradient(90deg, rgba(207,250,254,0.88) ${durationSliderPercent}%, rgba(51,65,85,0.78) ${durationSliderPercent}%)`,
           }}
@@ -1660,7 +1662,7 @@ function VideoNodeCardImpl({
           event.stopPropagation();
           onUpdateProperty?.(node.id, "audio", !audioEnabled);
         }}
-        className="inline-flex h-10 w-[86px] shrink-0 items-center justify-center rounded-[14px] border border-cyan-100/8 bg-slate-950/18 px-3 text-[13px] font-medium text-cyan-50/68 transition-colors hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
+        className="inline-flex h-10 w-[86px] shrink-0 items-center justify-center rounded-[14px] border border-slate-400/16 bg-slate-950/18 px-3 text-[13px] font-medium text-slate-200/74 transition-colors hover:border-violet-200/22 hover:bg-violet-500/[0.08]"
       >
         {audioEnabled ? "音频开" : "音频关"}
       </button>
@@ -1674,7 +1676,7 @@ function VideoNodeCardImpl({
         className={`ml-auto flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] transition-all ${
           isRunning || !canRunVideoPrompt
             ? "cursor-not-allowed border border-cyan-100/6 bg-slate-200/8 text-slate-200/28"
-            : "bg-cyan-50 text-[#0f172a] shadow-[0_14px_30px_-18px_rgba(103,232,249,0.9)] hover:bg-white"
+            : "bg-slate-100 text-[#111827] shadow-[0_14px_30px_-18px_rgba(226,232,240,0.72)] hover:bg-white"
         }`}
       >
         {isRunning ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}
@@ -1792,7 +1794,7 @@ function VideoNodeCardImpl({
                   <button
                     type="button"
                     onClick={analyzeFrames}
-                    disabled={isAnalyzingFrames}
+                    disabled={isAuxiliaryVideoTaskRunning}
                     className="flex h-9 w-9 items-center justify-center rounded-[12px] text-slate-400 transition-colors hover:bg-white/[0.06] hover:text-slate-100 disabled:cursor-wait disabled:text-cyan-200"
                   >
                     {isAnalyzingFrames ? (
@@ -1806,7 +1808,7 @@ function VideoNodeCardImpl({
                   <button
                     type="button"
                     onClick={reverseVideoPrompt}
-                    disabled={isReversingPrompt}
+                    disabled={isAuxiliaryVideoTaskRunning}
                     className="flex h-9 w-9 items-center justify-center rounded-[12px] text-slate-400 transition-colors hover:bg-white/[0.06] hover:text-slate-100 disabled:cursor-wait disabled:text-violet-200"
                   >
                     {isReversingPrompt ? (
@@ -2075,7 +2077,7 @@ function VideoNodeCardImpl({
           )}
         </AnimatePresence>
         <div className="absolute -top-8 left-0 z-30 flex items-center gap-1.5 text-slate-300/82 drop-shadow-[0_1px_10px_rgba(15,23,42,0.9)]">
-          <Video className="h-4 w-4 text-cyan-100/58" />
+          <Video className="h-4 w-4 text-violet-100/58" />
           <span className="text-[15px] font-medium tracking-tight">
             {nodeBadgeMatch ? (
               <>
@@ -2109,7 +2111,7 @@ function VideoNodeCardImpl({
               className="flex flex-col items-center justify-center"
               style={{ minHeight: Math.max(120, visibleEmptyBranchSize.nodeHeight - 52) }}
             >
-              <div className="mb-8 flex h-[96px] w-[96px] items-center justify-center text-cyan-100/58">
+              <div className="mb-8 flex h-[96px] w-[96px] items-center justify-center text-violet-100/58">
                 <Video className="h-14 w-14" strokeWidth={1.55} />
               </div>
             </div>
@@ -2174,11 +2176,11 @@ function VideoNodeCardImpl({
                   }}
                   className={`flex h-10 w-full min-w-0 items-center gap-2 rounded-[14px] border px-3 text-[13px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors ${
                     modelMenuOpen
-                      ? "border-cyan-100/34 bg-cyan-100/[0.075] text-cyan-50"
-                      : "border-cyan-100/8 bg-slate-950/18 text-cyan-50/78 hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
+                      ? "border-violet-300/28 bg-violet-500/[0.13] text-violet-50"
+                      : "border-slate-400/16 bg-[#111827]/52 text-slate-200/82 hover:border-violet-200/22 hover:bg-violet-500/[0.08]"
                   }`}
                 >
-                  <Video className="h-3.5 w-3.5 shrink-0 text-cyan-100/50" />
+                  <Video className="h-3.5 w-3.5 shrink-0 text-violet-200/58" />
                   <span className="min-w-0 flex-1 truncate text-left">{currentModel}</span>
                   <ChevronDown
                     className={`h-3.5 w-3.5 shrink-0 text-slate-300/56 transition-transform ${modelMenuOpen ? "rotate-180" : ""}`}
@@ -2203,7 +2205,7 @@ function VideoNodeCardImpl({
                             scale: 0.98,
                           }}
                           transition={{ duration: 0.16, ease: "easeOut" }}
-                          className="fixed z-[160] overflow-y-auto rounded-2xl border border-cyan-100/14 bg-[#121923]/96 p-1.5 shadow-[0_28px_70px_-28px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl custom-scrollbar"
+                          className="fixed z-[160] overflow-y-auto rounded-2xl border border-slate-400/16 bg-[#121923]/96 p-1.5 shadow-[0_28px_70px_-28px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl custom-scrollbar"
                           style={{
                             left: modelMenuPosition.left,
                             maxHeight: modelMenuPosition.maxHeight,
@@ -2237,12 +2239,12 @@ function VideoNodeCardImpl({
                                       }}
                                       className={`flex h-9 w-full items-center gap-2 rounded-xl px-3 text-left text-[13px] font-medium transition-colors ${
                                         isActive
-                                          ? "bg-cyan-300/[0.13] text-cyan-50"
+                                          ? "bg-violet-500/[0.16] text-violet-50"
                                           : "text-slate-200/82 hover:bg-white/[0.05] hover:text-white"
                                       }`}
                                     >
                                       <span className="min-w-0 flex-1 truncate">{model}</span>
-                                      {isActive && <Check className="h-3.5 w-3.5 text-cyan-100" />}
+                                      {isActive && <Check className="h-3.5 w-3.5 text-violet-100" />}
                                     </button>
                                   );
                                 })}
@@ -2277,19 +2279,19 @@ function VideoNodeCardImpl({
                     });
                   }
                 }}
-                buttonClassName="relative inline-flex h-10 w-[246px] shrink-0 items-center justify-center gap-2 rounded-[14px] border border-cyan-100/8 bg-slate-950/18 px-3 text-[13px] font-medium text-cyan-50/76 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
+                buttonClassName="relative inline-flex h-10 w-[246px] shrink-0 items-center justify-center gap-2 rounded-[14px] border border-slate-400/16 bg-slate-950/18 px-3 text-[13px] font-medium text-slate-200/82 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors hover:border-violet-200/22 hover:bg-violet-500/[0.08]"
               />
               <div
                 data-node-action="true"
-                className="flex h-10 w-[168px] shrink-0 items-center gap-3 rounded-[14px] border border-cyan-100/8 bg-slate-950/18 px-3 text-cyan-50/72 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
+                className="flex h-10 w-[168px] shrink-0 items-center gap-3 rounded-[14px] border border-slate-400/16 bg-slate-950/18 px-3 text-slate-200/78 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors hover:border-violet-200/22 hover:bg-violet-500/[0.08]"
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="flex w-10 shrink-0 items-baseline justify-end gap-0.5 tabular-nums">
-                  <span className="text-[14px] font-semibold text-cyan-50/86">
+                  <span className="text-[14px] font-semibold text-slate-100/86">
                     {durationSeconds}
                   </span>
-                  <span className="text-[10px] font-medium text-cyan-50/45">s</span>
+                  <span className="text-[10px] font-medium text-slate-400/68">s</span>
                 </div>
                 <input
                   type="range"
@@ -2301,7 +2303,7 @@ function VideoNodeCardImpl({
                   onChange={(event) => {
                     onUpdateProperty?.(node.id, "duration", `${event.currentTarget.value}s`);
                   }}
-                  className="h-1.5 min-w-0 flex-1 cursor-pointer appearance-none rounded-full bg-slate-700/70 accent-cyan-100 outline-none transition"
+                  className="h-1.5 min-w-0 flex-1 cursor-pointer appearance-none rounded-full bg-slate-700/70 accent-violet-200 outline-none transition"
                   style={{
                     background: `linear-gradient(90deg, rgba(207,250,254,0.88) ${durationSliderPercent}%, rgba(51,65,85,0.78) ${durationSliderPercent}%)`,
                   }}
@@ -2313,7 +2315,7 @@ function VideoNodeCardImpl({
                   e.stopPropagation();
                   onUpdateProperty?.(node.id, "audio", !audioEnabled);
                 }}
-                className="inline-flex h-10 w-[86px] shrink-0 items-center justify-center rounded-[14px] border border-cyan-100/8 bg-slate-950/18 px-3 text-[13px] font-medium text-cyan-50/68 transition-colors hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
+                className="inline-flex h-10 w-[86px] shrink-0 items-center justify-center rounded-[14px] border border-slate-400/16 bg-slate-950/18 px-3 text-[13px] font-medium text-slate-200/74 transition-colors hover:border-violet-200/22 hover:bg-violet-500/[0.08]"
               >
                 {audioEnabled ? "音频开" : "音频关"}
               </button>
@@ -2327,7 +2329,7 @@ function VideoNodeCardImpl({
                 className={`ml-auto flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] transition-all ${
                   isRunning || !canRunVideoPrompt
                     ? "cursor-not-allowed border border-cyan-100/6 bg-slate-200/8 text-slate-200/28"
-                    : "bg-cyan-50 text-[#0f172a] shadow-[0_14px_30px_-18px_rgba(103,232,249,0.9)] hover:bg-white"
+                    : "bg-slate-100 text-[#111827] shadow-[0_14px_30px_-18px_rgba(226,232,240,0.72)] hover:bg-white"
                 }`}
               >
                 {isRunning ? (

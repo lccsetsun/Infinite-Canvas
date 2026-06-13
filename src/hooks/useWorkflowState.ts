@@ -2104,9 +2104,9 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
   const addVideoFrameAnalysis = useCallback(
     (videoNodeId: string, captures: VideoFrameCaptureItem[]) => {
       const snapshot = createVideoFrameCaptureSnapshot({
-        nodes,
-        links,
-        nodeOutputs,
+        nodes: currentNodesRef.current,
+        links: currentLinksRef.current,
+        nodeOutputs: currentNodeOutputsRef.current,
         sourceNodeId: videoNodeId,
         captures,
         makeId,
@@ -2121,6 +2121,9 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       }
 
       markRemoteDirty("structure");
+      currentNodesRef.current = snapshot.nodes;
+      currentLinksRef.current = snapshot.links;
+      currentNodeOutputsRef.current = snapshot.nodeOutputs;
       setNodes(snapshot.nodes);
       setLinks(snapshot.links);
       setNodeOutputs(snapshot.nodeOutputs);
@@ -2141,15 +2144,15 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         `\u9010\u5e27\u5206\u6790\u5b8c\u6210\uff1a\u751f\u6210 ${captures.length} \u7ec4\u63a5\u53e3\u8282\u70b9`
       );
     },
-    [appendLog, links, markRemoteDirty, nodeOutputs, nodes, pushHistory, syncCurrentWorkflowMeta]
+    [appendLog, markRemoteDirty, pushHistory, syncCurrentWorkflowMeta]
   );
 
   const addVideoPromptTextNode = useCallback(
     (videoNodeId: string, prompt: string) => {
       const snapshot = createVideoPromptTextSnapshot({
-        nodes,
-        links,
-        nodeOutputs,
+        nodes: currentNodesRef.current,
+        links: currentLinksRef.current,
+        nodeOutputs: currentNodeOutputsRef.current,
         sourceNodeId: videoNodeId,
         prompt,
         makeId,
@@ -2161,6 +2164,9 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       }
 
       markRemoteDirty("structure");
+      currentNodesRef.current = snapshot.nodes;
+      currentLinksRef.current = snapshot.links;
+      currentNodeOutputsRef.current = snapshot.nodeOutputs;
       setNodes(snapshot.nodes);
       setLinks(snapshot.links);
       setNodeOutputs(snapshot.nodeOutputs);
@@ -2179,7 +2185,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       appendLog("success", "视频反推提示词完成：已生成文本节点");
       return snapshot.createdNode;
     },
-    [appendLog, links, markRemoteDirty, nodeOutputs, nodes, pushHistory, syncCurrentWorkflowMeta]
+    [appendLog, markRemoteDirty, pushHistory, syncCurrentWorkflowMeta]
   );
 
   const updateSelectedProperty = (key: string, value: unknown) => {

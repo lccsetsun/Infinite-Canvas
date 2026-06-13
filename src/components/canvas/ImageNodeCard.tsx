@@ -3,7 +3,6 @@ import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
 import {
   ArrowUp,
-  Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -13,9 +12,11 @@ import {
   Grid3X3,
   Image as ImageIcon,
   Loader2,
+  Maximize2,
   Undo2,
   Upload,
   Wand2,
+  X,
 } from "lucide-react";
 import { GraphNode } from "../../types";
 import { findResolvedStringInput } from "../../utils/resolvedInputs";
@@ -629,6 +630,7 @@ function ImageNodeCardImpl({
     properties: node.properties,
   });
   const [isHovered, setIsHovered] = React.useState(false);
+  const [expandedPromptEditorOpen, setExpandedPromptEditorOpen] = React.useState(false);
   const [openSelect, setOpenSelect] = React.useState<"quantity" | null>(null);
   const [gridMenuOpen, setGridMenuOpen] = React.useState(false);
   const [customGridOpen, setCustomGridOpen] = React.useState(false);
@@ -741,6 +743,9 @@ function ImageNodeCardImpl({
   );
   const hasNonTextInputReferences = inputReferences.some((reference) => reference.kind !== "text");
   const promptText = (node.properties.text as string) || "";
+  const canRunImagePrompt = Boolean(
+    upstreamPrompt || promptText.trim() || inputReferences.length > 0
+  );
   const imageUrls = React.useMemo(
     () =>
       Array.isArray(node.data?.imageUrls) && node.data?.imageUrls.length
@@ -2439,6 +2444,346 @@ function ImageNodeCardImpl({
     !isUploadingNodeAsset &&
     !isRunning;
 
+  React.useEffect(() => {
+    if (!showImagePromptComposer) setExpandedPromptEditorOpen(false);
+  }, [showImagePromptComposer]);
+
+  React.useEffect(() => {
+    if (!expandedPromptEditorOpen) return;
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setExpandedPromptEditorOpen(false);
+    };
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [expandedPromptEditorOpen]);
+
+  const expandPromptEditorButton = (
+    <button
+      type="button"
+      aria-label="放大编辑"
+      title="放大编辑"
+      onClick={(event) => {
+        event.stopPropagation();
+        setExpandedPromptEditorOpen(true);
+      }}
+      className="flex h-8 w-8 items-center justify-center rounded-[11px] bg-slate-950/22 text-slate-200/78 transition hover:bg-violet-200/10 hover:text-white"
+    >
+      <Maximize2 className="h-3.5 w-3.5" />
+    </button>
+  );
+
+  const expandedPromptEditorNode =
+    typeof document !== "undefined"
+      ? createPortal(
+          <AnimatePresence>
+            {expandedPromptEditorOpen && showImagePromptComposer && (
+              <motion.div
+                data-node-action="true"
+                className="fixed inset-0 z-[220] flex items-center justify-center bg-[#101626]/56 px-8 py-8 backdrop-blur-md"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.16, ease: "easeOut" }}
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => event.stopPropagation()}
+                onWheel={(event) => event.stopPropagation()}
+              >
+                <motion.div
+                  initial={{ opacity: 0, y: 14, scale: 0.985 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 10, scale: 0.985 }}
+                  transition={{ duration: 0.18, ease: "easeOut" }}
+                  className="relative flex h-[min(760px,calc(100vh-80px))] w-[min(1120px,calc(100vw-80px))] flex-col overflow-hidden rounded-[22px] border border-violet-200/16 bg-[#182131]/96 shadow-[0_34px_120px_-42px_rgba(0,0,0,0.94),0_0_0_1px_rgba(196,181,253,0.08),inset_0_1px_0_rgba(255,255,255,0.07)] backdrop-blur-2xl"
+                >
+                  <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-violet-100/26 to-transparent" />
+                  <div className="flex h-16 shrink-0 items-center justify-between border-b border-violet-100/10 px-5">
+                    <div className="min-w-0">
+                      <div className="truncate text-[15px] font-semibold text-slate-50">
+                        {nodeBadgeTitle}
+                      </div>
+                      <div className="mt-0.5 truncate text-[12px] text-slate-300/58">
+                        内容会实时同步到节点输入面板
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      aria-label="关闭全屏编辑"
+                      title="关闭全屏编辑"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setExpandedPromptEditorOpen(false);
+                      }}
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[12px] border border-white/10 bg-white/[0.045] text-slate-200/72 transition hover:border-violet-200/28 hover:bg-violet-200/10 hover:text-white"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  {inputReferences.length > 0 && (
+                    <div className="mx-5 mt-4 shrink-0 rounded-2xl border border-white/8 bg-[#20293a]/70 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+                      <div className="flex max-h-[126px] flex-wrap items-center gap-2 overflow-y-auto pr-1 custom-scrollbar">
+                        {inputReferences.map((reference, index) => (
+                          <React.Fragment key={`${reference.key}-${reference.value}-${index}`}>
+                            <ReferencePreviewCard reference={reference} index={index} />
+                          </React.Fragment>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="min-h-0 flex-1 overflow-hidden px-5 py-4">
+                    <PromptTokenEditor
+                      value={promptText}
+                      resources={inputReferences}
+                      onChange={handlePromptChange}
+                      onEscape={() => setExpandedPromptEditorOpen(false)}
+                      placeholder={
+                        upstreamPrompt
+                          ? "继续补充这些输入资源要如何参与生成"
+                          : hasNonTextInputReferences
+                            ? "描述你想基于这些输入生成的画面内容"
+                            : "描述你想要生成的画面内容"
+                      }
+                      className="h-full min-h-0 overflow-y-auto pr-3 text-[16px] leading-8 custom-scrollbar"
+                    />
+                  </div>
+
+                  <div className="flex h-[76px] shrink-0 flex-nowrap items-center gap-3 border-t border-violet-100/10 px-5">
+                    <div className="relative min-w-0 flex-[1_1_210px]" ref={modelMenuRef}>
+                      <button
+                        type="button"
+                        data-node-action="true"
+                        onPointerDown={(event) => event.stopPropagation()}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setOpenSelect(null);
+                          const rect = modelMenuRef.current?.getBoundingClientRect();
+                          if (rect) {
+                            setModelMenuPosition(
+                              getFloatingMenuPosition({
+                                anchorRect: rect,
+                                viewportHeight: window.innerHeight,
+                                viewportWidth: window.innerWidth,
+                              })
+                            );
+                          }
+                          setModelMenuOpen((open) => !open);
+                        }}
+                        className={`flex h-11 w-full min-w-0 items-center gap-2 rounded-[15px] border px-3 text-[14px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors ${
+                          modelMenuOpen
+                            ? "border-violet-300/28 bg-violet-500/[0.13] text-violet-50"
+                            : "border-slate-400/16 bg-[#111827]/52 text-slate-200/82 hover:border-violet-200/22 hover:bg-violet-500/[0.08]"
+                        }`}
+                      >
+                        <Wand2 className="h-4 w-4 shrink-0 text-violet-200/58" />
+                        <span className="min-w-0 flex-1 truncate text-left">
+                          {getImageModelLabel(currentModel)}
+                        </span>
+                        <ChevronDown
+                          className={`h-4 w-4 shrink-0 text-slate-300/56 transition-transform ${modelMenuOpen ? "rotate-180" : ""}`}
+                        />
+                      </button>
+                    </div>
+                    <ImageResolutionPicker
+                      resolution={resolution}
+                      aspectRatio={aspectRatio}
+                      panelLayerClassName="z-[240]"
+                      panelTitle="Image Size"
+                      presetGroups={resolutionPresetGroups}
+                      onChange={(nextResolution, nextAspectRatio) => {
+                        onUpdateProperty?.(node.id, "resolution", nextResolution);
+                        onUpdateProperty?.(node.id, "aspect_ratio", nextAspectRatio);
+                        const preset = getImageResolutionPreset(
+                          nextResolution,
+                          nextAspectRatio,
+                          resolutionPresetGroups
+                        );
+                        if (preset) {
+                          onUpdateProperty?.(
+                            node.id,
+                            "customSize",
+                            `${preset.width}x${preset.height}`
+                          );
+                        }
+                        if (!imageUrl && !isFrameStrip) {
+                          const nextNodeSize = resolveEmptyImageNodeSize({
+                            aspectRatio: nextAspectRatio,
+                            isExtractedFrameNode,
+                            isUploadPlaceholder: node.data?.isUploadPlaceholder === true,
+                            resolution: nextResolution,
+                          });
+                          onUpdateData?.(node.id, {
+                            imageDisplayHeight: nextNodeSize.displayHeight,
+                            imageDisplayWidth: nextNodeSize.displayWidth,
+                            imageNodeHeight: nextNodeSize.nodeHeight,
+                            imageNodeWidth: nextNodeSize.nodeWidth,
+                            imagePortCenterY: nextNodeSize.portCenterY,
+                          });
+                        }
+                      }}
+                      buttonClassName="relative inline-flex h-11 w-[300px] shrink-0 items-center justify-center gap-2 rounded-[15px] border border-slate-400/16 bg-slate-950/18 px-3 text-[14px] font-medium text-slate-200/82 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors hover:border-violet-200/22 hover:bg-violet-500/[0.08]"
+                    />
+                    <div className="relative shrink-0">
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setModelMenuOpen(false);
+                          setOpenSelect((current) =>
+                            current === "quantity" ? null : "quantity"
+                          );
+                        }}
+                        className={`relative inline-flex h-11 min-w-[86px] items-center justify-center gap-1.5 rounded-[15px] border px-3 text-[14px] font-medium transition-colors ${
+                          openSelect === "quantity"
+                            ? "border-violet-300/28 bg-violet-500/[0.13] text-violet-50"
+                            : "border-slate-400/16 bg-[#111827]/42 text-slate-300/72 hover:border-violet-200/22 hover:bg-violet-500/[0.08] hover:text-violet-50"
+                        }`}
+                      >
+                        <span>{quantity.replace("张", "")}</span>
+                        <span className="text-[12px] text-slate-400/68">张</span>
+                        <ChevronUp
+                          className={`h-3.5 w-3.5 text-slate-300/55 transition-transform ${openSelect === "quantity" ? "" : "rotate-180"}`}
+                        />
+                      </button>
+                      <AnimatePresence>
+                        {openSelect === "quantity" && (
+                          <motion.div
+                            data-node-action="true"
+                            initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                            transition={{ duration: 0.15, ease: "easeOut" }}
+                            className="absolute bottom-[calc(100%+12px)] left-0 z-50 w-[112px] rounded-[16px] border border-slate-400/16 bg-[#0d121c]/96 p-2 shadow-[0_22px_56px_-22px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-2xl"
+                            onPointerDown={(event) => event.stopPropagation()}
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            {QUANTITY_OPTIONS.map((option) => {
+                              const isActive = option === quantity;
+                              return (
+                                <button
+                                  key={option}
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    onUpdateProperty?.(node.id, "quantity", option);
+                                    onUpdateProperty?.(node.id, "n", Number.parseInt(option, 10));
+                                    setOpenSelect(null);
+                                  }}
+                                  className={`flex h-10 w-full items-center justify-between rounded-[12px] px-3 text-left transition-colors ${
+                                    isActive
+                                      ? "bg-violet-500/[0.16] text-violet-50"
+                                      : "text-slate-300/76 hover:bg-white/[0.055] hover:text-slate-100"
+                                  }`}
+                                >
+                                  <span className="text-[13px] font-semibold">{option}</span>
+                                  <span
+                                    className={`h-1.5 w-1.5 rounded-full ${isActive ? "bg-violet-300 shadow-[0_0_10px_rgba(167,139,250,0.72)]" : "bg-slate-500/35"}`}
+                                  />
+                                </button>
+                              );
+                            })}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleRun();
+                      }}
+                      disabled={isRunning || !canRunImagePrompt}
+                      className={`ml-auto flex h-11 w-14 shrink-0 items-center justify-center rounded-[16px] transition-all ${
+                        isRunning || !canRunImagePrompt
+                          ? "cursor-not-allowed border border-cyan-100/6 bg-slate-200/8 text-slate-200/28"
+                          : "bg-slate-100 text-[#111827] shadow-[0_14px_34px_-18px_rgba(226,232,240,0.78)] hover:bg-white"
+                      }`}
+                    >
+                      {isRunning ? (
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                      ) : (
+                        <ArrowUp className="h-5 w-5" />
+                      )}
+                    </button>
+                  </div>
+                  {typeof document !== "undefined" &&
+                    expandedPromptEditorOpen &&
+                    createPortal(
+                      <AnimatePresence>
+                        {modelMenuOpen && modelMenuPosition && (
+                          <motion.div
+                            ref={modelMenuPortalRef}
+                            initial={{
+                              opacity: 0,
+                              y: modelMenuPosition.placement === "bottom" ? 8 : -8,
+                              scale: 0.98,
+                            }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{
+                              opacity: 0,
+                              y: modelMenuPosition.placement === "bottom" ? 8 : -8,
+                              scale: 0.98,
+                            }}
+                            transition={{ duration: 0.16, ease: "easeOut" }}
+                            className="fixed z-[240] overflow-y-auto rounded-2xl border border-slate-400/16 bg-[#121923]/96 p-1.5 shadow-[0_28px_70px_-28px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl custom-scrollbar"
+                            style={{
+                              left: modelMenuPosition.left,
+                              maxHeight: modelMenuPosition.maxHeight,
+                              top: modelMenuPosition.top,
+                              bottom: modelMenuPosition.bottom,
+                              width: modelMenuPosition.width,
+                            }}
+                            onPointerDown={(event) => event.stopPropagation()}
+                            onClick={(event) => event.stopPropagation()}
+                            onWheel={(event) => event.stopPropagation()}
+                          >
+                            {[
+                              { label: "内置模型", models: imageModelOptionGroups.builtIn },
+                              { label: "远程模型", models: imageModelOptionGroups.remote },
+                            ]
+                              .filter((group) => group.models.length > 0)
+                              .map((group) => (
+                                <div key={group.label} className="py-0.5">
+                                  <div className="px-2 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-300/44">
+                                    {group.label}
+                                  </div>
+                                  {group.models.map((model) => {
+                                    const isActive = currentModel === model;
+                                    return (
+                                      <button
+                                        key={`${group.label}-${model}`}
+                                        type="button"
+                                        onClick={() => {
+                                          onUpdateProperty?.(node.id, "model", model);
+                                          setModelMenuOpen(false);
+                                        }}
+                                        className={`flex h-9 w-full items-center gap-2 rounded-xl px-3 text-left text-[13px] font-medium transition-colors ${
+                                          isActive
+                                            ? "bg-violet-500/[0.16] text-violet-50"
+                                            : "text-slate-200/82 hover:bg-white/[0.05] hover:text-white"
+                                        }`}
+                                      >
+                                        <span className="min-w-0 flex-1 truncate">
+                                          {getImageModelLabel(model)}
+                                        </span>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              ))}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>,
+                      document.body
+                    )}
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>,
+          document.body
+        )
+      : null;
+
   const imagePreviewContent =
     imageUrl && !isRunning && !isUploadingNodeAsset ? (
       <motion.div
@@ -2744,7 +3089,7 @@ function ImageNodeCardImpl({
                 >
                   <div className="absolute inset-0 bg-[radial-gradient(circle_at_28%_18%,rgba(129,140,248,0.16),transparent_32%),radial-gradient(circle_at_74%_72%,rgba(34,211,238,0.08),transparent_38%)]" />
                   <div className="animate-shimmer absolute inset-y-0 left-[-45%] w-1/2 bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.08),transparent)]" />
-                  <div className="relative flex items-center gap-2 rounded-full border border-cyan-100/12 bg-[#0b1220]/72 px-3 py-1.5 text-[12px] font-semibold text-slate-200/72 shadow-[0_16px_42px_-24px_rgba(0,0,0,0.9),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-md">
+                  <div className="relative flex items-center gap-2 rounded-full border border-slate-400/16 bg-[#0b1220]/72 px-3 py-1.5 text-[12px] font-semibold text-slate-200/72 shadow-[0_16px_42px_-24px_rgba(0,0,0,0.9),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-md">
                     {isImageLoadFailed ? (
                       <ImageIcon className="h-3.5 w-3.5 text-rose-200/72" />
                     ) : (
@@ -2948,7 +3293,7 @@ function ImageNodeCardImpl({
               )}
               {isUploadingNodeAsset && (
                 <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-[#070b12]/42 backdrop-blur-[1px]">
-                  <div className="flex items-center gap-2 rounded-full border border-cyan-100/18 bg-[#0b1220]/82 px-3 py-1.5 text-[12px] font-semibold text-cyan-50/86 shadow-[0_16px_42px_-22px_rgba(34,211,238,0.48),inset_0_1px_0_rgba(255,255,255,0.08)]">
+                  <div className="flex items-center gap-2 rounded-full border border-cyan-100/18 bg-[#0b1220]/82 px-3 py-1.5 text-[12px] font-semibold text-slate-100/86 shadow-[0_16px_42px_-22px_rgba(34,211,238,0.48),inset_0_1px_0_rgba(255,255,255,0.08)]">
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
                     <span>上传中</span>
                   </div>
@@ -3085,7 +3430,7 @@ function ImageNodeCardImpl({
                 )}
               </AnimatePresence>
               <div className="absolute -top-8 left-0 z-30 flex items-center gap-1.5 text-slate-300/82 drop-shadow-[0_1px_10px_rgba(15,23,42,0.9)]">
-                <ImageIcon className="h-4 w-4 text-cyan-100/58" />
+                <ImageIcon className="h-4 w-4 text-violet-100/58" />
                 <span className="text-[15px] font-medium tracking-tight">
                   {nodeBadgeMatch ? (
                     <>
@@ -3103,12 +3448,12 @@ function ImageNodeCardImpl({
                     className="flex flex-col items-center justify-center gap-4 text-slate-300/60"
                     style={{ minHeight: Math.max(120, emptyImageNodeSize.nodeHeight - 52) }}
                   >
-                    <div className="relative flex h-[96px] w-[96px] items-center justify-center text-cyan-100/58">
+                    <div className="relative flex h-[96px] w-[96px] items-center justify-center text-violet-100/58">
                       <ImageIcon className="h-14 w-14" strokeWidth={1.55} />
                     </div>
                     <div className="text-center">
                       <div className="inline-flex items-center gap-2 text-[13px] text-slate-100/80">
-                        <Loader2 className="h-3.5 w-3.5 animate-spin text-cyan-100/72" />
+                        <Loader2 className="h-3.5 w-3.5 animate-spin text-violet-100/72" />
                         {getMediaNodeLoadingLabel({
                           isUploading: isUploadingNodeAsset,
                           mediaType: "image",
@@ -3121,7 +3466,7 @@ function ImageNodeCardImpl({
                     className="flex flex-col items-center justify-center"
                     style={{ minHeight: Math.max(120, emptyImageNodeSize.nodeHeight - 52) }}
                   >
-                    <div className="mb-8 flex h-[96px] w-[96px] items-center justify-center text-cyan-100/58">
+                    <div className="mb-8 flex h-[96px] w-[96px] items-center justify-center text-violet-100/58">
                       <ImageIcon className="h-14 w-14" strokeWidth={1.55} />
                     </div>
                   </div>
@@ -3143,8 +3488,8 @@ function ImageNodeCardImpl({
               className="relative node-card left-1/2 mt-5 w-[620px] -translate-x-1/2 rounded-[18px] border border-[#2b3142]/90 bg-[#121723]/88 px-4 pb-3 pt-3 shadow-[0_28px_70px_-26px_rgba(0,0,0,0.92),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl"
             >
               <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-slate-100/22 to-transparent" />
-              {inputReferences.length > 0 && (
-                <div className="mb-3 rounded-2xl border border-white/6 bg-[#0d1117]/46 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+              <div className="mb-3 flex items-start gap-3">
+                {inputReferences.length > 0 && (
                   <div className="flex flex-wrap items-center gap-2">
                     {inputReferences.map((reference, index) => (
                       <React.Fragment key={`${reference.key}-${reference.value}-${index}`}>
@@ -3152,8 +3497,9 @@ function ImageNodeCardImpl({
                       </React.Fragment>
                     ))}
                   </div>
-                </div>
-              )}
+                )}
+                <div className="ml-auto shrink-0">{expandPromptEditorButton}</div>
+              </div>
               <div className="relative">
                 <PromptTokenEditor
                   value={promptText}
@@ -3195,11 +3541,11 @@ function ImageNodeCardImpl({
                     }}
                     className={`flex h-10 w-full min-w-0 items-center gap-2 rounded-[14px] border px-3 text-[13px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors ${
                       modelMenuOpen
-                        ? "border-cyan-100/34 bg-cyan-100/[0.075] text-cyan-50"
-                        : "border-cyan-100/8 bg-slate-950/18 text-cyan-50/78 hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
+                        ? "border-violet-300/28 bg-violet-500/[0.13] text-violet-50"
+                        : "border-slate-400/16 bg-[#111827]/52 text-slate-200/82 hover:border-violet-200/22 hover:bg-violet-500/[0.08]"
                     }`}
                   >
-                    <Wand2 className="h-3.5 w-3.5 shrink-0 text-cyan-100/50" />
+                    <Wand2 className="h-3.5 w-3.5 shrink-0 text-violet-200/58" />
                     <span className="min-w-0 flex-1 truncate text-left">
                       {getImageModelLabel(currentModel)}
                     </span>
@@ -3207,7 +3553,8 @@ function ImageNodeCardImpl({
                       className={`h-3.5 w-3.5 shrink-0 text-slate-300/56 transition-transform ${modelMenuOpen ? "rotate-180" : ""}`}
                     />
                   </button>
-                  {typeof document !== "undefined" &&
+                  {!expandedPromptEditorOpen &&
+                    typeof document !== "undefined" &&
                     createPortal(
                       <AnimatePresence>
                         {modelMenuOpen && modelMenuPosition && (
@@ -3225,7 +3572,7 @@ function ImageNodeCardImpl({
                               scale: 0.98,
                             }}
                             transition={{ duration: 0.16, ease: "easeOut" }}
-                            className="fixed z-[160] overflow-y-auto rounded-2xl border border-cyan-100/14 bg-[#121923]/96 p-1.5 shadow-[0_28px_70px_-28px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl custom-scrollbar"
+                            className="fixed z-[160] overflow-y-auto rounded-2xl border border-slate-400/16 bg-[#121923]/96 p-1.5 shadow-[0_28px_70px_-28px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl custom-scrollbar"
                             style={{
                               left: modelMenuPosition.left,
                               maxHeight: modelMenuPosition.maxHeight,
@@ -3259,16 +3606,13 @@ function ImageNodeCardImpl({
                                         }}
                                         className={`flex h-9 w-full items-center gap-2 rounded-xl px-3 text-left text-[13px] font-medium transition-colors ${
                                           isActive
-                                            ? "bg-cyan-300/[0.13] text-cyan-50"
+                                            ? "bg-violet-500/[0.16] text-violet-50"
                                             : "text-slate-200/82 hover:bg-white/[0.05] hover:text-white"
                                         }`}
                                       >
                                         <span className="min-w-0 flex-1 truncate">
                                           {getImageModelLabel(model)}
                                         </span>
-                                        {isActive && (
-                                          <Check className="h-3.5 w-3.5 text-cyan-100" />
-                                        )}
                                       </button>
                                     );
                                   })}
@@ -3311,7 +3655,7 @@ function ImageNodeCardImpl({
                       });
                     }
                   }}
-                  buttonClassName="relative inline-flex h-10 min-w-[230px] items-center justify-center gap-2 rounded-[14px] border border-cyan-100/8 bg-slate-950/18 px-3 text-[13px] font-medium text-cyan-50/76 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
+                  buttonClassName="relative inline-flex h-10 min-w-[230px] items-center justify-center gap-2 rounded-[14px] border border-slate-400/16 bg-slate-950/18 px-3 text-[13px] font-medium text-slate-200/82 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors hover:border-violet-200/22 hover:bg-violet-500/[0.08]"
                 />
                 <div className="relative">
                   <button
@@ -3323,12 +3667,12 @@ function ImageNodeCardImpl({
                     }}
                     className={`relative inline-flex h-10 min-w-[76px] items-center justify-center gap-1.5 rounded-[14px] border px-3 text-[13px] font-medium transition-colors ${
                       openSelect === "quantity"
-                        ? "border-cyan-100/34 bg-cyan-100/[0.075] text-cyan-50"
-                        : "border-cyan-100/8 bg-slate-950/14 text-cyan-50/62 hover:border-cyan-100/18 hover:bg-cyan-100/[0.045] hover:text-cyan-50"
+                        ? "border-violet-300/28 bg-violet-500/[0.13] text-violet-50"
+                        : "border-slate-400/16 bg-[#111827]/42 text-slate-300/72 hover:border-violet-200/22 hover:bg-violet-500/[0.08] hover:text-violet-50"
                     }`}
                   >
                     <span>{quantity.replace("张", "")}</span>
-                    <span className="text-[12px] text-cyan-50/45">张</span>
+                    <span className="text-[12px] text-slate-400/68">张</span>
                     <ChevronUp
                       className={`h-3.5 w-3.5 text-slate-300/55 transition-transform ${openSelect === "quantity" ? "" : "rotate-180"}`}
                     />
@@ -3341,7 +3685,7 @@ function ImageNodeCardImpl({
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: 8, scale: 0.98 }}
                         transition={{ duration: 0.15, ease: "easeOut" }}
-                        className="absolute bottom-[calc(100%+12px)] left-0 z-50 w-[112px] rounded-[16px] border border-cyan-100/12 bg-[#0d121c]/96 p-2 shadow-[0_22px_56px_-22px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-2xl"
+                        className="absolute bottom-[calc(100%+12px)] left-0 z-50 w-[112px] rounded-[16px] border border-slate-400/16 bg-[#0d121c]/96 p-2 shadow-[0_22px_56px_-22px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-2xl"
                         onPointerDown={(e) => e.stopPropagation()}
                         onClick={(e) => e.stopPropagation()}
                       >
@@ -3359,13 +3703,13 @@ function ImageNodeCardImpl({
                               }}
                               className={`flex h-10 w-full items-center justify-between rounded-[12px] px-3 text-left transition-colors ${
                                 isActive
-                                  ? "bg-cyan-300/[0.1] text-cyan-50"
+                                  ? "bg-violet-500/[0.16] text-violet-50"
                                   : "text-slate-300/76 hover:bg-white/[0.055] hover:text-slate-100"
                               }`}
                             >
                               <span className="text-[13px] font-semibold">{option}</span>
                               <span
-                                className={`h-1.5 w-1.5 rounded-full ${isActive ? "bg-cyan-300 shadow-[0_0_10px_rgba(103,232,249,0.9)]" : "bg-slate-500/35"}`}
+                                className={`h-1.5 w-1.5 rounded-full ${isActive ? "bg-violet-300 shadow-[0_0_10px_rgba(167,139,250,0.72)]" : "bg-slate-500/35"}`}
                               />
                             </button>
                           );
@@ -3380,11 +3724,11 @@ function ImageNodeCardImpl({
                     e.stopPropagation();
                     handleRun();
                   }}
-                  disabled={isRunning || (!upstreamPrompt && !promptText.trim())}
+                  disabled={isRunning || !canRunImagePrompt}
                   className={`ml-auto flex h-10 w-10 items-center justify-center rounded-[14px] transition-all ${
-                    isRunning || (!upstreamPrompt && !promptText.trim())
+                    isRunning || !canRunImagePrompt
                       ? "cursor-not-allowed border border-cyan-100/6 bg-slate-200/8 text-slate-200/28"
-                      : "bg-cyan-50 text-[#0f172a] shadow-[0_14px_30px_-18px_rgba(103,232,249,0.9)] hover:bg-white"
+                      : "bg-slate-100 text-[#111827] shadow-[0_14px_30px_-18px_rgba(226,232,240,0.72)] hover:bg-white"
                   }`}
                 >
                   {isRunning ? (
@@ -3397,6 +3741,7 @@ function ImageNodeCardImpl({
             </motion.div>
           )}
         </AnimatePresence>
+        {expandedPromptEditorNode}
       </motion.div>
     </>
   );

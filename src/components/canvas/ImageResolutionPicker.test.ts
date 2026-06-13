@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   getAspectRatioPreviewStyle,
@@ -12,6 +13,22 @@ describe("getResolutionPickerPanelTitle", () => {
 
   it("allows media-specific panel titles", () => {
     expect(getResolutionPickerPanelTitle("Video Size")).toBe("Video Size");
+  });
+});
+
+describe("ImageResolutionPicker panel layer", () => {
+  it("uses the normal canvas popup layer by default and allows fullscreen overrides", () => {
+    const source = readFileSync(new URL("./ImageResolutionPicker.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain('panelLayerClassName = "z-[160]"');
+    expect(source).toContain("${panelLayerClassName}");
+  });
+
+  it("uses the purple selected-state style shared by node popup menus", () => {
+    const source = readFileSync(new URL("./ImageResolutionPicker.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain("bg-violet-500/[0.16] text-violet-50");
+    expect(source).not.toContain("bg-cyan-300/[0.13]");
   });
 });
 

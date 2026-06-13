@@ -29,6 +29,27 @@ describe("useWorkflowState remote-only persistence", () => {
   });
 });
 
+describe("video helper operations", () => {
+  it("builds frame-analysis and reversed-prompt snapshots from the latest canvas refs", () => {
+    const source = readFileSync(new URL("./useWorkflowState.ts", import.meta.url), "utf8");
+    const frameAnalysisBlock = source.slice(
+      source.indexOf("const addVideoFrameAnalysis = useCallback"),
+      source.indexOf("const addVideoPromptTextNode = useCallback")
+    );
+    const promptReverseBlock = source.slice(
+      source.indexOf("const addVideoPromptTextNode = useCallback"),
+      source.indexOf("const updateSelectedProperty")
+    );
+
+    expect(frameAnalysisBlock).toContain("nodes: currentNodesRef.current");
+    expect(frameAnalysisBlock).toContain("links: currentLinksRef.current");
+    expect(frameAnalysisBlock).toContain("nodeOutputs: currentNodeOutputsRef.current");
+    expect(promptReverseBlock).toContain("nodes: currentNodesRef.current");
+    expect(promptReverseBlock).toContain("links: currentLinksRef.current");
+    expect(promptReverseBlock).toContain("nodeOutputs: currentNodeOutputsRef.current");
+  });
+});
+
 describe("IMAGE_PROMPT_PLACEHOLDER_URL", () => {
   it("is a valid encoded svg data url for starter image nodes", () => {
     expect(IMAGE_PROMPT_PLACEHOLDER_URL).toMatch(/^data:image\/svg\+xml,/);

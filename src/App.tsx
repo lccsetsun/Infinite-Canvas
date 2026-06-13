@@ -9,6 +9,7 @@ import GroupsLayer from "./components/app/GroupsLayer";
 import LinkInteractionOverlay from "./components/app/LinkInteractionOverlay";
 import MultiSelectionLayer from "./components/app/MultiSelectionLayer";
 import EmptyCanvasState from "./components/app/EmptyCanvasState";
+import FloatingAssistantButton from "./components/app/FloatingAssistantButton";
 import LeaferCanvas from "./components/canvas/LeaferCanvas";
 import MiniMap from "./components/app/MiniMap";
 import PreviewModal, { PreviewContent } from "./components/app/PreviewModal";
@@ -1698,6 +1699,7 @@ export default function App({ onLoggedOut }: AppProps) {
               }}
             />
           )}
+          {currentView === "canvas" && <FloatingAssistantButton />}
           {runNotice && (
             <div className="absolute right-6 top-20 z-50 px-3 py-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-emerald-200 text-xs">
               {runNotice}
