@@ -12,6 +12,7 @@ import {
   sanitizeNodeRuntimeState,
   hasNodeRuntimeState,
   applyRemoteVideoTaskResultSnapshot,
+  applyPendingRemoteVideoTaskSnapshot,
   collectLinkedMediaReferences,
   shouldApplyRemoteWorkflowSnapshot,
 } from "./useWorkflowState";
@@ -497,6 +498,34 @@ describe("sanitizeNodeRuntimeState", () => {
 });
 
 describe("applyRemoteVideoTaskResultSnapshot", () => {
+  it("creates an immediately persistable pending remote video task snapshot", () => {
+    const node: GraphNode = {
+      ...makeTextNode("video-1"),
+      type: "video_node",
+      data: {
+        status: "idle",
+      },
+    };
+
+    const nextNodes = applyPendingRemoteVideoTaskSnapshot({
+      nodes: [node],
+      nodeId: "video-1",
+      patch: {
+        remoteVideoTaskId: "remote-video-task-1",
+        remoteVideoTaskStatus: "pending",
+      },
+    });
+
+    expect(nextNodes[0].data).toMatchObject({
+      loading: true,
+      loadingOperation: "generate",
+      status: "loading",
+      remoteVideoTaskId: "remote-video-task-1",
+      remoteVideoTaskStatus: "pending",
+    });
+    expect(nextNodes[0].properties.status).toBe("loading");
+  });
+
   it("writes completed remote video tasks to the node and outputs", () => {
     const node: GraphNode = {
       ...makeTextNode("video-1"),

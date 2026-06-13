@@ -698,6 +698,34 @@ function sanitizeNodesRuntimeState(nodes: GraphNode[]): GraphNode[] {
   return nodes.map(sanitizeNodeRuntimeState);
 }
 
+export function applyPendingRemoteVideoTaskSnapshot({
+  nodes,
+  nodeId,
+  patch,
+}: {
+  nodes: GraphNode[];
+  nodeId: string;
+  patch: Partial<GraphNode["data"]>;
+}) {
+  return nodes.map((node) => {
+    if (node.id !== nodeId || node.type !== "video_node") return node;
+    return {
+      ...node,
+      properties: {
+        ...node.properties,
+        status: "loading",
+      },
+      data: {
+        ...(node.data || {}),
+        loading: true,
+        loadingOperation: "generate",
+        status: "loading",
+        ...patch,
+      },
+    };
+  });
+}
+
 export function applyRemoteVideoTaskResultSnapshot({
   nodes,
   nodeOutputs,
@@ -2289,13 +2317,23 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       try {
         const result = await executor({ inputs, properties: node.properties, apiConfig });
         if (result.pending?.type === "remote-video") {
-          updateNodeData(nodeId, {
-            loading: true,
-            error: undefined,
-            status: "loading",
-            loadingOperation: "generate",
-            ...(result.patch || {}),
+          const nextNodes = applyPendingRemoteVideoTaskSnapshot({
+            nodes: currentNodesRef.current,
+            nodeId,
+            patch: {
+              error: undefined,
+              ...(result.patch || {}),
+            },
           });
+          currentNodesRef.current = nextNodes;
+          setNodes(nextNodes);
+          markRemoteDirty("content");
+          markLocalRemotePersistPending({ nodes: nextNodes });
+          syncCurrentWorkflowMeta((workflow) => ({
+            ...workflow,
+            summary: { ...workflow.summary, updatedAt: Date.now() },
+            data: { ...workflow.data, nodes: nextNodes },
+          }));
           appendLog("info", `[${node.title}] 视频任务已提交，正在后台生成`);
           return;
         }
@@ -2324,6 +2362,9 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       updateNodeData,
       writeNodeOutput,
       collectTextNodeMediaReferences,
+      markLocalRemotePersistPending,
+      markRemoteDirty,
+      syncCurrentWorkflowMeta,
     ]
   );
 

@@ -316,6 +316,28 @@ describe("VideoNodeCard preview branch", () => {
     expect(source).toContain("const promptComposerNode = (");
     expect(source).toContain("{promptComposerNode}");
   });
+
+  it("provides a temporary fullscreen prompt editor from the video prompt composer", () => {
+    const source = readFileSync(new URL("./VideoNodeCard.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain("const [expandedPromptEditorOpen, setExpandedPromptEditorOpen]");
+    expect(source).toContain("aria-label=\"放大编辑\"");
+    expect(source).toContain("aria-label=\"关闭全屏编辑\"");
+    expect(source).toContain("onEscape={() => setExpandedPromptEditorOpen(false)}");
+    expect(source).toContain("fixed inset-0 z-[220]");
+    expect(source).toContain("overflow-y-auto pr-3 text-[16px] leading-8 custom-scrollbar");
+    expect(source).toContain("panelTitle=\"Video Size\"");
+    expect(source).toContain("durationSliderPercent");
+    expect(source).toContain("onUpdateProperty?.(node.id, \"audio\", !audioEnabled)");
+  });
+
+  it("allows video generation when linked input resources exist even before prompt text is typed", () => {
+    const source = readFileSync(new URL("./VideoNodeCard.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain("const canRunVideoPrompt = Boolean(");
+    expect(source).toContain("inputReferences.length > 0");
+    expect(source).toContain("disabled={isRunning || !canRunVideoPrompt}");
+  });
 });
 
 describe("shouldUseEmptyVideoNodeSize", () => {

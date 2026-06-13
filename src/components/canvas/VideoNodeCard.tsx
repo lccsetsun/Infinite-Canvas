@@ -9,6 +9,7 @@ import {
   Download,
   Eye,
   Loader2,
+  Maximize2,
   Pause,
   Play,
   ScanSearch,
@@ -17,6 +18,7 @@ import {
   Volume2,
   VolumeX,
   Wand2,
+  X,
 } from "lucide-react";
 import { GraphNode } from "../../types";
 import type { VideoFrameCaptureItem } from "../../features/video/frameCapture";
@@ -439,6 +441,7 @@ function VideoNodeCardImpl({
   const isSourceAssetNode = isSourceNode(node);
   const isNodeUploadingAsset = node.data?.uploadingAsset === true;
   const [isHovered, setIsHovered] = React.useState(false);
+  const [expandedPromptEditorOpen, setExpandedPromptEditorOpen] = React.useState(false);
   const [isPlaying, setIsPlaying] = React.useState(false);
   const [currentTime, setCurrentTime] = React.useState(0);
   const [mediaDuration, setMediaDuration] = React.useState(0);
@@ -501,6 +504,9 @@ function VideoNodeCardImpl({
   );
   const hasNonTextInputReferences = inputReferences.some((reference) => reference.kind !== "text");
   const promptText = (node.properties.text as string) || "";
+  const canRunVideoPrompt = Boolean(
+    upstreamPrompt || promptText.trim() || inputReferences.length > 0
+  );
   const videoUrl = (node.data?.videoUrl as string) || (node.properties.videoUrl as string) || "";
   const loadingOperation = node.data?.loadingOperation as MediaNodeLoadingOperation | undefined;
   const promptComposerVisible = shouldShowVideoPromptComposer({
@@ -552,6 +558,19 @@ function VideoNodeCardImpl({
   const progressStyle = {
     "--video-progress": `${playbackProgress}%`,
   } as React.CSSProperties;
+
+  React.useEffect(() => {
+    if (!promptComposerVisible) setExpandedPromptEditorOpen(false);
+  }, [promptComposerVisible]);
+
+  React.useEffect(() => {
+    if (!expandedPromptEditorOpen) return;
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setExpandedPromptEditorOpen(false);
+    };
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [expandedPromptEditorOpen]);
 
   React.useEffect(() => {
     if (!resolutionPresetGroups?.length) return;
@@ -760,6 +779,294 @@ function VideoNodeCardImpl({
   const handlePromptChange = (value: string) => {
     onUpdateProperty?.(node.id, "text", value);
   };
+
+  const expandPromptEditorButton = (
+    <button
+      type="button"
+      aria-label="放大编辑"
+      title="放大编辑"
+      onClick={(event) => {
+        event.stopPropagation();
+        setExpandedPromptEditorOpen(true);
+      }}
+      className="flex h-8 w-8 items-center justify-center rounded-[11px] bg-slate-950/22 text-cyan-50/72 transition hover:bg-violet-200/10 hover:text-white"
+    >
+      <Maximize2 className="h-3.5 w-3.5" />
+    </button>
+  );
+
+  const expandedPromptEditorNode =
+    typeof document !== "undefined"
+      ? createPortal(
+          <AnimatePresence>
+            {expandedPromptEditorOpen && promptComposerVisible && (
+              <motion.div
+                data-node-action="true"
+                className="fixed inset-0 z-[220] flex items-center justify-center bg-[#101626]/56 px-8 py-8 backdrop-blur-md"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.16, ease: "easeOut" }}
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => event.stopPropagation()}
+                onWheel={(event) => event.stopPropagation()}
+              >
+                <motion.div
+                  initial={{ opacity: 0, y: 14, scale: 0.985 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 10, scale: 0.985 }}
+                  transition={{ duration: 0.18, ease: "easeOut" }}
+                  className="relative flex h-[min(760px,calc(100vh-80px))] w-[min(1120px,calc(100vw-80px))] flex-col overflow-hidden rounded-[22px] border border-violet-200/16 bg-[#182131]/96 shadow-[0_34px_120px_-42px_rgba(0,0,0,0.94),0_0_0_1px_rgba(196,181,253,0.08),inset_0_1px_0_rgba(255,255,255,0.07)] backdrop-blur-2xl"
+                >
+                  <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-violet-100/26 to-transparent" />
+                  <div className="flex h-16 shrink-0 items-center justify-between border-b border-violet-100/10 px-5">
+                    <div className="min-w-0">
+                      <div className="truncate text-[15px] font-semibold text-slate-50">
+                        {nodeBadgeTitle}
+                      </div>
+                      <div className="mt-0.5 truncate text-[12px] text-slate-300/58">
+                        内容会实时同步到节点输入面板
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      aria-label="关闭全屏编辑"
+                      title="关闭全屏编辑"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setExpandedPromptEditorOpen(false);
+                      }}
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[12px] border border-white/10 bg-white/[0.045] text-slate-200/72 transition hover:border-violet-200/28 hover:bg-violet-200/10 hover:text-white"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  {inputReferences.length > 0 && (
+                    <div
+                      className={`mx-5 mt-4 shrink-0 rounded-2xl border border-white/8 bg-[#20293a]/70 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] ${
+                        hasNonTextInputReferences ? "ring-1 ring-violet-200/10" : ""
+                      }`}
+                    >
+                      <div className="flex max-h-[126px] flex-wrap items-center gap-2 overflow-y-auto pr-1 custom-scrollbar">
+                        {inputReferences.map((reference, index) => (
+                          <React.Fragment key={`${reference.key}-${reference.value}-${index}`}>
+                            <ReferencePreviewCard reference={reference} index={index} />
+                          </React.Fragment>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="min-h-0 flex-1 overflow-hidden px-5 py-4">
+                    <PromptTokenEditor
+                      value={promptText}
+                      resources={inputReferences}
+                      onChange={handlePromptChange}
+                      onEscape={() => setExpandedPromptEditorOpen(false)}
+                      placeholder={
+                        upstreamPrompt
+                          ? "继续补充这些输入资源要如何参与生成"
+                          : "描述你想要生成的视频内容"
+                      }
+                      className="h-full min-h-0 overflow-y-auto pr-3 text-[16px] leading-8 custom-scrollbar"
+                    />
+                  </div>
+
+                  <div className="flex h-[76px] shrink-0 flex-nowrap items-center gap-3 border-t border-violet-100/10 px-5">
+                    <div className="relative min-w-0 flex-[1_1_190px]" ref={modelMenuRef}>
+                      <button
+                        type="button"
+                        data-node-action="true"
+                        onPointerDown={(event) => event.stopPropagation()}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          const rect = modelMenuRef.current?.getBoundingClientRect();
+                          if (rect) {
+                            setModelMenuPosition(
+                              getFloatingMenuPosition({
+                                anchorRect: rect,
+                                viewportHeight: window.innerHeight,
+                                viewportWidth: window.innerWidth,
+                              })
+                            );
+                          }
+                          setModelMenuOpen((open) => !open);
+                        }}
+                        className={`flex h-11 w-full min-w-0 items-center gap-2 rounded-[15px] border px-3 text-[14px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors ${
+                          modelMenuOpen
+                            ? "border-cyan-100/34 bg-cyan-100/[0.075] text-cyan-50"
+                            : "border-cyan-100/8 bg-slate-950/18 text-cyan-50/78 hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
+                        }`}
+                      >
+                        <Video className="h-4 w-4 shrink-0 text-cyan-100/50" />
+                        <span className="min-w-0 flex-1 truncate text-left">{currentModel}</span>
+                        <ChevronDown
+                          className={`h-4 w-4 shrink-0 text-slate-300/56 transition-transform ${modelMenuOpen ? "rotate-180" : ""}`}
+                        />
+                      </button>
+                    </div>
+                    <ImageResolutionPicker
+                      resolution={resolution}
+                      aspectRatio={aspectRatio}
+                      panelTitle="Video Size"
+                      presetGroups={resolutionPresetGroups}
+                      triggerIcon={Video}
+                      onChange={(nextResolution, nextAspectRatio) => {
+                        onUpdateProperty?.(node.id, "resolution", nextResolution);
+                        onUpdateProperty?.(node.id, "aspect_ratio", nextAspectRatio);
+                        if (!videoUrl) {
+                          const nextNodeSize = resolveEmptyVideoNodeSize({
+                            aspectRatio: nextAspectRatio,
+                            resolution: nextResolution,
+                          });
+                          onUpdateData?.(node.id, {
+                            videoDisplayHeight: nextNodeSize.displayHeight,
+                            videoDisplayWidth: nextNodeSize.displayWidth,
+                            videoNodeHeight: nextNodeSize.nodeHeight,
+                            videoNodeWidth: nextNodeSize.nodeWidth,
+                            videoPortCenterY: nextNodeSize.portCenterY,
+                          });
+                        }
+                      }}
+                      buttonClassName="relative inline-flex h-11 w-[286px] shrink-0 items-center justify-center gap-2 rounded-[15px] border border-cyan-100/8 bg-slate-950/18 px-3 text-[14px] font-medium text-cyan-50/76 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
+                    />
+                    <div
+                      data-node-action="true"
+                      className="flex h-11 w-[178px] shrink-0 items-center gap-3 rounded-[15px] border border-cyan-100/8 bg-slate-950/18 px-3 text-cyan-50/72 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <div className="flex w-10 shrink-0 items-baseline justify-end gap-0.5 tabular-nums">
+                        <span className="text-[15px] font-semibold text-cyan-50/86">
+                          {durationSeconds}
+                        </span>
+                        <span className="text-[10px] font-medium text-cyan-50/45">s</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={VIDEO_DURATION_MIN_SECONDS}
+                        max={VIDEO_DURATION_MAX_SECONDS}
+                        step={1}
+                        value={durationSeconds}
+                        aria-label="视频时长"
+                        onChange={(event) => {
+                          onUpdateProperty?.(node.id, "duration", `${event.currentTarget.value}s`);
+                        }}
+                        className="h-1.5 min-w-0 flex-1 cursor-pointer appearance-none rounded-full bg-slate-700/70 accent-cyan-100 outline-none transition"
+                        style={{
+                          background: `linear-gradient(90deg, rgba(207,250,254,0.88) ${durationSliderPercent}%, rgba(51,65,85,0.78) ${durationSliderPercent}%)`,
+                        }}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onUpdateProperty?.(node.id, "audio", !audioEnabled);
+                      }}
+                      className="inline-flex h-11 w-[98px] shrink-0 items-center justify-center rounded-[15px] border border-cyan-100/8 bg-slate-950/18 px-3 text-[14px] font-medium text-cyan-50/68 transition-colors hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
+                    >
+                      {audioEnabled ? "音频开" : "音频关"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleRun();
+                      }}
+                      disabled={isRunning || !canRunVideoPrompt}
+                      className={`ml-auto flex h-11 w-14 shrink-0 items-center justify-center rounded-[16px] transition-all ${
+                        isRunning || !canRunVideoPrompt
+                          ? "cursor-not-allowed border border-cyan-100/6 bg-slate-200/8 text-slate-200/28"
+                          : "bg-cyan-50 text-[#0f172a] shadow-[0_14px_34px_-18px_rgba(103,232,249,0.92)] hover:bg-white"
+                      }`}
+                    >
+                      {isRunning ? (
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                      ) : (
+                        <ArrowUp className="h-5 w-5" />
+                      )}
+                    </button>
+                  </div>
+                  {typeof document !== "undefined" &&
+                    expandedPromptEditorOpen &&
+                    createPortal(
+                      <AnimatePresence>
+                        {modelMenuOpen && modelMenuPosition && (
+                          <motion.div
+                            ref={modelMenuPortalRef}
+                            initial={{
+                              opacity: 0,
+                              y: modelMenuPosition.placement === "bottom" ? 8 : -8,
+                              scale: 0.98,
+                            }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{
+                              opacity: 0,
+                              y: modelMenuPosition.placement === "bottom" ? 8 : -8,
+                              scale: 0.98,
+                            }}
+                            transition={{ duration: 0.16, ease: "easeOut" }}
+                            className="fixed z-[240] overflow-y-auto rounded-2xl border border-cyan-100/14 bg-[#121923]/96 p-1.5 shadow-[0_28px_70px_-28px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl custom-scrollbar"
+                            style={{
+                              left: modelMenuPosition.left,
+                              maxHeight: modelMenuPosition.maxHeight,
+                              top: modelMenuPosition.top,
+                              bottom: modelMenuPosition.bottom,
+                              width: modelMenuPosition.width,
+                            }}
+                            onPointerDown={(event) => event.stopPropagation()}
+                            onClick={(event) => event.stopPropagation()}
+                            onWheel={(event) => event.stopPropagation()}
+                          >
+                            {[
+                              { label: "内置模型", models: videoModelOptionGroups.builtIn },
+                              { label: "远程模型", models: videoModelOptionGroups.remote },
+                            ]
+                              .filter((group) => group.models.length > 0)
+                              .map((group) => (
+                                <div key={group.label} className="py-0.5">
+                                  <div className="px-2 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-300/44">
+                                    {group.label}
+                                  </div>
+                                  {group.models.map((model) => {
+                                    const isActive = currentModel === model;
+                                    return (
+                                      <button
+                                        key={`${group.label}-${model}`}
+                                        type="button"
+                                        onClick={() => {
+                                          onUpdateProperty?.(node.id, "model", model);
+                                          setModelMenuOpen(false);
+                                        }}
+                                        className={`flex h-9 w-full items-center gap-2 rounded-xl px-3 text-left text-[13px] font-medium transition-colors ${
+                                          isActive
+                                            ? "bg-cyan-300/[0.13] text-cyan-50"
+                                            : "text-slate-200/82 hover:bg-white/[0.05] hover:text-white"
+                                        }`}
+                                      >
+                                        <span className="min-w-0 flex-1 truncate">{model}</span>
+                                        {isActive && (
+                                          <Check className="h-3.5 w-3.5 text-cyan-100" />
+                                        )}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              ))}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>,
+                      document.body
+                    )}
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>,
+          document.body
+        )
+      : null;
 
   const togglePlay = async () => {
     const video = videoRef.current;
@@ -1193,6 +1500,188 @@ function VideoNodeCardImpl({
     </AnimatePresence>
   );
 
+  const promptComposerControlsNode = (
+    <div className="mt-3 flex flex-nowrap items-center gap-2 border-t border-cyan-100/8 pt-3">
+      <div className="relative min-w-0 flex-[1_1_196px]" ref={modelMenuRef}>
+        <button
+          type="button"
+          data-node-action="true"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            const rect = modelMenuRef.current?.getBoundingClientRect();
+            if (rect) {
+              setModelMenuPosition(
+                getFloatingMenuPosition({
+                  anchorRect: rect,
+                  viewportHeight: window.innerHeight,
+                  viewportWidth: window.innerWidth,
+                })
+              );
+            }
+            setModelMenuOpen((open) => !open);
+          }}
+          className={`flex h-10 w-full min-w-0 items-center gap-2 rounded-[14px] border px-3 text-[13px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors ${
+            modelMenuOpen
+              ? "border-cyan-100/34 bg-cyan-100/[0.075] text-cyan-50"
+              : "border-cyan-100/8 bg-slate-950/18 text-cyan-50/78 hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
+          }`}
+        >
+          <Video className="h-3.5 w-3.5 shrink-0 text-cyan-100/50" />
+          <span className="min-w-0 flex-1 truncate text-left">{currentModel}</span>
+          <ChevronDown
+            className={`h-3.5 w-3.5 shrink-0 text-slate-300/56 transition-transform ${modelMenuOpen ? "rotate-180" : ""}`}
+          />
+        </button>
+        {!expandedPromptEditorOpen &&
+          typeof document !== "undefined" &&
+          createPortal(
+            <AnimatePresence>
+              {modelMenuOpen && modelMenuPosition && (
+                <motion.div
+                  ref={modelMenuPortalRef}
+                  initial={{
+                    opacity: 0,
+                    y: modelMenuPosition.placement === "bottom" ? 8 : -8,
+                    scale: 0.98,
+                  }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{
+                    opacity: 0,
+                    y: modelMenuPosition.placement === "bottom" ? 8 : -8,
+                    scale: 0.98,
+                  }}
+                  transition={{ duration: 0.16, ease: "easeOut" }}
+                  className="fixed z-[160] overflow-y-auto rounded-2xl border border-cyan-100/14 bg-[#121923]/96 p-1.5 shadow-[0_28px_70px_-28px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl custom-scrollbar"
+                  style={{
+                    left: modelMenuPosition.left,
+                    maxHeight: modelMenuPosition.maxHeight,
+                    top: modelMenuPosition.top,
+                    bottom: modelMenuPosition.bottom,
+                    width: modelMenuPosition.width,
+                  }}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={(event) => event.stopPropagation()}
+                  onWheel={(event) => event.stopPropagation()}
+                >
+                  {[
+                    { label: "内置模型", models: videoModelOptionGroups.builtIn },
+                    { label: "远程模型", models: videoModelOptionGroups.remote },
+                  ]
+                    .filter((group) => group.models.length > 0)
+                    .map((group) => (
+                      <div key={group.label} className="py-0.5">
+                        <div className="px-2 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-300/44">
+                          {group.label}
+                        </div>
+                        {group.models.map((model) => {
+                          const isActive = currentModel === model;
+                          return (
+                            <button
+                              key={`${group.label}-${model}`}
+                              type="button"
+                              onClick={() => {
+                                onUpdateProperty?.(node.id, "model", model);
+                                setModelMenuOpen(false);
+                              }}
+                              className={`flex h-9 w-full items-center gap-2 rounded-xl px-3 text-left text-[13px] font-medium transition-colors ${
+                                isActive
+                                  ? "bg-cyan-300/[0.13] text-cyan-50"
+                                  : "text-slate-200/82 hover:bg-white/[0.05] hover:text-white"
+                              }`}
+                            >
+                              <span className="min-w-0 flex-1 truncate">{model}</span>
+                              {isActive && <Check className="h-3.5 w-3.5 text-cyan-100" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ))}
+                </motion.div>
+              )}
+            </AnimatePresence>,
+            document.body
+          )}
+      </div>
+      <ImageResolutionPicker
+        resolution={resolution}
+        aspectRatio={aspectRatio}
+        panelTitle="Video Size"
+        presetGroups={resolutionPresetGroups}
+        triggerIcon={Video}
+        onChange={(nextResolution, nextAspectRatio) => {
+          onUpdateProperty?.(node.id, "resolution", nextResolution);
+          onUpdateProperty?.(node.id, "aspect_ratio", nextAspectRatio);
+          if (!videoUrl) {
+            const nextNodeSize = resolveEmptyVideoNodeSize({
+              aspectRatio: nextAspectRatio,
+              resolution: nextResolution,
+            });
+            onUpdateData?.(node.id, {
+              videoDisplayHeight: nextNodeSize.displayHeight,
+              videoDisplayWidth: nextNodeSize.displayWidth,
+              videoNodeHeight: nextNodeSize.nodeHeight,
+              videoNodeWidth: nextNodeSize.nodeWidth,
+              videoPortCenterY: nextNodeSize.portCenterY,
+            });
+          }
+        }}
+        buttonClassName="relative inline-flex h-10 w-[246px] shrink-0 items-center justify-center gap-2 rounded-[14px] border border-cyan-100/8 bg-slate-950/18 px-3 text-[13px] font-medium text-cyan-50/76 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
+      />
+      <div
+        data-node-action="true"
+        className="flex h-10 w-[168px] shrink-0 items-center gap-3 rounded-[14px] border border-cyan-100/8 bg-slate-950/18 px-3 text-cyan-50/72 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex w-10 shrink-0 items-baseline justify-end gap-0.5 tabular-nums">
+          <span className="text-[14px] font-semibold text-cyan-50/86">{durationSeconds}</span>
+          <span className="text-[10px] font-medium text-cyan-50/45">s</span>
+        </div>
+        <input
+          type="range"
+          min={VIDEO_DURATION_MIN_SECONDS}
+          max={VIDEO_DURATION_MAX_SECONDS}
+          step={1}
+          value={durationSeconds}
+          aria-label="视频时长"
+          onChange={(event) => {
+            onUpdateProperty?.(node.id, "duration", `${event.currentTarget.value}s`);
+          }}
+          className="h-1.5 min-w-0 flex-1 cursor-pointer appearance-none rounded-full bg-slate-700/70 accent-cyan-100 outline-none transition"
+          style={{
+            background: `linear-gradient(90deg, rgba(207,250,254,0.88) ${durationSliderPercent}%, rgba(51,65,85,0.78) ${durationSliderPercent}%)`,
+          }}
+        />
+      </div>
+      <button
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          onUpdateProperty?.(node.id, "audio", !audioEnabled);
+        }}
+        className="inline-flex h-10 w-[86px] shrink-0 items-center justify-center rounded-[14px] border border-cyan-100/8 bg-slate-950/18 px-3 text-[13px] font-medium text-cyan-50/68 transition-colors hover:border-cyan-100/18 hover:bg-cyan-100/[0.045]"
+      >
+        {audioEnabled ? "音频开" : "音频关"}
+      </button>
+      <button
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          handleRun();
+        }}
+        disabled={isRunning || !canRunVideoPrompt}
+        className={`ml-auto flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] transition-all ${
+          isRunning || !canRunVideoPrompt
+            ? "cursor-not-allowed border border-cyan-100/6 bg-slate-200/8 text-slate-200/28"
+            : "bg-cyan-50 text-[#0f172a] shadow-[0_14px_30px_-18px_rgba(103,232,249,0.9)] hover:bg-white"
+        }`}
+      >
+        {isRunning ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}
+      </button>
+    </div>
+  );
+
   const promptComposerNode = (
     <AnimatePresence>
       {promptComposerVisible && (
@@ -1206,12 +1695,8 @@ function VideoNodeCardImpl({
           className="relative node-card left-1/2 mt-5 w-[720px] -translate-x-1/2 rounded-[18px] border border-[#2b3142]/90 bg-[#121723]/88 px-5 pb-3 pt-3 shadow-[0_28px_70px_-26px_rgba(0,0,0,0.92),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl"
         >
           <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-slate-100/22 to-transparent" />
-          {inputReferences.length > 0 && (
-            <div
-              className={`mb-3 rounded-2xl border border-white/6 bg-[#0d1117]/46 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] ${
-                hasNonTextInputReferences ? "ring-1 ring-violet-200/8" : ""
-              }`}
-            >
+          <div className="mb-3 flex items-start gap-3">
+            {inputReferences.length > 0 && (
               <div className="flex flex-wrap items-center gap-2">
                 {inputReferences.map((reference, index) => (
                   <React.Fragment key={`${reference.key}-${reference.value}-${index}`}>
@@ -1219,8 +1704,9 @@ function VideoNodeCardImpl({
                   </React.Fragment>
                 ))}
               </div>
-            </div>
-          )}
+            )}
+            <div className="ml-auto shrink-0">{expandPromptEditorButton}</div>
+          </div>
           <div className="relative">
             <PromptTokenEditor
               value={promptText}
@@ -1232,23 +1718,7 @@ function VideoNodeCardImpl({
               className="h-[92px] text-[15px] leading-7 custom-scrollbar"
             />
           </div>
-          <div className="mt-3 flex items-center justify-end border-t border-cyan-100/8 pt-3">
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleRun();
-              }}
-              disabled={isRunning || (!upstreamPrompt && !promptText.trim())}
-              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] transition-all ${
-                isRunning || (!upstreamPrompt && !promptText.trim())
-                  ? "cursor-not-allowed border border-cyan-100/6 bg-slate-200/8 text-slate-200/28"
-                  : "bg-cyan-50 text-[#0f172a] shadow-[0_14px_30px_-18px_rgba(103,232,249,0.9)] hover:bg-white"
-              }`}
-            >
-              {isRunning ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}
-            </button>
-          </div>
+          {promptComposerControlsNode}
         </motion.div>
       )}
     </AnimatePresence>
@@ -1541,6 +2011,7 @@ function VideoNodeCardImpl({
           </div>
         </motion.div>
         {promptComposerNode}
+        {expandedPromptEditorNode}
       </motion.div>
     );
   }
@@ -1658,12 +2129,8 @@ function VideoNodeCardImpl({
             className="relative node-card left-1/2 mt-5 w-[720px] -translate-x-1/2 rounded-[18px] border border-[#2b3142]/90 bg-[#121723]/88 px-5 pb-3 pt-3 shadow-[0_28px_70px_-26px_rgba(0,0,0,0.92),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl"
           >
             <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-slate-100/22 to-transparent" />
-            {inputReferences.length > 0 && (
-              <div
-                className={`mb-3 rounded-2xl border border-white/6 bg-[#0d1117]/46 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] ${
-                  hasNonTextInputReferences ? "ring-1 ring-violet-200/8" : ""
-                }`}
-              >
+            <div className="mb-3 flex items-start gap-3">
+              {inputReferences.length > 0 && (
                 <div className="flex flex-wrap items-center gap-2">
                   {inputReferences.map((reference, index) => (
                     <React.Fragment key={`${reference.key}-${reference.value}-${index}`}>
@@ -1671,8 +2138,9 @@ function VideoNodeCardImpl({
                     </React.Fragment>
                   ))}
                 </div>
-              </div>
-            )}
+              )}
+              <div className="ml-auto shrink-0">{expandPromptEditorButton}</div>
+            </div>
             <div className="relative">
               <PromptTokenEditor
                 value={promptText}
@@ -1716,7 +2184,8 @@ function VideoNodeCardImpl({
                     className={`h-3.5 w-3.5 shrink-0 text-slate-300/56 transition-transform ${modelMenuOpen ? "rotate-180" : ""}`}
                   />
                 </button>
-                {typeof document !== "undefined" &&
+                {!expandedPromptEditorOpen &&
+                  typeof document !== "undefined" &&
                   createPortal(
                     <AnimatePresence>
                       {modelMenuOpen && modelMenuPosition && (
@@ -1854,9 +2323,9 @@ function VideoNodeCardImpl({
                   e.stopPropagation();
                   handleRun();
                 }}
-                disabled={isRunning || (!upstreamPrompt && !promptText.trim())}
+                disabled={isRunning || !canRunVideoPrompt}
                 className={`ml-auto flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] transition-all ${
-                  isRunning || (!upstreamPrompt && !promptText.trim())
+                  isRunning || !canRunVideoPrompt
                     ? "cursor-not-allowed border border-cyan-100/6 bg-slate-200/8 text-slate-200/28"
                     : "bg-cyan-50 text-[#0f172a] shadow-[0_14px_30px_-18px_rgba(103,232,249,0.9)] hover:bg-white"
                 }`}
@@ -1871,6 +2340,7 @@ function VideoNodeCardImpl({
           </motion.div>
         )}
       </AnimatePresence>
+      {expandedPromptEditorNode}
     </motion.div>
   );
 }

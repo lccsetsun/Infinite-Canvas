@@ -247,7 +247,7 @@ function PromptTokenEditorImpl<T extends MentionResource>(
   }, [onChange, resources]);
 
   return (
-    <div className="relative min-w-0 w-full">
+    <div className="relative h-full min-w-0 w-full">
       {empty && placeholder && (
         <div className="pointer-events-none absolute inset-0 px-1 text-slate-400/42">
           {placeholder}
