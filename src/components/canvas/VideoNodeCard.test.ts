@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   fitVideoSize,
@@ -11,6 +12,7 @@ import {
   normalizeVideoDurationSeconds,
   resolveEmptyVideoNodeSize,
   shouldShowVideoPreview,
+  shouldShowVideoPromptComposer,
   shouldUseEmptyVideoNodeSize,
   shouldShowVideoUploadButton,
 } from "./VideoNodeCard";
@@ -266,6 +268,53 @@ describe("shouldShowVideoPreview", () => {
         isUploadingAsset: true,
       })
     ).toBe(false);
+  });
+});
+
+describe("shouldShowVideoPromptComposer", () => {
+  it("shows the composer for selected non-upload video nodes even after a video URL exists", () => {
+    expect(
+      shouldShowVideoPromptComposer({
+        isExternalUploadSourceVideoNode: false,
+        isHovered: false,
+        isRunning: false,
+        isSelected: true,
+        isUploadingAsset: false,
+      })
+    ).toBe(true);
+  });
+
+  it("hides the composer only for external uploaded video source nodes", () => {
+    expect(
+      shouldShowVideoPromptComposer({
+        isExternalUploadSourceVideoNode: true,
+        isHovered: false,
+        isRunning: false,
+        isSelected: true,
+        isUploadingAsset: false,
+      })
+    ).toBe(false);
+  });
+
+  it("temporarily hides the composer while the video node is loading", () => {
+    expect(
+      shouldShowVideoPromptComposer({
+        isExternalUploadSourceVideoNode: false,
+        isHovered: false,
+        isRunning: true,
+        isSelected: true,
+        isUploadingAsset: false,
+      })
+    ).toBe(false);
+  });
+});
+
+describe("VideoNodeCard preview branch", () => {
+  it("renders the prompt composer for completed video nodes as well as empty video nodes", () => {
+    const source = readFileSync(new URL("./VideoNodeCard.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain("const promptComposerNode = (");
+    expect(source).toContain("{promptComposerNode}");
   });
 });
 

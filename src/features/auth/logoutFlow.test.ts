@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { performLocalLogout, performOptimisticLogout } from "./logoutFlow";
 
 describe("performOptimisticLogout", () => {
-  it("clears the local session before the remote logout request resolves", () => {
+  it("starts the remote logout request before clearing the local token", () => {
     const steps: string[] = [];
     const requestLogout = vi.fn(
       () =>
@@ -23,7 +23,7 @@ describe("performOptimisticLogout", () => {
       onLoggedOut,
     });
 
-    expect(steps).toEqual(["session-cleared", "navigated", "request-started"]);
+    expect(steps).toEqual(["request-started", "session-cleared", "navigated"]);
   });
 });
 

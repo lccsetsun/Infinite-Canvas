@@ -103,6 +103,11 @@ describe("shouldStartCanvasPan", () => {
     expect(shouldStartCanvasPan(0)).toBe(false);
     expect(shouldStartCanvasPan(2)).toBe(false);
   });
+
+  it("starts canvas panning from the left mouse button while space is pressed", () => {
+    expect(shouldStartCanvasPan(0, { isSpaceKeyPressed: true })).toBe(true);
+    expect(shouldStartCanvasPan(2, { isSpaceKeyPressed: true })).toBe(false);
+  });
 });
 
 describe("getWheelPanPosition", () => {

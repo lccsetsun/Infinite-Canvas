@@ -22,8 +22,9 @@ export function performOptimisticLogout({
   clearSession,
   onLoggedOut,
 }: PerformOptimisticLogoutOptions) {
+  const remoteLogout = requestLogout();
   performLocalLogout({ clearSession, onLoggedOut });
-  void requestLogout().catch(() => {
+  void Promise.resolve(remoteLogout).catch(() => {
     // Remote logout is best-effort only.
   });
 }

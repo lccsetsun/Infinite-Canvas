@@ -33,6 +33,10 @@ import {
 } from "./utils/imageGridSplit";
 import { getPointerAlignedNodePosition } from "./utils/dropAlignedNodePosition";
 import { getCanvasViewportClassName } from "./utils/canvasViewportLayout";
+import {
+  isBrowserZoomKeyboardShortcut,
+  shouldPreventBrowserZoomWheel,
+} from "./utils/browserZoomPolicy";
 import { shouldDeferCanvasContentRender } from "./utils/canvasRenderReadiness";
 import {
   getBatchOutputDrafts,
@@ -196,6 +200,36 @@ export default function App({ onLoggedOut }: AppProps) {
   React.useEffect(() => {
     refreshRemoteProject(true);
   }, [refreshRemoteProject]);
+
+  React.useEffect(() => {
+    const preventBrowserZoomWheel = (event: WheelEvent) => {
+      if (shouldPreventBrowserZoomWheel(event)) {
+        event.preventDefault();
+      }
+    };
+    const preventBrowserZoomKeydown = (event: KeyboardEvent) => {
+      if (isBrowserZoomKeyboardShortcut(event)) {
+        event.preventDefault();
+      }
+    };
+    const preventBrowserGestureZoom = (event: Event) => {
+      event.preventDefault();
+    };
+
+    window.addEventListener("wheel", preventBrowserZoomWheel, { capture: true, passive: false });
+    window.addEventListener("keydown", preventBrowserZoomKeydown, { capture: true });
+    window.addEventListener("gesturestart", preventBrowserGestureZoom, { capture: true });
+    window.addEventListener("gesturechange", preventBrowserGestureZoom, { capture: true });
+    window.addEventListener("gestureend", preventBrowserGestureZoom, { capture: true });
+
+    return () => {
+      window.removeEventListener("wheel", preventBrowserZoomWheel, true);
+      window.removeEventListener("keydown", preventBrowserZoomKeydown, true);
+      window.removeEventListener("gesturestart", preventBrowserGestureZoom, true);
+      window.removeEventListener("gesturechange", preventBrowserGestureZoom, true);
+      window.removeEventListener("gestureend", preventBrowserGestureZoom, true);
+    };
+  }, []);
 
   const {
     nodes,
@@ -1260,9 +1294,9 @@ export default function App({ onLoggedOut }: AppProps) {
               resetCanvasLinkDraft();
               return;
             }
-            if (handleCanvasSelectionPointerDown(e)) return;
-
             onCanvasPointerDown(e);
+            if (e.defaultPrevented) return;
+            if (handleCanvasSelectionPointerDown(e)) return;
           }}
           onPointerMove={(e) => {
             lastCanvasPointerRef.current = { clientX: e.clientX, clientY: e.clientY };

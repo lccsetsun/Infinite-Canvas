@@ -135,6 +135,7 @@ export function buildInitialCanvasFileNodeData(
   metadata: LocalMediaMetadata
 ): Partial<GraphNode["data"]> {
   const data: Partial<GraphNode["data"]> = {
+    externalUploadSource: true,
     isSourceNode: true,
     ...metadata,
     uploadingAsset: true,
@@ -182,6 +183,7 @@ function buildUploadedNodeData(
   ossId?: string
 ): Partial<GraphNode["data"]> {
   const data: Partial<GraphNode["data"]> = {
+    externalUploadSource: true,
     isSourceNode: true,
     uploadingAsset: false,
     status: "success",

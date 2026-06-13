@@ -855,6 +855,7 @@ export function collectLinkedMediaReferences({
     const outputValue = nodeOutputs.get(link.fromNodeId)?.get(link.fromOutputIndex);
     addOssId(sourceNode.data?.ossId);
     addOssId(sourceNode.data?.ossIds);
+    addOssId(sourceNode.data?.frameImageOssIds);
     addOssId(sourceNode.properties.ossId);
     addOssId(sourceNode.properties.ossIds);
     collectOssIdsFromObjectFields(outputValue).forEach(addOssId);

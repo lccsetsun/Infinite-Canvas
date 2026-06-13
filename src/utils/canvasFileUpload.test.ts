@@ -40,6 +40,7 @@ describe("buildInitialCanvasFileNodeData", () => {
       videoNodeWidth: 540,
       videoNodeHeight: 405,
       videoPortCenterY: 203,
+      externalUploadSource: true,
       uploadingAsset: true,
     });
     expect(

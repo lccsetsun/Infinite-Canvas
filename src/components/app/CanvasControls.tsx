@@ -31,10 +31,10 @@ function ControlButton({
         onPointerDown={(event) => event.stopPropagation()}
         onClick={onClick}
         aria-label={label}
-        className={`grid h-8 w-8 cursor-pointer place-items-center rounded-xl transition-all ${
+        className={`grid h-8 w-8 cursor-pointer place-items-center rounded-xl outline-none transition-all focus-visible:ring-2 focus-visible:ring-violet-200/55 focus-visible:ring-offset-2 focus-visible:ring-offset-[#151d2b] ${
           active
-            ? "bg-white/[0.08] text-slate-100"
-            : "text-slate-500/80 hover:bg-white/[0.04] hover:text-slate-200"
+            ? "border border-violet-200/10 bg-violet-300/[0.105] text-violet-100"
+            : "text-slate-400/90 hover:bg-violet-300/[0.065] hover:text-violet-100"
         }`}
       >
         {children}
@@ -57,10 +57,9 @@ export default function CanvasControls({
     <motion.div
       data-no-canvas-context-menu="true"
       initial={{ y: 20, opacity: 0 }}
-      animate={{ y: 0, opacity: 0.58 }}
-      whileHover={{ opacity: 1 }}
+      animate={{ y: 0, opacity: 1 }}
       transition={{ delay: 0.18, duration: 0.28 }}
-      className="absolute bottom-4 left-4 z-30 inline-flex items-center gap-1 rounded-2xl bg-[#141923]/32 px-2 py-1.5 shadow-[0_10px_24px_-20px_rgba(0,0,0,0.92)] backdrop-blur-xl"
+      className="absolute bottom-4 left-4 z-30 inline-flex items-center gap-1 rounded-2xl border border-violet-200/[0.10] bg-[#151d2b]/88 px-2 py-1.5 shadow-[0_16px_34px_-24px_rgba(8,13,24,0.96),inset_0_1px_0_rgba(255,255,255,0.055)] backdrop-blur-xl"
     >
       <ControlButton
         active={showGrid}
@@ -105,10 +104,10 @@ export default function CanvasControls({
         <Eye className="h-4 w-4" />
       </ControlButton>
 
-      <div className="h-4 w-px bg-white/[0.06]" />
+      <div className="h-4 w-px bg-violet-200/[0.10]" />
 
-      <div className="inline-flex select-none items-center px-1 py-1 text-[11px] text-slate-400">
-        <span className="font-semibold text-slate-200">{Math.round(zoom * 100)}%</span>
+      <div className="inline-flex select-none items-center px-1 py-1 text-[11px] text-slate-300/80">
+        <span className="font-semibold text-slate-100">{Math.round(zoom * 100)}%</span>
       </div>
     </motion.div>
   );

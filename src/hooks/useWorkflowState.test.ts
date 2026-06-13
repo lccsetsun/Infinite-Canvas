@@ -377,25 +377,28 @@ describe("source node semantics", () => {
     expect(nodes[0].properties.isSourceNode).toBe(true);
   });
 
-  it("creates uploading canvas file nodes as inputless source nodes before OSS returns", () => {
+  it("creates uploading canvas file nodes as inputless external upload source nodes before OSS returns", () => {
     const result = addNodeToWorkflowSnapshot({
       nodes: [],
       links: [],
-      type: "image_node",
+      type: "video_node",
       x: 0,
       y: 0,
       initialProps: {
-        __uploadedAssetKind: "image",
+        __uploadedAssetKind: "video",
         __nodeData: {
+          externalUploadSource: true,
           isSourceNode: true,
           uploadingAsset: true,
-          uploadedAssetName: "pasted-image.png",
+          uploadedAssetName: "pasted-video.mp4",
         },
       },
-      makeId: () => "image-source",
+      makeId: () => "video-source",
     });
 
     expect(result.node.inputs).toEqual([]);
+    expect(result.node.type).toBe("video_node");
+    expect(result.node.data?.externalUploadSource).toBe(true);
     expect(result.node.data?.isSourceNode).toBe(true);
     expect(result.node.data?.uploadingAsset).toBe(true);
     expect(result.node.properties.isSourceNode).toBe(true);
@@ -646,6 +649,45 @@ describe("collectLinkedMediaReferences", () => {
 
     expect(references.imageUrls).toEqual(["https://example.com/frame-12.png"]);
     expect(references.ossIds).toEqual(["oss-frame-12"]);
+  });
+
+  it("collects oss ids from frame-grid image nodes produced by video analysis", () => {
+    const target = { ...makeTextNode("target"), type: "video_node" as const };
+    const frameGrid: GraphNode = {
+      ...makeTextNode("frame-grid"),
+      type: "image_node",
+      data: {
+        imageUrls: [
+          "https://example.com/frame-1.png",
+          "https://example.com/frame-2.png",
+        ],
+        frameImageOssIds: ["oss-frame-1", "oss-frame-2"],
+        isFrameStrip: true,
+      },
+    };
+
+    const references = collectLinkedMediaReferences({
+      nodeId: target.id,
+      links: [
+        {
+          id: "l-frame-grid",
+          fromNodeId: frameGrid.id,
+          fromOutputIndex: 0,
+          toNodeId: target.id,
+          toInputIndex: 0,
+        },
+      ],
+      nodes: [target, frameGrid],
+      nodeOutputs: new Map([
+        [frameGrid.id, new Map([[0, frameGrid.data?.imageUrls]])],
+      ]),
+    });
+
+    expect(references.imageUrls).toEqual([
+      "https://example.com/frame-1.png",
+      "https://example.com/frame-2.png",
+    ]);
+    expect(references.ossIds).toEqual(["oss-frame-1", "oss-frame-2"]);
   });
 
   it("does not treat plain output urls as oss ids", () => {

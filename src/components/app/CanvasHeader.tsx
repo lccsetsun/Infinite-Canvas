@@ -213,7 +213,6 @@ export default function CanvasHeader({
   }, [navigateTo, projectId, projectName]);
 
   const isBusy = pendingAction !== null;
-  const isVisible = menuOpen || isBusy;
 
   return (
     <motion.header
@@ -226,8 +225,7 @@ export default function CanvasHeader({
         ref={menuRef}
         data-no-canvas-context-menu="true"
         initial={{ x: -14, opacity: 0 }}
-        animate={{ x: 0, opacity: isVisible ? 1 : 0.64 }}
-        whileHover={{ opacity: 1 }}
+        animate={{ x: 0, opacity: 1 }}
         transition={{ duration: 0.24 }}
         className="relative flex min-w-0 items-center"
       >
@@ -236,11 +234,11 @@ export default function CanvasHeader({
           disabled={isBusy}
           onClick={() => setMenuOpen((current) => !current)}
           title={projectName}
-          className={`inline-flex h-11 w-[228px] max-w-[calc(100vw-120px)] items-center gap-2.5 rounded-[18px] border px-3 py-1.5 text-left shadow-[0_14px_30px_-24px_rgba(0,0,0,0.96),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-xl transition-all ${
+          className={`inline-flex h-11 w-[228px] max-w-[calc(100vw-120px)] items-center gap-2.5 rounded-[18px] border px-3 py-1.5 text-left shadow-[0_16px_34px_-24px_rgba(8,13,24,0.96),inset_0_1px_0_rgba(255,255,255,0.055)] backdrop-blur-xl transition-all ${
             menuOpen
-              ? "border-cyan-100/28 bg-[#151b27]/72 ring-1 ring-cyan-200/8"
-              : "border-white/[0.08] bg-[#141923]/42"
-          } ${isBusy ? "cursor-wait" : "cursor-pointer hover:border-white/[0.16] hover:bg-[#151b27]/62"}`}
+              ? "border-violet-200/[0.18] bg-[#182235]/92 ring-1 ring-violet-300/12"
+              : "border-violet-200/[0.10] bg-[#151d2b]/88"
+          } ${isBusy ? "cursor-wait" : "cursor-pointer hover:border-violet-200/[0.18] hover:bg-[#182235]/92"}`}
         >
           <BrandGlyph />
 
@@ -353,7 +351,7 @@ export default function CanvasHeader({
                   setRenameError("");
                 }
               }}
-              className="h-11 w-full rounded-xl border border-white/[0.08] bg-[#0b1018] px-3 text-[14px] font-medium text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-cyan-200/42 focus:ring-2 focus:ring-cyan-400/10 disabled:cursor-wait disabled:opacity-70"
+              className="h-11 w-full rounded-xl border border-white/[0.08] bg-[#0b1018] px-3 text-[14px] font-medium text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-violet-200/42 focus:ring-2 focus:ring-violet-400/10 disabled:cursor-wait disabled:opacity-70"
               placeholder="请输入项目名称"
             />
             <div className="mt-2 flex items-center justify-between text-[11px] text-slate-600">
@@ -383,7 +381,7 @@ export default function CanvasHeader({
                 type="button"
                 disabled={!canSaveRename}
                 onClick={() => void handleRenameProject()}
-                className="inline-flex h-9 min-w-[88px] items-center justify-center gap-2 rounded-xl bg-cyan-500 px-4 text-[13px] font-semibold text-[#071019] shadow-[0_12px_28px_-18px_rgba(34,211,238,0.9)] transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:bg-white/[0.07] disabled:text-slate-500 disabled:shadow-none"
+                className="inline-flex h-9 min-w-[88px] items-center justify-center gap-2 rounded-xl bg-violet-500 px-4 text-[13px] font-semibold text-white shadow-[0_12px_28px_-18px_rgba(139,92,246,0.9)] transition hover:bg-violet-400 disabled:cursor-not-allowed disabled:bg-white/[0.07] disabled:text-slate-500 disabled:shadow-none"
               >
                 {pendingAction === "rename" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
                 保存
@@ -396,7 +394,6 @@ export default function CanvasHeader({
       <HeaderRightPanel
         username={username}
         onLogout={onLogout}
-        variant="compact"
       />
     </motion.header>
   );

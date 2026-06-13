@@ -35,10 +35,9 @@ export default function MiniMap({ activeNodeId, config, onJumpToWorldPos, onScro
   return (
     <motion.div
       initial={{ y: 16, opacity: 0 }}
-      animate={{ y: 0, opacity: 0.42 }}
-      whileHover={{ opacity: 1 }}
+      animate={{ y: 0, opacity: 1 }}
       transition={{ delay: 0.22, duration: 0.28 }}
-      className="minimap-content absolute bottom-14 left-4 z-30 h-[144px] w-[212px] overflow-hidden rounded-[18px] border border-white/[0.05] bg-[#101726]/54 shadow-[0_16px_36px_-24px_rgba(0,0,0,0.88)] backdrop-blur-xl"
+      className="minimap-content absolute bottom-[76px] left-4 z-30 h-[144px] w-[212px] overflow-hidden rounded-[18px] border border-violet-200/[0.10] bg-[#151d2b]/88 shadow-[0_16px_34px_-24px_rgba(8,13,24,0.96),inset_0_1px_0_rgba(255,255,255,0.055)] backdrop-blur-xl"
       onPointerDown={(event) => {
         event.stopPropagation();
         const rect = event.currentTarget.getBoundingClientRect();

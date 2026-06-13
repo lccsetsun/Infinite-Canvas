@@ -5,7 +5,8 @@ import HomePage from "./pages/HomePage";
 import LoginPage from "./pages/LoginPage";
 import { API_NOTICE_EVENT, type ApiNoticeDetail } from "./features/auth/apiNotice";
 import { AUTH_SESSION_CHANGED_EVENT, clearAuthSession, hasAuthSession, setAccessToken } from "./features/auth/authStorage";
-import { performLocalLogout } from "./features/auth/logoutFlow";
+import { logout } from "./features/auth/authApi";
+import { performLocalLogout, performOptimisticLogout } from "./features/auth/logoutFlow";
 
 const LOGIN_PATH = "/login";
 const DEFAULT_PATH = "/";
@@ -108,6 +109,17 @@ export default function RootApp() {
     });
   }, []);
 
+  const handleLogout = React.useCallback(() => {
+    performOptimisticLogout({
+      requestLogout: logout,
+      clearSession: clearAuthSession,
+      onLoggedOut: () => {
+        setIsLoggedIn(false);
+        navigate(LOGIN_PATH, true);
+      },
+    });
+  }, []);
+
   const handleOpenCanvas = React.useCallback((projectId?: string) => {
     if (typeof window === "undefined") return;
     window.open(buildCanvasUrl(projectId), "_blank", "noopener,noreferrer");
@@ -128,7 +140,7 @@ export default function RootApp() {
     return (
       <>
         <HomePage
-          onLogout={handleLoggedOut}
+          onLogout={handleLogout}
           onOpenCanvas={handleOpenCanvas}
           onOpenAllProjects={() => navigate(PROJECTS_PATH)}
         />
@@ -141,7 +153,7 @@ export default function RootApp() {
     return (
       <>
         <AllProjectsPage
-          onLogout={handleLoggedOut}
+          onLogout={handleLogout}
           onOpenCanvas={handleOpenCanvas}
           onBackHome={() => navigate(DEFAULT_PATH)}
         />

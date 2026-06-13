@@ -91,6 +91,7 @@ export interface GraphNode {
     audioDuration?: number;
     uploadingAsset?: boolean;
     uploadedAssetName?: string;
+    externalUploadSource?: boolean;
     loading?: boolean;
     loadingOperation?: "generate" | "frame-analysis" | "video-prompt";
     progress?: number;

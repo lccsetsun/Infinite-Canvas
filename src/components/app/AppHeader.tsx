@@ -32,9 +32,9 @@ export default function AppHeader({
 
       <div className="flex min-w-0 items-center gap-3">
         <div
-          className="group relative flex h-12 cursor-default items-center overflow-hidden px-1 transition-all duration-500 hover:brightness-125"
+          className="group relative flex h-full cursor-default items-center overflow-hidden px-1 transition-all duration-500 hover:brightness-125"
         >
-          <img src={aiCanvasLockup} alt="幻影AI" className="relative h-8 w-auto opacity-95 drop-shadow-[0_10px_24px_rgba(100,116,255,0.16)]" />
+          <img src={aiCanvasLockup} alt="幻影AI" className="relative h-9 w-auto opacity-95 drop-shadow-[0_10px_24px_rgba(100,116,255,0.16)]" />
 
           <div className="pointer-events-none absolute inset-y-1 left-1/3 w-20 rounded-full bg-cyan-300/[0.025] blur-2xl opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
         </div>

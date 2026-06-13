@@ -353,6 +353,27 @@ export function shouldShowVideoUploadButton({
   return !isRunning && !isUploadingAsset && !isUploadingVideo;
 }
 
+export function shouldShowVideoPromptComposer({
+  isExternalUploadSourceVideoNode,
+  isHovered,
+  isRunning,
+  isSelected,
+  isUploadingAsset,
+}: {
+  isExternalUploadSourceVideoNode: boolean;
+  isHovered: boolean;
+  isRunning: boolean;
+  isSelected: boolean;
+  isUploadingAsset: boolean;
+}) {
+  return (
+    !isRunning &&
+    !isUploadingAsset &&
+    !isExternalUploadSourceVideoNode &&
+    (isHovered || isSelected)
+  );
+}
+
 export function shouldShowVideoPreview({
   hasVideoUrl,
   isRunning,
@@ -482,8 +503,13 @@ function VideoNodeCardImpl({
   const promptText = (node.properties.text as string) || "";
   const videoUrl = (node.data?.videoUrl as string) || (node.properties.videoUrl as string) || "";
   const loadingOperation = node.data?.loadingOperation as MediaNodeLoadingOperation | undefined;
-  const promptComposerVisible =
-    !isRunning && !isSourceAssetNode && (isHovered || selected) && !videoUrl && !isUploadingAsset;
+  const promptComposerVisible = shouldShowVideoPromptComposer({
+    isExternalUploadSourceVideoNode: node.data?.externalUploadSource === true,
+    isHovered,
+    isRunning,
+    isSelected: selected,
+    isUploadingAsset,
+  });
   const rawAspectRatio = (node.properties.aspect_ratio as string) || "16:9";
   const rawResolution = (node.properties.resolution as string) || "480p";
   const activeResolutionGroup =
@@ -1163,7 +1189,68 @@ function VideoNodeCardImpl({
               />
             </motion.div>
           </>
-        )}
+      )}
+    </AnimatePresence>
+  );
+
+  const promptComposerNode = (
+    <AnimatePresence>
+      {promptComposerVisible && (
+        <motion.div
+          data-node-action="true"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            onSelect(e);
+          }}
+          className="relative node-card left-1/2 mt-5 w-[720px] -translate-x-1/2 rounded-[18px] border border-[#2b3142]/90 bg-[#121723]/88 px-5 pb-3 pt-3 shadow-[0_28px_70px_-26px_rgba(0,0,0,0.92),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl"
+        >
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-slate-100/22 to-transparent" />
+          {inputReferences.length > 0 && (
+            <div
+              className={`mb-3 rounded-2xl border border-white/6 bg-[#0d1117]/46 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] ${
+                hasNonTextInputReferences ? "ring-1 ring-violet-200/8" : ""
+              }`}
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                {inputReferences.map((reference, index) => (
+                  <React.Fragment key={`${reference.key}-${reference.value}-${index}`}>
+                    <ReferencePreviewCard reference={reference} index={index} />
+                  </React.Fragment>
+                ))}
+              </div>
+            </div>
+          )}
+          <div className="relative">
+            <PromptTokenEditor
+              value={promptText}
+              resources={inputReferences}
+              onChange={handlePromptChange}
+              placeholder={
+                upstreamPrompt ? "继续补充这些输入资源要如何参与生成" : "描述你想要生成的视频内容"
+              }
+              className="h-[92px] text-[15px] leading-7 custom-scrollbar"
+            />
+          </div>
+          <div className="mt-3 flex items-center justify-end border-t border-cyan-100/8 pt-3">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleRun();
+              }}
+              disabled={isRunning || (!upstreamPrompt && !promptText.trim())}
+              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] transition-all ${
+                isRunning || (!upstreamPrompt && !promptText.trim())
+                  ? "cursor-not-allowed border border-cyan-100/6 bg-slate-200/8 text-slate-200/28"
+                  : "bg-cyan-50 text-[#0f172a] shadow-[0_14px_30px_-18px_rgba(103,232,249,0.9)] hover:bg-white"
+              }`}
+            >
+              {isRunning ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}
+            </button>
+          </div>
+        </motion.div>
+      )}
     </AnimatePresence>
   );
 
@@ -1453,6 +1540,7 @@ function VideoNodeCardImpl({
             </div>
           </div>
         </motion.div>
+        {promptComposerNode}
       </motion.div>
     );
   }

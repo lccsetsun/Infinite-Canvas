@@ -133,7 +133,20 @@ export function getDraggedNodePositions({
   }));
 }
 
-export function shouldStartCanvasPan(button: number) {
+function isEditableCanvasPanTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false;
+  return Boolean(target.closest("input, textarea, select, [contenteditable='true']"));
+}
+
+function isSpaceKey(event: KeyboardEvent) {
+  return event.code === "Space" || event.key === " ";
+}
+
+export function shouldStartCanvasPan(
+  button: number,
+  options: { isSpaceKeyPressed?: boolean } = {}
+) {
+  if (button === 0 && options.isSpaceKeyPressed) return true;
   return button === 1;
 }
 
@@ -198,6 +211,7 @@ export function useCanvasInteraction({
   const dragRef = React.useRef<DragState>({ mode: null, startX: 0, startY: 0 });
   const dragFrameRef = React.useRef<number | null>(null);
   const pendingDragRef = React.useRef<PendingDrag | null>(null);
+  const spaceKeyPressedRef = React.useRef(false);
   const viewportKeyRef = React.useRef(viewportKey ?? null);
   const [pan, setPan] = React.useState(() => initialViewport?.pan ?? { x: 0, y: 0 });
   const [zoom, setZoom] = React.useState(() => initialViewport?.zoom ?? 1);
@@ -371,7 +385,9 @@ export function useCanvasInteraction({
 
   const onCanvasPointerDown = React.useCallback(
     (e: React.PointerEvent) => {
-      if (!shouldStartCanvasPan(e.button)) return;
+      if (!shouldStartCanvasPan(e.button, { isSpaceKeyPressed: spaceKeyPressedRef.current })) {
+        return;
+      }
       e.preventDefault();
       dragRef.current = {
         mode: "canvas",
@@ -538,6 +554,31 @@ export function useCanvasInteraction({
       }
     };
   }, [onWheel]);
+
+  React.useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!isSpaceKey(event) || isEditableCanvasPanTarget(event.target)) return;
+      spaceKeyPressedRef.current = true;
+      event.preventDefault();
+    };
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (!isSpaceKey(event)) return;
+      spaceKeyPressedRef.current = false;
+    };
+    const handleBlur = () => {
+      spaceKeyPressedRef.current = false;
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("blur", handleBlur);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("blur", handleBlur);
+    };
+  }, []);
 
   return {
     canvasRef,
