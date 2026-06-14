@@ -5,11 +5,11 @@ import {
   ArrowRight,
   Eye,
   EyeOff,
-  KeyRound,
   Loader2,
-  Lock,
-  Mail,
+  LockKeyhole,
   RefreshCcw,
+  ShieldCheck,
+  UserRound,
 } from "lucide-react";
 import aiCanvasLockup from "../assets/brand/ai-canvas-lockup.svg";
 import { fetchCaptcha, loginWithPassword } from "../features/auth/authApi";
@@ -170,7 +170,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     }
   };
 
-  const renderInputLabel = (label: string, field: string, helper?: string) => (
+  const renderInputLabel = (label: string, field: string) => (
     <div className="flex items-center justify-between px-1">
       <motion.label
         animate={{
@@ -182,15 +182,6 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
       >
         {label}
       </motion.label>
-      {focusedField === field && helper ? (
-        <motion.span
-          initial={{ opacity: 0, x: -8 }}
-          animate={{ opacity: 1, x: 0 }}
-          className="text-[10px] font-medium tracking-[0.12em] text-indigo-300/60"
-        >
-          {helper}
-        </motion.span>
-      ) : null}
     </div>
   );
 
@@ -208,6 +199,14 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
 
   const shellClassName =
     "relative flex items-center overflow-hidden rounded-2xl border border-white/6 bg-white/[0.035] transition-all duration-300";
+  const fieldIconClassName = (field: FieldKey) =>
+    `pointer-events-none ml-2 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-all duration-300 ${
+      focusedField === field
+        ? "border-indigo-300/24 bg-indigo-400/[0.12] text-indigo-200 shadow-[0_0_22px_rgba(129,140,248,0.18)]"
+        : fieldErrors[field]
+          ? "border-amber-300/18 bg-amber-300/[0.08] text-amber-200/78"
+          : "border-white/[0.075] bg-[#0b1222]/56 text-slate-500"
+    }`;
   const captchaVisualState = resolveCaptchaVisualState({ isCaptchaLoading, captchaImage, captchaError });
   const loginSubmitState = resolveLoginSubmitState({
     isLoginLoading: isLoading,
@@ -255,7 +254,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
 
           <form noValidate onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-2.5">
-              {renderInputLabel("账号", "username", "ACCOUNT")}
+              {renderInputLabel("账号", "username")}
               <div
                 className={`${shellClassName} ${
                   focusedField === "username"
@@ -265,12 +264,8 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                       : "hover:border-white/12"
                 }`}
               >
-                <div
-                  className={`pointer-events-none flex items-center pl-4 transition-colors duration-300 ${
-                    focusedField === "username" ? "text-indigo-300" : "text-slate-600"
-                  }`}
-                >
-                  <Mail size={18} />
+                <div className={fieldIconClassName("username")}>
+                  <UserRound size={17} strokeWidth={1.9} />
                 </div>
                 <input
                   type="text"
@@ -289,7 +284,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
             </div>
 
             <div className="space-y-2.5">
-              {renderInputLabel("密码", "password", "PASSWORD")}
+              {renderInputLabel("密码", "password")}
               <div
                 className={`${shellClassName} ${
                   focusedField === "password"
@@ -299,12 +294,8 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                       : "hover:border-white/12"
                 }`}
               >
-                <div
-                  className={`pointer-events-none flex items-center pl-4 transition-colors duration-300 ${
-                    focusedField === "password" ? "text-indigo-300" : "text-slate-600"
-                  }`}
-                >
-                  <Lock size={18} />
+                <div className={fieldIconClassName("password")}>
+                  <LockKeyhole size={18} strokeWidth={1.85} />
                 </div>
                 <input
                   type={showPassword ? "text" : "password"}
@@ -331,7 +322,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
 
             {captchaEnabled ? (
               <div className="space-y-2.5">
-                {renderInputLabel("验证码", "captcha", "CAPTCHA")}
+                {renderInputLabel("验证码", "captcha")}
                 <div className="flex gap-2.5">
                   <div
                     className={`${shellClassName} h-[58px] flex-1 ${
@@ -342,12 +333,8 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                           : "hover:border-white/12"
                     }`}
                   >
-                    <div
-                      className={`pointer-events-none flex items-center pl-4 transition-colors duration-300 ${
-                        focusedField === "captcha" ? "text-indigo-300" : "text-slate-600"
-                      }`}
-                    >
-                      <KeyRound size={18} />
+                    <div className={fieldIconClassName("captcha")}>
+                      <ShieldCheck size={18} strokeWidth={1.85} />
                     </div>
                     <input
                       type="text"

@@ -1677,6 +1677,10 @@ export default function App({ onLoggedOut }: AppProps) {
                 fitView();
                 showNotice("已自适应居中");
               }}
+              onClearCanvas={() => {
+                clearCanvas();
+                applyCanvasSelection(clearCanvasSelection());
+              }}
               onToggleGrid={() => {
                 setShowGrid((v) => !v);
                 showNotice(showGrid ? "已隐藏网格" : "已显示网格");
@@ -1697,10 +1701,6 @@ export default function App({ onLoggedOut }: AppProps) {
               canRedo={canRedo}
               onUndo={undo}
               onRedo={redo}
-              onClearCanvas={() => {
-                clearCanvas();
-                applyCanvasSelection(clearCanvasSelection());
-              }}
             />
           )}
           {currentView === "canvas" && (

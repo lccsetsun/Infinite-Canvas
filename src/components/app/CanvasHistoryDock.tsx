@@ -1,4 +1,4 @@
-import { Redo2, Trash2, Undo2 } from "lucide-react";
+import { Redo2, Undo2 } from "lucide-react";
 import { motion } from "motion/react";
 import { Tooltip } from "../common/Tooltip";
 
@@ -7,7 +7,6 @@ interface CanvasHistoryDockProps {
   canRedo?: boolean;
   onUndo?: () => void;
   onRedo?: () => void;
-  onClearCanvas: () => void;
 }
 
 export default function CanvasHistoryDock({
@@ -15,8 +14,19 @@ export default function CanvasHistoryDock({
   canRedo,
   onUndo,
   onRedo,
-  onClearCanvas,
 }: CanvasHistoryDockProps) {
+  void canUndo;
+  void canRedo;
+  void onUndo;
+  void onRedo;
+  void motion;
+  void Tooltip;
+  void Undo2;
+  void Redo2;
+
+  return null;
+
+  /*
   const buttonClass =
     "grid h-8 w-8 place-items-center rounded-xl text-slate-400/90 transition-all hover:bg-violet-300/[0.065] hover:text-violet-100 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-500/80";
 
@@ -53,17 +63,7 @@ export default function CanvasHistoryDock({
           <Redo2 className="h-4 w-4" />
         </button>
       </Tooltip>
-      <div className="mx-1 h-4 w-px bg-violet-200/[0.10]" />
-      <Tooltip content="清除画布" position="top">
-        <button
-          type="button"
-          onClick={onClearCanvas}
-          className={`${buttonClass} hover:text-rose-200`}
-          aria-label="清除画布"
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
-      </Tooltip>
     </motion.div>
   );
+  */
 }

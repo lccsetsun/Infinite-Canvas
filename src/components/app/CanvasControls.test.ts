@@ -19,4 +19,12 @@ describe("CanvasControls styling", () => {
     expect(source).toContain("focus-visible:ring-2");
     expect(source).toContain("focus-visible:ring-violet-200/55");
   });
+
+  it("hosts the clear canvas action in the left controls", () => {
+    const source = readFileSync(new URL("./CanvasControls.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain("Trash2");
+    expect(source).toContain("onClearCanvas");
+    expect(source).toContain("清除画布");
+  });
 });

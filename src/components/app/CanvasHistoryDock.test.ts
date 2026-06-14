@@ -11,4 +11,14 @@ describe("CanvasHistoryDock styling", () => {
     expect(source).not.toContain("hover:text-cyan-100");
     expect(source).toContain("inset_0_1px_0");
   });
+
+  it("keeps undo and redo commented out while clear canvas lives elsewhere", () => {
+    const source = readFileSync(new URL("./CanvasHistoryDock.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain("return null");
+    expect(source).toContain("Undo2");
+    expect(source).toContain("Redo2");
+    expect(source).not.toContain("Trash2");
+    expect(source).not.toContain("onClearCanvas");
+  });
 });

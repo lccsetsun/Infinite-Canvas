@@ -1,5 +1,5 @@
 import React from "react";
-import { Eye, Grid3X3, LocateFixed, Magnet } from "lucide-react";
+import { Eye, Grid3X3, LocateFixed, Magnet, Trash2 } from "lucide-react";
 import { motion } from "motion/react";
 import { Tooltip } from "../common/Tooltip";
 
@@ -9,6 +9,7 @@ interface CanvasControlsProps {
   snapToGridEnabled: boolean;
   zoom: number;
   onFitView: () => void;
+  onClearCanvas: () => void;
   onToggleGrid: () => void;
   onToggleMiniMap: () => void;
   onToggleSnapToGrid: () => void;
@@ -49,6 +50,7 @@ export default function CanvasControls({
   snapToGridEnabled,
   zoom,
   onFitView,
+  onClearCanvas,
   onToggleGrid,
   onToggleMiniMap,
   onToggleSnapToGrid,
@@ -102,6 +104,18 @@ export default function CanvasControls({
         }}
       >
         <Eye className="h-4 w-4" />
+      </ControlButton>
+
+      <div className="h-4 w-px bg-violet-200/[0.10]" />
+
+      <ControlButton
+        label="清除画布"
+        onClick={(event) => {
+          event.stopPropagation();
+          onClearCanvas();
+        }}
+      >
+        <Trash2 className="h-4 w-4" />
       </ControlButton>
 
       <div className="h-4 w-px bg-violet-200/[0.10]" />
