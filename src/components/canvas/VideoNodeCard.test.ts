@@ -341,14 +341,15 @@ describe("VideoNodeCard preview branch", () => {
     expect(source).toContain("disabled={isRunning || !canRunVideoPrompt}");
   });
 
-  it("keeps same-node frame analysis and prompt reversal mutually exclusive", () => {
+  it("keeps frame analysis and prompt reversal as independent auxiliary actions", () => {
     const source = readFileSync(new URL("./VideoNodeCard.tsx", import.meta.url), "utf8");
 
-    expect(source).toContain(
-      "const isAuxiliaryVideoTaskRunning = isAnalyzingFrames || isReversingPrompt"
-    );
-    expect(source).toContain("if (!videoUrl || isAuxiliaryVideoTaskRunning) return;");
-    expect(source).toContain("disabled={isAuxiliaryVideoTaskRunning}");
+    expect(source).toContain("if (!videoUrl || isAnalyzingFrames) return;");
+    expect(source).toContain("if (!videoUrl || isReversingPrompt) return;");
+    expect(source).toContain("disabled={isAnalyzingFrames}");
+    expect(source).toContain("disabled={isReversingPrompt}");
+    expect(source).not.toContain('loadingOperation: "frame-analysis"');
+    expect(source).not.toContain('loadingOperation: "video-prompt"');
   });
 
   it("rerenders when input reference thumbnails change", () => {

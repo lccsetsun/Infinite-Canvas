@@ -463,7 +463,6 @@ function VideoNodeCardImpl({
   const [frameMenuOpen, setFrameMenuOpen] = React.useState(false);
   const [isAnalyzingFrames, setIsAnalyzingFrames] = React.useState(false);
   const [isReversingPrompt, setIsReversingPrompt] = React.useState(false);
-  const isAuxiliaryVideoTaskRunning = isAnalyzingFrames || isReversingPrompt;
   const [isUploadingVideo, setIsUploadingVideo] = React.useState(false);
   const isUploadingAsset = isNodeUploadingAsset || isUploadingVideo;
   const floatingCanvasUiScale = 1 / Math.max(0.55, Math.min(3, canvasZoom));
@@ -1414,14 +1413,8 @@ function VideoNodeCardImpl({
   );
 
   const analyzeFrames = async () => {
-    if (!videoUrl || isAuxiliaryVideoTaskRunning) return;
+    if (!videoUrl || isAnalyzingFrames) return;
     setIsAnalyzingFrames(true);
-    onUpdateData?.(node.id, {
-      error: undefined,
-      loading: true,
-      loadingOperation: "frame-analysis",
-      status: "loading",
-    });
     try {
       const captures = await fetchVideoFrameCapture(videoUrl);
       if (captures.length === 0)
@@ -1430,17 +1423,11 @@ function VideoNodeCardImpl({
         );
       await onAnalyzeVideo?.(node, captures);
       onUpdateData?.(node.id, {
-        loading: false,
-        loadingOperation: undefined,
-        status: "success",
         error: undefined,
       });
     } catch (error) {
       onUpdateData?.(node.id, {
         error: error instanceof Error ? error.message : "\u9010\u5e27\u5206\u6790\u5931\u8d25",
-        loading: false,
-        loadingOperation: undefined,
-        status: "error",
       });
     } finally {
       setIsAnalyzingFrames(false);
@@ -1448,28 +1435,16 @@ function VideoNodeCardImpl({
   };
 
   const reverseVideoPrompt = async () => {
-    if (!videoUrl || isAuxiliaryVideoTaskRunning) return;
+    if (!videoUrl || isReversingPrompt) return;
     setIsReversingPrompt(true);
-    onUpdateData?.(node.id, {
-      error: undefined,
-      loading: true,
-      loadingOperation: "video-prompt",
-      status: "loading",
-    });
     try {
       await onReverseVideoPrompt?.(node, videoUrl);
       onUpdateData?.(node.id, {
-        loading: false,
-        loadingOperation: undefined,
-        status: "success",
         error: undefined,
       });
     } catch (error) {
       onUpdateData?.(node.id, {
         error: error instanceof Error ? error.message : "视频反推提示词失败",
-        loading: false,
-        loadingOperation: undefined,
-        status: "error",
       });
     } finally {
       setIsReversingPrompt(false);
@@ -1815,7 +1790,7 @@ function VideoNodeCardImpl({
                   <button
                     type="button"
                     onClick={analyzeFrames}
-                    disabled={isAuxiliaryVideoTaskRunning}
+                    disabled={isAnalyzingFrames}
                     className={`${mediaNodeToolbarButtonClass} disabled:cursor-wait disabled:text-cyan-200`}
                   >
                     {isAnalyzingFrames ? (
@@ -1829,7 +1804,7 @@ function VideoNodeCardImpl({
                   <button
                     type="button"
                     onClick={reverseVideoPrompt}
-                    disabled={isAuxiliaryVideoTaskRunning}
+                    disabled={isReversingPrompt}
                     className={`${mediaNodeToolbarButtonClass} disabled:cursor-wait disabled:text-violet-200`}
                   >
                     {isReversingPrompt ? (

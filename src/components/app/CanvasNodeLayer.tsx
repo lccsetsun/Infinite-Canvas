@@ -607,7 +607,7 @@ export default function CanvasNodeLayer({
         });
       })}
       </div>
-      <div className="pointer-events-none absolute inset-0 z-30" aria-hidden="true">
+      <div className="pointer-events-none absolute inset-0 z-[19]" aria-hidden="true">
         {visibleNodes.map((node) => (
           <React.Fragment key={`title_${node.id}`}>
             <DetachedMediaNodeTitle node={node} pan={pan} zoom={zoom} />
