@@ -324,6 +324,7 @@ export default function CanvasNodeLayer({
                   node={node}
                   selected={selectedNodeId === node.id}
                   detachedCanvasTitle
+                  canvasZoom={zoom}
                   apiConfig={apiConfig}
                   onSelect={(e) => onSelectNode(node.id, e)}
                   onDelete={() => onDeleteNode(node.id)}

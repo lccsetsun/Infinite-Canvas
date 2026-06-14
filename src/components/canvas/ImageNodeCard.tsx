@@ -46,6 +46,7 @@ import { stringifyInputReferenceValues } from "../../utils/inputReferenceValues"
 import { InlineNodePortHandle } from "./InlineNodePortHandle";
 import { getImageLoadingMode, getStripThumbnailLoadingMode } from "../../utils/mediaPreviewPolicy";
 import {
+  getReadableCanvasOverlayScale,
   mediaNodeFloatingToolbarRaisedClass,
   mediaNodeToolbarButtonClass,
   mediaNodeToolbarDividerClass,
@@ -740,6 +741,7 @@ function ImageNodeCardImpl({
   const [isUploadingAsset, setIsUploadingAsset] = React.useState(false);
   const isUploadingNodeAsset = node.data?.uploadingAsset === true || isUploadingAsset;
   const floatingCanvasUiScale = 1 / Math.max(0.55, Math.min(3, canvasZoom));
+  const promptComposerCanvasScale = getReadableCanvasOverlayScale(canvasZoom);
   const [imageLoadState, setImageLoadState] = React.useState<{
     status: "idle" | "loaded" | "error";
     url: string;
@@ -3513,6 +3515,7 @@ function ImageNodeCardImpl({
                 onSelect(e);
               }}
               className="relative node-card left-1/2 mt-5 w-[620px] -translate-x-1/2 rounded-[18px] border border-[#2b3142]/90 bg-[#121723]/88 px-4 pb-3 pt-3 shadow-[0_28px_70px_-26px_rgba(0,0,0,0.92),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl"
+              style={{ scale: promptComposerCanvasScale, transformOrigin: "top center" }}
             >
               <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-slate-100/22 to-transparent" />
               <div className="mb-3 flex items-start gap-3">

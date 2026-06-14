@@ -34,11 +34,13 @@ import { ReferencePreviewCard } from "./ReferencePreviewCard";
 import { calculateTextNodeResize } from "../../utils/textNodeResize";
 import { PromptTokenEditor, type PromptTokenEditorHandle } from "./PromptTokenEditor";
 import { InlineNodePortHandle } from "./InlineNodePortHandle";
+import { getReadableCanvasOverlayScale } from "./mediaNodeToolbarStyles";
 
 interface TextNodeCardProps {
   node: GraphNode;
   selected: boolean;
   detachedCanvasTitle?: boolean;
+  canvasZoom?: number;
   apiConfig?: {
     remoteModelsByType?: AiModelsByType;
   };
@@ -138,6 +140,7 @@ function TextNodeCardImpl({
   node,
   selected,
   detachedCanvasTitle = false,
+  canvasZoom = 1,
   apiConfig,
   onSelect,
   onDelete: _onDelete,
@@ -301,6 +304,7 @@ function TextNodeCardImpl({
   const contentViewKey = interactionState.contentViewKey || viewState.kind;
   const nodeWidth = getNodeWidth(node);
   const nodeHeight = getNodeHeight(node);
+  const promptComposerCanvasScale = getReadableCanvasOverlayScale(canvasZoom);
   const renderedNodeWidth = resizeDraftSize?.width ?? nodeWidth;
   const renderedNodeHeight = resizeDraftSize?.height ?? nodeHeight;
   const responseAreaMaxHeight = Math.max(132, renderedNodeHeight - 72);
@@ -1174,6 +1178,7 @@ function TextNodeCardImpl({
               onSelect(e);
             }}
             className="relative node-card left-1/2 mt-5 w-[690px] -translate-x-1/2 overflow-visible rounded-[18px] border border-[#2b3142]/90 bg-[#121723]/88 px-5 pb-3 pt-4 shadow-[0_28px_70px_-26px_rgba(0,0,0,0.92),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl"
+            style={{ scale: promptComposerCanvasScale, transformOrigin: "top center" }}
           >
             <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-slate-100/22 to-transparent" />
             <div className="mb-3 flex items-start gap-3">
@@ -1335,6 +1340,7 @@ const TextNodeCard = React.memo(
     prev.node === next.node &&
     prev.selected === next.selected &&
     prev.detachedCanvasTitle === next.detachedCanvasTitle &&
+    prev.canvasZoom === next.canvasZoom &&
     prev.apiConfig?.remoteModelsByType === next.apiConfig?.remoteModelsByType &&
     prev.resolvedInputs === next.resolvedInputs &&
     prev.references === next.references

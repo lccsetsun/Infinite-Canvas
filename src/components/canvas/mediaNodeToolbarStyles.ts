@@ -11,3 +11,8 @@ export const mediaNodeToolbarUploadButtonClass =
   "flex h-8 w-8 cursor-pointer items-center justify-center rounded-[10px] text-slate-300/72 transition-colors hover:bg-white/[0.055] hover:text-slate-50 disabled:cursor-wait disabled:text-slate-500";
 
 export const mediaNodeToolbarDividerClass = "mx-0.5 h-5 w-px bg-slate-400/14";
+
+export function getReadableCanvasOverlayScale(canvasZoom: number, minCanvasZoom = 0.15) {
+  const normalizedZoom = Number.isFinite(canvasZoom) && canvasZoom > 0 ? canvasZoom : 1;
+  return 1 / Math.max(minCanvasZoom, Math.min(1, normalizedZoom));
+}
