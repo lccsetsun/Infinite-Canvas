@@ -161,6 +161,22 @@ export function getAudioNodeInputReferences(
   );
 }
 
+export function shouldShowAudioPromptComposer({
+  hasAudioUrl,
+  isRunning,
+  isSelected,
+  isSourceAssetNode,
+  isUploadingAsset,
+}: {
+  hasAudioUrl: boolean;
+  isRunning: boolean;
+  isSelected: boolean;
+  isSourceAssetNode: boolean;
+  isUploadingAsset: boolean;
+}) {
+  return !isRunning && !isSourceAssetNode && isSelected && !hasAudioUrl && !isUploadingAsset;
+}
+
 type AudioOptionMenu = "voice" | "emotion" | "speed" | null;
 const AUDIO_GENERATION_UNAVAILABLE = true;
 
@@ -214,8 +230,13 @@ function AudioNodeCardImpl({
 
   const promptText = (node.properties.text as string) || "";
   const audioUrl = (node.data?.audioUrl as string) || (node.properties.audioUrl as string) || "";
-  const promptComposerVisible =
-    !isRunning && !isSourceAssetNode && (isHovered || selected) && !audioUrl && !isUploadingAsset;
+  const promptComposerVisible = shouldShowAudioPromptComposer({
+    hasAudioUrl: Boolean(audioUrl),
+    isRunning,
+    isSelected: selected,
+    isSourceAssetNode,
+    isUploadingAsset,
+  });
   const nodeWidth = getNodeWidth(node);
   const nodeHeight = getNodeHeight(node);
   const voiceId = (node.properties.voice_id as string) || "male-qn-qingse";

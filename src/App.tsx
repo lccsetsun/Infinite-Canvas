@@ -28,6 +28,7 @@ import { useAppUiState } from "./hooks/useAppUiState";
 import { shouldOpenCanvasContextMenu } from "./utils/canvasContextMenuPolicy";
 import { shouldFinishCanvasLinkOnCanvasPointerUp } from "./utils/canvasPointerPolicy";
 import {
+  buildGridSplitChildNodeInitialProps,
   cropImageGridCell,
   getGridChildNodePosition,
   replaceImageGridCell,
@@ -626,14 +627,14 @@ export default function App({ onLoggedOut }: AppProps) {
             "image_node",
             position.x,
             position.y,
-            {
-              __nodeTitle: `瀹牸鍒囧垎 ${gridRows}x${gridCols} #${cellIndex + 1}`,
-              __uploadedAssetUrl: dataUrl,
-              __uploadedAssetKind: "image",
-              imageUrl: dataUrl,
-              text: `鏉ヨ嚜 ${sourceNode.title} 鐨?${gridRows}x${gridCols} 绗?${cellIndex + 1} 鏍?(${crop.sw}x${crop.sh})`,
-              status: "success",
-            },
+            buildGridSplitChildNodeInitialProps({
+              cellIndex,
+              crop,
+              dataUrl,
+              gridCols,
+              gridRows,
+              sourceTitle: sourceNode.title,
+            }),
             { fromNodeId: nodeId, fromOutputIndex: 0, toInputIndex: 0 }
           );
         }

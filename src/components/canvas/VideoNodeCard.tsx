@@ -367,13 +367,11 @@ export function shouldShowVideoUploadButton({
 
 export function shouldShowVideoPromptComposer({
   isExternalUploadSourceVideoNode,
-  isHovered,
   isRunning,
   isSelected,
   isUploadingAsset,
 }: {
   isExternalUploadSourceVideoNode: boolean;
-  isHovered: boolean;
   isRunning: boolean;
   isSelected: boolean;
   isUploadingAsset: boolean;
@@ -382,7 +380,7 @@ export function shouldShowVideoPromptComposer({
     !isRunning &&
     !isUploadingAsset &&
     !isExternalUploadSourceVideoNode &&
-    (isHovered || isSelected)
+    isSelected
   );
 }
 
@@ -400,6 +398,16 @@ export function shouldShowVideoPreview({
   if (!hasVideoUrl || isUploadingAsset) return false;
   if (!isRunning) return true;
   return loadingOperation === "frame-analysis" || loadingOperation === "video-prompt";
+}
+
+export function shouldShowVideoCustomControls({
+  hasVideoPreview,
+  isHovered,
+}: {
+  hasVideoPreview: boolean;
+  isHovered: boolean;
+}) {
+  return hasVideoPreview && isHovered;
 }
 
 export function shouldUseEmptyVideoNodeSize({
@@ -533,7 +541,6 @@ function VideoNodeCardImpl({
   const loadingOperation = node.data?.loadingOperation as MediaNodeLoadingOperation | undefined;
   const promptComposerVisible = shouldShowVideoPromptComposer({
     isExternalUploadSourceVideoNode: node.data?.externalUploadSource === true,
-    isHovered,
     isRunning,
     isSelected: selected,
     isUploadingAsset,
@@ -643,6 +650,10 @@ function VideoNodeCardImpl({
         portCenterY: Math.round(resultVideoSize.height / 2),
       };
   const shouldShowVideoLoadingOverlay = Boolean(isUploadingAsset || (isRunning && hasVideoPreview));
+  const showVideoCustomControls = shouldShowVideoCustomControls({
+    hasVideoPreview,
+    isHovered,
+  });
   const portTopStyle = getVideoNodePortTopStyle({
     emptyVideoNodePortCenterY: visibleEmptyBranchSize.portCenterY,
     hasVideoPreview: hasVideoPreview || !shouldUseEmptySize,
@@ -668,6 +679,20 @@ function VideoNodeCardImpl({
     setFrameMenuOpen(false);
     videoRef.current?.load();
   }, [videoUrl]);
+
+  React.useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !hasVideoPreview) return;
+
+    if (!isHovered) {
+      video.pause();
+      setFrameMenuOpen(false);
+      return;
+    }
+
+    video.muted = true;
+    void video.play().catch(() => undefined);
+  }, [hasVideoPreview, isHovered, videoUrl]);
 
   React.useEffect(() => {
     if (node.properties.model !== currentModel) {
@@ -1864,7 +1889,7 @@ function VideoNodeCardImpl({
                 selected,
               })}
               className="block h-full w-full object-contain"
-              muted={muted || !audioEnabled}
+              muted={isHovered || muted || !audioEnabled}
               playsInline
               onLoadedMetadata={(e) => {
                 const video = e.currentTarget;
@@ -1919,12 +1944,18 @@ function VideoNodeCardImpl({
                 </div>
               </div>
             )}
-            <div
-              data-node-action="true"
-              className="absolute inset-x-0 bottom-0 flex h-[52px] items-center gap-2.5 rounded-b-[8px] border-t border-white/[0.08] bg-[linear-gradient(180deg,rgba(3,7,18,0.42),rgba(3,7,18,0.88)_34%,rgba(3,7,18,0.96))] px-3 text-white shadow-[0_-20px_54px_-30px_rgba(0,0,0,0.98),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-xl transition-colors duration-200 group-hover:border-cyan-100/16"
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={(e) => e.stopPropagation()}
-            >
+            <AnimatePresence>
+              {showVideoCustomControls && (
+                <motion.div
+                  data-node-action="true"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 10 }}
+                  transition={{ duration: 0.16, ease: "easeOut" }}
+                  className="absolute inset-x-0 bottom-0 flex h-[52px] items-center gap-2.5 rounded-b-[8px] border-t border-white/[0.08] bg-[linear-gradient(180deg,rgba(3,7,18,0.42),rgba(3,7,18,0.88)_34%,rgba(3,7,18,0.96))] px-3 text-white shadow-[0_-20px_54px_-30px_rgba(0,0,0,0.98),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-xl transition-colors duration-200 group-hover:border-cyan-100/16"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => e.stopPropagation()}
+                >
               <button
                 type="button"
                 onClick={togglePlay}
@@ -1957,9 +1988,9 @@ function VideoNodeCardImpl({
                 type="button"
                 onClick={() => setMuted((value) => !value)}
                 className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-slate-200/82 transition hover:bg-white/[0.08] hover:text-white"
-                title={muted || !audioEnabled ? "打开声音" : "静音"}
+                title={isHovered || muted || !audioEnabled ? "打开声音" : "静音"}
               >
-                {muted || !audioEnabled ? (
+                {isHovered || muted || !audioEnabled ? (
                   <VolumeX className="h-[18px] w-[18px]" />
                 ) : (
                   <Volume2 className="h-[18px] w-[18px]" />
@@ -2009,7 +2040,9 @@ function VideoNodeCardImpl({
                   )}
                 </AnimatePresence>
               </div>
-            </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </motion.div>
         {promptComposerNode}

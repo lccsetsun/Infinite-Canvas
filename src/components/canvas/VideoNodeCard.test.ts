@@ -13,6 +13,7 @@ import {
   resolveEmptyVideoNodeSize,
   shouldShowVideoPreview,
   shouldShowVideoPromptComposer,
+  shouldShowVideoCustomControls,
   shouldUseEmptyVideoNodeSize,
   shouldShowVideoUploadButton,
 } from "./VideoNodeCard";
@@ -271,12 +272,19 @@ describe("shouldShowVideoPreview", () => {
   });
 });
 
+describe("shouldShowVideoCustomControls", () => {
+  it("shows custom controls only while hovering a visible video preview", () => {
+    expect(shouldShowVideoCustomControls({ hasVideoPreview: true, isHovered: true })).toBe(true);
+    expect(shouldShowVideoCustomControls({ hasVideoPreview: true, isHovered: false })).toBe(false);
+    expect(shouldShowVideoCustomControls({ hasVideoPreview: false, isHovered: true })).toBe(false);
+  });
+});
+
 describe("shouldShowVideoPromptComposer", () => {
   it("shows the composer for selected non-upload video nodes even after a video URL exists", () => {
     expect(
       shouldShowVideoPromptComposer({
         isExternalUploadSourceVideoNode: false,
-        isHovered: false,
         isRunning: false,
         isSelected: true,
         isUploadingAsset: false,
@@ -288,7 +296,6 @@ describe("shouldShowVideoPromptComposer", () => {
     expect(
       shouldShowVideoPromptComposer({
         isExternalUploadSourceVideoNode: true,
-        isHovered: false,
         isRunning: false,
         isSelected: true,
         isUploadingAsset: false,
@@ -300,9 +307,19 @@ describe("shouldShowVideoPromptComposer", () => {
     expect(
       shouldShowVideoPromptComposer({
         isExternalUploadSourceVideoNode: false,
-        isHovered: false,
         isRunning: true,
         isSelected: true,
+        isUploadingAsset: false,
+      })
+    ).toBe(false);
+  });
+
+  it("does not show the composer from hover alone", () => {
+    expect(
+      shouldShowVideoPromptComposer({
+        isExternalUploadSourceVideoNode: false,
+        isRunning: false,
+        isSelected: false,
         isUploadingAsset: false,
       })
     ).toBe(false);

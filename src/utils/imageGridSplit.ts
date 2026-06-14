@@ -23,6 +23,15 @@ export interface GridCellReplacementDrawPlan {
   };
 }
 
+export interface GridSplitChildNodeInitialPropsInput {
+  cellIndex: number;
+  crop: Pick<GridCellCrop, "sw" | "sh">;
+  dataUrl: string;
+  gridCols: number;
+  gridRows: number;
+  sourceTitle: string;
+}
+
 const CHILD_NODE_X_OFFSET = 380;
 const CHILD_NODE_Y_STEP = 130;
 
@@ -82,6 +91,30 @@ export function formatGridCellLabel(rowsOrGridSize: number, cellIndex: number, c
     normalizedCols
   );
   return `第 ${Math.min(Math.max(0, Math.floor(cellIndex)), rows * normalizedCols - 1) + 1} 格 (${crop.row + 1}行${crop.col + 1}列)`;
+}
+
+export function buildGridSplitChildNodeInitialProps({
+  cellIndex,
+  crop,
+  dataUrl,
+  gridCols,
+  gridRows,
+  sourceTitle,
+}: GridSplitChildNodeInitialPropsInput): Record<string, unknown> {
+  const displayIndex = Math.max(0, Math.floor(cellIndex)) + 1;
+  return {
+    __nodeTitle: `宫格切分 ${gridRows}x${gridCols} #${displayIndex}`,
+    __nodeData: {
+      activeImageIndex: 0,
+      imageUrl: dataUrl,
+      imageUrls: [dataUrl],
+      status: "success",
+    },
+    imageUrl: dataUrl,
+    imageUrls: [dataUrl],
+    text: `来自 ${sourceTitle} 的 ${gridRows}x${gridCols} 第 ${displayIndex} 格 (${crop.sw}x${crop.sh})`,
+    status: "success",
+  };
 }
 
 export function getGridCellReplacementDrawPlan(

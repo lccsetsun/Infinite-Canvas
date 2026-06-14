@@ -240,6 +240,28 @@ export function shouldShowImageUploadButton({
   return !hasImageUrl || isImageLoaded || isImageLoadFailed;
 }
 
+export function shouldShowImagePromptComposer({
+  isFrameStrip,
+  isRunning,
+  isSelected,
+  isSourceAssetNode,
+  isUploadingNodeAsset,
+}: {
+  isFrameStrip: boolean;
+  isRunning: boolean;
+  isSelected: boolean;
+  isSourceAssetNode: boolean;
+  isUploadingNodeAsset: boolean;
+}) {
+  return (
+    !isFrameStrip &&
+    !isSourceAssetNode &&
+    isSelected &&
+    !isUploadingNodeAsset &&
+    !isRunning
+  );
+}
+
 export function hasFrameExtractionDragStarted({
   clientX,
   clientY,
@@ -2460,12 +2482,13 @@ function ImageNodeCardImpl({
     </AnimatePresence>
   );
 
-  const showImagePromptComposer =
-    !isFrameStrip &&
-    !isSourceAssetNode &&
-    (isHovered || selected) &&
-    !isUploadingNodeAsset &&
-    !isRunning;
+  const showImagePromptComposer = shouldShowImagePromptComposer({
+    isFrameStrip,
+    isRunning,
+    isSelected: selected,
+    isSourceAssetNode,
+    isUploadingNodeAsset,
+  });
 
   React.useEffect(() => {
     if (!showImagePromptComposer) setExpandedPromptEditorOpen(false);

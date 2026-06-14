@@ -18,6 +18,7 @@ import {
 } from "./useWorkflowState";
 import type { RemoteCanvasProject } from "../features/workspace/remoteCanvas";
 import type { GraphNode } from "../types";
+import { buildGridSplitChildNodeInitialProps } from "../utils/imageGridSplit";
 
 describe("useWorkflowState remote-only persistence", () => {
   it("does not keep local workspace storage fallback code", () => {
@@ -769,6 +770,63 @@ describe("collectLinkedMediaReferences", () => {
 });
 
 describe("addNodeToWorkflowSnapshot", () => {
+  it("keeps grid-split child image nodes linkable", () => {
+    const source: GraphNode = {
+      id: "source-image",
+      type: "image_node",
+      title: "图片节点 12",
+      x: 100,
+      y: 100,
+      inputs: [{ name: "source_image", type: "IMAGE" }],
+      outputs: [{ name: "image", type: "IMAGE" }],
+      properties: { imageUrl: "https://oss.example.com/source.png" },
+      data: {
+        imageUrl: "https://oss.example.com/source.png",
+        imageUrls: ["https://oss.example.com/source.png"],
+      },
+    };
+
+    const result = addNodeToWorkflowSnapshot({
+      nodes: [source],
+      links: [],
+      type: "image_node",
+      x: 480,
+      y: 120,
+      initialProps: buildGridSplitChildNodeInitialProps({
+        cellIndex: 1,
+        crop: { sw: 432, sh: 248 },
+        dataUrl: "data:image/png;base64,child",
+        gridCols: 2,
+        gridRows: 2,
+        sourceTitle: source.title,
+      }),
+      connectFromDraft: { fromNodeId: source.id, fromOutputIndex: 0, toInputIndex: 0 },
+      makeId: (prefix) => (prefix === "node" ? "grid-child" : "grid-link"),
+    });
+
+    expect(result.warning).toBeUndefined();
+    expect(result.node.title).toBe("宫格切分 2x2 #2");
+    expect(result.node.inputs).toEqual([
+      { name: "source_image", type: "IMAGE" },
+      { name: "prompt", type: "STRING" },
+      { name: "negative_prompt", type: "STRING" },
+      { name: "aspect_ratio", type: "STRING" },
+      { name: "source_audio", type: "AUDIO" },
+      { name: "source_video", type: "VIDEO" },
+    ]);
+    expect(result.node.properties.isSourceNode).toBeUndefined();
+    expect(result.node.data?.isSourceNode).toBeUndefined();
+    expect(result.links).toEqual([
+      {
+        fromNodeId: "source-image",
+        fromOutputIndex: 0,
+        id: "grid-link",
+        toInputIndex: 0,
+        toNodeId: "grid-child",
+      },
+    ]);
+  });
+
   it("can be chained from the latest snapshot without dropping uploaded file nodes", () => {
     const first = addNodeToWorkflowSnapshot({
       nodes: [],

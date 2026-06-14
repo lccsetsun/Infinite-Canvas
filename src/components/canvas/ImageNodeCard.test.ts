@@ -15,6 +15,7 @@ import {
   resolveEmptyImageNodeSize,
   resolveResultImageSize,
   shouldShowImageUploadButton,
+  shouldShowImagePromptComposer,
 } from "./ImageNodeCard";
 
 describe("getImageNodeInputReferences", () => {
@@ -163,6 +164,30 @@ describe("ImageNodeCard prompt composer fullscreen editor", () => {
     const memoSource = source.slice(source.indexOf("const ImageNodeCard = React.memo"));
 
     expect(memoSource).toContain("prev.references === next.references");
+  });
+});
+
+describe("shouldShowImagePromptComposer", () => {
+  it("shows the composer only for selected editable image nodes", () => {
+    expect(
+      shouldShowImagePromptComposer({
+        isFrameStrip: false,
+        isRunning: false,
+        isSelected: true,
+        isSourceAssetNode: false,
+        isUploadingNodeAsset: false,
+      })
+    ).toBe(true);
+
+    expect(
+      shouldShowImagePromptComposer({
+        isFrameStrip: false,
+        isRunning: false,
+        isSelected: false,
+        isSourceAssetNode: false,
+        isUploadingNodeAsset: false,
+      })
+    ).toBe(false);
   });
 });
 

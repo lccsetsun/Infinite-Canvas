@@ -68,6 +68,23 @@ describe("getTextNodeInteractionState", () => {
     expect(state.showPromptComposer).toBe(false);
   });
 
+  it("does not show the prompt composer from hover alone", () => {
+    const state = getTextNodeInteractionState({
+      errorText: "",
+      forceComposerOpen: false,
+      hasConnectedLinks: true,
+      inlineEditing: false,
+      isHovered: true,
+      isMultimodalMode: false,
+      responseText: "",
+      selected: false,
+      textMode: undefined,
+    });
+
+    expect(state.showPromptComposer).toBe(false);
+    expect(state.showSkeleton).toBe(true);
+  });
+
   it("hides starter shortcuts when an assistant text node already has upstream references", () => {
     const state = getTextNodeInteractionState({
       errorText: "",

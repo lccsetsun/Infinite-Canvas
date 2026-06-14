@@ -54,7 +54,7 @@ export function getTextNodeInteractionState({
     contentViewKey: isPlainMode ? (showInlineEditor ? "plain-editing" : "plain-readonly") : "",
     isPlainMode,
     showInlineEditor,
-    showPromptComposer: !isRunning && !isPlainMode && (isHovered || selected || forceComposerOpen),
+    showPromptComposer: !isRunning && !isPlainMode && (selected || forceComposerOpen),
     showSkeleton: !isPlainMode && !isComposerEditing && !showStarterGuide && !hasResponse && !hasError,
     showStarterGuide,
   };

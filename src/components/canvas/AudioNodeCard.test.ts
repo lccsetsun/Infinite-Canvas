@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getAudioNodeInputReferences } from "./AudioNodeCard";
+import { getAudioNodeInputReferences, shouldShowAudioPromptComposer } from "./AudioNodeCard";
 
 describe("getAudioNodeInputReferences", () => {
   it("collects text, image, and audio inputs for the prompt composer", () => {
@@ -78,5 +78,29 @@ describe("getAudioNodeInputReferences", () => {
     expect(references).toHaveLength(7);
     expect(references.map((reference) => reference.kind)).toEqual(Array(7).fill("image"));
     expect(references.map((reference) => reference.value)).toEqual(frameImages);
+  });
+});
+
+describe("shouldShowAudioPromptComposer", () => {
+  it("shows the composer only for selected empty editable audio nodes", () => {
+    expect(
+      shouldShowAudioPromptComposer({
+        hasAudioUrl: false,
+        isRunning: false,
+        isSelected: true,
+        isSourceAssetNode: false,
+        isUploadingAsset: false,
+      })
+    ).toBe(true);
+
+    expect(
+      shouldShowAudioPromptComposer({
+        hasAudioUrl: false,
+        isRunning: false,
+        isSelected: false,
+        isSourceAssetNode: false,
+        isUploadingAsset: false,
+      })
+    ).toBe(false);
   });
 });

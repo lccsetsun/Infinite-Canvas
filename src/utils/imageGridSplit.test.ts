@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildGridSplitChildNodeInitialProps,
   formatGridCellLabel,
   getGridCellCrop,
   getGridChildNodePosition,
@@ -49,6 +50,28 @@ describe("image grid split helpers", () => {
 
   it("formats rectangular-grid labels", () => {
     expect(formatGridCellLabel(2, 4, 3)).toBe("第 5 格 (2行2列)");
+  });
+
+  it("builds linked child image node props without marking the child as a source node", () => {
+    const props = buildGridSplitChildNodeInitialProps({
+      cellIndex: 1,
+      crop: { sw: 432, sh: 248 },
+      dataUrl: "data:image/png;base64,child",
+      gridCols: 2,
+      gridRows: 2,
+      sourceTitle: "图片节点 12",
+    });
+
+    expect(props.__nodeTitle).toBe("宫格切分 2x2 #2");
+    expect(props).not.toHaveProperty("__uploadedAssetKind");
+    expect(props).not.toHaveProperty("__uploadedAssetUrl");
+    expect(props.__nodeData).toEqual({
+      activeImageIndex: 0,
+      imageUrl: "data:image/png;base64,child",
+      imageUrls: ["data:image/png;base64,child"],
+      status: "success",
+    });
+    expect(props.text).toBe("来自 图片节点 12 的 2x2 第 2 格 (432x248)");
   });
 
   it("plans a permanent grid-cell replacement without changing the source image size", () => {
