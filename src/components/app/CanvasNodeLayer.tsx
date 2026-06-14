@@ -1,11 +1,12 @@
 import React from "react";
 import { AnimatePresence } from "motion/react";
+import { FileText, Image as ImageIcon, Music2, Video } from "lucide-react";
 import NodeCard from "../canvas/NodeCard";
 import TextNodeCard from "../canvas/TextNodeCard";
 import ImageNodeCard from "../canvas/ImageNodeCard";
 import VideoNodeCard from "../canvas/VideoNodeCard";
 import AudioNodeCard from "../canvas/AudioNodeCard";
-import { getInputAnchor, getOutputAnchor } from "../canvas/geometry";
+import { getInputAnchor, getNodeWidth, getOutputAnchor } from "../canvas/geometry";
 import { GraphLink, GraphNode } from "../../types";
 import type { VideoFrameCaptureItem } from "../../features/video/frameCapture";
 import type { TextNodeReferenceItem } from "../../utils/textNodeReferences";
@@ -15,6 +16,110 @@ import type { CanvasGraphIndex } from "../../utils/canvasGraphIndex";
 import type { ImageResolutionPresetGroup } from "../../features/nodes/imageResolutionPresets";
 import { getVisibleCanvasNodeIds } from "../../utils/canvasViewportCulling";
 import type { VideoFrameImageCaptureMode } from "../../utils/videoFrameImageExtraction";
+
+function getDetachedMediaNodeTitle(node: GraphNode) {
+  if (node.type === "text_node") {
+    return node.title === "鏂囨湰" ? "鏂囨湰鑺傜偣 1" : node.title;
+  }
+  if (node.type === "image_node" && (node.title === "图片节点" || node.title === "图片")) {
+    return "图片节点 1";
+  }
+  if (node.type === "video_node" && (node.title === "视频节点" || node.title === "视频")) {
+    return "视频节点 1";
+  }
+  if (node.type === "audio_node" && node.title === "音频") {
+    return "音频节点 1";
+  }
+  return node.title;
+}
+
+function getDetachedMediaNodeSizeLabel(node: GraphNode) {
+  if (node.type === "video_node") {
+    const width = node.data?.videoNaturalWidth ?? node.data?.videoDisplayWidth;
+    const height = node.data?.videoNaturalHeight ?? node.data?.videoDisplayHeight;
+    if (typeof width === "number" && typeof height === "number" && width > 0 && height > 0) {
+      return `${Math.round(width)} × ${Math.round(height)}`;
+    }
+    return null;
+  }
+
+  if (node.type === "image_node") {
+    if (node.data?.isFrameStrip === true && Array.isArray(node.data.frameImageOssIds)) {
+      return `${node.data.frameImageOssIds.length} 帧`;
+    }
+    const width = node.data?.imageNaturalWidth ?? node.data?.imageDisplayWidth;
+    const height = node.data?.imageNaturalHeight ?? node.data?.imageDisplayHeight;
+    if (typeof width === "number" && typeof height === "number" && width > 0 && height > 0) {
+      return `${Math.round(width)} × ${Math.round(height)}`;
+    }
+  }
+
+  return null;
+}
+
+function DetachedMediaNodeTitle({
+  node,
+  pan,
+  zoom,
+}: {
+  node: GraphNode;
+  pan: { x: number; y: number };
+  zoom: number;
+}) {
+  if (!["text_node", "image_node", "video_node", "audio_node"].includes(node.type)) return null;
+
+  const title = getDetachedMediaNodeTitle(node);
+  const sizeLabel = getDetachedMediaNodeSizeLabel(node);
+  const match = title.match(/^(.*?)(\s+\d+)$/);
+  const Icon =
+    node.type === "text_node"
+      ? FileText
+      : node.type === "image_node"
+        ? ImageIcon
+        : node.type === "audio_node"
+          ? Music2
+          : Video;
+  const iconClassName =
+    node.type === "audio_node"
+      ? "h-3.5 w-3.5 shrink-0 text-cyan-100/58"
+      : "h-3.5 w-3.5 shrink-0 text-violet-100/58";
+  const titleScale = Math.max(0.78, Math.min(1, zoom / 0.55));
+  const rowWidth = Math.max(180, getNodeWidth(node) * zoom);
+
+  return (
+    <div
+      className="absolute left-0 top-0 text-slate-300/82 drop-shadow-[0_1px_10px_rgba(15,23,42,0.9)]"
+      data-canvas-node-title-id={node.id}
+      style={{
+        transform: `translate3d(${pan.x + node.x * zoom}px, ${pan.y + node.y * zoom - 24}px, 0)`,
+      }}
+    >
+      <div
+        className="flex items-center gap-3"
+        style={{ scale: titleScale, transformOrigin: "left center" }}
+      >
+        <div className="flex min-w-0 items-center gap-1.5" style={{ width: rowWidth }}>
+          <Icon className={iconClassName} />
+          <span className="min-w-0 truncate text-[13px] font-medium tracking-tight">
+            {match ? (
+              <>
+                <span>{match[1]}</span>
+                <span className="text-emerald-200/72">{match[2]}</span>
+              </>
+            ) : (
+              title
+            )}
+          </span>
+          {sizeLabel && (
+            <span className="ml-auto shrink-0 text-[11px] font-medium tabular-nums text-slate-400/72">
+              {sizeLabel}
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 interface CanvasNodeLayerProps {
   apiConfig: {
@@ -190,12 +295,13 @@ export default function CanvasNodeLayer({
   );
 
   return (
-    <div
-      className="absolute inset-0 z-20 origin-top-left"
-      data-canvas-background="true"
-      style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}
-      onPointerDown={onCanvasPointerDown}
-    >
+    <>
+      <div
+        className="absolute inset-0 z-20 origin-top-left"
+        data-canvas-background="true"
+        style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}
+        onPointerDown={onCanvasPointerDown}
+      >
       <AnimatePresence>
         {visibleNodes.map((node) => {
           return (
@@ -217,6 +323,7 @@ export default function CanvasNodeLayer({
                 <TextNodeCard
                   node={node}
                   selected={selectedNodeId === node.id}
+                  detachedCanvasTitle
                   apiConfig={apiConfig}
                   onSelect={(e) => onSelectNode(node.id, e)}
                   onDelete={() => onDeleteNode(node.id)}
@@ -263,6 +370,8 @@ export default function CanvasNodeLayer({
                 <ImageNodeCard
                   node={node}
                   selected={selectedNodeId === node.id}
+                  detachedCanvasTitle
+                  canvasZoom={zoom}
                   apiConfig={apiConfig}
                   onSelect={(e) => onSelectNode(node.id, e)}
                   onDelete={() => onDeleteNode(node.id)}
@@ -306,6 +415,8 @@ export default function CanvasNodeLayer({
                 <VideoNodeCard
                   node={node}
                   selected={selectedNodeId === node.id}
+                  detachedCanvasTitle
+                  canvasZoom={zoom}
                   apiConfig={apiConfig}
                   onSelect={(e) => onSelectNode(node.id, e)}
                   onDelete={() => onDeleteNode(node.id)}
@@ -347,6 +458,8 @@ export default function CanvasNodeLayer({
                 <AudioNodeCard
                   node={node}
                   selected={selectedNodeId === node.id}
+                  detachedCanvasTitle
+                  canvasZoom={zoom}
                   onSelect={(e) => onSelectNode(node.id, e)}
                   onDelete={() => onDeleteNode(node.id)}
                   onDuplicate={() => onDuplicateNode(node.id)}
@@ -490,6 +603,14 @@ export default function CanvasNodeLayer({
           );
         });
       })}
-    </div>
+      </div>
+      <div className="pointer-events-none absolute inset-0 z-30" aria-hidden="true">
+        {visibleNodes.map((node) => (
+          <React.Fragment key={`title_${node.id}`}>
+            <DetachedMediaNodeTitle node={node} pan={pan} zoom={zoom} />
+          </React.Fragment>
+        ))}
+      </div>
+    </>
   );
 }

@@ -38,6 +38,7 @@ import { InlineNodePortHandle } from "./InlineNodePortHandle";
 interface TextNodeCardProps {
   node: GraphNode;
   selected: boolean;
+  detachedCanvasTitle?: boolean;
   apiConfig?: {
     remoteModelsByType?: AiModelsByType;
   };
@@ -136,6 +137,7 @@ function isPointerOnVerticalScrollbar(event: React.PointerEvent<HTMLElement>) {
 function TextNodeCardImpl({
   node,
   selected,
+  detachedCanvasTitle = false,
   apiConfig,
   onSelect,
   onDelete: _onDelete,
@@ -965,19 +967,21 @@ function TextNodeCardImpl({
           />
         </div>
 
-        <div className="absolute -top-8 left-0 z-30 flex items-center gap-1.5 text-slate-300/82 drop-shadow-[0_1px_10px_rgba(15,23,42,0.9)]">
-          <FileText className="h-4 w-4 text-violet-100/58" />
-          <span className="text-[15px] font-medium tracking-tight">
-            {nodeBadgeMatch ? (
-              <>
-                <span>{nodeBadgeMatch[1]}</span>
-                <span className="text-emerald-200/72">{nodeBadgeMatch[2]}</span>
-              </>
-            ) : (
-              nodeBadgeTitle
-            )}
-          </span>
-        </div>
+        {!detachedCanvasTitle && (
+          <div className="absolute -top-8 left-0 z-30 flex items-center gap-1.5 text-slate-300/82 drop-shadow-[0_1px_10px_rgba(15,23,42,0.9)]">
+            <FileText className="h-4 w-4 text-violet-100/58" />
+            <span className="text-[15px] font-medium tracking-tight">
+              {nodeBadgeMatch ? (
+                <>
+                  <span>{nodeBadgeMatch[1]}</span>
+                  <span className="text-emerald-200/72">{nodeBadgeMatch[2]}</span>
+                </>
+              ) : (
+                nodeBadgeTitle
+              )}
+            </span>
+          </div>
+        )}
         {typeof document !== "undefined" &&
           createPortal(
             <AnimatePresence>
@@ -1330,6 +1334,7 @@ const TextNodeCard = React.memo(
   (prev, next) =>
     prev.node === next.node &&
     prev.selected === next.selected &&
+    prev.detachedCanvasTitle === next.detachedCanvasTitle &&
     prev.apiConfig?.remoteModelsByType === next.apiConfig?.remoteModelsByType &&
     prev.resolvedInputs === next.resolvedInputs &&
     prev.references === next.references

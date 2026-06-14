@@ -166,14 +166,77 @@ export default function FloatingAssistantButton({ onPanelOpenChange }: FloatingA
             <div className="relative flex min-h-0 flex-1 flex-col px-7 pb-5 pt-7">
               <div className="min-h-0 flex-1 overflow-y-auto pr-1">
                 <section className="flex flex-col items-center text-center">
-                  <div className="relative grid h-[118px] w-[118px] place-items-center">
-                    <span className="absolute inset-1 rounded-full border border-white/[0.07] bg-[radial-gradient(circle,rgba(255,255,255,0.07),transparent_58%)] shadow-[0_0_34px_rgba(255,255,255,0.07)]" />
-                    <span className="absolute inset-7 rounded-full bg-violet-200/10 blur-xl" />
-                    <img
+                  <div className="relative grid h-[132px] w-[132px] place-items-center">
+                    <motion.span
+                      aria-hidden="true"
+                      className="absolute inset-1 rounded-full border border-violet-200/10 bg-[radial-gradient(circle,rgba(255,255,255,0.08),transparent_58%)] shadow-[0_0_34px_rgba(167,139,250,0.10)]"
+                      animate={{ scale: [0.96, 1.04, 0.96], opacity: [0.64, 0.9, 0.64] }}
+                      transition={{ duration: 4.2, repeat: Infinity, ease: "easeInOut" }}
+                    />
+                    <motion.span
+                      aria-hidden="true"
+                      className="absolute inset-3 rounded-full border border-violet-300/18"
+                      animate={{ scale: [0.72, 1.08], opacity: [0.42, 0] }}
+                      transition={{ duration: 3.1, repeat: Infinity, ease: "easeOut" }}
+                    />
+                    <motion.span
+                      aria-hidden="true"
+                      className="absolute inset-7 rounded-full bg-violet-200/12 blur-xl"
+                      animate={{ scale: [0.92, 1.16, 0.92], opacity: [0.42, 0.78, 0.42] }}
+                      transition={{ duration: 3.6, repeat: Infinity, ease: "easeInOut" }}
+                    />
+                    {[
+                      "left-5 top-11 h-1.5 w-1.5",
+                      "right-6 bottom-9 h-1.5 w-1.5",
+                      "left-9 bottom-7 h-1 w-1",
+                    ].map((className, index) => (
+                      <motion.span
+                        key={className}
+                        aria-hidden="true"
+                        className={`absolute rounded-full bg-violet-200 shadow-[0_0_12px_rgba(196,181,253,0.88)] ${className}`}
+                        animate={{
+                          opacity: [0.16, 0.82, 0.16],
+                          scale: [0.68, 1.1, 0.68],
+                          x: [0, index === 1 ? -5 : 4, 0],
+                          y: [0, index === 0 ? -8 : 5, 0],
+                        }}
+                        transition={{
+                          duration: 3 + index * 0.42,
+                          repeat: Infinity,
+                          ease: "easeInOut",
+                          delay: index * 0.34,
+                        }}
+                      />
+                    ))}
+                    <motion.span
+                      aria-hidden="true"
+                      className="absolute right-8 top-6 text-[15px] leading-none text-violet-300 drop-shadow-[0_0_10px_rgba(196,181,253,0.9)]"
+                      animate={{ opacity: [0.35, 1, 0.35], scale: [0.82, 1.12, 0.82], rotate: [0, 8, 0] }}
+                      transition={{ duration: 2.6, repeat: Infinity, ease: "easeInOut" }}
+                    >
+                      ✦
+                    </motion.span>
+                    <motion.span
+                      aria-hidden="true"
+                      className="absolute left-8 top-7 text-[11px] leading-none text-violet-100/90 drop-shadow-[0_0_8px_rgba(221,214,254,0.8)]"
+                      animate={{ opacity: [0.2, 0.9, 0.2], scale: [0.76, 1.08, 0.76], rotate: [0, -10, 0] }}
+                      transition={{ duration: 3.4, repeat: Infinity, ease: "easeInOut", delay: 0.5 }}
+                    >
+                      ✦
+                    </motion.span>
+                    <motion.span
+                      aria-hidden="true"
+                      className="absolute bottom-4 h-4 w-14 rounded-full bg-violet-500/18 blur-md"
+                      animate={{ scaleX: [1, 0.78, 1], opacity: [0.34, 0.58, 0.34] }}
+                      transition={{ duration: 3.4, repeat: Infinity, ease: "easeInOut" }}
+                    />
+                    <motion.img
                       src={assistantIcon}
                       alt=""
                       aria-hidden="true"
                       className="relative h-[82px] w-[82px] object-contain drop-shadow-[0_14px_28px_rgba(0,0,0,0.45)]"
+                      animate={{ y: [0, -2, 0] }}
+                      transition={{ duration: 3.4, repeat: Infinity, ease: "easeInOut" }}
                     />
                   </div>
                   <h3 className="mt-4 text-[24px] font-black leading-tight tracking-normal text-slate-100">
@@ -261,14 +324,28 @@ export default function FloatingAssistantButton({ onPanelOpenChange }: FloatingA
       <AnimatePresence>
         {bubbleVisible && !panelOpen && (
           <motion.div
-            initial={{ opacity: 0, y: 8, scale: 0.96 }}
+            initial={{ opacity: 0, y: 10, scale: 0.92 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 6, scale: 0.96 }}
-            transition={{ duration: 0.22 }}
-            className="pointer-events-none absolute bottom-[70px] right-0 w-[224px] max-w-[calc(100vw-88px)] whitespace-normal break-words rounded-[18px] border border-white/80 bg-white/95 px-3.5 py-2.5 text-left text-[12px] font-semibold leading-[1.45] text-slate-800 shadow-[0_16px_34px_-24px_rgba(0,0,0,0.88),0_0_22px_-18px_rgba(159,122,234,0.78)] backdrop-blur-xl"
+            exit={{ opacity: 0, y: 7, scale: 0.94 }}
+            transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+            className="pointer-events-none absolute bottom-[72px] right-0 w-[214px] max-w-[calc(100vw-88px)] whitespace-normal break-words rounded-[22px] border border-violet-200/80 bg-gradient-to-br from-white via-white to-violet-50 py-3 pl-[38px] pr-3 text-left text-[12px] font-black leading-[1.42] text-slate-800 shadow-[0_22px_42px_-26px_rgba(0,0,0,0.95),0_7px_0_-3px_rgba(139,92,246,0.28),0_0_32px_-18px_rgba(167,139,250,0.88),inset_0_2px_0_rgba(255,255,255,0.98),inset_0_0_0_1px_rgba(255,255,255,0.72)]"
           >
-            <span className="block max-h-[35px] overflow-hidden">{bubbleText}</span>
-            <span className="absolute -bottom-1.5 right-6 h-3 w-3 rotate-45 border-b border-r border-white/80 bg-white/95" />
+            <span
+              aria-hidden="true"
+              className="absolute -left-2.5 top-3 h-8 w-8 rounded-full bg-gradient-to-br from-violet-300 via-violet-500 to-indigo-500 shadow-[0_10px_22px_-12px_rgba(76,29,149,0.9),0_0_18px_rgba(167,139,250,0.72)]"
+            />
+            <span
+              aria-hidden="true"
+              className="absolute -left-3.5 top-2 h-10 w-10 rounded-full border border-dashed border-violet-300/70"
+            />
+            <span
+              aria-hidden="true"
+              className="absolute left-0 top-[21px] text-[14px] leading-none text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.9)]"
+            >
+              ✦
+            </span>
+            <span className="relative z-10 block max-h-[35px] overflow-hidden">{bubbleText}</span>
+            <span className="absolute -bottom-2 right-8 h-5 w-5 rotate-45 rounded-br-[6px] border-b border-r border-violet-200/80 bg-violet-50 shadow-[5px_5px_0_-1px_rgba(139,92,246,0.22)]" />
           </motion.div>
         )}
       </AnimatePresence>
@@ -281,7 +358,9 @@ export default function FloatingAssistantButton({ onPanelOpenChange }: FloatingA
         }`}
         onMouseEnter={() => showBubble(false)}
         onMouseLeave={hideBubble}
-        onFocus={() => showBubble(false)}
+        onFocus={() => {
+          if (!bubbleVisible) showBubble(false);
+        }}
         onBlur={hideBubble}
         onClick={openPanel}
       >

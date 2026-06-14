@@ -7,7 +7,6 @@ import {
   Check,
   ChevronDown,
   Download,
-  Eye,
   Loader2,
   Maximize2,
   Pause,
@@ -51,10 +50,18 @@ import { stringifyInputReferenceValues } from "../../utils/inputReferenceValues"
 import { InlineNodePortHandle } from "./InlineNodePortHandle";
 import { getVideoPreloadMode } from "../../utils/mediaPreviewPolicy";
 import type { VideoFrameImageCaptureMode } from "../../utils/videoFrameImageExtraction";
+import {
+  mediaNodeFloatingToolbarClass,
+  mediaNodeToolbarButtonClass,
+  mediaNodeToolbarDividerClass,
+  mediaNodeToolbarUploadButtonClass,
+} from "./mediaNodeToolbarStyles";
 
 interface VideoNodeCardProps {
   node: GraphNode;
   selected: boolean;
+  detachedCanvasTitle?: boolean;
+  canvasZoom?: number;
   apiConfig?: {
     remoteModelsByType?: AiModelsByType;
   };
@@ -409,6 +416,8 @@ export function shouldUseEmptyVideoNodeSize({
 function VideoNodeCardImpl({
   node,
   selected,
+  detachedCanvasTitle = false,
+  canvasZoom = 1,
   apiConfig,
   onSelect,
   onDelete: _onDelete,
@@ -456,6 +465,7 @@ function VideoNodeCardImpl({
   const isAuxiliaryVideoTaskRunning = isAnalyzingFrames || isReversingPrompt;
   const [isUploadingVideo, setIsUploadingVideo] = React.useState(false);
   const isUploadingAsset = isNodeUploadingAsset || isUploadingVideo;
+  const floatingCanvasUiScale = 1 / Math.max(0.55, Math.min(3, canvasZoom));
   const shouldShowUploadButton = shouldShowVideoUploadButton({
     isRunning,
     isUploadingAsset,
@@ -847,7 +857,7 @@ function VideoNodeCardImpl({
                         event.stopPropagation();
                         setExpandedPromptEditorOpen(false);
                       }}
-                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[12px] border border-white/10 bg-white/[0.045] text-slate-200/72 transition hover:border-violet-200/28 hover:bg-violet-200/10 hover:text-white"
+                      className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-[12px] border border-white/10 bg-white/[0.045] text-slate-200/72 transition hover:border-violet-200/28 hover:bg-violet-200/10 hover:text-white"
                     >
                       <X className="h-4 w-4" />
                     </button>
@@ -1390,14 +1400,13 @@ function VideoNodeCardImpl({
         aria-label={videoUrl ? "上传替换视频" : "上传视频"}
         onClick={handleUploadClick}
         disabled={isRunning || isUploadingAsset || isUploadingVideo}
-        className="flex h-9 items-center justify-center gap-1.5 rounded-[12px] bg-[#101824]/54 px-3 text-slate-300/82 shadow-[0_10px_28px_-22px_rgba(0,0,0,0.95)] backdrop-blur-xl transition-colors hover:bg-white/[0.065] hover:text-slate-50 disabled:cursor-wait"
+        className={mediaNodeToolbarUploadButtonClass}
       >
         {isUploadingAsset || isUploadingVideo ? (
           <Loader2 className="h-[18px] w-[18px] animate-spin" />
         ) : (
           <Upload className="h-[18px] w-[18px]" />
         )}
-        <span className="text-[13px] font-medium leading-none">上传</span>
       </button>
     </>
   );
@@ -1771,49 +1780,40 @@ function VideoNodeCardImpl({
         >
           {portHandles}
           <AnimatePresence>
-            {selected && shouldShowUploadButton && (
-              <motion.div
-                data-node-action="true"
-                initial={{ opacity: 0, y: 8, scale: 0.96 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: 8, scale: 0.96 }}
-                transition={{ duration: 0.16, ease: "easeOut" }}
-                className="absolute left-1/2 top-0 z-50 flex -translate-x-1/2 -translate-y-[calc(100%-20px)] items-center"
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={(e) => e.stopPropagation()}
-              >
-                {uploadControl}
-              </motion.div>
-            )}
-          </AnimatePresence>
-          <AnimatePresence>
             {selected && (
               <motion.div
                 data-node-action="true"
-                initial={{ opacity: 0, y: 8, scale: 0.96 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: 8, scale: 0.96 }}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 8 }}
                 transition={{ duration: 0.16, ease: "easeOut" }}
-                className="absolute left-1/2 top-0 z-40 flex h-14 -translate-x-1/2 -translate-y-[calc(100%+18px)] items-center gap-2 rounded-[20px] border border-slate-500/18 bg-[#121923]/95 px-4 shadow-[0_18px_44px_-24px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-2xl"
+                className={mediaNodeFloatingToolbarClass}
+                style={{ scale: floatingCanvasUiScale, transformOrigin: "bottom center" }}
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => e.stopPropagation()}
               >
+                {shouldShowUploadButton && (
+                  <>
+                    {uploadControl}
+                    <div className={mediaNodeToolbarDividerClass} />
+                  </>
+                )}
                 <Tooltip content="下载视频" position="top">
                   <button
                     type="button"
                     onClick={downloadVideo}
-                    className="flex h-9 w-9 items-center justify-center rounded-[12px] text-slate-400 transition-colors hover:bg-white/[0.06] hover:text-slate-100"
+                    className={mediaNodeToolbarButtonClass}
                   >
                     <Download className="h-5 w-5" />
                   </button>
                 </Tooltip>
-                <div className="mx-1 h-7 w-px bg-slate-500/22" />
+                <div className={mediaNodeToolbarDividerClass} />
                 <Tooltip content="逐帧分析" position="top">
                   <button
                     type="button"
                     onClick={analyzeFrames}
                     disabled={isAuxiliaryVideoTaskRunning}
-                    className="flex h-9 w-9 items-center justify-center rounded-[12px] text-slate-400 transition-colors hover:bg-white/[0.06] hover:text-slate-100 disabled:cursor-wait disabled:text-cyan-200"
+                    className={`${mediaNodeToolbarButtonClass} disabled:cursor-wait disabled:text-cyan-200`}
                   >
                     {isAnalyzingFrames ? (
                       <Loader2 className="h-5 w-5 animate-spin" />
@@ -1827,7 +1827,7 @@ function VideoNodeCardImpl({
                     type="button"
                     onClick={reverseVideoPrompt}
                     disabled={isAuxiliaryVideoTaskRunning}
-                    className="flex h-9 w-9 items-center justify-center rounded-[12px] text-slate-400 transition-colors hover:bg-white/[0.06] hover:text-slate-100 disabled:cursor-wait disabled:text-violet-200"
+                    className={`${mediaNodeToolbarButtonClass} disabled:cursor-wait disabled:text-violet-200`}
                   >
                     {isReversingPrompt ? (
                       <Loader2 className="h-5 w-5 animate-spin" />
@@ -1836,36 +1836,40 @@ function VideoNodeCardImpl({
                     )}
                   </button>
                 </Tooltip>
-                <div className="mx-1 h-7 w-px bg-slate-500/22" />
+                <div className={mediaNodeToolbarDividerClass} />
                 <Tooltip content="全屏预览" position="top">
                   <button
                     type="button"
                     onClick={() => onPreview?.(videoUrl, "视频节点预览", node.id)}
-                    className="flex h-9 w-9 items-center justify-center rounded-[12px] text-slate-400 transition-colors hover:bg-white/[0.06] hover:text-slate-100"
+                    className={mediaNodeToolbarButtonClass}
                   >
-                    <Eye className="h-5 w-5" />
+                    <Maximize2 className="h-5 w-5" />
                   </button>
                 </Tooltip>
               </motion.div>
             )}
           </AnimatePresence>
           <div className="mb-2 flex items-center justify-between gap-4 text-slate-300/82 drop-shadow-[0_1px_10px_rgba(15,23,42,0.9)]">
-            <div className="flex min-w-0 items-center gap-1.5">
-              <Video className="h-4 w-4 shrink-0 text-slate-300/72" />
-              <span className="truncate text-[15px] font-medium tracking-tight">
-                {nodeBadgeMatch ? (
-                  <>
-                    <span>{nodeBadgeMatch[1]}</span>
-                    <span className="text-slate-200/72">{nodeBadgeMatch[2]}</span>
-                  </>
-                ) : (
-                  nodeBadgeTitle
-                )}
+            {!detachedCanvasTitle && (
+              <div className="flex min-w-0 items-center gap-1.5">
+                <Video className="h-4 w-4 shrink-0 text-slate-300/72" />
+                <span className="truncate text-[15px] font-medium tracking-tight">
+                  {nodeBadgeMatch ? (
+                    <>
+                      <span>{nodeBadgeMatch[1]}</span>
+                      <span className="text-slate-200/72">{nodeBadgeMatch[2]}</span>
+                    </>
+                  ) : (
+                    nodeBadgeTitle
+                  )}
+                </span>
+              </div>
+            )}
+            {!detachedCanvasTitle && (
+              <span className="shrink-0 text-[12px] font-medium tabular-nums text-slate-400/72">
+                {naturalSizeLabel}
               </span>
-            </div>
-            <span className="shrink-0 text-[12px] font-medium tabular-nums text-slate-400/72">
-              {naturalSizeLabel}
-            </span>
+            )}
           </div>
           <div
             ref={mediaFrameRef}
@@ -2082,11 +2086,12 @@ function VideoNodeCardImpl({
           {selected && shouldShowUploadButton && (
             <motion.div
               data-node-action="true"
-              initial={{ opacity: 0, y: 8, scale: 0.96 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 8, scale: 0.96 }}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 8 }}
               transition={{ duration: 0.16, ease: "easeOut" }}
-              className="absolute left-1/2 top-0 z-40 flex -translate-x-1/2 -translate-y-[calc(100%+14px)] items-center"
+              className="absolute left-1/2 top-0 z-40 flex -translate-x-1/2 -translate-y-[calc(100%+30px)] items-center"
+              style={{ scale: floatingCanvasUiScale, transformOrigin: "bottom center" }}
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}
             >
@@ -2094,19 +2099,21 @@ function VideoNodeCardImpl({
             </motion.div>
           )}
         </AnimatePresence>
-        <div className="absolute -top-8 left-0 z-30 flex items-center gap-1.5 text-slate-300/82 drop-shadow-[0_1px_10px_rgba(15,23,42,0.9)]">
-          <Video className="h-4 w-4 text-violet-100/58" />
-          <span className="text-[15px] font-medium tracking-tight">
-            {nodeBadgeMatch ? (
-              <>
-                <span>{nodeBadgeMatch[1]}</span>
-                <span className="text-emerald-200/72">{nodeBadgeMatch[2]}</span>
-              </>
-            ) : (
-              nodeBadgeTitle
-            )}
-          </span>
-        </div>
+        {!detachedCanvasTitle && (
+          <div className="absolute -top-8 left-0 z-30 flex items-center gap-1.5 text-slate-300/82 drop-shadow-[0_1px_10px_rgba(15,23,42,0.9)]">
+            <Video className="h-4 w-4 text-violet-100/58" />
+            <span className="text-[15px] font-medium tracking-tight">
+              {nodeBadgeMatch ? (
+                <>
+                  <span>{nodeBadgeMatch[1]}</span>
+                  <span className="text-emerald-200/72">{nodeBadgeMatch[2]}</span>
+                </>
+              ) : (
+                nodeBadgeTitle
+              )}
+            </span>
+          </div>
+        )}
         <div className="relative px-5 pb-5 pt-8">
           {isRunning || isUploadingAsset ? (
             <div
@@ -2374,6 +2381,8 @@ const VideoNodeCard = React.memo(
   (prev, next) =>
     prev.node === next.node &&
     prev.selected === next.selected &&
+    prev.detachedCanvasTitle === next.detachedCanvasTitle &&
+    prev.canvasZoom === next.canvasZoom &&
     prev.apiConfig?.remoteModelsByType === next.apiConfig?.remoteModelsByType &&
     prev.resolvedInputs === next.resolvedInputs &&
     prev.references === next.references

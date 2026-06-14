@@ -1,6 +1,6 @@
 import React from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowUp, ChevronUp, Download, Eye, Loader2, Music2, Upload, Wand2 } from "lucide-react";
+import { ArrowUp, ChevronUp, Download, Loader2, Maximize2, Music2, Upload, Wand2 } from "lucide-react";
 import { GraphNode } from "../../types";
 import { getNodeHeight, getNodeWidth } from "./geometry";
 import { findResolvedStringInput } from "../../utils/resolvedInputs";
@@ -14,10 +14,18 @@ import { getMediaNodeLoadingLabel, isMediaNodeRunning } from "../../utils/mediaN
 import { PromptTokenEditor } from "./PromptTokenEditor";
 import { stringifyInputReferenceValues } from "../../utils/inputReferenceValues";
 import { InlineNodePortHandle } from "./InlineNodePortHandle";
+import {
+  mediaNodeFloatingToolbarClass,
+  mediaNodeToolbarButtonClass,
+  mediaNodeToolbarDividerClass,
+  mediaNodeToolbarUploadButtonClass,
+} from "./mediaNodeToolbarStyles";
 
 interface AudioNodeCardProps {
   node: GraphNode;
   selected: boolean;
+  detachedCanvasTitle?: boolean;
+  canvasZoom?: number;
   onSelect: (e?: React.MouseEvent) => void;
   onDelete: () => void;
   onDuplicate: () => void;
@@ -159,6 +167,8 @@ const AUDIO_GENERATION_UNAVAILABLE = true;
 function AudioNodeCardImpl({
   node,
   selected,
+  detachedCanvasTitle = false,
+  canvasZoom = 1,
   onSelect,
   onDelete: _onDelete,
   onDuplicate: _onDuplicate,
@@ -186,6 +196,7 @@ function AudioNodeCardImpl({
   const isSourceAssetNode = isSourceNode(node);
   const [isUploadingAudio, setIsUploadingAudio] = React.useState(false);
   const isUploadingAsset = node.data?.uploadingAsset === true || isUploadingAudio;
+  const floatingCanvasUiScale = 1 / Math.max(0.55, Math.min(3, canvasZoom));
   const [isHovered, setIsHovered] = React.useState(false);
   const [optionMenuOpen, setOptionMenuOpen] = React.useState<AudioOptionMenu>(null);
   const uploadInputRef = React.useRef<HTMLInputElement | null>(null);
@@ -316,7 +327,7 @@ function AudioNodeCardImpl({
           data-node-action="true"
           onClick={handleUploadClick}
           disabled={isUploadingAsset}
-          className="flex h-9 w-9 items-center justify-center rounded-[12px] border border-slate-300/14 bg-[#101827]/72 text-slate-300/78 shadow-[0_14px_34px_-24px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.055)] backdrop-blur-xl transition-all hover:-translate-y-0.5 hover:border-violet-300/36 hover:bg-violet-500/[0.16] hover:text-violet-50 hover:shadow-[0_16px_34px_-22px_rgba(139,92,246,0.85),0_0_18px_rgba(139,92,246,0.2)] disabled:cursor-wait"
+          className={mediaNodeToolbarUploadButtonClass}
         >
           {isUploadingAsset ? (
             <Loader2 className="h-[18px] w-[18px] animate-spin" />
@@ -402,62 +413,59 @@ function AudioNodeCardImpl({
           style={{ width: nodeWidth }}
         >
           {portHandles}
-          <div
-            data-node-action="true"
-            className="absolute right-2 top-8 z-30"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {uploadControl}
-          </div>
           <AnimatePresence>
             {selected && (
               <motion.div
                 data-node-action="true"
-                initial={{ opacity: 0, y: 8, scale: 0.96 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: 8, scale: 0.96 }}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 8 }}
                 transition={{ duration: 0.16, ease: "easeOut" }}
-                className="absolute left-1/2 top-0 z-40 flex h-14 -translate-x-1/2 -translate-y-[calc(100%+18px)] items-center gap-2 rounded-[20px] border border-slate-500/18 bg-[#121923]/95 px-4 shadow-[0_18px_44px_-24px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-2xl"
+                className={mediaNodeFloatingToolbarClass}
+                style={{ scale: floatingCanvasUiScale, transformOrigin: "bottom center" }}
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => e.stopPropagation()}
               >
+                {uploadControl}
+                <div className={mediaNodeToolbarDividerClass} />
                 <Tooltip content="下载音频" position="top">
                   <button
                     type="button"
                     onClick={downloadAudio}
-                    className="flex h-9 w-9 items-center justify-center rounded-[12px] text-slate-400 transition-colors hover:bg-white/[0.06] hover:text-slate-100"
+                    className={mediaNodeToolbarButtonClass}
                   >
                     <Download className="h-5 w-5" />
                   </button>
                 </Tooltip>
-                <div className="mx-1 h-7 w-px bg-slate-500/22" />
+                <div className={mediaNodeToolbarDividerClass} />
                 <Tooltip content="全屏预览" position="top">
                   <button
                     type="button"
                     onClick={() => onPreview?.(audioUrl, "音频节点预览", node.id)}
-                    className="flex h-9 w-9 items-center justify-center rounded-[12px] text-slate-400 transition-colors hover:bg-white/[0.06] hover:text-slate-100"
+                    className={mediaNodeToolbarButtonClass}
                   >
-                    <Eye className="h-5 w-5" />
+                    <Maximize2 className="h-5 w-5" />
                   </button>
                 </Tooltip>
               </motion.div>
             )}
           </AnimatePresence>
           <div className="mb-2 flex items-center justify-between gap-4 text-slate-300/82 drop-shadow-[0_1px_10px_rgba(15,23,42,0.9)]">
-            <div className="flex min-w-0 items-center gap-1.5">
-              <Music2 className="h-4 w-4 shrink-0 text-slate-300/72" />
-              <span className="truncate text-[15px] font-medium tracking-tight">
-                {nodeBadgeMatch ? (
-                  <>
-                    <span>{nodeBadgeMatch[1]}</span>
-                    <span className="text-slate-200/72">{nodeBadgeMatch[2]}</span>
-                  </>
-                ) : (
-                  nodeBadgeTitle
-                )}
-              </span>
-            </div>
+            {!detachedCanvasTitle && (
+              <div className="flex min-w-0 items-center gap-1.5">
+                <Music2 className="h-4 w-4 shrink-0 text-slate-300/72" />
+                <span className="truncate text-[15px] font-medium tracking-tight">
+                  {nodeBadgeMatch ? (
+                    <>
+                      <span>{nodeBadgeMatch[1]}</span>
+                      <span className="text-slate-200/72">{nodeBadgeMatch[2]}</span>
+                    </>
+                  ) : (
+                    nodeBadgeTitle
+                  )}
+                </span>
+              </div>
+            )}
             {durationLabel && (
               <span className="shrink-0 text-[12px] font-medium tabular-nums text-slate-400/72">
                 {durationLabel}
@@ -550,19 +558,21 @@ function AudioNodeCardImpl({
             {uploadControl}
           </div>
         )}
-        <div className="absolute -top-8 left-0 z-30 flex items-center gap-1.5 text-slate-300/82 drop-shadow-[0_1px_10px_rgba(15,23,42,0.9)]">
-          <Music2 className="h-4 w-4 text-cyan-100/58" />
-          <span className="text-[15px] font-medium tracking-tight">
-            {nodeBadgeMatch ? (
-              <>
-                <span>{nodeBadgeMatch[1]}</span>
-                <span className="text-emerald-200/72">{nodeBadgeMatch[2]}</span>
-              </>
-            ) : (
-              nodeBadgeTitle
-            )}
-          </span>
-        </div>
+        {!detachedCanvasTitle && (
+          <div className="absolute -top-8 left-0 z-30 flex items-center gap-1.5 text-slate-300/82 drop-shadow-[0_1px_10px_rgba(15,23,42,0.9)]">
+            <Music2 className="h-4 w-4 text-cyan-100/58" />
+            <span className="text-[15px] font-medium tracking-tight">
+              {nodeBadgeMatch ? (
+                <>
+                  <span>{nodeBadgeMatch[1]}</span>
+                  <span className="text-emerald-200/72">{nodeBadgeMatch[2]}</span>
+                </>
+              ) : (
+                nodeBadgeTitle
+              )}
+            </span>
+          </div>
+        )}
         <div className="relative px-5 pb-5 pt-8">
           {isRunning || isUploadingAsset ? (
             <div
@@ -797,6 +807,8 @@ const AudioNodeCard = React.memo(
   (prev, next) =>
     prev.node === next.node &&
     prev.selected === next.selected &&
+    prev.detachedCanvasTitle === next.detachedCanvasTitle &&
+    prev.canvasZoom === next.canvasZoom &&
     prev.resolvedInputs === next.resolvedInputs
 );
 
