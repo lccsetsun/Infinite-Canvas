@@ -753,7 +753,7 @@ export default function App({ onLoggedOut }: AppProps) {
       applyCanvasSelection(selectCanvasNode(nodeId));
       setMenuPos(null);
       setPendingLinkMenuDraft(null);
-      if (node?.type === "text_node") {
+      if (node?.type === "text_node" || node?.type === "video_node") {
         setNodeContextMenu(null);
         return;
       }

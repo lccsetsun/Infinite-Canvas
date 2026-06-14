@@ -159,6 +159,23 @@
   .ant-select-arrow {
     color: #4b5563 !important;
   }
+
+  :where(
+      button:not(:disabled),
+      [role="button"]:not([aria-disabled="true"]),
+      a[href],
+      summary,
+      label[for],
+      input[type="button"]:not(:disabled),
+      input[type="submit"]:not(:disabled),
+      input[type="reset"]:not(:disabled)
+    ) {
+    cursor: pointer;
+  }
+
+  :where(button:disabled, [role="button"][aria-disabled="true"]) {
+    cursor: not-allowed;
+  }
 }
 
 body {

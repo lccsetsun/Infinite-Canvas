@@ -19,18 +19,20 @@ import type { VideoFrameImageCaptureMode } from "../../utils/videoFrameImageExtr
 
 function getDetachedMediaNodeTitle(node: GraphNode) {
   if (node.type === "text_node") {
-    return node.title === "鏂囨湰" ? "鏂囨湰鑺傜偣 1" : node.title;
+    return node.title === "鏂囨湰" || node.title === "文本" || node.title === "文本节点"
+      ? "文本 1"
+      : node.title.replace(/节点(?=\s*\d*$)/, "").trim();
   }
   if (node.type === "image_node" && (node.title === "图片节点" || node.title === "图片")) {
-    return "图片节点 1";
+    return "图片 1";
   }
   if (node.type === "video_node" && (node.title === "视频节点" || node.title === "视频")) {
-    return "视频节点 1";
+    return "视频 1";
   }
-  if (node.type === "audio_node" && node.title === "音频") {
-    return "音频节点 1";
+  if (node.type === "audio_node" && (node.title === "音频节点" || node.title === "音频")) {
+    return "音频 1";
   }
-  return node.title;
+  return node.title.replace(/节点(?=\s*\d*$)/, "").trim();
 }
 
 function getDetachedMediaNodeSizeLabel(node: GraphNode) {

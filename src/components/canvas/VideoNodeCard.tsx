@@ -2093,7 +2093,7 @@ function VideoNodeCardImpl({
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 8 }}
               transition={{ duration: 0.16, ease: "easeOut" }}
-              className="absolute left-1/2 top-0 z-40 flex -translate-x-1/2 -translate-y-[calc(100%+30px)] items-center"
+              className="absolute left-1/2 top-0 z-40 flex -translate-x-1/2 -translate-y-[calc(100%+14px)] items-center"
               style={{ scale: floatingCanvasUiScale, transformOrigin: "bottom center" }}
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}
