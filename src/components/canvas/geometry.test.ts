@@ -141,3 +141,22 @@ describe("audio node sizing", () => {
     expect(getOutputAnchor(node, 0)).toEqual({ x: 660, y: 350 });
   });
 });
+
+describe("video batch replacement node sizing", () => {
+  it("uses a height that contains the three upload cards and submit button", () => {
+    const node = {
+      id: "batch",
+      title: "批量替换",
+      type: "video_batch_replacement_node" as const,
+      x: 120,
+      y: 80,
+      inputs: [{ name: "source_video", type: "VIDEO" as const }],
+      outputs: [{ name: "替换配置", type: "ANY" as const }],
+      properties: {},
+    };
+
+    expect(getNodeWidth(node)).toBe(520);
+    expect(getNodeHeight(node)).toBe(328);
+    expect(getOutputAnchor(node, 0)).toEqual({ x: 640, y: 244 });
+  });
+});

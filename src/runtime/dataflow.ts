@@ -21,14 +21,18 @@ export function resolveNodeInputs(
         const extractedFrameInput = sourceNode
           ? getExtractedFrameInputOutput(target, sourceNode)
           : undefined;
-        if (extractedFrameInput !== undefined) return filterLinkInputValue(link, extractedFrameInput);
+        if (extractedFrameInput !== undefined)
+          return filterLinkInputValue(link, extractedFrameInput);
         const groupedSourceOutput = sourceNode ? getGroupedNodeOutput(sourceNode) : undefined;
-        if (groupedSourceOutput !== undefined) return filterLinkInputValue(link, groupedSourceOutput);
+        if (groupedSourceOutput !== undefined)
+          return filterLinkInputValue(link, groupedSourceOutput);
         const sourceOutputs = nodeOutputs.get(link.fromNodeId);
         if (sourceOutputs?.has(link.fromOutputIndex)) {
           return filterLinkInputValue(link, sourceOutputs.get(link.fromOutputIndex));
         }
-        return sourceNode ? filterLinkInputValue(link, getNodePropertyOutputFallback(sourceNode)) : undefined;
+        return sourceNode
+          ? filterLinkInputValue(link, getNodePropertyOutputFallback(sourceNode))
+          : undefined;
       })
       .filter((value) => value !== undefined);
     if (values.length === 0) return;
@@ -73,7 +77,22 @@ function getGroupedNodeOutput(node: GraphNode): unknown {
   if (node.type === "image_node" || node.type === "load_image") {
     return pickStringArray(node.data?.imageUrls) || pickStringArray(node.properties.imageUrls);
   }
+  if (node.type === "video_batch_replacement_node") {
+    return pickBatchReplacementImageUrls(node.data?.batchReplacementSlots);
+  }
   return undefined;
+}
+
+export function pickBatchReplacementImageUrls(slots: unknown): string[] | undefined {
+  if (!Array.isArray(slots)) return undefined;
+  const imageUrls = slots
+    .map((slot) => {
+      if (!slot || typeof slot !== "object") return "";
+      const imageUrl = (slot as { imageUrl?: unknown }).imageUrl;
+      return typeof imageUrl === "string" ? imageUrl.trim() : "";
+    })
+    .filter((imageUrl) => imageUrl.length > 0);
+  return imageUrls.length > 0 ? imageUrls : undefined;
 }
 
 function getExtractedFrameInputOutput(target: GraphNode, sourceNode: GraphNode): unknown {

@@ -15,10 +15,12 @@ import {
   applyPendingRemoteVideoTaskSnapshot,
   collectLinkedMediaReferences,
   shouldApplyRemoteWorkflowSnapshot,
+  syncVideoBatchReplacementTargetsSnapshot,
 } from "./useWorkflowState";
 import type { RemoteCanvasProject } from "../features/workspace/remoteCanvas";
 import type { GraphNode } from "../types";
 import { buildGridSplitChildNodeInitialProps } from "../utils/imageGridSplit";
+import { collectNodeInputReferences } from "../utils/textNodeReferences";
 
 describe("useWorkflowState remote-only persistence", () => {
   it("does not keep local workspace storage fallback code", () => {
@@ -46,7 +48,9 @@ describe("video helper operations", () => {
     expect(frameAnalysisBlock).toContain("links: currentLinksRef.current");
     expect(frameAnalysisBlock).toContain("nodeOutputs: currentNodeOutputsRef.current");
     expect(frameAnalysisBlock).toContain("setSelectedNodeId(videoNodeId)");
-    expect(frameAnalysisBlock).not.toContain("setSelectedNodeId(snapshot.createdNodes[0]?.id ?? videoNodeId)");
+    expect(frameAnalysisBlock).not.toContain(
+      "setSelectedNodeId(snapshot.createdNodes[0]?.id ?? videoNodeId)"
+    );
     expect(promptReverseBlock).toContain("nodes: currentNodesRef.current");
     expect(promptReverseBlock).toContain("links: currentLinksRef.current");
     expect(promptReverseBlock).toContain("nodeOutputs: currentNodeOutputsRef.current");
@@ -544,6 +548,113 @@ describe("updateNodeDataSnapshot", () => {
   });
 });
 
+function makeVideoBatchReplacementNode(): GraphNode {
+  return {
+    id: "batch-1",
+    type: "video_batch_replacement_node",
+    title: "批量替换",
+    x: 0,
+    y: 0,
+    inputs: [{ name: "source_video", type: "VIDEO" }],
+    outputs: [{ name: "替换配置", type: "ANY" }],
+    properties: {},
+    data: {
+      batchReplacementSlots: [
+        {
+          key: "front",
+          title: "正面",
+          placeholder: "请上传产品图正面",
+          imageUrl: "https://example.com/front.png",
+          prompt: "正面",
+        },
+        {
+          key: "side",
+          title: "侧面",
+          placeholder: "请上传产品图侧面",
+          imageUrl: "https://example.com/side.png",
+          prompt: "侧面",
+        },
+        {
+          key: "back",
+          title: "背面",
+          placeholder: "请上传产品图背面",
+          imageUrl: "",
+          prompt: "背面",
+        },
+      ],
+    },
+  };
+}
+
+function makeBatchTargetImageNode(): GraphNode {
+  return {
+    id: "image-target",
+    type: "image_node",
+    title: "图片节点 1",
+    x: 0,
+    y: 0,
+    inputs: [{ name: "source_image", type: "IMAGE" }],
+    outputs: [{ name: "图片", type: "IMAGE" }],
+    properties: {},
+    data: {},
+  };
+}
+
+describe("video batch replacement downstream sync", () => {
+  it("syncs filled batch replacement slots into linked image node thumbnails", () => {
+    const batchNode = makeVideoBatchReplacementNode();
+    const imageNode = makeBatchTargetImageNode();
+    const link = {
+      id: "batch-link",
+      fromNodeId: batchNode.id,
+      fromOutputIndex: 0,
+      toNodeId: imageNode.id,
+      toInputIndex: 0,
+    };
+
+    const result = syncVideoBatchReplacementTargetsSnapshot({
+      batchNodeId: batchNode.id,
+      links: [link],
+      nodeOutputs: new Map(),
+      nodes: [batchNode, imageNode],
+    });
+
+    const syncedImageNode = result.nodes.find((node) => node.id === imageNode.id);
+    expect(syncedImageNode?.data?.imageUrls).toEqual([
+      "https://example.com/front.png",
+      "https://example.com/side.png",
+    ]);
+    expect(syncedImageNode?.data?.imageUrl).toBe("https://example.com/front.png");
+    expect(result.links).toEqual([link]);
+  });
+
+  it("keeps batch replacement slot data owned by the source node when rendering input thumbnails", () => {
+    const batchNode = makeVideoBatchReplacementNode();
+    const imageNode = makeBatchTargetImageNode();
+    const link = {
+      id: "batch-link",
+      fromNodeId: batchNode.id,
+      fromOutputIndex: 0,
+      toNodeId: imageNode.id,
+      toInputIndex: 0,
+    };
+
+    const references = collectNodeInputReferences({
+      links: [link],
+      nodeOutputs: new Map(),
+      nodes: [batchNode, imageNode],
+      targetNodeId: imageNode.id,
+    });
+
+    expect(references.map((reference) => reference.linkId)).toEqual([link.id, link.id]);
+    expect(batchNode.data?.batchReplacementSlots?.map((slot) => slot.imageUrl)).toEqual([
+      "https://example.com/front.png",
+      "https://example.com/side.png",
+      "",
+    ]);
+  });
+});
+
 describe("applyRemoteVideoTaskResultSnapshot", () => {
   it("creates an immediately persistable pending remote video task snapshot", () => {
     const node: GraphNode = {
@@ -636,6 +747,31 @@ describe("applyRemoteVideoTaskResultSnapshot", () => {
 });
 
 describe("collectLinkedMediaReferences", () => {
+  it("collects current valid images from linked batch replacement nodes", () => {
+    const target = { ...makeTextNode("target"), type: "image_node" as const };
+    const batchNode = makeVideoBatchReplacementNode();
+
+    const references = collectLinkedMediaReferences({
+      nodeId: target.id,
+      links: [
+        {
+          id: "l-batch",
+          fromNodeId: batchNode.id,
+          fromOutputIndex: 0,
+          toNodeId: target.id,
+          toInputIndex: 0,
+        },
+      ],
+      nodes: [target, batchNode],
+      nodeOutputs: new Map(),
+    });
+
+    expect(references.imageUrls).toEqual([
+      "https://example.com/front.png",
+      "https://example.com/side.png",
+    ]);
+  });
+
   it("collects oss ids from every linked image reference, including ossIds arrays", () => {
     const target = { ...makeTextNode("target"), type: "image_node" as const };
     const sourceA: GraphNode = {
@@ -733,10 +869,7 @@ describe("collectLinkedMediaReferences", () => {
       ...makeTextNode("frame-grid"),
       type: "image_node",
       data: {
-        imageUrls: [
-          "https://example.com/frame-1.png",
-          "https://example.com/frame-2.png",
-        ],
+        imageUrls: ["https://example.com/frame-1.png", "https://example.com/frame-2.png"],
         frameImageOssIds: ["oss-frame-1", "oss-frame-2"],
         isFrameStrip: true,
       },
@@ -754,9 +887,7 @@ describe("collectLinkedMediaReferences", () => {
         },
       ],
       nodes: [target, frameGrid],
-      nodeOutputs: new Map([
-        [frameGrid.id, new Map([[0, frameGrid.data?.imageUrls]])],
-      ]),
+      nodeOutputs: new Map([[frameGrid.id, new Map([[0, frameGrid.data?.imageUrls]])]]),
     });
 
     expect(references.imageUrls).toEqual([

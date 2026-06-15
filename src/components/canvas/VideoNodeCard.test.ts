@@ -338,16 +338,16 @@ describe("VideoNodeCard preview branch", () => {
     const source = readFileSync(new URL("./VideoNodeCard.tsx", import.meta.url), "utf8");
 
     expect(source).toContain("const [expandedPromptEditorOpen, setExpandedPromptEditorOpen]");
-    expect(source).toContain("aria-label=\"放大编辑\"");
-    expect(source).toContain("aria-label=\"关闭全屏编辑\"");
+    expect(source).toContain('aria-label="放大编辑"');
+    expect(source).toContain('aria-label="关闭全屏编辑"');
     expect(source).toContain("onEscape={() => setExpandedPromptEditorOpen(false)}");
     expect(source).toContain("fixed inset-0 z-[220]");
-    expect(source).toContain("panelLayerClassName=\"z-[240]\"");
+    expect(source).toContain('panelLayerClassName="z-[240]"');
     expect(source).toContain("bg-violet-500/[0.16] text-violet-50");
     expect(source).toContain("overflow-y-auto pr-3 text-[16px] leading-8 custom-scrollbar");
-    expect(source).toContain("panelTitle=\"Video Size\"");
+    expect(source).toContain('panelTitle="Video Size"');
     expect(source).toContain("durationSliderPercent");
-    expect(source).toContain("onUpdateProperty?.(node.id, \"audio\", !audioEnabled)");
+    expect(source).toContain('onUpdateProperty?.(node.id, "audio", !audioEnabled)');
   });
 
   it("allows video generation when linked input resources exist even before prompt text is typed", () => {
@@ -367,6 +367,13 @@ describe("VideoNodeCard preview branch", () => {
     expect(source).toContain("disabled={isReversingPrompt}");
     expect(source).not.toContain('loadingOperation: "frame-analysis"');
     expect(source).not.toContain('loadingOperation: "video-prompt"');
+  });
+
+  it("keeps batch replacement out of the source video toolbar", () => {
+    const source = readFileSync(new URL("./VideoNodeCard.tsx", import.meta.url), "utf8");
+
+    expect(source).not.toContain("onCreateBatchReplacement?.(node)");
+    expect(source).not.toContain("shouldShowBatchReplacementAction");
   });
 
   it("rerenders when input reference thumbnails change", () => {

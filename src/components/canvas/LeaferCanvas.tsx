@@ -2,7 +2,15 @@ import React from "react";
 import { Ellipse, Group, Leafer, Path, Rect } from "leafer-ui";
 import "@leafer-in/animate";
 import { GraphLink, GraphNode } from "../../types";
-import { getInputAnchor, getNodeById, getOutputAnchor, GRID_SIZE, linkPath, getNodeWidth, getNodeHeight } from "./geometry";
+import {
+  getInputAnchor,
+  getNodeById,
+  getOutputAnchor,
+  GRID_SIZE,
+  linkPath,
+  getNodeWidth,
+  getNodeHeight,
+} from "./geometry";
 import { isDataTypeCompatible } from "../../utils/linking";
 import { CONNECTION_DRAFT_STYLE, CONNECTION_LINK_STYLE } from "../../utils/connectionVisualTokens";
 
@@ -55,7 +63,11 @@ function buildLinks(
     const fromNode = nodeById?.get(link.fromNodeId) ?? getNodeById(nodes, link.fromNodeId);
     const toNode = nodeById?.get(link.toNodeId) ?? getNodeById(nodes, link.toNodeId);
     if (!fromNode || !toNode) {
-      console.warn("[buildLinks] missing node for link", { link, fromNode: !!fromNode, toNode: !!toNode });
+      console.warn("[buildLinks] missing node for link", {
+        link,
+        fromNode: !!fromNode,
+        toNode: !!toNode,
+      });
       return;
     }
 
@@ -147,7 +159,13 @@ function buildNodeShells(group: Group, nodes: GraphNode[], selectedNodeId?: stri
 }
 
 function hasInlinePortHandles(node: GraphNode) {
-  return ["text_node", "image_node", "video_node", "audio_node"].includes(node.type);
+  return [
+    "text_node",
+    "image_node",
+    "video_node",
+    "video_batch_replacement_node",
+    "audio_node",
+  ].includes(node.type);
 }
 
 function buildNodeDecorators(
@@ -252,8 +270,12 @@ function buildDraftPreview(
       : draftCursor;
   if (!to) return;
   const path = linkPath(from, to);
-  const color = draftIssue ? CONNECTION_DRAFT_STYLE.flow.invalidStroke : CONNECTION_DRAFT_STYLE.flow.stroke;
-  const glowColor = draftIssue ? CONNECTION_DRAFT_STYLE.glow.invalidStroke : CONNECTION_DRAFT_STYLE.glow.stroke;
+  const color = draftIssue
+    ? CONNECTION_DRAFT_STYLE.flow.invalidStroke
+    : CONNECTION_DRAFT_STYLE.flow.stroke;
+  const glowColor = draftIssue
+    ? CONNECTION_DRAFT_STYLE.glow.invalidStroke
+    : CONNECTION_DRAFT_STYLE.glow.stroke;
 
   group.add(
     new Path({
@@ -291,12 +313,15 @@ function buildDraftPreview(
 
   if (!animationsPaused) {
     // 启动草图流光动画
-    (flowPath as unknown as { animate: (props: Record<string, number>, opts: Record<string, unknown>) => void }).animate(
+    (
+      flowPath as unknown as {
+        animate: (props: Record<string, number>, opts: Record<string, unknown>) => void;
+      }
+    ).animate(
       { dashOffset: -60 },
-        { duration: CONNECTION_DRAFT_STYLE.flow.duration, loop: true, easing: "linear" }
+      { duration: CONNECTION_DRAFT_STYLE.flow.duration, loop: true, easing: "linear" }
     );
   }
-
 }
 
 export default function LeaferCanvas({
@@ -387,7 +412,17 @@ export default function LeaferCanvas({
     buildLinks(scene.links, nodes, links, nodeById);
     buildNodeShells(scene.shells, nodes, selectedNodeId);
     if (renderDraftPreview) {
-      buildDraftPreview(scene.draft, nodes, draftFromNodeId, draftToNodeId, draftFromOutputIndex, draftToInputIndex, draftIssue, draftCursor, animationsPaused);
+      buildDraftPreview(
+        scene.draft,
+        nodes,
+        draftFromNodeId,
+        draftToNodeId,
+        draftFromOutputIndex,
+        draftToInputIndex,
+        draftIssue,
+        draftCursor,
+        animationsPaused
+      );
     } else {
       scene.draft.clear();
     }

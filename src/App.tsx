@@ -11,6 +11,11 @@ import MultiSelectionLayer from "./components/app/MultiSelectionLayer";
 import EmptyCanvasState from "./components/app/EmptyCanvasState";
 import FloatingAssistantButton from "./components/app/FloatingAssistantButton";
 import LeaferCanvas from "./components/canvas/LeaferCanvas";
+import {
+  getVideoBatchReplacementCustomSize,
+  getVideoBatchReplacementModelId,
+  updateVideoBatchReplacementSlot,
+} from "./components/canvas/VideoBatchReplacementNodeCard";
 import MiniMap from "./components/app/MiniMap";
 import PreviewModal, { PreviewContent } from "./components/app/PreviewModal";
 import SettingsPanels from "./components/app/SettingsPanels";
@@ -66,6 +71,7 @@ import {
   type CanvasSelection,
 } from "./utils/canvasSelection";
 import { buildCanvasGraphIndex } from "./utils/canvasGraphIndex";
+import type { VideoBatchReplacementSlotKey } from "./utils/videoBatchReplacementLayout";
 import {
   shouldShowCanvasProjectLoading,
   shouldShowEmptyCanvasState,
@@ -77,18 +83,21 @@ import {
 } from "./utils/canvasFileUpload";
 import { collectNodeInputReferences } from "./utils/textNodeReferences";
 import { ConfigProvider, theme } from "antd";
-import { GraphNode, NodeClass } from "./types";
+import { GraphLink, GraphNode, NodeClass } from "./types";
 import type { VideoFrameCaptureItem } from "./features/video/frameCapture";
 import { fetchVideoPrompt } from "./features/video/videoPrompts";
 import {
+  AI_MODEL_TYPES,
   fetchAiModelCatalog,
   makeEmptyAiModelsByType,
+  type AiModel,
   type AiModelsByType,
 } from "./features/api/aiModelCatalog";
 import {
   fetchCanvasGenerationDictionaries,
   type CanvasGenerationDictionaries,
 } from "./features/api/canvasGenerationDictionaries";
+import { batchEditImages } from "./features/api/videoBatchReplacement";
 import { clearAuthSession } from "./features/auth/authStorage";
 import { logout } from "./features/auth/authApi";
 import { performOptimisticLogout } from "./features/auth/logoutFlow";
@@ -142,6 +151,65 @@ interface AppProps {
 function isEditableEventTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   return Boolean(target.closest("input, textarea, select, [contenteditable='true']"));
+}
+
+function normalizeOssIdValue(value: unknown): string {
+  if (typeof value === "string" && value.trim()) return value.trim();
+  if (typeof value === "number" && Number.isFinite(value)) return String(Math.trunc(value));
+  if (typeof value === "bigint") return String(value);
+  return "";
+}
+
+function collectOssIdsFromValue(value: unknown, seen = new Set<unknown>()): string[] {
+  const single = normalizeOssIdValue(value);
+  if (single) return [single];
+  if (!value || typeof value !== "object") return [];
+  if (seen.has(value)) return [];
+  seen.add(value);
+  if (Array.isArray(value)) return value.flatMap((item) => collectOssIdsFromValue(item, seen));
+  const record = value as Record<string, unknown>;
+  return [
+    ...collectOssIdsFromValue(record.ossId, seen),
+    ...collectOssIdsFromValue(record.ossIds, seen),
+    ...collectOssIdsFromValue(record.data, seen),
+    ...collectOssIdsFromValue(record.result, seen),
+    ...collectOssIdsFromValue(record.results, seen),
+    ...collectOssIdsFromValue(record.outputs, seen),
+  ];
+}
+
+function findRemoteImageModelById(
+  modelId: string,
+  remoteModelsByType: AiModelsByType
+): AiModel | null {
+  const imageModels = remoteModelsByType[AI_MODEL_TYPES[1]] ?? [];
+  if (!modelId.trim()) return null;
+  return imageModels.find((model) => model.modelId === modelId.trim()) ?? null;
+}
+
+function buildBatchReplacementPrompt(
+  slots: NonNullable<GraphNode["data"]>["batchReplacementSlots"] = []
+) {
+  return slots
+    .filter((slot) => slot.imageUrl.trim().length > 0 && normalizeOssIdValue(slot.ossId))
+    .map((slot, index) => `{{ Image${index + 1}}} 是 ${slot.prompt.trim() || slot.title}`)
+    .join("，");
+}
+
+function findFirstUpstreamFrameAnalysisNode(
+  nodes: GraphNode[],
+  links: GraphLink[],
+  nodeId: string
+) {
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  return (
+    links
+      .filter((link) => link.toNodeId === nodeId)
+      .map((link) => nodeById.get(link.fromNodeId))
+      .find(
+        (node): node is GraphNode => node?.type === "image_node" && node.data?.isFrameStrip === true
+      ) ?? null
+  );
 }
 
 export default function App({ onLoggedOut }: AppProps) {
@@ -256,6 +324,7 @@ export default function App({ onLoggedOut }: AppProps) {
     updateNodeData,
     setPrimaryImageResult,
     addVideoFrameAnalysis,
+    addVideoBatchReplacementNode,
     addVideoPromptTextNode,
     extractFrameImageNode,
     createVideoFrameImageNode,
@@ -923,6 +992,132 @@ export default function App({ onLoggedOut }: AppProps) {
     [addVideoPromptTextNode, showNotice]
   );
 
+  const handleCreateVideoBatchReplacement = React.useCallback(
+    (node: GraphNode) => {
+      const createdNode = addVideoBatchReplacementNode(node.id);
+      if (createdNode) {
+        showNotice("已创建批量替换节点。");
+      } else {
+        showNotice("请在逐帧分析节点上创建批量替换。");
+      }
+    },
+    [addVideoBatchReplacementNode, showNotice]
+  );
+
+  const handleDropImageToVideoBatchReplacement = React.useCallback(
+    (nodeId: string, slotKey: VideoBatchReplacementSlotKey, imageUrl: string, ossId?: string) => {
+      const batchNode = nodes.find(
+        (node) => node.id === nodeId && node.type === "video_batch_replacement_node"
+      );
+      if (!batchNode) return;
+      updateNodeData(
+        batchNode.id,
+        updateVideoBatchReplacementSlot(batchNode, slotKey, {
+          imageUrl,
+          ossId,
+        })
+      );
+      showNotice("已添加图片到批量替换。");
+    },
+    [nodes, showNotice, updateNodeData]
+  );
+
+  const handleSubmitVideoBatchReplacement = React.useCallback(
+    async (
+      nodeId: string,
+      slots: NonNullable<GraphNode["data"]>["batchReplacementSlots"] = [],
+      mode: "product" | "scene"
+    ) => {
+      const batchNode = nodes.find(
+        (node) => node.id === nodeId && node.type === "video_batch_replacement_node"
+      );
+      if (!batchNode) return;
+
+      const productOssId = slots
+        .filter((slot) => slot.imageUrl.trim().length > 0)
+        .map((slot) => normalizeOssIdValue(slot.ossId))
+        .filter((ossId) => ossId.length > 0);
+      if (productOssId.length === 0) {
+        showNotice("请上传或拖入带 OSS ID 的有效图片后再提交。");
+        return;
+      }
+
+      const customSize = getVideoBatchReplacementCustomSize(
+        batchNode,
+        generationDictionaries?.imageResolutionGroups
+      );
+      if (!customSize) {
+        showNotice("请选择批量替换的图片尺寸后再提交。");
+        return;
+      }
+
+      const frameAnalysisNode = findFirstUpstreamFrameAnalysisNode(nodes, links, nodeId);
+      const sourceOssIds = frameAnalysisNode
+        ? Array.from(new Set(collectOssIdsFromValue(frameAnalysisNode.data?.frameImageOssIds)))
+        : [];
+      if (sourceOssIds.length === 0) {
+        showNotice("逐帧分析节点缺少可用的帧图片 OSS ID。");
+        return;
+      }
+
+      const selectedModelId = getVideoBatchReplacementModelId(batchNode);
+      if (!selectedModelId) {
+        showNotice("请选择批量替换的图片模型后再提交。");
+        return;
+      }
+      const model = findRemoteImageModelById(selectedModelId, remoteModelsByType);
+      if (!model) {
+        showNotice("当前选择的图片模型不可用，请重新选择。");
+        return;
+      }
+
+      updateNodeData(nodeId, {
+        loading: true,
+        loadingOperation: "batch-replacement",
+        error: undefined,
+        status: "loading",
+      });
+
+      try {
+        const result = await batchEditImages({
+          prompt: buildBatchReplacementPrompt(slots),
+          productOssId,
+          customSize,
+          ossId: sourceOssIds,
+          model: {
+            apiId: model.apiId,
+            modelId: model.modelId,
+          },
+        });
+        updateNodeData(nodeId, {
+          batchReplacementMode: mode,
+          batchReplacementResult: result,
+          loading: false,
+          loadingOperation: undefined,
+          status: "success",
+        });
+        showNotice("批量替换提交成功。");
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        updateNodeData(nodeId, {
+          error: message,
+          loading: false,
+          loadingOperation: undefined,
+          status: "error",
+        });
+        showNotice(`批量替换提交失败：${message}`);
+      }
+    },
+    [
+      links,
+      nodes,
+      generationDictionaries?.imageResolutionGroups,
+      remoteModelsByType,
+      showNotice,
+      updateNodeData,
+    ]
+  );
+
   const handleExtractFrameImage = React.useCallback(
     (nodeId: string, frameIndex: number, clientPoint?: { clientX: number; clientY: number }) => {
       const worldPoint = clientPoint ? toWorld(clientPoint.clientX, clientPoint.clientY) : null;
@@ -1585,6 +1780,9 @@ export default function App({ onLoggedOut }: AppProps) {
               }}
               canvasSize={canvasSize}
               imageResolutionGroups={generationDictionaries?.imageResolutionGroups}
+              videoBatchReplacementModeOptions={
+                generationDictionaries?.videoBatchReplacementModeOptions
+              }
               videoResolutionGroups={generationDictionaries?.videoResolutionGroups}
               isLinkingOnCanvas={isLinkingOnCanvas}
               linkFromNodeId={linkFromNodeId}
@@ -1620,6 +1818,7 @@ export default function App({ onLoggedOut }: AppProps) {
               }
               onAnalyzeVideo={handleAnalyzeVideo}
               onReverseVideoPrompt={handleReverseVideoPrompt}
+              onCreateVideoBatchReplacement={handleCreateVideoBatchReplacement}
               onSelectNode={(nodeId, e) => handleSelectNode(nodeId, e)}
               onUpdateNodeData={updateNodeData}
               onUpdateNodeProperty={updateNodeProperty}
@@ -1632,11 +1831,13 @@ export default function App({ onLoggedOut }: AppProps) {
               onSyncImagePromptStarterLayout={syncImagePromptStarterLayout}
               onSplitImageGrid={handleSplitImageGrid}
               onReplaceImageGridCell={handleReplaceImageGridCell}
+              onDropImageToVideoBatchReplacement={handleDropImageToVideoBatchReplacement}
               resolvedInputsMap={resolvedInputsMap}
               inputReferencesMap={inputReferencesMap}
               onRemoveInputReference={removeInputReference}
               onRunNode={runNode}
               onNotice={showNotice}
+              onSubmitVideoBatchReplacement={handleSubmitVideoBatchReplacement}
             />
           )}
           {shouldRenderCanvasContent && (
@@ -1708,12 +1909,7 @@ export default function App({ onLoggedOut }: AppProps) {
             />
           )}
           {currentView === "canvas" && (
-            <CanvasHistoryDock
-              canUndo={canUndo}
-              canRedo={canRedo}
-              onUndo={undo}
-              onRedo={redo}
-            />
+            <CanvasHistoryDock canUndo={canUndo} canRedo={canRedo} onUndo={undo} onRedo={redo} />
           )}
           {currentView === "canvas" && (
             <FloatingAssistantButton onPanelOpenChange={setAssistantPanelOpen} />

@@ -8,6 +8,8 @@ const MEDIA_NODE_FOOTPRINT_WIDTH = 540;
 const MEDIA_NODE_FOOTPRINT_HEIGHT = 540;
 const MEDIA_NODE_WIDTH = 520;
 export const VIDEO_NODE_WIDTH = MEDIA_NODE_WIDTH;
+const VIDEO_BATCH_REPLACEMENT_NODE_WIDTH = 520;
+const VIDEO_BATCH_REPLACEMENT_NODE_HEIGHT = 328;
 const AUDIO_NODE_WIDTH = MEDIA_NODE_FOOTPRINT_WIDTH;
 const AUDIO_NODE_HEIGHT = MEDIA_NODE_FOOTPRINT_HEIGHT;
 const NODE_HEIGHT = 180;
@@ -64,6 +66,7 @@ export function getNodeWidth(node: GraphNode) {
     return fitNodeFootprint(node.properties.aspect_ratio).width;
   }
   if (node.type === "audio_node") return AUDIO_NODE_WIDTH;
+  if (node.type === "video_batch_replacement_node") return VIDEO_BATCH_REPLACEMENT_NODE_WIDTH;
   return NODE_WIDTH;
 }
 
@@ -98,6 +101,7 @@ export function getNodeHeight(node: GraphNode) {
     return fitNodeFootprint(node.properties.aspect_ratio).height;
   }
   if (node.type === "audio_node") return AUDIO_NODE_HEIGHT;
+  if (node.type === "video_batch_replacement_node") return VIDEO_BATCH_REPLACEMENT_NODE_HEIGHT;
   if (node.type === "group") return 0;
   return NODE_HEIGHT;
 }
@@ -123,7 +127,15 @@ export function getInputAnchor(node: GraphNode, inputIndex: number) {
   const height = getNodeHeight(node);
 
   // 对于 LibTV 风格的生成类节点，输入锚点固定在左侧中心
-  if (["text_node", "image_node", "video_node", "audio_node"].includes(node.type)) {
+  if (
+    [
+      "text_node",
+      "image_node",
+      "video_node",
+      "video_batch_replacement_node",
+      "audio_node",
+    ].includes(node.type)
+  ) {
     if (node.type === "image_node" && typeof node.data?.imagePortCenterY === "number") {
       return { x: node.x, y: node.y + node.data.imagePortCenterY };
     }
@@ -142,7 +154,15 @@ export function getOutputAnchor(node: GraphNode, outputIndex: number) {
   const height = getNodeHeight(node);
 
   // 对于 LibTV 风格的生成类节点，输出锚点固定在右侧中心
-  if (["text_node", "image_node", "video_node", "audio_node"].includes(node.type)) {
+  if (
+    [
+      "text_node",
+      "image_node",
+      "video_node",
+      "video_batch_replacement_node",
+      "audio_node",
+    ].includes(node.type)
+  ) {
     if (node.type === "image_node" && typeof node.data?.imagePortCenterY === "number") {
       return { x: node.x + width, y: node.y + node.data.imagePortCenterY };
     }

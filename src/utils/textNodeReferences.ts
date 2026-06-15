@@ -1,5 +1,6 @@
 import type { GraphLink, GraphNode } from "../types";
 import type { NodeOutputMap } from "../runtime/dataflow";
+import { pickBatchReplacementImageUrls } from "../runtime/dataflow";
 import { isLinkInputValueExcluded } from "./inputReferenceExclusions";
 
 export type TextNodeReferenceKind = "image" | "video" | "audio" | "text" | "asset";
@@ -43,6 +44,10 @@ function getUrlKind(value: string): TextNodeReferenceKind | null {
 }
 
 export function collectImageReferenceUrls(sourceNode: GraphNode, outputValue?: unknown): string[] {
+  if (sourceNode.type === "video_batch_replacement_node") {
+    return pickBatchReplacementImageUrls(sourceNode.data?.batchReplacementSlots) ?? [];
+  }
+
   if (sourceNode.type !== "image_node" && sourceNode.type !== "load_image") return [];
 
   const groupedUrls = [

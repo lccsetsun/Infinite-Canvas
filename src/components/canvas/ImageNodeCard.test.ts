@@ -8,6 +8,7 @@ import {
   getFrameStripDownloadFilename,
   getImagePortHandleWrapperStyle,
   getImageNodePortTopStyle,
+  getPrimaryImageNodeOssId,
   getFrameStripAdaptiveLayout,
   getSettledImageLoadStatus,
   getResultImageBounds,
@@ -117,17 +118,41 @@ describe("getImageNodeInputReferences", () => {
   });
 });
 
+describe("getPrimaryImageNodeOssId", () => {
+  it("matches the displayed image url to the corresponding oss id", () => {
+    expect(
+      getPrimaryImageNodeOssId(
+        {
+          id: "image-1",
+          type: "image_node",
+          title: "图片",
+          x: 0,
+          y: 0,
+          inputs: [],
+          outputs: [],
+          properties: {},
+          data: {
+            imageUrls: ["https://example.com/a.png", "https://example.com/b.png"],
+            ossIds: ["oss-a", "oss-b"],
+          },
+        },
+        "https://example.com/b.png"
+      )
+    ).toBe("oss-b");
+  });
+});
+
 describe("ImageNodeCard prompt composer fullscreen editor", () => {
   it("provides a temporary fullscreen prompt editor with the same image controls", () => {
     const source = readFileSync(new URL("./ImageNodeCard.tsx", import.meta.url), "utf8");
 
     expect(source).toContain("const [expandedPromptEditorOpen, setExpandedPromptEditorOpen]");
-    expect(source).toContain("aria-label=\"放大编辑\"");
-    expect(source).toContain("aria-label=\"关闭全屏编辑\"");
+    expect(source).toContain('aria-label="放大编辑"');
+    expect(source).toContain('aria-label="关闭全屏编辑"');
     expect(source).toContain("onEscape={() => setExpandedPromptEditorOpen(false)}");
     expect(source).toContain("fixed inset-0 z-[220]");
     expect(source).toContain("{expandedPromptEditorNode}");
-    expect(source).toContain("panelLayerClassName=\"z-[240]\"");
+    expect(source).toContain('panelLayerClassName="z-[240]"');
     expect(source).toContain("bg-violet-500/[0.16] text-violet-50");
     expect(source).toContain("overflow-y-auto pr-3 text-[16px] leading-8 custom-scrollbar");
     expect(source).toContain("Image Size");
@@ -164,6 +189,36 @@ describe("ImageNodeCard prompt composer fullscreen editor", () => {
     const memoSource = source.slice(source.indexOf("const ImageNodeCard = React.memo"));
 
     expect(memoSource).toContain("prev.references === next.references");
+  });
+
+  it("lets internal image drags highlight and drop into video batch replacement slots", () => {
+    const source = readFileSync(new URL("./ImageNodeCard.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain("[data-video-batch-slot-key]");
+    expect(source).toContain("data-video-batch-hot");
+    expect(source).toContain("onDropImageToVideoBatchReplacement");
+    expect(source).toContain("data-video-batch-node-id");
+    expect(source).toContain("getPrimaryImageNodeOssId(node, imageUrl)");
+  });
+
+  it("places batch replacement creation in the frame-analysis image toolbar", () => {
+    const source = readFileSync(new URL("./ImageNodeCard.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain("onCreateBatchReplacement?.(node)");
+    expect(source).toContain('Tooltip content="批量替换"');
+    expect(source).toContain("isFrameStrip && (");
+  });
+});
+
+describe("getImagePreviewFrameClassName", () => {
+  it("keeps image previews square without rounded corners", () => {
+    expect(
+      getImagePreviewFrameClassName({
+        isImageLoaded: true,
+        isSelected: false,
+        isStarterPlaceholder: false,
+      })
+    ).not.toContain("rounded");
   });
 });
 

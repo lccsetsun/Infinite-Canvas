@@ -44,6 +44,75 @@ function makeImageGroupNode(id: string, imageUrls: string[]): GraphNode {
   };
 }
 
+function makeVideoBatchReplacementNode(id: string): GraphNode {
+  return {
+    id,
+    type: "video_batch_replacement_node",
+    title: "批量替换",
+    x: 0,
+    y: 0,
+    inputs: [{ name: "source_video", type: "VIDEO" }],
+    outputs: [{ name: "替换配置", type: "ANY" }],
+    properties: {},
+    data: {
+      batchReplacementSlots: [
+        {
+          key: "front",
+          title: "正面",
+          placeholder: "请上传产品图正面",
+          imageUrl: "https://oss.example.com/front.png",
+          prompt: "正面",
+        },
+        {
+          key: "side",
+          title: "侧面",
+          placeholder: "请上传产品图侧面",
+          imageUrl: "",
+          prompt: "侧面",
+        },
+        {
+          key: "back",
+          title: "背面",
+          placeholder: "请上传产品图背面",
+          imageUrl: "https://oss.example.com/back.png",
+          prompt: "背面",
+        },
+      ],
+    },
+  };
+}
+
+function makeSingleImageVideoBatchReplacementNode(id: string): GraphNode {
+  return {
+    ...makeVideoBatchReplacementNode(id),
+    data: {
+      batchReplacementSlots: [
+        {
+          key: "front",
+          title: "正面",
+          placeholder: "请上传产品图正面",
+          imageUrl: "",
+          prompt: "正面",
+        },
+        {
+          key: "side",
+          title: "侧面",
+          placeholder: "请上传产品图侧面",
+          imageUrl: "https://oss.example.com/side.png",
+          prompt: "侧面",
+        },
+        {
+          key: "back",
+          title: "背面",
+          placeholder: "请上传产品图背面",
+          imageUrl: "   ",
+          prompt: "背面",
+        },
+      ],
+    },
+  };
+}
+
 describe("resolveNodeInputs", () => {
   it("falls back to source text node properties when the source has not been executed", () => {
     const source = makeTextNode("source", "Cats, dogs, and pigs");
@@ -172,6 +241,73 @@ describe("resolveNodeInputs", () => {
     );
 
     expect(inputs.source_image).toEqual(frameImages);
+  });
+
+  it("falls back to filled batch replacement product images for downstream thumbnails", () => {
+    const batchNode = makeVideoBatchReplacementNode("batch");
+    const target: GraphNode = {
+      id: "image-target",
+      type: "image_node",
+      title: "image target",
+      x: 0,
+      y: 0,
+      inputs: [{ name: "source_image", type: "IMAGE" }],
+      outputs: [{ name: "image", type: "IMAGE" }],
+      properties: {},
+      data: {},
+    };
+
+    const inputs = resolveNodeInputs(
+      target,
+      [
+        {
+          id: "link-batch",
+          fromNodeId: batchNode.id,
+          fromOutputIndex: 0,
+          toNodeId: target.id,
+          toInputIndex: 0,
+        },
+      ],
+      new Map(),
+      [batchNode, target]
+    );
+
+    expect(inputs.source_image).toEqual([
+      "https://oss.example.com/front.png",
+      "https://oss.example.com/back.png",
+    ]);
+  });
+
+  it("passes only one batch replacement image when only one slot is valid", () => {
+    const batchNode = makeSingleImageVideoBatchReplacementNode("batch");
+    const target: GraphNode = {
+      id: "image-target",
+      type: "image_node",
+      title: "image target",
+      x: 0,
+      y: 0,
+      inputs: [{ name: "source_image", type: "IMAGE" }],
+      outputs: [{ name: "image", type: "IMAGE" }],
+      properties: {},
+      data: {},
+    };
+
+    const inputs = resolveNodeInputs(
+      target,
+      [
+        {
+          id: "link-batch",
+          fromNodeId: batchNode.id,
+          fromOutputIndex: 0,
+          toNodeId: target.id,
+          toInputIndex: 0,
+        },
+      ],
+      new Map(),
+      [batchNode, target]
+    );
+
+    expect(inputs.source_image).toEqual(["https://oss.example.com/side.png"]);
   });
 
   it("filters excluded frame images while keeping the grouped link connected", () => {

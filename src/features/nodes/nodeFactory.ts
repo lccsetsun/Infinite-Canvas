@@ -123,6 +123,12 @@ const NODE_BLUEPRINTS: Partial<Record<NodeClass, NodeBlueprint>> = {
       videoTool: "text-to-video",
     },
   },
+  video_batch_replacement_node: {
+    title: "批量替换",
+    inputs: [{ name: "source_video", type: "VIDEO" }],
+    outputs: [{ name: "替换配置", type: "ANY" }],
+    properties: {},
+  },
   audio_node: {
     title: "音频",
     inputs: [

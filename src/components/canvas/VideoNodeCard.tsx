@@ -376,12 +376,7 @@ export function shouldShowVideoPromptComposer({
   isSelected: boolean;
   isUploadingAsset: boolean;
 }) {
-  return (
-    !isRunning &&
-    !isUploadingAsset &&
-    !isExternalUploadSourceVideoNode &&
-    isSelected
-  );
+  return !isRunning && !isUploadingAsset && !isExternalUploadSourceVideoNode && isSelected;
 }
 
 export function shouldShowVideoPreview({
@@ -523,7 +518,10 @@ function VideoNodeCardImpl({
     "用户提示词",
   ]);
   const inputReferences = React.useMemo(
-    () => (references && references.length > 0 ? references : getVideoNodeInputReferences(resolvedInputs)),
+    () =>
+      references && references.length > 0
+        ? references
+        : getVideoNodeInputReferences(resolvedInputs),
     [references, resolvedInputs]
   );
   const removeInputReference = React.useCallback(
@@ -1523,7 +1521,7 @@ function VideoNodeCardImpl({
               />
             </motion.div>
           </>
-      )}
+        )}
     </AnimatePresence>
   );
 
@@ -1956,90 +1954,90 @@ function VideoNodeCardImpl({
                   onPointerDown={(e) => e.stopPropagation()}
                   onClick={(e) => e.stopPropagation()}
                 >
-              <button
-                type="button"
-                onClick={togglePlay}
-                className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-cyan-100/18 bg-cyan-100/[0.08] text-cyan-50 shadow-[0_0_22px_rgba(34,211,238,0.14),inset_0_1px_0_rgba(255,255,255,0.12)] transition hover:border-cyan-100/34 hover:bg-cyan-100/[0.14] hover:text-white"
-                title={isPlaying ? "暂停" : "播放"}
-              >
-                {isPlaying ? (
-                  <Pause className="h-[18px] w-[18px] fill-current" />
-                ) : (
-                  <Play className="ml-0.5 h-[18px] w-[18px] fill-current" />
-                )}
-              </button>
-              <span className="min-w-[72px] text-[12px] font-semibold tracking-[-0.01em] text-slate-100/92 tabular-nums">
-                {formatTime(displayCurrentTime)}
-                <span className="px-1 text-slate-500/80">/</span>
-                <span className="text-slate-300/72">{formatTime(mediaDuration)}</span>
-              </span>
-              <input
-                type="range"
-                min={0}
-                max={Math.max(mediaDuration, 0.01)}
-                step={0.01}
-                value={Math.min(currentTime, Math.max(mediaDuration, 0.01))}
-                onChange={(e) => seekTo(Number(e.target.value))}
-                className="video-node-range h-5 min-w-0 flex-1 cursor-pointer"
-                style={progressStyle}
-                aria-label="视频播放进度"
-              />
-              <button
-                type="button"
-                onClick={() => setMuted((value) => !value)}
-                className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-slate-200/82 transition hover:bg-white/[0.08] hover:text-white"
-                title={isHovered || muted || !audioEnabled ? "打开声音" : "静音"}
-              >
-                {isHovered || muted || !audioEnabled ? (
-                  <VolumeX className="h-[18px] w-[18px]" />
-                ) : (
-                  <Volume2 className="h-[18px] w-[18px]" />
-                )}
-              </button>
-              <div
-                className="relative"
-                data-video-frame-menu="true"
-                onMouseEnter={() => setFrameMenuOpen(true)}
-                onMouseLeave={() => setFrameMenuOpen(false)}
-              >
-                <button
-                  type="button"
-                  onClick={() => captureFrame("current")}
-                  className={`grid h-8 w-8 shrink-0 place-items-center rounded-full transition ${
-                    frameMenuOpen
-                      ? "bg-violet-300/[0.14] text-violet-50"
-                      : "text-slate-200/82 hover:bg-white/[0.08] hover:text-white"
-                  }`}
-                  title="点击截取当前帧"
-                >
-                  <Camera className="h-[18px] w-[18px]" />
-                </button>
-                <AnimatePresence>
-                  {frameMenuOpen && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 8, scale: 0.98 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: 8, scale: 0.98 }}
-                      className="absolute bottom-11 right-0 w-[150px] overflow-hidden rounded-[12px] border border-white/[0.1] bg-[#08111e]/92 p-1.5 text-[12px] font-semibold text-slate-100 shadow-[0_22px_54px_-20px_rgba(0,0,0,0.94),0_0_34px_rgba(139,92,246,0.13),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-xl"
+                  <button
+                    type="button"
+                    onClick={togglePlay}
+                    className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-cyan-100/18 bg-cyan-100/[0.08] text-cyan-50 shadow-[0_0_22px_rgba(34,211,238,0.14),inset_0_1px_0_rgba(255,255,255,0.12)] transition hover:border-cyan-100/34 hover:bg-cyan-100/[0.14] hover:text-white"
+                    title={isPlaying ? "暂停" : "播放"}
+                  >
+                    {isPlaying ? (
+                      <Pause className="h-[18px] w-[18px] fill-current" />
+                    ) : (
+                      <Play className="ml-0.5 h-[18px] w-[18px] fill-current" />
+                    )}
+                  </button>
+                  <span className="min-w-[72px] text-[12px] font-semibold tracking-[-0.01em] text-slate-100/92 tabular-nums">
+                    {formatTime(displayCurrentTime)}
+                    <span className="px-1 text-slate-500/80">/</span>
+                    <span className="text-slate-300/72">{formatTime(mediaDuration)}</span>
+                  </span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={Math.max(mediaDuration, 0.01)}
+                    step={0.01}
+                    value={Math.min(currentTime, Math.max(mediaDuration, 0.01))}
+                    onChange={(e) => seekTo(Number(e.target.value))}
+                    className="video-node-range h-5 min-w-0 flex-1 cursor-pointer"
+                    style={progressStyle}
+                    aria-label="视频播放进度"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setMuted((value) => !value)}
+                    className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-slate-200/82 transition hover:bg-white/[0.08] hover:text-white"
+                    title={isHovered || muted || !audioEnabled ? "打开声音" : "静音"}
+                  >
+                    {isHovered || muted || !audioEnabled ? (
+                      <VolumeX className="h-[18px] w-[18px]" />
+                    ) : (
+                      <Volume2 className="h-[18px] w-[18px]" />
+                    )}
+                  </button>
+                  <div
+                    className="relative"
+                    data-video-frame-menu="true"
+                    onMouseEnter={() => setFrameMenuOpen(true)}
+                    onMouseLeave={() => setFrameMenuOpen(false)}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => captureFrame("current")}
+                      className={`grid h-8 w-8 shrink-0 place-items-center rounded-full transition ${
+                        frameMenuOpen
+                          ? "bg-violet-300/[0.14] text-violet-50"
+                          : "text-slate-200/82 hover:bg-white/[0.08] hover:text-white"
+                      }`}
+                      title="点击截取当前帧"
                     >
-                      <button
-                        type="button"
-                        className="block w-full rounded-[9px] px-3 py-2 text-left transition hover:bg-cyan-100/[0.09] hover:text-white"
-                        onClick={() => captureFrame("first")}
-                      >
-                        截取首帧
-                      </button>
-                      <button
-                        type="button"
-                        className="block w-full rounded-[9px] px-3 py-2 text-left transition hover:bg-violet-100/[0.1] hover:text-white"
-                        onClick={() => captureFrame("last")}
-                      >
-                        截取尾帧
-                      </button>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
+                      <Camera className="h-[18px] w-[18px]" />
+                    </button>
+                    <AnimatePresence>
+                      {frameMenuOpen && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                          className="absolute bottom-11 right-0 w-[150px] overflow-hidden rounded-[12px] border border-white/[0.1] bg-[#08111e]/92 p-1.5 text-[12px] font-semibold text-slate-100 shadow-[0_22px_54px_-20px_rgba(0,0,0,0.94),0_0_34px_rgba(139,92,246,0.13),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-xl"
+                        >
+                          <button
+                            type="button"
+                            className="block w-full rounded-[9px] px-3 py-2 text-left transition hover:bg-cyan-100/[0.09] hover:text-white"
+                            onClick={() => captureFrame("first")}
+                          >
+                            截取首帧
+                          </button>
+                          <button
+                            type="button"
+                            className="block w-full rounded-[9px] px-3 py-2 text-left transition hover:bg-violet-100/[0.1] hover:text-white"
+                            onClick={() => captureFrame("last")}
+                          >
+                            截取尾帧
+                          </button>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -2285,7 +2283,9 @@ function VideoNodeCardImpl({
                                       }`}
                                     >
                                       <span className="min-w-0 flex-1 truncate">{model}</span>
-                                      {isActive && <Check className="h-3.5 w-3.5 text-violet-100" />}
+                                      {isActive && (
+                                        <Check className="h-3.5 w-3.5 text-violet-100" />
+                                      )}
                                     </button>
                                   );
                                 })}

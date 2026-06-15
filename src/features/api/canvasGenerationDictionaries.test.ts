@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildImageResolutionGroupsFromDicts,
+  buildVideoBatchReplacementModeOptionsFromDicts,
   buildVideoResolutionGroupsFromDicts,
 } from "./canvasGenerationDictionaries";
 
@@ -62,6 +63,25 @@ describe("canvas generation dictionaries", () => {
         ],
         resolution: "720p",
       },
+    ]);
+  });
+
+  it("builds batch replacement mode options from batch_edit_image_key dictionary", () => {
+    const options = buildVideoBatchReplacementModeOptionsFromDicts([
+      { dictLabel: "场景替换", dictSort: 0, dictValue: "scene" },
+      { dictLabel: "产品替换", dictSort: 0, dictValue: "product" },
+    ]);
+
+    expect(options).toEqual([
+      { label: "场景替换", value: "scene" },
+      { label: "产品替换", value: "product" },
+    ]);
+  });
+
+  it("falls back to product and scene when batch replacement dictionary is empty", () => {
+    expect(buildVideoBatchReplacementModeOptionsFromDicts([])).toEqual([
+      { label: "产品替换", value: "product" },
+      { label: "场景替换", value: "scene" },
     ]);
   });
 });

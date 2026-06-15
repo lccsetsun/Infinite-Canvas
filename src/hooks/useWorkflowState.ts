@@ -25,10 +25,12 @@ import {
 import {
   NodeOutputMap,
   buildResolvedInputsMap,
+  pickBatchReplacementImageUrls,
   resolveNodeInputs,
   topologicalLevels,
 } from "../runtime/dataflow";
 import { createVideoFrameCaptureSnapshot } from "../utils/videoFrameCaptureLayout";
+import { createVideoBatchReplacementSnapshot } from "../utils/videoBatchReplacementLayout";
 import { createVideoPromptTextSnapshot } from "../utils/videoPromptTextLayout";
 import { collectImageReferenceUrls, collectNodeInputReferences } from "../utils/textNodeReferences";
 import { isLinkInputValueExcluded } from "../utils/inputReferenceExclusions";
@@ -310,6 +312,91 @@ export function updateNodeDataSnapshot(
     };
     return data.isSourceNode === true ? markNodeAsSource(nextNode) : nextNode;
   });
+}
+
+function writeImageNodeBatchReplacementPreview(node: GraphNode, imageUrls: string[]): GraphNode {
+  const primaryImageUrl = imageUrls[0] ?? "";
+  const nextData = {
+    ...(node.data || {}),
+    imageUrl: primaryImageUrl,
+    imageUrls,
+    activeImageIndex: Math.min(
+      typeof node.data?.activeImageIndex === "number" ? node.data.activeImageIndex : 0,
+      Math.max(0, imageUrls.length - 1)
+    ),
+  };
+  return {
+    ...node,
+    properties: {
+      ...node.properties,
+      imageUrl: primaryImageUrl,
+      imageUrls,
+    },
+    data: nextData,
+  };
+}
+
+export function syncVideoBatchReplacementTargetsSnapshot({
+  batchNodeId,
+  links,
+  nodeOutputs,
+  nodes,
+}: {
+  batchNodeId: string;
+  links: GraphLink[];
+  nodeOutputs: NodeOutputMap;
+  nodes: GraphNode[];
+}): { links: GraphLink[]; nodeOutputs: NodeOutputMap; nodes: GraphNode[] } {
+  const batchNode = nodes.find(
+    (node) => node.id === batchNodeId && node.type === "video_batch_replacement_node"
+  );
+  if (!batchNode) return { links, nodeOutputs, nodes };
+
+  const imageUrls = pickBatchReplacementImageUrls(batchNode.data?.batchReplacementSlots) ?? [];
+  const downstreamImageNodeIds = new Set(
+    links
+      .filter((link) => link.fromNodeId === batchNodeId)
+      .map((link) => nodes.find((node) => node.id === link.toNodeId))
+      .filter((node): node is GraphNode => node?.type === "image_node")
+      .map((node) => node.id)
+  );
+
+  if (downstreamImageNodeIds.size === 0) {
+    return { links, nodeOutputs, nodes };
+  }
+
+  const nextLinks =
+    imageUrls.length > 0
+      ? links
+      : links.filter(
+          (link) => !(link.fromNodeId === batchNodeId && downstreamImageNodeIds.has(link.toNodeId))
+        );
+  const nextNodes =
+    imageUrls.length > 0
+      ? nodes.map((node) =>
+          downstreamImageNodeIds.has(node.id)
+            ? writeImageNodeBatchReplacementPreview(node, imageUrls)
+            : node
+        )
+      : nodes.map((node) =>
+          downstreamImageNodeIds.has(node.id)
+            ? writeImageNodeBatchReplacementPreview(node, [])
+            : node
+        );
+
+  const nextNodeOutputs = new Map(nodeOutputs);
+  downstreamImageNodeIds.forEach((nodeId) => {
+    if (imageUrls.length > 0) {
+      nextNodeOutputs.set(
+        nodeId,
+        new Map([[0, imageUrls.length === 1 ? imageUrls[0] : imageUrls]])
+      );
+    } else {
+      nextNodeOutputs.delete(nodeId);
+    }
+  });
+
+  return { links: nextLinks, nodeOutputs: nextNodeOutputs, nodes: nextNodes };
 }
 
 export interface WorkflowSummary {
@@ -941,6 +1028,16 @@ export function collectLinkedMediaReferences({
         addOssId(sourceNode.properties.ossIds);
         collectOssIdsFromObjectFields(outputValue).forEach(addOssId);
       }
+      return;
+    }
+
+    if (sourceNode.type === "video_batch_replacement_node") {
+      const batchImageUrls =
+        pickBatchReplacementImageUrls(sourceNode.data?.batchReplacementSlots) ?? [];
+      batchImageUrls.forEach((imageUrl) => {
+        if (isLinkInputValueExcluded(link, imageUrl)) return;
+        addUniqueString(imageUrls, imageUrl);
+      });
       return;
     }
 
@@ -1977,13 +2074,46 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
   const updateNodeData = useCallback(
     (nodeId: string, data: Partial<GraphNode["data"]>) => {
       markRemoteDirty("content");
-      setNodes((prev) => {
-        const next = updateNodeDataSnapshot(prev, nodeId, data);
-        markLocalRemotePersistPending({ nodes: next });
-        return next;
+      const activeNodes = currentNodesRef.current;
+      const activeLinks = currentLinksRef.current;
+      const activeNodeOutputs = currentNodeOutputsRef.current;
+      const patchedNodes = updateNodeDataSnapshot(activeNodes, nodeId, data);
+      const synced =
+        Array.isArray(data.batchReplacementSlots) &&
+        patchedNodes.some(
+          (node) => node.id === nodeId && node.type === "video_batch_replacement_node"
+        )
+          ? syncVideoBatchReplacementTargetsSnapshot({
+              batchNodeId: nodeId,
+              links: activeLinks,
+              nodeOutputs: activeNodeOutputs,
+              nodes: patchedNodes,
+            })
+          : { links: activeLinks, nodeOutputs: activeNodeOutputs, nodes: patchedNodes };
+
+      currentNodesRef.current = synced.nodes;
+      currentLinksRef.current = synced.links;
+      currentNodeOutputsRef.current = synced.nodeOutputs;
+      markLocalRemotePersistPending({
+        links: synced.links,
+        nodeOutputs: synced.nodeOutputs,
+        nodes: synced.nodes,
       });
+      setNodes(synced.nodes);
+      if (synced.links !== activeLinks) setLinks(synced.links);
+      if (synced.nodeOutputs !== activeNodeOutputs) setNodeOutputs(synced.nodeOutputs);
+      syncCurrentWorkflowMeta((wf) => ({
+        ...wf,
+        summary: { ...wf.summary, updatedAt: Date.now() },
+        data: {
+          ...wf.data,
+          links: synced.links,
+          nodeOutputs: mapToOutputs(synced.nodeOutputs),
+          nodes: synced.nodes,
+        },
+      }));
     },
-    [markLocalRemotePersistPending, markRemoteDirty]
+    [markLocalRemotePersistPending, markRemoteDirty, syncCurrentWorkflowMeta]
   );
 
   const setPrimaryImageResult = useCallback(
@@ -2284,6 +2414,42 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       }));
       pushHistory({ nodes: snapshot.nodes, links: snapshot.links });
       appendLog("success", "视频反推提示词完成：已生成文本节点");
+      return snapshot.createdNode;
+    },
+    [appendLog, markRemoteDirty, pushHistory, syncCurrentWorkflowMeta]
+  );
+
+  const addVideoBatchReplacementNode = useCallback(
+    (frameAnalysisNodeId: string) => {
+      const snapshot = createVideoBatchReplacementSnapshot({
+        nodes: currentNodesRef.current,
+        links: currentLinksRef.current,
+        sourceNodeId: frameAnalysisNodeId,
+        makeId,
+      });
+
+      if (!snapshot) {
+        appendLog("warning", "批量替换失败：请选择逐帧分析节点");
+        return null;
+      }
+
+      markRemoteDirty("structure");
+      currentNodesRef.current = snapshot.nodes;
+      currentLinksRef.current = snapshot.links;
+      setNodes(snapshot.nodes);
+      setLinks(snapshot.links);
+      setSelectedNodeId(snapshot.createdNode.id);
+      syncCurrentWorkflowMeta((wf) => ({
+        ...wf,
+        summary: { ...wf.summary, updatedAt: Date.now() },
+        data: {
+          ...wf.data,
+          nodes: snapshot.nodes,
+          links: snapshot.links,
+        },
+      }));
+      pushHistory({ nodes: snapshot.nodes, links: snapshot.links });
+      appendLog("success", "已创建批量替换节点");
       return snapshot.createdNode;
     },
     [appendLog, markRemoteDirty, pushHistory, syncCurrentWorkflowMeta]
@@ -3478,6 +3644,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     replaceExtractedFrameImage,
     replaceFrameImageUrl,
     addVideoFrameAnalysis,
+    addVideoBatchReplacementNode,
     addVideoPromptTextNode,
     clearCanvas,
     clearExecution,

@@ -34,7 +34,7 @@ describe("ReferencePreviewCard", () => {
     expect(source).toContain("<video");
     expect(source).toContain("autoPlay");
     expect(source).toContain("loop");
-    expect(source).toContain("reference.kind === \"text\"");
+    expect(source).toContain('reference.kind === "text"');
     expect(source).toContain("hidden h-[210px] w-[360px]");
     expect(source).toContain("max-w-none");
     expect(source).toContain("group-hover/reference:hidden");

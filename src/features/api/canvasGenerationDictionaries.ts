@@ -1,8 +1,17 @@
-import { IMAGE_RESOLUTION_PRESET_GROUPS, type ImageResolutionPresetGroup } from "../nodes/imageResolutionPresets";
+import {
+  IMAGE_RESOLUTION_PRESET_GROUPS,
+  type ImageResolutionPresetGroup,
+} from "../nodes/imageResolutionPresets";
 import { devApiFetch } from "../auth/request";
+import {
+  DEFAULT_VIDEO_BATCH_REPLACEMENT_MODE_OPTIONS,
+  type VideoBatchReplacementMode,
+  type VideoBatchReplacementModeOption,
+} from "../../utils/videoBatchReplacementLayout";
 
 export interface CanvasGenerationDictionaries {
   imageResolutionGroups: ImageResolutionPresetGroup[];
+  videoBatchReplacementModeOptions: VideoBatchReplacementModeOption[];
   videoResolutionGroups: ImageResolutionPresetGroup[];
 }
 
@@ -112,22 +121,62 @@ export function buildVideoResolutionGroupsFromDicts(
   }));
 }
 
+function normalizeBatchEditImageModeValue(
+  value: string,
+  label: string
+): VideoBatchReplacementMode | null {
+  const normalized = value.toLowerCase();
+  if (normalized === "product" || label.includes("产品")) return "product";
+  if (normalized === "scene" || label.includes("场景")) return "scene";
+  return null;
+}
+
+export function buildVideoBatchReplacementModeOptionsFromDicts(
+  rows: DictRow[]
+): VideoBatchReplacementModeOption[] {
+  const options = sortDictRows(rows)
+    .map((row) => {
+      const label = stringValue(row.dictLabel);
+      const value = stringValue(row.dictValue);
+      const mode = normalizeBatchEditImageModeValue(value, label);
+      if (!mode) return null;
+      const fallbackLabel =
+        DEFAULT_VIDEO_BATCH_REPLACEMENT_MODE_OPTIONS.find((option) => option.value === mode)
+          ?.label ?? label;
+      return {
+        label: label || fallbackLabel,
+        value: mode,
+      };
+    })
+    .filter((option): option is VideoBatchReplacementModeOption => Boolean(option));
+
+  const uniqueOptions = options.filter(
+    (option, index) => options.findIndex((item) => item.value === option.value) === index
+  );
+
+  return uniqueOptions.length > 0 ? uniqueOptions : DEFAULT_VIDEO_BATCH_REPLACEMENT_MODE_OPTIONS;
+}
+
 export async function fetchCanvasGenerationDictionaries(): Promise<CanvasGenerationDictionaries> {
   const imageKeyRows = await fetchDictRows("images_ratio_key");
   const imageRatioKeys = imageKeyRows
     .map((row) => stringValue(row.dictValue) || stringValue(row.dictLabel))
     .filter(Boolean);
 
-  const [imageRatioRows, videoRatioRows, videoResolutionRows] = await Promise.all([
-    Promise.all(
-      imageRatioKeys.map(async (key) => [key, await fetchDictRows(key)] as const)
-    ).then((entries) => Object.fromEntries(entries)),
-    fetchDictRows("video_ratio"),
-    fetchDictRows("video_p"),
-  ]);
+  const [imageRatioRows, videoRatioRows, videoResolutionRows, batchEditImageRows] =
+    await Promise.all([
+      Promise.all(imageRatioKeys.map(async (key) => [key, await fetchDictRows(key)] as const)).then(
+        (entries) => Object.fromEntries(entries)
+      ),
+      fetchDictRows("video_ratio"),
+      fetchDictRows("video_p"),
+      fetchDictRows("batch_edit_image_key"),
+    ]);
 
   return {
     imageResolutionGroups: buildImageResolutionGroupsFromDicts(imageKeyRows, imageRatioRows),
+    videoBatchReplacementModeOptions:
+      buildVideoBatchReplacementModeOptionsFromDicts(batchEditImageRows),
     videoResolutionGroups: buildVideoResolutionGroupsFromDicts(videoRatioRows, videoResolutionRows),
   };
 }

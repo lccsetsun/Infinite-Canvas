@@ -15,6 +15,7 @@ export type NodeClass =
   | "text_node"
   | "image_node"
   | "video_node"
+  | "video_batch_replacement_node"
   | "audio_node"
   | "group";
 
@@ -83,7 +84,21 @@ export interface GraphNode {
     frameGridRows?: number;
     frameTileWidth?: number;
     frameTileHeight?: number;
+    frameAnalysisSourceNodeId?: string;
     frameCaptureSourceNodeId?: string;
+    batchReplacementSlots?: Array<{
+      key: "front" | "side" | "back";
+      title: string;
+      placeholder: string;
+      imageUrl: string;
+      ossId?: string;
+      prompt: string;
+    }>;
+    batchReplacementMode?: "product" | "scene";
+    batchReplacementModelId?: string;
+    batchReplacementResolution?: string;
+    batchReplacementAspectRatio?: string;
+    batchReplacementResult?: unknown;
     extractedFrameSourceNodeId?: string;
     extractedFrameIndex?: number;
     videoFrameCaptureChild?: boolean;
@@ -93,7 +108,7 @@ export interface GraphNode {
     uploadedAssetName?: string;
     externalUploadSource?: boolean;
     loading?: boolean;
-    loadingOperation?: "generate" | "frame-analysis" | "video-prompt";
+    loadingOperation?: "generate" | "frame-analysis" | "video-prompt" | "batch-replacement";
     progress?: number;
     status?: string;
     error?: string;

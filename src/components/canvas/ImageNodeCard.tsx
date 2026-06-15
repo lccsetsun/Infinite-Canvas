@@ -12,12 +12,14 @@ import {
   Image as ImageIcon,
   Loader2,
   Maximize2,
+  Replace,
   Undo2,
   Upload,
   Wand2,
   X,
 } from "lucide-react";
 import { GraphNode } from "../../types";
+import type { VideoBatchReplacementSlotKey } from "../../utils/videoBatchReplacementLayout";
 import { findResolvedStringInput } from "../../utils/resolvedInputs";
 import { shouldShowInlinePortHandles } from "../../utils/portHandleVisibility";
 import { isSourceNode } from "../../utils/sourceNodes";
@@ -92,6 +94,13 @@ interface ImageNodeCardProps {
     gridCols: number,
     cellIndex: number
   ) => void;
+  onDropImageToVideoBatchReplacement?: (
+    nodeId: string,
+    slotKey: VideoBatchReplacementSlotKey,
+    imageUrl: string,
+    ossId?: string
+  ) => void;
+  onCreateBatchReplacement?: (node: GraphNode) => void;
   onPreview?: (
     content: string,
     title?: string,
@@ -219,7 +228,7 @@ export function getImagePreviewFrameClassName({
     ? "shadow-[0_0_0_1.5px_rgba(192,132,252,0.58),0_0_0_6px_rgba(139,92,246,0.14),0_0_38px_rgba(109,40,217,0.18)]"
     : "";
 
-  return `mx-auto overflow-hidden rounded-[8px] ${surfaceClassName} ${selectedClassName}`;
+  return `mx-auto overflow-hidden ${surfaceClassName} ${selectedClassName}`;
 }
 
 export function shouldShowImageUploadButton({
@@ -253,13 +262,7 @@ export function shouldShowImagePromptComposer({
   isSourceAssetNode: boolean;
   isUploadingNodeAsset: boolean;
 }) {
-  return (
-    !isFrameStrip &&
-    !isSourceAssetNode &&
-    isSelected &&
-    !isUploadingNodeAsset &&
-    !isRunning
-  );
+  return !isFrameStrip && !isSourceAssetNode && isSelected && !isUploadingNodeAsset && !isRunning;
 }
 
 export function hasFrameExtractionDragStarted({
@@ -315,6 +318,28 @@ export function getImageNodeDownloadVisibility({ isFrameStrip }: { isFrameStrip:
     showFrameTileDownload: isFrameStrip,
     showTopToolbarDownload: !isFrameStrip,
   };
+}
+
+function normalizeImageNodeOssId(value: unknown): string {
+  if (typeof value === "string" && value.trim()) return value.trim();
+  if (typeof value === "number" && Number.isFinite(value)) return String(Math.trunc(value));
+  if (typeof value === "bigint") return String(value);
+  return "";
+}
+
+export function getPrimaryImageNodeOssId(node: GraphNode, imageUrl: string): string {
+  const imageUrls = Array.isArray(node.data?.imageUrls) ? node.data.imageUrls : [];
+  const ossIds = Array.isArray(node.data?.ossIds) ? node.data.ossIds : [];
+  const matchedIndex = imageUrls.findIndex((url) => typeof url === "string" && url === imageUrl);
+  if (matchedIndex >= 0) {
+    const matchedOssId = normalizeImageNodeOssId(ossIds[matchedIndex]);
+    if (matchedOssId) return matchedOssId;
+  }
+  return (
+    normalizeImageNodeOssId(node.data?.ossId) ||
+    normalizeImageNodeOssId(node.properties.ossId) ||
+    normalizeImageNodeOssId(ossIds[0])
+  );
 }
 
 export function getFrameStripDownloadFilename({
@@ -643,6 +668,8 @@ function ImageNodeCardImpl({
   onSyncImagePromptStarterLayout,
   onSplitImageGrid,
   onReplaceImageGridCell,
+  onDropImageToVideoBatchReplacement,
+  onCreateBatchReplacement,
   onPreview,
   references,
   resolvedInputs,
@@ -746,6 +773,7 @@ function ImageNodeCardImpl({
     startClientY: number;
     thumbHeight: number;
     thumbWidth: number;
+    ossId?: string;
     url: string;
   } | null>(null);
   const imageFrameDropCleanupRef = React.useRef<(() => void) | null>(null);
@@ -776,7 +804,10 @@ function ImageNodeCardImpl({
     "用户提示词",
   ]);
   const inputReferences = React.useMemo(
-    () => (references && references.length > 0 ? references : getImageNodeInputReferences(resolvedInputs)),
+    () =>
+      references && references.length > 0
+        ? references
+        : getImageNodeInputReferences(resolvedInputs),
     [references, resolvedInputs]
   );
   const removeInputReference = React.useCallback(
@@ -1357,6 +1388,7 @@ function ImageNodeCardImpl({
     const target = imageFrameDropHotTargetRef.current;
     if (!target) return;
     target.removeAttribute("data-frame-drop-hot");
+    target.removeAttribute("data-video-batch-hot");
     target.style.outline = "";
     target.style.outlineOffset = "";
     target.style.boxShadow = "";
@@ -1526,7 +1558,11 @@ function ImageNodeCardImpl({
       if (imageFrameDropHotTargetRef.current === target) return;
       clearImageFrameDropHotTarget();
       if (!target) return;
-      target.setAttribute("data-frame-drop-hot", "true");
+      if (target.hasAttribute("data-video-batch-slot-key")) {
+        target.setAttribute("data-video-batch-hot", "true");
+      } else {
+        target.setAttribute("data-frame-drop-hot", "true");
+      }
       target.style.outline = "2px solid rgba(125, 211, 252, 0.96)";
       target.style.outlineOffset = "-2px";
       target.style.boxShadow =
@@ -1564,7 +1600,7 @@ function ImageNodeCardImpl({
 
       const element = document.elementFromPoint(clientX, clientY) as HTMLElement | null;
       const target = element?.closest(
-        "[data-frame-strip-cell='true'],[data-grid-split-cell='true']"
+        "[data-frame-strip-cell='true'],[data-grid-split-cell='true'],[data-video-batch-slot-key]"
       ) as HTMLElement | null;
       setImageFrameDropHotTarget(target);
     },
@@ -1605,6 +1641,14 @@ function ImageNodeCardImpl({
       imageFrameDropDragRef.current = null;
       destroyImageFrameDropOverlay();
       if (canceled || !drag.dragging || !hotTarget) return;
+      if (hotTarget.hasAttribute("data-video-batch-slot-key")) {
+        const targetNodeId = hotTarget.getAttribute("data-video-batch-node-id") || "";
+        const slotKey = hotTarget.getAttribute("data-video-batch-slot-key") || "";
+        if (targetNodeId && (slotKey === "front" || slotKey === "side" || slotKey === "back")) {
+          onDropImageToVideoBatchReplacement?.(targetNodeId, slotKey, drag.url, drag.ossId);
+        }
+        return;
+      }
       if (hotTarget.getAttribute("data-grid-split-cell") === "true") {
         const targetNodeId = hotTarget.getAttribute("data-grid-node-id") || "";
         const targetImageUrl = hotTarget.getAttribute("data-grid-image-url") || "";
@@ -1647,6 +1691,7 @@ function ImageNodeCardImpl({
     [
       cleanupImageFrameDropListeners,
       destroyImageFrameDropOverlay,
+      onDropImageToVideoBatchReplacement,
       onReplaceFrameImage,
       onReplaceImageGridCell,
     ]
@@ -1654,7 +1699,7 @@ function ImageNodeCardImpl({
   const beginImageFrameDropDrag = React.useCallback(
     (event: React.PointerEvent<HTMLElement>) => {
       if (
-        (!onReplaceFrameImage && !onReplaceImageGridCell) ||
+        (!onReplaceFrameImage && !onReplaceImageGridCell && !onDropImageToVideoBatchReplacement) ||
         isFrameStrip ||
         !imageUrl ||
         event.button !== 0
@@ -1684,6 +1729,7 @@ function ImageNodeCardImpl({
           startClientY,
           thumbHeight: Math.max(1, Math.round(rect.height / 4)),
           thumbWidth: Math.max(1, Math.round(rect.width / 4)),
+          ossId: getPrimaryImageNodeOssId(node, imageUrl),
           url: imageUrl,
         };
         updateImageFrameDropDrag(pointerId, lastClientX, lastClientY);
@@ -1737,6 +1783,8 @@ function ImageNodeCardImpl({
       finishImageFrameDropDrag,
       imageUrl,
       isFrameStrip,
+      node,
+      onDropImageToVideoBatchReplacement,
       onReplaceFrameImage,
       onReplaceImageGridCell,
       updateImageFrameDropDrag,
@@ -2679,9 +2727,7 @@ function ImageNodeCardImpl({
                         onClick={(event) => {
                           event.stopPropagation();
                           setModelMenuOpen(false);
-                          setOpenSelect((current) =>
-                            current === "quantity" ? null : "quantity"
-                          );
+                          setOpenSelect((current) => (current === "quantity" ? null : "quantity"));
                         }}
                         className={`relative inline-flex h-11 min-w-[86px] items-center justify-center gap-1.5 rounded-[15px] border px-3 text-[14px] font-medium transition-colors ${
                           openSelect === "quantity"
@@ -2905,6 +2951,20 @@ function ImageNodeCardImpl({
                         <Download className="h-5 w-5" />
                       </button>
                     </Tooltip>
+                  )}
+                  {isFrameStrip && (
+                    <>
+                      <div className={mediaNodeToolbarDividerClass} />
+                      <Tooltip content="批量替换" position="top">
+                        <button
+                          type="button"
+                          onClick={() => onCreateBatchReplacement?.(node)}
+                          className={mediaNodeToolbarButtonClass}
+                        >
+                          <Replace className="h-5 w-5" />
+                        </button>
+                      </Tooltip>
+                    </>
                   )}
                   <div className="relative" ref={gridMenuRef}>
                     <button
