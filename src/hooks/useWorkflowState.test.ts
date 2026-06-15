@@ -45,6 +45,8 @@ describe("video helper operations", () => {
     expect(frameAnalysisBlock).toContain("nodes: currentNodesRef.current");
     expect(frameAnalysisBlock).toContain("links: currentLinksRef.current");
     expect(frameAnalysisBlock).toContain("nodeOutputs: currentNodeOutputsRef.current");
+    expect(frameAnalysisBlock).toContain("setSelectedNodeId(videoNodeId)");
+    expect(frameAnalysisBlock).not.toContain("setSelectedNodeId(snapshot.createdNodes[0]?.id ?? videoNodeId)");
     expect(promptReverseBlock).toContain("nodes: currentNodesRef.current");
     expect(promptReverseBlock).toContain("links: currentLinksRef.current");
     expect(promptReverseBlock).toContain("nodeOutputs: currentNodeOutputsRef.current");
@@ -519,6 +521,29 @@ describe("sanitizeNodeRuntimeState", () => {
   });
 });
 
+describe("updateNodeDataSnapshot", () => {
+  it("clears stale loading properties when a node receives a successful response", () => {
+    const loadingNode: GraphNode = {
+      ...makeTextNode("text-1"),
+      properties: { status: "loading" },
+      data: { loading: true, status: "loading" },
+    };
+
+    const nodes = updateNodeDataSnapshot([loadingNode], "text-1", {
+      loading: false,
+      response: "remote analysis",
+      status: "success",
+    });
+
+    expect(nodes[0].data).toMatchObject({
+      loading: false,
+      response: "remote analysis",
+      status: "success",
+    });
+    expect(nodes[0].properties.status).toBeUndefined();
+  });
+});
+
 describe("applyRemoteVideoTaskResultSnapshot", () => {
   it("creates an immediately persistable pending remote video task snapshot", () => {
     const node: GraphNode = {
@@ -739,6 +764,43 @@ describe("collectLinkedMediaReferences", () => {
       "https://example.com/frame-2.png",
     ]);
     expect(references.ossIds).toEqual(["oss-frame-1", "oss-frame-2"]);
+  });
+
+  it("excludes hidden frame-grid oss ids when a thumbnail reference is removed", () => {
+    const target = { ...makeTextNode("target"), type: "image_node" as const };
+    const frameUrls = [
+      "https://example.com/frame-1.png",
+      "https://example.com/frame-2.png",
+      "https://example.com/frame-3.png",
+    ];
+    const frameGrid: GraphNode = {
+      ...makeTextNode("frame-grid"),
+      type: "image_node",
+      data: {
+        imageUrls: frameUrls,
+        frameImageOssIds: ["oss-frame-1", "oss-frame-2", "oss-frame-3"],
+        isFrameStrip: true,
+      },
+    };
+
+    const references = collectLinkedMediaReferences({
+      nodeId: target.id,
+      links: [
+        {
+          id: "l-frame-grid",
+          fromNodeId: frameGrid.id,
+          fromOutputIndex: 0,
+          toNodeId: target.id,
+          toInputIndex: 0,
+          excludedInputValues: [frameUrls[1]],
+        },
+      ],
+      nodes: [target, frameGrid],
+      nodeOutputs: new Map([[frameGrid.id, new Map([[0, frameUrls]])]]),
+    });
+
+    expect(references.imageUrls).toEqual([frameUrls[0], frameUrls[2]]);
+    expect(references.ossIds).toEqual(["oss-frame-1", "oss-frame-3"]);
   });
 
   it("does not treat plain output urls as oss ids", () => {

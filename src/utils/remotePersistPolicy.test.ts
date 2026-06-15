@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   REMOTE_FULL_SNAPSHOT_MIN_INTERVAL_MS,
+  shouldDeferRemoteSnapshotForInFlight,
   shouldPersistRemoteSnapshot,
   type RemoteDirtyKind,
 } from "./remotePersistPolicy";
@@ -83,5 +84,23 @@ describe("remotePersistPolicy", () => {
         nextSignature: "next",
       })
     ).toBe(true);
+  });
+
+  it("defers a new snapshot while another remote persist is in flight", () => {
+    expect(
+      shouldDeferRemoteSnapshotForInFlight({
+        inFlightKey: "payload-a",
+        nextKey: "payload-b",
+      })
+    ).toBe(true);
+  });
+
+  it("does not defer when no remote persist is in flight", () => {
+    expect(
+      shouldDeferRemoteSnapshotForInFlight({
+        inFlightKey: "",
+        nextKey: "payload-b",
+      })
+    ).toBe(false);
   });
 });

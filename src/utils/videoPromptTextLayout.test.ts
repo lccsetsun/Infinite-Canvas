@@ -102,4 +102,40 @@ describe("createVideoPromptTextSnapshot", () => {
     );
     expect(promptSnapshot?.createdNode.type).toBe("text_node");
   });
+
+  it("places the reversed prompt below the first frame-analysis child when one exists", () => {
+    const videoNode = makeVideoNode();
+    let nextId = 0;
+
+    const frameSnapshot = createVideoFrameCaptureSnapshot({
+      nodes: [videoNode],
+      links: [],
+      nodeOutputs: new Map() as NodeOutputMap,
+      sourceNodeId: videoNode.id,
+      captures: [
+        {
+          index: 0,
+          videoUrl: "https://oss.example.com/segment.mp4",
+          frameImages: ["https://oss.example.com/frame-1.png"],
+          frameImageOssIds: ["oss-frame-1"],
+        },
+      ],
+      makeId: (prefix) => `${prefix}-${(nextId += 1)}`,
+    });
+
+    const firstFrameChild = frameSnapshot?.createdNodes[0];
+    expect(firstFrameChild).toBeDefined();
+
+    const promptSnapshot = createVideoPromptTextSnapshot({
+      nodes: frameSnapshot?.nodes || [],
+      links: frameSnapshot?.links || [],
+      nodeOutputs: frameSnapshot?.nodeOutputs || (new Map() as NodeOutputMap),
+      sourceNodeId: videoNode.id,
+      prompt: "reverse prompt",
+      makeId: (prefix) => `${prefix}-${(nextId += 1)}`,
+    });
+
+    expect(promptSnapshot?.createdNode.x).toBe(firstFrameChild?.x);
+    expect(promptSnapshot?.createdNode.y).toBeGreaterThan(firstFrameChild?.y || 0);
+  });
 });

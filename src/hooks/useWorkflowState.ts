@@ -31,6 +31,7 @@ import {
 import { createVideoFrameCaptureSnapshot } from "../utils/videoFrameCaptureLayout";
 import { createVideoPromptTextSnapshot } from "../utils/videoPromptTextLayout";
 import { collectImageReferenceUrls, collectNodeInputReferences } from "../utils/textNodeReferences";
+import { isLinkInputValueExcluded } from "../utils/inputReferenceExclusions";
 import {
   createFrameImageChildSnapshot,
   replaceFrameImageFromChildSnapshot,
@@ -51,6 +52,7 @@ import type { RemoteVideoTaskResult } from "../features/video/remoteVideoGenerat
 import { queryRemoteVideoGenerationTask } from "../features/video/remoteVideoGeneration";
 import {
   REMOTE_FULL_SNAPSHOT_MIN_INTERVAL_MS,
+  shouldDeferRemoteSnapshotForInFlight,
   shouldPersistRemoteSnapshot,
   type RemoteDirtyKind,
 } from "../utils/remotePersistPolicy";
@@ -292,8 +294,18 @@ export function updateNodeDataSnapshot(
 ): GraphNode[] {
   return nodes.map((node) => {
     if (node.id !== nodeId) return node;
+    const shouldClearLoadingProperty =
+      data.loading === false ||
+      data.status === "success" ||
+      data.status === "error" ||
+      data.status === "idle";
+    const nextProperties =
+      shouldClearLoadingProperty && node.properties.status === "loading"
+        ? Object.fromEntries(Object.entries(node.properties).filter(([key]) => key !== "status"))
+        : node.properties;
     const nextNode = {
       ...node,
+      properties: nextProperties,
       data: { ...(node.data || {}), ...data },
     };
     return data.isSourceNode === true ? markNodeAsSource(nextNode) : nextNode;
@@ -856,6 +868,36 @@ function addUniqueString(target: string[], value: string) {
   if (value && !target.includes(value)) target.push(value);
 }
 
+function normalizeStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => (typeof item === "string" ? item.trim() : ""))
+    .filter((item) => item.length > 0);
+}
+
+function addVisibleFrameStripOssIds({
+  imageUrls,
+  link,
+  ossIds,
+  sourceNode,
+}: {
+  imageUrls: string[];
+  link: GraphLink;
+  ossIds: string[];
+  sourceNode: GraphNode;
+}) {
+  const frameUrls = normalizeStringList(sourceNode.data?.imageUrls);
+  const frameOssIds = normalizeStringList(sourceNode.data?.frameImageOssIds);
+  if (frameUrls.length === 0 || frameOssIds.length === 0) return false;
+
+  frameUrls.forEach((imageUrl, index) => {
+    if (isLinkInputValueExcluded(link, imageUrl)) return;
+    addUniqueString(imageUrls, imageUrl);
+    addUniqueString(ossIds, frameOssIds[index] || "");
+  });
+  return true;
+}
+
 export function collectLinkedMediaReferences({
   links,
   nodeId,
@@ -881,19 +923,32 @@ export function collectLinkedMediaReferences({
     const sourceNode = nodes.find((candidate) => candidate.id === link.fromNodeId);
     if (!sourceNode) return;
     const outputValue = nodeOutputs.get(link.fromNodeId)?.get(link.fromOutputIndex);
+    if (sourceNode.type === "image_node") {
+      const handledFrameStrip = addVisibleFrameStripOssIds({
+        imageUrls,
+        link,
+        ossIds,
+        sourceNode,
+      });
+      if (!handledFrameStrip) {
+        collectImageReferenceUrls(sourceNode, outputValue).forEach((imageUrl) => {
+          if (isLinkInputValueExcluded(link, imageUrl)) return;
+          addUniqueString(imageUrls, imageUrl);
+        });
+        addOssId(sourceNode.data?.ossId);
+        addOssId(sourceNode.data?.ossIds);
+        addOssId(sourceNode.properties.ossId);
+        addOssId(sourceNode.properties.ossIds);
+        collectOssIdsFromObjectFields(outputValue).forEach(addOssId);
+      }
+      return;
+    }
+
     addOssId(sourceNode.data?.ossId);
     addOssId(sourceNode.data?.ossIds);
-    addOssId(sourceNode.data?.frameImageOssIds);
     addOssId(sourceNode.properties.ossId);
     addOssId(sourceNode.properties.ossIds);
     collectOssIdsFromObjectFields(outputValue).forEach(addOssId);
-
-    if (sourceNode.type === "image_node") {
-      collectImageReferenceUrls(sourceNode, outputValue).forEach((imageUrl) =>
-        addUniqueString(imageUrls, imageUrl)
-      );
-      return;
-    }
 
     if (sourceNode.type === "video_node") {
       const videoUrl =
@@ -1083,6 +1138,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
   const skipNextRemotePersistRef = useRef(false);
   const lastRemotePersistSignatureRef = useRef("");
   const inFlightRemotePersistKeyRef = useRef("");
+  const deferredRemotePersistRef = useRef(false);
   const lastRemotePersistedAtRef = useRef(0);
   const pendingLocalPersistSignatureRef = useRef("");
   const remoteDirtyKindRef = useRef<RemoteDirtyKind>("none");
@@ -2172,7 +2228,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       setNodes(snapshot.nodes);
       setLinks(snapshot.links);
       setNodeOutputs(snapshot.nodeOutputs);
-      setSelectedNodeId(snapshot.createdNodes[0]?.id ?? videoNodeId);
+      setSelectedNodeId(videoNodeId);
       syncCurrentWorkflowMeta((wf) => ({
         ...wf,
         summary: { ...wf.summary, updatedAt: Date.now() },
@@ -3281,6 +3337,15 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         const persistKey = getRemotePersistKey?.(projectSnapshot) ?? persistSignature;
         if (persistKey === lastRemotePersistSignatureRef.current) return;
         if (persistKey === inFlightRemotePersistKeyRef.current) return;
+        if (
+          shouldDeferRemoteSnapshotForInFlight({
+            inFlightKey: inFlightRemotePersistKeyRef.current,
+            nextKey: persistKey,
+          })
+        ) {
+          deferredRemotePersistRef.current = true;
+          return;
+        }
         const dirtyKind =
           remoteDirtyKindRef.current === "none" ? "content" : remoteDirtyKindRef.current;
         const now = Date.now();
@@ -3320,12 +3385,17 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
               pendingLocalPersistSignatureRef.current = "";
             }
             remoteDirtyKindRef.current = "none";
+            if (deferredRemotePersistRef.current) {
+              deferredRemotePersistRef.current = false;
+              setRemotePersistRetryTick((tick) => tick + 1);
+            }
           })
           .catch((error) => {
             if (inFlightRemotePersistKeyRef.current === persistKey) {
               inFlightRemotePersistKeyRef.current = "";
             }
             console.warn("Failed to persist remote canvas", error);
+            deferredRemotePersistRef.current = false;
             setRemotePersistRetryTick((tick) => tick + 1);
           });
         return;

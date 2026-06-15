@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createVideoFrameCaptureSnapshot } from "./videoFrameCaptureLayout";
+import { createVideoPromptTextSnapshot } from "./videoPromptTextLayout";
 import type { GraphNode } from "../types";
 
 function makeSourceNode(): GraphNode {
@@ -189,5 +190,40 @@ describe("createVideoFrameCaptureSnapshot", () => {
     expect(
       result?.createdNodes.every((node) => node.data?.frameCaptureSourceNodeId === sourceNode.id)
     ).toBe(true);
+  });
+
+  it("places frame-analysis children below an existing reversed prompt node", () => {
+    let nextId = 0;
+    const sourceNode = makeSourceNode();
+    const promptSnapshot = createVideoPromptTextSnapshot({
+      nodes: [sourceNode],
+      links: [],
+      nodeOutputs: new Map([["source-video", new Map([[0, "https://oss.example.com/source.mp4"]])]]),
+      sourceNodeId: sourceNode.id,
+      prompt: "reverse prompt",
+      makeId: (prefix) => `${prefix}-${(nextId += 1)}`,
+    });
+
+    expect(promptSnapshot).not.toBeNull();
+
+    const result = createVideoFrameCaptureSnapshot({
+      nodes: promptSnapshot?.nodes || [],
+      links: promptSnapshot?.links || [],
+      nodeOutputs: promptSnapshot?.nodeOutputs || new Map(),
+      sourceNodeId: sourceNode.id,
+      captures: [
+        {
+          index: 0,
+          videoUrl: "https://oss.example.com/new-segment.mp4",
+          frameImages: ["https://oss.example.com/new-frame.png"],
+          frameImageOssIds: ["new-frame-oss"],
+        },
+      ],
+      makeId: (prefix) => `${prefix}-${(nextId += 1)}`,
+    });
+
+    const segmentVideo = result?.createdNodes[0];
+    expect(segmentVideo?.x).toBe(promptSnapshot?.createdNode.x);
+    expect(segmentVideo?.y).toBeGreaterThan(promptSnapshot?.createdNode.y || 0);
   });
 });

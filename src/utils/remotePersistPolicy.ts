@@ -25,3 +25,13 @@ export function shouldPersistRemoteSnapshot({
   }
   return true;
 }
+
+export function shouldDeferRemoteSnapshotForInFlight({
+  inFlightKey,
+  nextKey,
+}: {
+  inFlightKey: string;
+  nextKey: string;
+}) {
+  return Boolean(inFlightKey && nextKey && inFlightKey !== nextKey);
+}

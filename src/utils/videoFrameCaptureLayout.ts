@@ -6,7 +6,8 @@ import type { VideoFrameCaptureItem } from "../features/video/frameCapture";
 const FRAME_GRID_COLUMNS = 5;
 const CAPTURE_VIDEO_NODE_FOOTPRINT_WIDTH = 540;
 const CAPTURE_VIDEO_NODE_FOOTPRINT_HEIGHT = 540;
-const CAPTURE_VERTICAL_GAP = 96;
+const CAPTURE_VERTICAL_GAP = 132;
+const DEFAULT_TEXT_NODE_HEIGHT = 360;
 
 export type VideoFrameCaptureSnapshot = {
   nodes: GraphNode[];
@@ -102,6 +103,34 @@ function makeCaptureVideoDisplaySize(sourceNode: GraphNode) {
   };
 }
 
+function getNodeHeight(node: GraphNode) {
+  const height =
+    node.data?.textNodeHeight ??
+    node.data?.videoNodeHeight ??
+    node.data?.imageNodeHeight ??
+    node.data?.videoDisplayHeight ??
+    node.data?.imageDisplayHeight ??
+    node.data?.videoNaturalHeight ??
+    node.data?.imageNaturalHeight;
+  return typeof height === "number" && Number.isFinite(height) && height > 0
+    ? height
+    : DEFAULT_TEXT_NODE_HEIGHT;
+}
+
+function findReversePromptChild(nodes: GraphNode[], links: GraphLink[], sourceNodeId: string) {
+  const linkedTargetIds = new Set(
+    links.filter((link) => link.fromNodeId === sourceNodeId).map((link) => link.toNodeId)
+  );
+  return nodes
+    .filter(
+      (node) =>
+        node.type === "text_node" &&
+        node.title === "视频反推提示词" &&
+        linkedTargetIds.has(node.id)
+    )
+    .sort((a, b) => a.y - b.y || a.x - b.x)[0];
+}
+
 export function createVideoFrameCaptureSnapshot({
   nodes,
   links,
@@ -133,9 +162,12 @@ export function createVideoFrameCaptureSnapshot({
   const nextOutputs: NodeOutputMap = new Map(nodeOutputs);
   staleNodeIds.forEach((nodeId) => nextOutputs.delete(nodeId));
   const createdNodes: GraphNode[] = [];
-  const baseX = sourceNode.x + 520;
+  const reversePromptChild = findReversePromptChild(nextNodes, nextLinks, sourceNodeId);
+  const baseX = reversePromptChild ? reversePromptChild.x : sourceNode.x + 520;
   const frameNodeX = baseX + CAPTURE_VIDEO_NODE_FOOTPRINT_WIDTH + 120;
-  let nextY = sourceNode.y;
+  let nextY = reversePromptChild
+    ? reversePromptChild.y + getNodeHeight(reversePromptChild) + CAPTURE_VERTICAL_GAP
+    : sourceNode.y;
 
   captures.forEach((capture, captureIndex) => {
     const displayIndex = captureIndex + 1;
