@@ -93,6 +93,7 @@ import { clearAuthSession } from "./features/auth/authStorage";
 import { logout } from "./features/auth/authApi";
 import { performOptimisticLogout } from "./features/auth/logoutFlow";
 import {
+  buildRemoteProjectPayloadHash,
   getRemoteProjectDetail,
   updateRemoteProject,
   type RemoteCanvasProject,
@@ -292,6 +293,16 @@ export default function App({ onLoggedOut }: AppProps) {
       remoteModelsByType,
     },
     remoteProject,
+    getRemotePersistKey: (project) =>
+      buildRemoteProjectPayloadHash({
+        id: project.id,
+        name: project.name,
+        coverUrl: project.coverUrl,
+        category: project.category,
+        tags: project.tags,
+        workflow: project.workflow,
+        includeCover: false,
+      }),
     onRemotePersist: async (project) => {
       await updateRemoteProject({
         id: project.id,

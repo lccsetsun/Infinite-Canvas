@@ -1040,10 +1040,11 @@ export interface UseWorkflowStateOptions {
   };
   remoteProject?: RemoteCanvasProject | null;
   onRemotePersist?: (project: RemoteCanvasProject) => void | Promise<void>;
+  getRemotePersistKey?: (project: RemoteCanvasProject) => string;
 }
 
 export function useWorkflowState(options: UseWorkflowStateOptions) {
-  const { apiConfig, remoteProject, onRemotePersist } = options;
+  const { apiConfig, remoteProject, onRemotePersist, getRemotePersistKey } = options;
   const isRemoteMode = Boolean(onRemotePersist);
 
   const initial = useMemo<Workspace>(() => {
@@ -1081,6 +1082,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
   );
   const skipNextRemotePersistRef = useRef(false);
   const lastRemotePersistSignatureRef = useRef("");
+  const inFlightRemotePersistKeyRef = useRef("");
   const lastRemotePersistedAtRef = useRef(0);
   const pendingLocalPersistSignatureRef = useRef("");
   const remoteDirtyKindRef = useRef<RemoteDirtyKind>("none");
@@ -3273,7 +3275,12 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
           nodeOutputs,
           groups,
         });
-        if (persistSignature === lastRemotePersistSignatureRef.current) return;
+        const projectSnapshot = buildRemoteProjectSnapshot(currentWorkflowSummary, {
+          ...nextData,
+        });
+        const persistKey = getRemotePersistKey?.(projectSnapshot) ?? persistSignature;
+        if (persistKey === lastRemotePersistSignatureRef.current) return;
+        if (persistKey === inFlightRemotePersistKeyRef.current) return;
         const dirtyKind =
           remoteDirtyKindRef.current === "none" ? "content" : remoteDirtyKindRef.current;
         const now = Date.now();
@@ -3284,7 +3291,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
             lastPersistedAt: lastRemotePersistedAtRef.current,
             lastSignature: lastRemotePersistSignatureRef.current,
             now,
-            nextSignature: persistSignature,
+            nextSignature: persistKey,
           })
         ) {
           if (dirtyKind === "position" && lastRemotePersistedAtRef.current > 0) {
@@ -3300,16 +3307,27 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
           return;
         }
 
-        lastRemotePersistSignatureRef.current = persistSignature;
-        lastRemotePersistedAtRef.current = now;
         pendingLocalPersistSignatureRef.current = persistSignature;
-        remoteDirtyKindRef.current = "none";
+        inFlightRemotePersistKeyRef.current = persistKey;
 
-        void onRemotePersist(
-          buildRemoteProjectSnapshot(currentWorkflowSummary, {
-            ...nextData,
+        void Promise.resolve(onRemotePersist(projectSnapshot))
+          .then(() => {
+            if (inFlightRemotePersistKeyRef.current !== persistKey) return;
+            inFlightRemotePersistKeyRef.current = "";
+            lastRemotePersistSignatureRef.current = persistKey;
+            lastRemotePersistedAtRef.current = Date.now();
+            if (pendingLocalPersistSignatureRef.current === persistSignature) {
+              pendingLocalPersistSignatureRef.current = "";
+            }
+            remoteDirtyKindRef.current = "none";
           })
-        );
+          .catch((error) => {
+            if (inFlightRemotePersistKeyRef.current === persistKey) {
+              inFlightRemotePersistKeyRef.current = "";
+            }
+            console.warn("Failed to persist remote canvas", error);
+            setRemotePersistRetryTick((tick) => tick + 1);
+          });
         return;
       }
     }, PERSIST_DEBOUNCE_MS);
@@ -3326,6 +3344,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     isRemoteMode,
     links,
     nodeOutputs,
+    getRemotePersistKey,
     nodes,
     onRemotePersist,
     remotePersistRetryTick,

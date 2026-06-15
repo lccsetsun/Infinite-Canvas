@@ -13,6 +13,7 @@ import type { TextNodeReferenceItem } from "../../utils/textNodeReferences";
 import { getCanvasNodeZIndex } from "../../utils/canvasNodeLayering";
 import type { AiModelsByType } from "../../features/api/aiModelCatalog";
 import type { CanvasGraphIndex } from "../../utils/canvasGraphIndex";
+import { hasCanvasPointerDragExceededClickThreshold } from "../../utils/canvasPointerPolicy";
 import type { ImageResolutionPresetGroup } from "../../features/nodes/imageResolutionPresets";
 import { getVisibleCanvasNodeIds } from "../../utils/canvasViewportCulling";
 import type { VideoFrameImageCaptureMode } from "../../utils/videoFrameImageExtraction";
@@ -261,6 +262,13 @@ export default function CanvasNodeLayer({
   onRunNode,
   onNotice,
 }: CanvasNodeLayerProps) {
+  const nodeDragClickGuardRef = React.useRef<{
+    nodeId: string;
+    startX: number;
+    startY: number;
+    startedAt: number;
+  } | null>(null);
+
   const alwaysVisibleNodeIds = React.useMemo(() => {
     const ids = new Set<string>();
     if (selectedNodeId) ids.add(selectedNodeId);
@@ -296,6 +304,43 @@ export default function CanvasNodeLayer({
     [nodes, visibleNodeIds]
   );
 
+  const handleNodeDragStart = React.useCallback(
+    (event: React.PointerEvent, node: GraphNode) => {
+      nodeDragClickGuardRef.current = {
+        nodeId: node.id,
+        startX: event.clientX,
+        startY: event.clientY,
+        startedAt: Date.now(),
+      };
+      onNodeDragStart(event, node);
+    },
+    [onNodeDragStart]
+  );
+
+  const handleNodeSelect = React.useCallback(
+    (nodeId: string, event?: React.MouseEvent) => {
+      const guard = nodeDragClickGuardRef.current;
+      if (event && guard?.nodeId === nodeId && Date.now() - guard.startedAt < 1_000) {
+        nodeDragClickGuardRef.current = null;
+        if (
+          hasCanvasPointerDragExceededClickThreshold({
+            startX: guard.startX,
+            startY: guard.startY,
+            endX: event.clientX,
+            endY: event.clientY,
+          })
+        ) {
+          event.stopPropagation();
+          return;
+        }
+      }
+
+      nodeDragClickGuardRef.current = null;
+      onSelectNode(nodeId, event);
+    },
+    [onSelectNode]
+  );
+
   return (
     <>
       <div
@@ -328,7 +373,7 @@ export default function CanvasNodeLayer({
                   detachedCanvasTitle
                   canvasZoom={zoom}
                   apiConfig={apiConfig}
-                  onSelect={(e) => onSelectNode(node.id, e)}
+                  onSelect={(e) => handleNodeSelect(node.id, e)}
                   onDelete={() => onDeleteNode(node.id)}
                   onDuplicate={() => onDuplicateNode(node.id)}
                   onDragStart={(e, currentNode) => {
@@ -337,7 +382,7 @@ export default function CanvasNodeLayer({
                       e.stopPropagation();
                       return;
                     }
-                    onNodeDragStart(e, currentNode);
+                    handleNodeDragStart(e, currentNode);
                   }}
                   onUpdateProperty={onUpdateNodeProperty}
                   onUpdateData={onUpdateNodeData}
@@ -376,7 +421,7 @@ export default function CanvasNodeLayer({
                   detachedCanvasTitle
                   canvasZoom={zoom}
                   apiConfig={apiConfig}
-                  onSelect={(e) => onSelectNode(node.id, e)}
+                  onSelect={(e) => handleNodeSelect(node.id, e)}
                   onDelete={() => onDeleteNode(node.id)}
                   onDuplicate={() => onDuplicateNode(node.id)}
                   onDragStart={(e, currentNode) => {
@@ -385,7 +430,7 @@ export default function CanvasNodeLayer({
                       e.stopPropagation();
                       return;
                     }
-                    onNodeDragStart(e, currentNode);
+                    handleNodeDragStart(e, currentNode);
                   }}
                   onUpdateProperty={onUpdateNodeProperty}
                   onUpdateData={onUpdateNodeData}
@@ -421,7 +466,7 @@ export default function CanvasNodeLayer({
                   detachedCanvasTitle
                   canvasZoom={zoom}
                   apiConfig={apiConfig}
-                  onSelect={(e) => onSelectNode(node.id, e)}
+                  onSelect={(e) => handleNodeSelect(node.id, e)}
                   onDelete={() => onDeleteNode(node.id)}
                   onDuplicate={() => onDuplicateNode(node.id)}
                   onDragStart={(e, currentNode) => {
@@ -430,7 +475,7 @@ export default function CanvasNodeLayer({
                       e.stopPropagation();
                       return;
                     }
-                    onNodeDragStart(e, currentNode);
+                    handleNodeDragStart(e, currentNode);
                   }}
                   onUpdateProperty={onUpdateNodeProperty}
                   onUpdateData={onUpdateNodeData}
@@ -463,7 +508,7 @@ export default function CanvasNodeLayer({
                   selected={selectedNodeId === node.id}
                   detachedCanvasTitle
                   canvasZoom={zoom}
-                  onSelect={(e) => onSelectNode(node.id, e)}
+                  onSelect={(e) => handleNodeSelect(node.id, e)}
                   onDelete={() => onDeleteNode(node.id)}
                   onDuplicate={() => onDuplicateNode(node.id)}
                   onDragStart={(e, currentNode) => {
@@ -472,7 +517,7 @@ export default function CanvasNodeLayer({
                       e.stopPropagation();
                       return;
                     }
-                    onNodeDragStart(e, currentNode);
+                    handleNodeDragStart(e, currentNode);
                   }}
                   onUpdateProperty={onUpdateNodeProperty}
                   onUpdateData={onUpdateNodeData}
@@ -494,7 +539,7 @@ export default function CanvasNodeLayer({
                 <NodeCard
                   node={node}
                   selected={selectedNodeId === node.id}
-                  onSelect={(e) => onSelectNode(node.id, e)}
+                  onSelect={(e) => handleNodeSelect(node.id, e)}
                   onDelete={() => onDeleteNode(node.id)}
                   onDuplicate={() => onDuplicateNode(node.id)}
                   onDragStart={(e, currentNode) => {
@@ -503,7 +548,7 @@ export default function CanvasNodeLayer({
                       e.stopPropagation();
                       return;
                     }
-                    onNodeDragStart(e, currentNode);
+                    handleNodeDragStart(e, currentNode);
                   }}
                   onUpdateProperty={onUpdateNodeProperty}
                   onUpdateData={onUpdateNodeData}

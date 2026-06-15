@@ -6,6 +6,7 @@ vi.mock("../auth/request", () => ({
 
 import { devApiFetch } from "../auth/request";
 import {
+  buildRemoteProjectPayloadHash,
   copyRemoteProject,
   createRemoteProject,
   deleteRemoteProject,
@@ -254,5 +255,56 @@ describe("remote canvas api", () => {
       metadata: JSON.stringify({ nodes: [], links: [], nodeOutputs: [], groups: [] }),
     });
     expect(updateBody).not.toHaveProperty("previewImage");
+  });
+
+  it("hashes the final update payload and ignores fields that are not sent", () => {
+    const first = buildRemoteProjectPayloadHash({
+      id: "canvas-1",
+      name: "Project 1",
+      category: "创作项目",
+      tags: ["tag-a"],
+      coverUrl: "https://example.com/cover.png",
+      workflow: { nodes: [], links: [], nodeOutputs: [], groups: [] },
+      includeCover: false,
+    });
+
+    const second = buildRemoteProjectPayloadHash({
+      id: "canvas-1",
+      name: "Project 1",
+      category: "另一个分类",
+      tags: ["tag-b"],
+      coverUrl: "https://example.com/different-cover.png",
+      workflow: { nodes: [], links: [], nodeOutputs: [], groups: [] },
+      includeCover: false,
+    });
+
+    const third = buildRemoteProjectPayloadHash({
+      id: "canvas-1",
+      name: "Project 1",
+      category: "创作项目",
+      tags: ["tag-a"],
+      coverUrl: "https://example.com/cover.png",
+      workflow: {
+        nodes: [
+          {
+            id: "node-1",
+            type: "text_node",
+            title: "文本节点",
+            x: 10,
+            y: 20,
+            inputs: [],
+            outputs: [],
+            properties: {},
+          },
+        ],
+        links: [],
+        nodeOutputs: [],
+        groups: [],
+      },
+      includeCover: false,
+    });
+
+    expect(second).toBe(first);
+    expect(third).not.toBe(first);
   });
 });
