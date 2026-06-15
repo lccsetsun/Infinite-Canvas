@@ -1,6 +1,7 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
-import { Image as ImageIcon, Loader2, Send, Upload, Wand2, X } from "lucide-react";
+import { ChevronDown, Image as ImageIcon, Loader2, Send, Upload, Wand2, X } from "lucide-react";
 import type { GraphNode } from "../../types";
 import { uploadFileToOss } from "../../features/resource/ossApi";
 import { AI_MODEL_TYPES, type AiModelsByType } from "../../features/api/aiModelCatalog";
@@ -21,6 +22,10 @@ import {
 import { shouldShowInlinePortHandles } from "../../utils/portHandleVisibility";
 import { InlineNodePortHandle } from "./InlineNodePortHandle";
 import { ImageResolutionPicker } from "./ImageResolutionPicker";
+import {
+  getFloatingMenuPosition,
+  type FloatingMenuPosition,
+} from "../../utils/floatingMenuPosition";
 
 interface VideoBatchReplacementNodeCardProps {
   node: GraphNode;
@@ -90,10 +95,21 @@ export function getVideoBatchReplacementMode(node: GraphNode): VideoBatchReplace
   return node.data?.batchReplacementMode === "scene" ? "scene" : "product";
 }
 
+export function getVideoBatchReplacementModeLabel(
+  mode: VideoBatchReplacementMode,
+  options: VideoBatchReplacementModeOption[]
+): string {
+  return options.find((option) => option.value === mode)?.label ?? "产品替换";
+}
+
 export function getVideoBatchReplacementModelId(node: GraphNode): string {
   return typeof node.data?.batchReplacementModelId === "string"
     ? node.data.batchReplacementModelId.trim()
     : "";
+}
+
+export function getVideoBatchReplacementModelLabel(modelId: string): string {
+  return modelId || "请选择图片模型";
 }
 
 export function getVideoBatchReplacementResolution(node: GraphNode): string {
@@ -177,6 +193,39 @@ export function canSubmitVideoBatchReplacement(
   );
 }
 
+export function formatVideoBatchReplacementElapsedTime(elapsedMs: number): string {
+  const safeElapsedMs = Math.max(0, elapsedMs);
+  const seconds = Math.max(1, Math.floor(safeElapsedMs / 1000));
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  return `${Math.floor(minutes / 60)}h`;
+}
+
+export function getVideoBatchReplacementSlotPlaceholder(
+  slot: VideoBatchReplacementSlot,
+  _mode: VideoBatchReplacementMode
+) {
+  return `请上传${slot.title}图`;
+}
+
+export function getVideoBatchReplacementElapsedLabel({
+  finishedAt,
+  isSubmitting,
+  now,
+  startedAt,
+}: {
+  finishedAt?: number;
+  isSubmitting: boolean;
+  now: number;
+  startedAt?: number;
+}) {
+  if (typeof startedAt !== "number" || startedAt <= 0) return "";
+  const endAt = typeof finishedAt === "number" && finishedAt >= startedAt ? finishedAt : now;
+  if (!isSubmitting && typeof finishedAt !== "number") return "";
+  return formatVideoBatchReplacementElapsedTime(endAt - startedAt);
+}
+
 function getDroppedImageUrl(event: React.DragEvent) {
   return (
     event.dataTransfer.getData("text/uri-list").trim() ||
@@ -209,6 +258,16 @@ export default function VideoBatchReplacementNodeCard({
 }: VideoBatchReplacementNodeCardProps) {
   const [uploadingKey, setUploadingKey] = React.useState<VideoBatchReplacementSlotKey | null>(null);
   const [isHovered, setIsHovered] = React.useState(false);
+  const modeMenuRef = React.useRef<HTMLDivElement | null>(null);
+  const modeMenuPortalRef = React.useRef<HTMLDivElement | null>(null);
+  const [modeMenuOpen, setModeMenuOpen] = React.useState(false);
+  const [modeMenuPosition, setModeMenuPosition] = React.useState<FloatingMenuPosition | null>(null);
+  const modelMenuRef = React.useRef<HTMLDivElement | null>(null);
+  const modelMenuPortalRef = React.useRef<HTMLDivElement | null>(null);
+  const [modelMenuOpen, setModelMenuOpen] = React.useState(false);
+  const [modelMenuPosition, setModelMenuPosition] = React.useState<FloatingMenuPosition | null>(
+    null
+  );
   const fileInputRefs = React.useRef<Record<VideoBatchReplacementSlotKey, HTMLInputElement | null>>(
     {
       back: null,
@@ -225,6 +284,112 @@ export default function VideoBatchReplacementNodeCard({
   const imageModelOptions = apiConfig?.remoteModelsByType?.[AI_MODEL_TYPES[1]] ?? [];
   const isSubmitting =
     node.data?.loading === true && node.data.loadingOperation === "batch-replacement";
+  const controlsDisabled = isSubmitting;
+  const batchReplacementStartedAt =
+    typeof node.data?.batchReplacementStartedAt === "number"
+      ? node.data.batchReplacementStartedAt
+      : undefined;
+  const batchReplacementFinishedAt =
+    typeof node.data?.batchReplacementFinishedAt === "number"
+      ? node.data.batchReplacementFinishedAt
+      : undefined;
+  const [elapsedNow, setElapsedNow] = React.useState(() => Date.now());
+  React.useEffect(() => {
+    if (!isSubmitting) return;
+    setElapsedNow(Date.now());
+    const timerId = window.setInterval(() => setElapsedNow(Date.now()), 1000);
+    return () => window.clearInterval(timerId);
+  }, [isSubmitting]);
+  React.useEffect(() => {
+    if (!modeMenuOpen) return;
+    const updateModeMenuPosition = () => {
+      const rect = modeMenuRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setModeMenuPosition(
+        getFloatingMenuPosition({
+          anchorRect: rect,
+          viewportHeight: window.innerHeight,
+          viewportWidth: window.innerWidth,
+        })
+      );
+    };
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (
+        target &&
+        modeMenuRef.current &&
+        !modeMenuRef.current.contains(target) &&
+        !modeMenuPortalRef.current?.contains(target)
+      ) {
+        setModeMenuOpen(false);
+      }
+    };
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setModeMenuOpen(false);
+    };
+    updateModeMenuPosition();
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleEscape);
+    window.addEventListener("resize", updateModeMenuPosition);
+    window.addEventListener("scroll", updateModeMenuPosition, true);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleEscape);
+      window.removeEventListener("resize", updateModeMenuPosition);
+      window.removeEventListener("scroll", updateModeMenuPosition, true);
+    };
+  }, [modeMenuOpen]);
+  React.useEffect(() => {
+    if (!modelMenuOpen) return;
+    const updateModelMenuPosition = () => {
+      const rect = modelMenuRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setModelMenuPosition(
+        getFloatingMenuPosition({
+          anchorRect: rect,
+          viewportHeight: window.innerHeight,
+          viewportWidth: window.innerWidth,
+        })
+      );
+    };
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (
+        target &&
+        modelMenuRef.current &&
+        !modelMenuRef.current.contains(target) &&
+        !modelMenuPortalRef.current?.contains(target)
+      ) {
+        setModelMenuOpen(false);
+      }
+    };
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setModelMenuOpen(false);
+    };
+    updateModelMenuPosition();
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleEscape);
+    window.addEventListener("resize", updateModelMenuPosition);
+    window.addEventListener("scroll", updateModelMenuPosition, true);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleEscape);
+      window.removeEventListener("resize", updateModelMenuPosition);
+      window.removeEventListener("scroll", updateModelMenuPosition, true);
+    };
+  }, [modelMenuOpen]);
+  React.useEffect(() => {
+    if (controlsDisabled) {
+      setModeMenuOpen(false);
+      setModelMenuOpen(false);
+    }
+  }, [controlsDisabled]);
+  const elapsedLabel = getVideoBatchReplacementElapsedLabel({
+    finishedAt: batchReplacementFinishedAt,
+    isSubmitting,
+    now: elapsedNow,
+    startedAt: batchReplacementStartedAt,
+  });
   const modeOptions = replacementModeOptions?.length
     ? replacementModeOptions
     : DEFAULT_VIDEO_BATCH_REPLACEMENT_MODE_OPTIONS;
@@ -292,6 +457,7 @@ export default function VideoBatchReplacementNodeCard({
   const writeModePatch = React.useCallback(
     (mode: VideoBatchReplacementMode) => {
       onUpdateData?.(node.id, updateVideoBatchReplacementMode(node, mode));
+      setModeMenuOpen(false);
     },
     [node, onUpdateData]
   );
@@ -299,6 +465,7 @@ export default function VideoBatchReplacementNodeCard({
   const writeModelPatch = React.useCallback(
     (modelId: string) => {
       onUpdateData?.(node.id, updateVideoBatchReplacementModel(node, modelId));
+      setModelMenuOpen(false);
     },
     [node, onUpdateData]
   );
@@ -312,6 +479,7 @@ export default function VideoBatchReplacementNodeCard({
 
   const uploadFile = React.useCallback(
     async (key: VideoBatchReplacementSlotKey, file?: File | null) => {
+      if (controlsDisabled) return;
       if (!file || !file.type.startsWith("image/")) return;
       setUploadingKey(key);
       try {
@@ -321,7 +489,7 @@ export default function VideoBatchReplacementNodeCard({
         setUploadingKey(null);
       }
     },
-    [writeSlotPatch]
+    [controlsDisabled, writeSlotPatch]
   );
 
   return (
@@ -358,173 +526,337 @@ export default function VideoBatchReplacementNodeCard({
       </div>
 
       <div
-        className="mb-3 grid grid-cols-2 rounded-[7px] border border-slate-500/18 bg-slate-950/28 p-1"
-        data-node-action="true"
+        aria-disabled={controlsDisabled}
+        className={controlsDisabled ? "pointer-events-none opacity-60" : undefined}
       >
-        {modeOptions.map((option) => {
-          const isActive = replacementMode === option.value;
-          return (
-            <button
-              key={option.value}
-              type="button"
-              className={`h-8 rounded-[6px] text-[12px] font-semibold transition ${
-                isActive
-                  ? "bg-cyan-300/16 text-cyan-50 shadow-[inset_0_0_0_1px_rgba(165,243,252,0.22)]"
-                  : "text-slate-400 hover:bg-cyan-300/[0.06] hover:text-slate-100"
-              }`}
-              onClick={(event) => {
-                event.stopPropagation();
-                writeModePatch(option.value);
-              }}
-            >
-              {option.label}
-            </button>
-          );
-        })}
-      </div>
-
-      <ImageResolutionPicker
-        resolution={selectedResolution}
-        aspectRatio={selectedAspectRatio}
-        onChange={writeSizePatch}
-        buttonClassName={`mb-3 flex h-9 w-full items-center gap-2 rounded-[7px] border px-3 text-[12px] font-semibold transition ${
-          customSize
-            ? "border-slate-500/22 bg-slate-950/26 text-slate-200 hover:border-cyan-200/36 hover:text-cyan-50"
-            : "border-amber-300/32 bg-amber-400/[0.08] text-amber-100"
-        }`}
-        panelTitle="Image Size"
-        presetGroups={resolutionPresetGroups}
-      />
-
-      <div
-        className={`mb-3 flex h-9 w-full items-center gap-2 rounded-[7px] border px-3 text-[12px] font-semibold transition ${
-          selectedModelId
-            ? "border-slate-500/22 bg-slate-950/26 text-slate-200"
-            : "border-amber-300/32 bg-amber-400/[0.08] text-amber-100"
-        }`}
-        data-node-action="true"
-      >
-        <Wand2 className="h-3.5 w-3.5 shrink-0 text-violet-200/58" />
-        <select
-          value={selectedModelId}
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => event.stopPropagation()}
-          onChange={(event) => writeModelPatch(event.currentTarget.value)}
-          className="h-full min-w-0 flex-1 cursor-pointer bg-transparent text-[12px] font-semibold text-inherit outline-none [color-scheme:dark]"
+        <div
+          ref={modeMenuRef}
+          className="relative mb-3 flex h-9 w-full items-center rounded-[7px] border border-slate-500/18 bg-slate-950/28 px-3 text-[12px] font-semibold text-slate-200 transition"
+          data-node-action="true"
         >
-          <option value="">请选择图片模型</option>
-          {imageModelOptions.map((model) => (
-            <option key={model.modelId} value={model.modelId}>
-              {model.modelId}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div className="grid grid-cols-3 gap-3">
-        {slots.map((slot) => {
-          const isHighlightedDropTarget = highlightedSlotKey === slot.key;
-          return (
-            <div
-              key={slot.key}
-              role="button"
-              tabIndex={0}
-              data-node-action="true"
-              data-video-batch-node-id={node.id}
-              data-video-batch-slot-key={slot.key}
-              className={`group flex min-h-[196px] cursor-pointer flex-col overflow-hidden rounded-[8px] border border-dashed p-2.5 transition ${
-                isHighlightedDropTarget
-                  ? "border-cyan-100/78 bg-cyan-300/[0.12] ring-2 ring-cyan-100/70 shadow-[0_0_30px_rgba(103,232,249,0.22)]"
-                  : selected
-                    ? "border-cyan-300/38 bg-cyan-300/[0.045]"
-                    : "border-slate-500/28 bg-slate-950/24 hover:border-cyan-200/42 hover:bg-cyan-300/[0.04]"
+          <button
+            type="button"
+            disabled={controlsDisabled}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              if (controlsDisabled) return;
+              const rect = modeMenuRef.current?.getBoundingClientRect();
+              if (rect) {
+                setModeMenuPosition(
+                  getFloatingMenuPosition({
+                    anchorRect: rect,
+                    viewportHeight: window.innerHeight,
+                    viewportWidth: window.innerWidth,
+                  })
+                );
+              }
+              setModelMenuOpen(false);
+              setModeMenuOpen((open) => !open);
+            }}
+            className="flex h-full min-w-0 flex-1 cursor-pointer items-center justify-between gap-2 bg-transparent text-left text-[12px] font-semibold text-inherit outline-none disabled:cursor-not-allowed"
+          >
+            <span className="min-w-0 flex-1 truncate">
+              {getVideoBatchReplacementModeLabel(replacementMode, modeOptions)}
+            </span>
+            <ChevronDown
+              className={`h-3.5 w-3.5 shrink-0 text-slate-300/56 transition-transform ${
+                modeMenuOpen ? "rotate-180" : ""
               }`}
-              onDragOver={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-              }}
-              onDrop={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                const file = event.dataTransfer.files?.[0];
-                if (file) {
-                  void uploadFile(slot.key, file);
-                  return;
-                }
-                const imageUrl = getDroppedImageUrl(event);
-                if (imageUrl) writeSlotPatch(slot.key, { imageUrl });
-              }}
-              onClick={(event) => {
-                event.stopPropagation();
-                if (isHighlightedDropTarget) return;
-                const target = event.target as HTMLElement;
-                if (target.closest("button,input,textarea,[contenteditable='true']")) return;
-                fileInputRefs.current[slot.key]?.click();
-              }}
-              onKeyDown={(event) => {
-                if (event.key !== "Enter" && event.key !== " ") return;
-                event.preventDefault();
-                event.stopPropagation();
-                fileInputRefs.current[slot.key]?.click();
-              }}
-            >
-              <input
-                type="file"
-                accept="image/*"
-                className="hidden"
-                ref={(element) => {
-                  fileInputRefs.current[slot.key] = element;
-                }}
-                onChange={(event) => void uploadFile(slot.key, event.currentTarget.files?.[0])}
-              />
-              <div className="relative flex h-[112px] items-center justify-center overflow-hidden rounded-[6px] bg-black/28">
-                {slot.imageUrl ? (
-                  <>
-                    <img
-                      src={slot.imageUrl}
-                      alt={slot.title}
-                      className="h-full w-full object-cover"
-                      draggable={false}
-                    />
-                    <button
-                      type="button"
-                      aria-label="清空已上传图片"
-                      className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-slate-950/76 text-slate-200 shadow-[0_8px_18px_-10px_rgba(0,0,0,0.9)] transition hover:bg-rose-500/80 hover:text-white"
-                      onClick={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        writeSlotPatch(slot.key, { imageUrl: "", ossId: "" });
-                      }}
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </>
-                ) : (
-                  <div className="flex flex-col items-center gap-2 px-2 text-center text-[12px] font-medium leading-5 text-slate-300/78">
-                    <Upload className="h-5 w-5 text-cyan-100/64" />
-                    <span>{uploadingKey === slot.key ? "正在上传" : slot.placeholder}</span>
-                  </div>
-                )}
-                {uploadingKey === slot.key && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-slate-950/72 text-[12px] font-semibold text-cyan-50">
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                    <span>正在上传</span>
-                  </div>
-                )}
-              </div>
-              <input
-                type="text"
+            />
+          </button>
+        </div>
+        {typeof document !== "undefined" &&
+          createPortal(
+            <AnimatePresence>
+              {modeMenuOpen && modeMenuPosition && (
+                <motion.div
+                  ref={modeMenuPortalRef}
+                  initial={{
+                    opacity: 0,
+                    y: modeMenuPosition.placement === "bottom" ? 8 : -8,
+                    scale: 0.98,
+                  }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{
+                    opacity: 0,
+                    y: modeMenuPosition.placement === "bottom" ? 8 : -8,
+                    scale: 0.98,
+                  }}
+                  transition={{ duration: 0.16, ease: "easeOut" }}
+                  className="fixed z-[240] overflow-y-auto rounded-2xl border border-slate-400/16 bg-[#121923]/96 p-1.5 shadow-[0_28px_70px_-28px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl custom-scrollbar"
+                  style={{
+                    left: modeMenuPosition.left,
+                    maxHeight: modeMenuPosition.maxHeight,
+                    top: modeMenuPosition.top,
+                    bottom: modeMenuPosition.bottom,
+                    width: modeMenuPosition.width,
+                  }}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={(event) => event.stopPropagation()}
+                  onWheel={(event) => event.stopPropagation()}
+                >
+                  {modeOptions.map((option) => {
+                    const isActive = replacementMode === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => writeModePatch(option.value)}
+                        className={`flex h-9 w-full items-center gap-2 rounded-xl px-3 text-left text-[13px] font-medium transition-colors ${
+                          isActive
+                            ? "bg-violet-500/[0.16] text-violet-50"
+                            : "text-slate-200/82 hover:bg-white/[0.05] hover:text-white"
+                        }`}
+                      >
+                        <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                      </button>
+                    );
+                  })}
+                </motion.div>
+              )}
+            </AnimatePresence>,
+            document.body
+          )}
+
+        <ImageResolutionPicker
+          resolution={selectedResolution}
+          aspectRatio={selectedAspectRatio}
+          onChange={writeSizePatch}
+          disabled={controlsDisabled}
+          buttonClassName={`mb-3 flex h-9 w-full items-center gap-2 rounded-[7px] border px-3 text-[12px] font-semibold transition ${
+            customSize
+              ? "border-slate-500/22 bg-slate-950/26 text-slate-200 hover:border-cyan-200/36 hover:text-cyan-50"
+              : "border-amber-300/32 bg-amber-400/[0.08] text-amber-100"
+          }`}
+          panelTitle="Image Size"
+          presetGroups={resolutionPresetGroups}
+        />
+
+        <div
+          ref={modelMenuRef}
+          className={`relative mb-3 flex h-9 w-full items-center gap-2 rounded-[7px] border px-3 text-[12px] font-semibold transition ${
+            selectedModelId
+              ? "border-slate-500/22 bg-slate-950/26 text-slate-200"
+              : "border-amber-300/32 bg-amber-400/[0.08] text-amber-100"
+          }`}
+          data-node-action="true"
+        >
+          <Wand2 className="h-3.5 w-3.5 shrink-0 text-violet-200/58" />
+          <button
+            type="button"
+            disabled={controlsDisabled}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              if (controlsDisabled) return;
+              const rect = modelMenuRef.current?.getBoundingClientRect();
+              if (rect) {
+                setModelMenuPosition(
+                  getFloatingMenuPosition({
+                    anchorRect: rect,
+                    viewportHeight: window.innerHeight,
+                    viewportWidth: window.innerWidth,
+                  })
+                );
+              }
+              setModeMenuOpen(false);
+              setModelMenuOpen((open) => !open);
+            }}
+            className="flex h-full min-w-0 flex-1 cursor-pointer items-center justify-between gap-2 bg-transparent text-left text-[12px] font-semibold text-inherit outline-none disabled:cursor-not-allowed"
+          >
+            <span className="min-w-0 flex-1 truncate">
+              {getVideoBatchReplacementModelLabel(selectedModelId)}
+            </span>
+            <ChevronDown
+              className={`h-3.5 w-3.5 shrink-0 text-slate-300/56 transition-transform ${
+                modelMenuOpen ? "rotate-180" : ""
+              }`}
+            />
+          </button>
+        </div>
+        {typeof document !== "undefined" &&
+          createPortal(
+            <AnimatePresence>
+              {modelMenuOpen && modelMenuPosition && (
+                <motion.div
+                  ref={modelMenuPortalRef}
+                  initial={{
+                    opacity: 0,
+                    y: modelMenuPosition.placement === "bottom" ? 8 : -8,
+                    scale: 0.98,
+                  }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{
+                    opacity: 0,
+                    y: modelMenuPosition.placement === "bottom" ? 8 : -8,
+                    scale: 0.98,
+                  }}
+                  transition={{ duration: 0.16, ease: "easeOut" }}
+                  className="fixed z-[240] overflow-y-auto rounded-2xl border border-slate-400/16 bg-[#121923]/96 p-1.5 shadow-[0_28px_70px_-28px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl custom-scrollbar"
+                  style={{
+                    left: modelMenuPosition.left,
+                    maxHeight: modelMenuPosition.maxHeight,
+                    top: modelMenuPosition.top,
+                    bottom: modelMenuPosition.bottom,
+                    width: modelMenuPosition.width,
+                  }}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={(event) => event.stopPropagation()}
+                  onWheel={(event) => event.stopPropagation()}
+                >
+                  {imageModelOptions.length === 0 ? (
+                    <div className="px-3 py-2 text-[12px] font-medium text-slate-300/58">
+                      暂无可用图片模型
+                    </div>
+                  ) : (
+                    <div className="py-0.5">
+                      <div className="px-2 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-300/44">
+                        远程模型
+                      </div>
+                      {imageModelOptions.map((model) => {
+                        const isActive = selectedModelId === model.modelId;
+                        return (
+                          <button
+                            key={model.modelId}
+                            type="button"
+                            onClick={() => writeModelPatch(model.modelId)}
+                            className={`flex h-9 w-full items-center gap-2 rounded-xl px-3 text-left text-[13px] font-medium transition-colors ${
+                              isActive
+                                ? "bg-violet-500/[0.16] text-violet-50"
+                                : "text-slate-200/82 hover:bg-white/[0.05] hover:text-white"
+                            }`}
+                          >
+                            <span className="min-w-0 flex-1 truncate">
+                              {getVideoBatchReplacementModelLabel(model.modelId)}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>,
+            document.body
+          )}
+
+        <div className="grid grid-cols-3 gap-3">
+          {slots.map((slot) => {
+            const isHighlightedDropTarget = highlightedSlotKey === slot.key;
+            return (
+              <div
+                key={slot.key}
+                role="button"
+                tabIndex={controlsDisabled ? -1 : 0}
                 data-node-action="true"
-                value={slot.prompt}
-                onChange={(event) =>
-                  writeSlotPatch(slot.key, { prompt: event.currentTarget.value })
-                }
-                className="mt-2 h-8 rounded-[6px] border border-slate-500/20 bg-slate-950/42 px-2 text-center text-[12px] font-semibold text-slate-100 outline-none transition focus:border-cyan-200/50"
-                onClick={(event) => event.stopPropagation()}
-              />
-            </div>
-          );
-        })}
+                data-video-batch-node-id={node.id}
+                data-video-batch-slot-key={slot.key}
+                className={`group flex min-h-[196px] cursor-pointer flex-col overflow-hidden rounded-[8px] border border-dashed p-2.5 transition ${
+                  isHighlightedDropTarget
+                    ? "border-cyan-100/78 bg-cyan-300/[0.12] ring-2 ring-cyan-100/70 shadow-[0_0_30px_rgba(103,232,249,0.22)]"
+                    : selected
+                      ? "border-cyan-300/38 bg-cyan-300/[0.045]"
+                      : "border-slate-500/28 bg-slate-950/24 hover:border-cyan-200/42 hover:bg-cyan-300/[0.04]"
+                }`}
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  if (controlsDisabled) return;
+                  const file = event.dataTransfer.files?.[0];
+                  if (file) {
+                    void uploadFile(slot.key, file);
+                    return;
+                  }
+                  const imageUrl = getDroppedImageUrl(event);
+                  if (imageUrl) writeSlotPatch(slot.key, { imageUrl });
+                }}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  if (controlsDisabled) return;
+                  if (isHighlightedDropTarget) return;
+                  const target = event.target as HTMLElement;
+                  if (target.closest("button,input,textarea,[contenteditable='true']")) return;
+                  fileInputRefs.current[slot.key]?.click();
+                }}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter" && event.key !== " ") return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  if (controlsDisabled) return;
+                  fileInputRefs.current[slot.key]?.click();
+                }}
+              >
+                <input
+                  type="file"
+                  accept="image/*"
+                  disabled={controlsDisabled}
+                  className="hidden"
+                  ref={(element) => {
+                    fileInputRefs.current[slot.key] = element;
+                  }}
+                  onChange={(event) => void uploadFile(slot.key, event.currentTarget.files?.[0])}
+                />
+                <div className="relative flex h-[112px] items-center justify-center overflow-hidden rounded-[6px] bg-black/28">
+                  {slot.imageUrl ? (
+                    <>
+                      <img
+                        src={slot.imageUrl}
+                        alt={slot.title}
+                        className="h-full w-full object-cover"
+                        draggable={false}
+                      />
+                      <button
+                        type="button"
+                        disabled={controlsDisabled}
+                        aria-label="清空已上传图片"
+                        className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-slate-950/76 text-slate-200 shadow-[0_8px_18px_-10px_rgba(0,0,0,0.9)] transition hover:bg-rose-500/80 hover:text-white"
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          if (controlsDisabled) return;
+                          writeSlotPatch(slot.key, { imageUrl: "", ossId: "" });
+                        }}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </>
+                  ) : (
+                    <div className="flex flex-col items-center gap-2 px-2 text-center text-[12px] font-medium leading-5 text-slate-300/78">
+                      <Upload className="h-5 w-5 text-cyan-100/64" />
+                      <span>
+                        {uploadingKey === slot.key
+                          ? "正在上传"
+                          : getVideoBatchReplacementSlotPlaceholder(slot, replacementMode)}
+                      </span>
+                    </div>
+                  )}
+                  {uploadingKey === slot.key && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-slate-950/72 text-[12px] font-semibold text-cyan-50">
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                      <span>正在上传</span>
+                    </div>
+                  )}
+                </div>
+                <input
+                  type="text"
+                  data-node-action="true"
+                  disabled={controlsDisabled}
+                  value={slot.prompt}
+                  onChange={(event) =>
+                    writeSlotPatch(slot.key, { prompt: event.currentTarget.value })
+                  }
+                  className="mt-2 h-8 rounded-[6px] border border-slate-500/20 bg-slate-950/42 px-2 text-center text-[12px] font-semibold text-slate-100 outline-none transition focus:border-cyan-200/50"
+                  onClick={(event) => event.stopPropagation()}
+                />
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       <button

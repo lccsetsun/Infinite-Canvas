@@ -148,6 +148,49 @@ describe("replaceFrameImageFromChildSnapshot", () => {
       updatedFrameNode?.data?.imageUrls
     );
   });
+
+  it("replaces the original frame oss id when the edited child has a new oss id", () => {
+    const imageUrls = [
+      "https://oss.example.com/1.png",
+      "https://oss.example.com/2.png",
+      "https://oss.example.com/3.png",
+    ];
+    const frameNode = makeFrameNode(imageUrls, ["oss-1", "oss-2", "oss-3"]);
+    const child = createFrameImageChildSnapshot({
+      nodes: [frameNode],
+      links: [],
+      sourceNodeId: "frames",
+      frameIndex: 1,
+      makeId: () => "child",
+    })!.createdNode;
+    const editedChild: GraphNode = {
+      ...child,
+      data: {
+        ...child.data,
+        imageUrl: "https://oss.example.com/edited.png",
+        imageUrls: ["https://oss.example.com/edited.png"],
+        ossId: "oss-edited",
+      },
+      properties: {
+        ...child.properties,
+        imageUrl: "https://oss.example.com/edited.png",
+        ossId: "oss-edited",
+      },
+    };
+    const nodeOutputs: NodeOutputMap = new Map<string, Map<number, unknown>>([
+      [frameNode.id, new Map<number, unknown>([[0, imageUrls]])],
+    ]);
+
+    const result = replaceFrameImageFromChildSnapshot({
+      nodes: [frameNode, editedChild],
+      nodeOutputs,
+      childNodeId: editedChild.id,
+    });
+
+    const updatedFrameNode = result?.nodes.find((node) => node.id === frameNode.id);
+    expect(updatedFrameNode?.data?.frameImageOssIds).toEqual(["oss-1", "oss-edited", "oss-3"]);
+    expect(updatedFrameNode?.properties.frameImageOssIds).toEqual(["oss-1", "oss-edited", "oss-3"]);
+  });
 });
 
 describe("replaceFrameImageUrlSnapshot", () => {
@@ -179,5 +222,34 @@ describe("replaceFrameImageUrlSnapshot", () => {
     expect(result?.nodeOutputs.get(frameNode.id)?.get(0)).toEqual(
       updatedFrameNode?.data?.imageUrls
     );
+  });
+
+  it("replaces the target frame oss id when a dragged image provides one", () => {
+    const imageUrls = [
+      "https://oss.example.com/1.png",
+      "https://oss.example.com/2.png",
+      "https://oss.example.com/3.png",
+    ];
+    const frameNode = makeFrameNode(imageUrls, ["oss-1", "oss-2", "oss-3"]);
+    const nodeOutputs: NodeOutputMap = new Map<string, Map<number, unknown>>([
+      [frameNode.id, new Map<number, unknown>([[0, imageUrls]])],
+    ]);
+
+    const result = replaceFrameImageUrlSnapshot({
+      nodes: [frameNode],
+      nodeOutputs,
+      sourceNodeId: frameNode.id,
+      frameIndex: 2,
+      replacementUrl: "https://oss.example.com/replacement.png",
+      replacementOssId: "oss-replacement",
+    });
+
+    const updatedFrameNode = result?.nodes.find((node) => node.id === frameNode.id);
+    expect(updatedFrameNode?.data?.frameImageOssIds).toEqual(["oss-1", "oss-2", "oss-replacement"]);
+    expect(updatedFrameNode?.properties.frameImageOssIds).toEqual([
+      "oss-1",
+      "oss-2",
+      "oss-replacement",
+    ]);
   });
 });

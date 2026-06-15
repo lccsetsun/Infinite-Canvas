@@ -99,6 +99,15 @@ export interface GraphNode {
     batchReplacementResolution?: string;
     batchReplacementAspectRatio?: string;
     batchReplacementResult?: unknown;
+    batchReplacementTaskId?: string;
+    batchReplacementTaskStatus?: string;
+    batchReplacementTaskError?: string;
+    batchReplacementStartedAt?: number;
+    batchReplacementFinishedAt?: number;
+    batchReplacementRunId?: string;
+    batchReplacementSourceNodeId?: string;
+    batchReplacementResultIndex?: number;
+    batchReplacementResultCount?: number;
     extractedFrameSourceNodeId?: string;
     extractedFrameIndex?: number;
     videoFrameCaptureChild?: boolean;

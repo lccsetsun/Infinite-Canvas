@@ -195,7 +195,12 @@ interface CanvasNodeLayerProps {
   ) => string | null;
   onCompleteVideoFrameImage?: (nodeId: string, uploaded: { url: string; ossId?: string }) => void;
   onFailVideoFrameImage?: (nodeId: string, error: string) => void;
-  onReplaceFrameImage?: (nodeId: string, frameIndex: number, replacementUrl: string) => void;
+  onReplaceFrameImage?: (
+    nodeId: string,
+    frameIndex: number,
+    replacementUrl: string,
+    replacementOssId?: string
+  ) => void;
   onSyncImagePromptStarterLayout?: (nodeId: string, imageNodeWidth: number) => void;
   onSplitImageGrid?: (
     nodeId: string,

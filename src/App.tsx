@@ -61,6 +61,10 @@ import {
   type MultiNodeClipboardPayload,
 } from "./utils/multiSelectionOperations";
 import {
+  findTopGroupAtPoint,
+  getMovedGroupMemberPositions,
+} from "./utils/canvasGroups";
+import {
   clearCanvasSelection,
   getLegacySelectionState,
   selectCanvasGroup,
@@ -83,7 +87,7 @@ import {
 } from "./utils/canvasFileUpload";
 import { collectNodeInputReferences } from "./utils/textNodeReferences";
 import { ConfigProvider, theme } from "antd";
-import { GraphLink, GraphNode, NodeClass } from "./types";
+import { GraphLink, GraphNode, GroupBox, NodeClass } from "./types";
 import type { VideoFrameCaptureItem } from "./features/video/frameCapture";
 import { fetchVideoPrompt } from "./features/video/videoPrompts";
 import {
@@ -146,6 +150,13 @@ function writeStoredCanvasViewport(workflowId: string | null, viewport: CanvasVi
 
 interface AppProps {
   onLoggedOut: () => void;
+}
+
+interface GroupDragState {
+  groupId: string;
+  groupStart: Pick<GroupBox, "x" | "y">;
+  nodeStarts: Array<{ nodeId: string; x: number; y: number }>;
+  pointerStart: Point;
 }
 
 function isEditableEventTarget(target: EventTarget | null): boolean {
@@ -325,6 +336,7 @@ export default function App({ onLoggedOut }: AppProps) {
     setPrimaryImageResult,
     addVideoFrameAnalysis,
     addVideoBatchReplacementNode,
+    createVideoBatchReplacementResultRun,
     addVideoPromptTextNode,
     extractFrameImageNode,
     createVideoFrameImageNode,
@@ -352,8 +364,10 @@ export default function App({ onLoggedOut }: AppProps) {
     addLinkFromDraft,
     addLinksFromDrafts,
     groups,
+    createGroup,
     ungroup,
     updateGroup,
+    resizeGroup,
     runGroup,
   } = useWorkflowState({
     apiConfig: {
@@ -471,6 +485,8 @@ export default function App({ onLoggedOut }: AppProps) {
     current: Point;
   } | null>(null);
   const blankPointerDownRef = React.useRef<{ client: Point; world: Point } | null>(null);
+  const groupDragRef = React.useRef<GroupDragState | null>(null);
+  const [isGroupDragging, setIsGroupDragging] = React.useState(false);
   const [nodeContextMenu, setNodeContextMenu] = React.useState<{
     nodeId: string;
     x: number;
@@ -851,6 +867,87 @@ export default function App({ onLoggedOut }: AppProps) {
     setNodeContextMenu(null);
   }, []);
 
+  const handleGroupPointerDown = React.useCallback(
+    (e: React.PointerEvent) => {
+      if (currentView !== "canvas" || menuPos || isLinkingOnCanvas || e.button !== 0) return false;
+      const target = e.target as HTMLElement | null;
+      if (target?.closest("[data-canvas-node-id]") || isCanvasSelectionBlocked(target)) {
+        return false;
+      }
+
+      const world = toWorld(e.clientX, e.clientY);
+      const group = findTopGroupAtPoint(groups, world);
+      if (!group) return false;
+
+      groupDragRef.current = {
+        groupId: group.id,
+        groupStart: { x: group.x, y: group.y },
+        nodeStarts: nodes
+          .filter((node) => node.groupId === group.id)
+          .map((node) => ({ nodeId: node.id, x: node.x, y: node.y })),
+        pointerStart: { x: e.clientX, y: e.clientY },
+      };
+      setIsGroupDragging(true);
+      applyCanvasSelection(selectCanvasGroup(group.id));
+      closeNodeContextMenu();
+      e.preventDefault();
+      e.stopPropagation();
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      return true;
+    },
+    [
+      applyCanvasSelection,
+      closeNodeContextMenu,
+      currentView,
+      groups,
+      isCanvasSelectionBlocked,
+      isLinkingOnCanvas,
+      menuPos,
+      nodes,
+      toWorld,
+    ]
+  );
+
+  const handleGroupPointerMove = React.useCallback(
+    (e: React.PointerEvent) => {
+      const drag = groupDragRef.current;
+      if (!drag) return false;
+
+      const dx = (e.clientX - drag.pointerStart.x) / zoom;
+      const dy = (e.clientY - drag.pointerStart.y) / zoom;
+      updateGroup(drag.groupId, {
+        x: drag.groupStart.x + dx,
+        y: drag.groupStart.y + dy,
+      });
+      updateNodePositions(getMovedGroupMemberPositions({ dx, dy, nodeStarts: drag.nodeStarts }));
+      e.preventDefault();
+      e.stopPropagation();
+      return true;
+    },
+    [updateGroup, updateNodePositions, zoom]
+  );
+
+  const handleGroupPointerUp = React.useCallback(
+    (e: React.PointerEvent) => {
+      const drag = groupDragRef.current;
+      if (!drag) return false;
+
+      const dx = (e.clientX - drag.pointerStart.x) / zoom;
+      const dy = (e.clientY - drag.pointerStart.y) / zoom;
+      updateGroup(drag.groupId, {
+        x: drag.groupStart.x + dx,
+        y: drag.groupStart.y + dy,
+      });
+      updateNodePositions(getMovedGroupMemberPositions({ dx, dy, nodeStarts: drag.nodeStarts }));
+      groupDragRef.current = null;
+      setIsGroupDragging(false);
+      e.preventDefault();
+      e.stopPropagation();
+      return true;
+    },
+    [updateGroup, updateNodePositions, zoom]
+  );
+
   const handleCanvasSelectionPointerDown = React.useCallback(
     (e: React.PointerEvent) => {
       if (currentView !== "canvas" || menuPos || isLinkingOnCanvas || e.button !== 0) return false;
@@ -1010,6 +1107,13 @@ export default function App({ onLoggedOut }: AppProps) {
         (node) => node.id === nodeId && node.type === "video_batch_replacement_node"
       );
       if (!batchNode) return;
+      if (
+        batchNode.data?.loading === true &&
+        batchNode.data.loadingOperation === "batch-replacement"
+      ) {
+        showNotice("上一组批量替换还在生成，请等待完成后再提交。");
+        return;
+      }
       updateNodeData(
         batchNode.id,
         updateVideoBatchReplacementSlot(batchNode, slotKey, {
@@ -1074,6 +1178,12 @@ export default function App({ onLoggedOut }: AppProps) {
       updateNodeData(nodeId, {
         loading: true,
         loadingOperation: "batch-replacement",
+        batchReplacementResult: undefined,
+        batchReplacementTaskId: undefined,
+        batchReplacementTaskStatus: undefined,
+        batchReplacementTaskError: undefined,
+        batchReplacementStartedAt: Date.now(),
+        batchReplacementFinishedAt: undefined,
         error: undefined,
         status: "loading",
       });
@@ -1089,9 +1199,47 @@ export default function App({ onLoggedOut }: AppProps) {
             modelId: model.modelId,
           },
         });
+        if (result.taskId) {
+          createVideoBatchReplacementResultRun({
+            batchNodeId: nodeId,
+            frameAnalysisNodeId: frameAnalysisNode.id,
+            frameCount: sourceOssIds.length,
+            result:
+              result.items.length > 0
+                ? { status: "pending", items: result.items, error: "", rawStatus: "pending" }
+                : undefined,
+            runId: result.taskId,
+          });
+          updateNodeData(nodeId, {
+            batchReplacementMode: mode,
+            batchReplacementTaskId: result.taskId,
+            batchReplacementTaskStatus: "pending",
+            batchReplacementTaskError: undefined,
+            batchReplacementResult: undefined,
+            batchReplacementFinishedAt: undefined,
+            loading: true,
+            loadingOperation: "batch-replacement",
+            status: "loading",
+          });
+          showNotice("批量替换任务已提交，正在生成。");
+          return;
+        }
+
+        if (result.items.length === 0) {
+          throw new Error("批量替换接口未返回任务 ID 或结果");
+        }
+
+        createVideoBatchReplacementResultRun({
+          batchNodeId: nodeId,
+          frameAnalysisNodeId: frameAnalysisNode.id,
+          frameCount: sourceOssIds.length,
+          result: { status: "success", items: result.items, error: "", rawStatus: "success" },
+          runId: `batch-direct-${Date.now()}`,
+        });
         updateNodeData(nodeId, {
           batchReplacementMode: mode,
-          batchReplacementResult: result,
+          batchReplacementResult: result.items,
+          batchReplacementFinishedAt: Date.now(),
           loading: false,
           loadingOperation: undefined,
           status: "success",
@@ -1112,6 +1260,7 @@ export default function App({ onLoggedOut }: AppProps) {
       links,
       nodes,
       generationDictionaries?.imageResolutionGroups,
+      createVideoBatchReplacementResultRun,
       remoteModelsByType,
       showNotice,
       updateNodeData,
@@ -1134,6 +1283,14 @@ export default function App({ onLoggedOut }: AppProps) {
     },
     [applyCanvasSelection, ungroup, selectedGroupId]
   );
+
+  const handleCreateGroupFromSelection = React.useCallback(() => {
+    if (selectedNodes.length < 2) return;
+    const group = createGroup(selectedNodes.map((node) => node.id));
+    if (!group) return;
+    applyCanvasSelection(selectCanvasGroup(group.id));
+    showNotice(`已打组：${group.title}`);
+  }, [applyCanvasSelection, createGroup, selectedNodes, showNotice]);
 
   const clearMenuCloseTimer = React.useCallback(() => {
     if (menuCloseTimerRef.current !== null) {
@@ -1507,10 +1664,12 @@ export default function App({ onLoggedOut }: AppProps) {
             }
             onCanvasPointerDown(e);
             if (e.defaultPrevented) return;
+            if (handleGroupPointerDown(e)) return;
             if (handleCanvasSelectionPointerDown(e)) return;
           }}
           onPointerMove={(e) => {
             lastCanvasPointerRef.current = { clientX: e.clientX, clientY: e.clientY };
+            if (handleGroupPointerMove(e)) return;
             if (handleCanvasSelectionPointerMove(e)) return;
             onPointerMove(e);
           }}
@@ -1520,11 +1679,13 @@ export default function App({ onLoggedOut }: AppProps) {
             }
           }}
           onPointerUp={(e) => {
+            if (handleGroupPointerUp(e)) return;
             if (handleCanvasSelectionPointerUp(e)) return;
             onPointerUp(e);
             if (shouldFinishCanvasLinkOnCanvasPointerUp(isLinkingOnCanvas)) finishCanvasLink();
           }}
           onPointerLeave={(e) => {
+            if (handleGroupPointerUp(e)) return;
             if (selectionDrag) {
               setSelectionDrag(null);
               blankPointerDownRef.current = null;
@@ -1584,10 +1745,11 @@ export default function App({ onLoggedOut }: AppProps) {
               selectedGroupId={selectedGroupId}
               memberCountByGroup={memberCountByGroup}
               onSelectGroup={(groupId) => applyCanvasSelection(selectCanvasGroup(groupId))}
-              onRunGroup={runGroup}
+              onChangeGroupColor={(groupId, color) => updateGroup(groupId, { color })}
               onUngroup={handleUngroup}
-              onDeleteGroup={handleUngroup}
               onMoveGroup={moveGroup}
+              onResizeGroup={resizeGroup}
+              isGroupDragging={isGroupDragging}
               isRunning={isRunning}
             />
           )}
@@ -1843,6 +2005,7 @@ export default function App({ onLoggedOut }: AppProps) {
           {shouldRenderCanvasContent && (
             <MultiSelectionLayer
               bounds={multiSelectionBounds}
+              canCreateGroup={selectedNodes.length > 1}
               dragRect={selectionDragRect}
               hasLinkableSources={batchLinkSources.length > 1 && !isLinkingOnCanvas}
               pan={pan}
@@ -1851,6 +2014,7 @@ export default function App({ onLoggedOut }: AppProps) {
                 beginBatchCanvasLink(batchLinkSources, clientX, clientY);
               }}
               onBeginSelectionDrag={handleSelectionDragStart}
+              onCreateGroup={handleCreateGroupFromSelection}
             />
           )}
           {shouldRenderCanvasContent && isLinkingOnCanvas && (

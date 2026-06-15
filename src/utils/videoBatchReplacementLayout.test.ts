@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+﻿import { describe, expect, it } from "vitest";
 import {
   createVideoBatchReplacementSlots,
   createVideoBatchReplacementSnapshot,
@@ -10,11 +10,11 @@ function makeVideoNode(id = "video-1"): GraphNode {
   return {
     id,
     type: "video_node",
-    title: "视频 1",
+    title: "瑙嗛 1",
     x: 100,
     y: 200,
     inputs: [],
-    outputs: [{ name: "视频", type: "VIDEO" }],
+    outputs: [{ name: "瑙嗛", type: "VIDEO" }],
     properties: { videoUrl: "https://oss.example.com/source.mp4" },
     data: {
       videoUrl: "https://oss.example.com/source.mp4",
@@ -28,11 +28,11 @@ function makeFrameNode(sourceNodeId: string): GraphNode {
   return {
     id: "frame-1",
     type: "image_node",
-    title: "逐帧分析 1",
+    title: "閫愬抚鍒嗘瀽 1",
     x: 900,
     y: 200,
     inputs: [{ name: "source_video", type: "VIDEO" }],
-    outputs: [{ name: "图片", type: "IMAGE" }],
+    outputs: [{ name: "鍥剧墖", type: "IMAGE" }],
     properties: { imageUrl: "https://oss.example.com/frame-1.png" },
     data: {
       imageUrl: "https://oss.example.com/frame-1.png",
@@ -60,21 +60,21 @@ describe("video batch replacement layout", () => {
       {
         key: "front",
         title: "正面",
-        placeholder: "请上传产品图正面",
+        placeholder: "请上传正面图",
         imageUrl: "",
         prompt: "正面",
       },
       {
         key: "side",
         title: "侧面",
-        placeholder: "请上传产品图侧面",
+        placeholder: "请上传侧面图",
         imageUrl: "",
         prompt: "侧面",
       },
       {
         key: "back",
         title: "背面",
-        placeholder: "请上传产品图背面",
+        placeholder: "请上传背面图",
         imageUrl: "",
         prompt: "背面",
       },
@@ -86,7 +86,7 @@ describe("video batch replacement layout", () => {
     const source = makeVideoNode();
     const segmentNode: GraphNode = {
       ...makeVideoNode("segment-1"),
-      title: "分段 1",
+      title: "鍒嗘 1",
       x: 620,
       y: 200,
       data: {
@@ -144,3 +144,4 @@ describe("video batch replacement layout", () => {
     ]);
   });
 });
+

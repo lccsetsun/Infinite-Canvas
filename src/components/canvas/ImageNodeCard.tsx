@@ -76,7 +76,12 @@ interface ImageNodeCardProps {
     clientPoint?: { clientX: number; clientY: number }
   ) => void;
   onReplaceExtractedFrame?: (nodeId: string) => void;
-  onReplaceFrameImage?: (nodeId: string, frameIndex: number, replacementUrl: string) => void;
+  onReplaceFrameImage?: (
+    nodeId: string,
+    frameIndex: number,
+    replacementUrl: string,
+    replacementOssId?: string
+  ) => void;
   onSyncImagePromptStarterLayout?: (nodeId: string, imageNodeWidth: number) => void;
   onSplitImageGrid?: (
     nodeId: string,
@@ -318,6 +323,32 @@ export function getImageNodeDownloadVisibility({ isFrameStrip }: { isFrameStrip:
     showFrameTileDownload: isFrameStrip,
     showTopToolbarDownload: !isFrameStrip,
   };
+}
+
+function formatBatchReplacementElapsedTime(elapsedMs: number) {
+  const safeElapsedMs = Math.max(0, elapsedMs);
+  const seconds = Math.max(1, Math.floor(safeElapsedMs / 1000));
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  return `${Math.floor(minutes / 60)}h`;
+}
+
+function getBatchReplacementResultElapsedLabel({
+  finishedAt,
+  isRunning,
+  now,
+  startedAt,
+}: {
+  finishedAt?: number;
+  isRunning: boolean;
+  now: number;
+  startedAt?: number;
+}) {
+  if (typeof startedAt !== "number" || startedAt <= 0) return "";
+  const endAt = typeof finishedAt === "number" && finishedAt >= startedAt ? finishedAt : now;
+  if (!isRunning && typeof finishedAt !== "number") return "";
+  return formatBatchReplacementElapsedTime(endAt - startedAt);
 }
 
 function normalizeImageNodeOssId(value: unknown): string {
@@ -1685,7 +1716,7 @@ function ImageNodeCardImpl({
         10
       );
       if (targetNodeId && Number.isInteger(targetFrameIndex) && targetFrameIndex >= 0) {
-        onReplaceFrameImage?.(targetNodeId, targetFrameIndex, drag.url);
+        onReplaceFrameImage?.(targetNodeId, targetFrameIndex, drag.url, drag.ossId);
       }
     },
     [
@@ -1832,9 +1863,35 @@ function ImageNodeCardImpl({
       : "";
   const currentModel = selectedImageModel || preferredImageModel;
   const isStarterPlaceholder = node.data?.isUploadPlaceholder === true;
+  const isBatchReplacementResultNode = typeof node.data?.batchReplacementRunId === "string";
   const nodeBadgeTitle =
     node.title === "图片节点" || node.title === "图片" ? "图片节点 1" : node.title;
   const nodeBadgeMatch = nodeBadgeTitle.match(/^(.*?)(\s+\d+)$/);
+  const batchReplacementStartedAt =
+    typeof node.data?.batchReplacementStartedAt === "number"
+      ? node.data.batchReplacementStartedAt
+      : undefined;
+  const batchReplacementFinishedAt =
+    typeof node.data?.batchReplacementFinishedAt === "number"
+      ? node.data.batchReplacementFinishedAt
+      : undefined;
+  const [batchReplacementElapsedNow, setBatchReplacementElapsedNow] = React.useState(() =>
+    Date.now()
+  );
+  React.useEffect(() => {
+    if (!isBatchReplacementResultNode || node.data?.loading !== true) return;
+    setBatchReplacementElapsedNow(Date.now());
+    const timerId = window.setInterval(() => setBatchReplacementElapsedNow(Date.now()), 1000);
+    return () => window.clearInterval(timerId);
+  }, [isBatchReplacementResultNode, node.data?.loading]);
+  const batchReplacementElapsedLabel = isBatchReplacementResultNode
+    ? getBatchReplacementResultElapsedLabel({
+        finishedAt: batchReplacementFinishedAt,
+        isRunning: node.data?.loading === true,
+        now: batchReplacementElapsedNow,
+        startedAt: batchReplacementStartedAt,
+      })
+    : "";
   React.useEffect(() => {
     if (!resolutionPresetGroups?.length) return;
     if (rawResolution !== resolution) onUpdateProperty?.(node.id, "resolution", resolution);
@@ -3141,6 +3198,11 @@ function ImageNodeCardImpl({
                     nodeBadgeTitle
                   )}
                 </span>
+                {batchReplacementElapsedLabel && (
+                  <span className="shrink-0 rounded-full border border-cyan-200/16 bg-cyan-300/[0.08] px-2 py-0.5 text-[11px] font-semibold tabular-nums text-cyan-50/80">
+                    {batchReplacementElapsedLabel}
+                  </span>
+                )}
               </div>
             )}
             {!detachedCanvasTitle && (
@@ -3164,6 +3226,11 @@ function ImageNodeCardImpl({
                     nodeBadgeTitle
                   )}
                 </span>
+                {batchReplacementElapsedLabel && (
+                  <span className="shrink-0 rounded-full border border-cyan-200/16 bg-cyan-300/[0.08] px-2 py-0.5 text-[11px] font-semibold tabular-nums text-cyan-50/80">
+                    {batchReplacementElapsedLabel}
+                  </span>
+                )}
               </div>
             )}
             <div className="flex shrink-0 items-center gap-3">

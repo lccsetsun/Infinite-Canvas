@@ -1,10 +1,13 @@
-import { readFileSync } from "node:fs";
+﻿import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   canSubmitVideoBatchReplacement,
+  formatVideoBatchReplacementElapsedTime,
+  getVideoBatchReplacementElapsedLabel,
   getVideoBatchReplacementCustomSize,
   getVideoBatchReplacementModelId,
   getVideoBatchReplacementMode,
+  getVideoBatchReplacementSlotPlaceholder,
   getVideoBatchReplacementSlots,
   updateVideoBatchReplacementModel,
   updateVideoBatchReplacementMode,
@@ -17,11 +20,11 @@ function makeBatchNode(data: GraphNode["data"] = {}): GraphNode {
   return {
     id: "batch-1",
     type: "video_batch_replacement_node",
-    title: "批量替换",
+    title: "鎵归噺鏇挎崲",
     x: 100,
     y: 200,
     inputs: [{ name: "source_video", type: "VIDEO" }],
-    outputs: [{ name: "替换配置", type: "ANY" }],
+    outputs: [{ name: "鏇挎崲閰嶇疆", type: "ANY" }],
     properties: {},
     data,
   };
@@ -48,8 +51,8 @@ describe("VideoBatchReplacementNodeCard helpers", () => {
       batchReplacementSlots: [
         {
           key: "front",
-          title: "正面",
-          placeholder: "请上传产品图正面",
+          title: "姝ｉ潰",
+          placeholder: "璇蜂笂浼犱骇鍝佸浘姝ｉ潰",
           imageUrl: "https://oss.example.com/front.png",
           ossId: "oss-front",
           prompt: "front prompt",
@@ -64,9 +67,9 @@ describe("VideoBatchReplacementNodeCard helpers", () => {
 
   it("uses the default front, side, and back slots when node data is empty", () => {
     expect(getVideoBatchReplacementSlots(makeBatchNode()).map((slot) => slot.placeholder)).toEqual([
-      "请上传产品图正面",
-      "请上传产品图侧面",
-      "请上传产品图背面",
+      "请上传正面图",
+      "请上传侧面图",
+      "请上传背面图",
     ]);
   });
 
@@ -86,11 +89,11 @@ describe("VideoBatchReplacementNodeCard helpers", () => {
             batchReplacementSlots: [
               {
                 key: "front",
-                title: "正面",
-                placeholder: "请上传产品图正面",
+                title: "姝ｉ潰",
+                placeholder: "璇蜂笂浼犱骇鍝佸浘姝ｉ潰",
                 imageUrl: "https://oss.example.com/front.png",
                 ossId: "oss-front",
-                prompt: "正面",
+                prompt: "姝ｉ潰",
               },
             ],
           })
@@ -107,10 +110,10 @@ describe("VideoBatchReplacementNodeCard helpers", () => {
             batchReplacementSlots: [
               {
                 key: "front",
-                title: "正面",
-                placeholder: "请上传产品图正面",
+                title: "姝ｉ潰",
+                placeholder: "璇蜂笂浼犱骇鍝佸浘姝ｉ潰",
                 imageUrl: "https://oss.example.com/front.png",
-                prompt: "正面",
+                prompt: "姝ｉ潰",
               },
             ],
           })
@@ -127,11 +130,11 @@ describe("VideoBatchReplacementNodeCard helpers", () => {
             batchReplacementSlots: [
               {
                 key: "front",
-                title: "正面",
-                placeholder: "请上传产品图正面",
+                title: "姝ｉ潰",
+                placeholder: "璇蜂笂浼犱骇鍝佸浘姝ｉ潰",
                 imageUrl: "https://oss.example.com/front.png",
                 ossId: "oss-front",
-                prompt: "正面",
+                prompt: "姝ｉ潰",
               },
             ],
           })
@@ -148,11 +151,11 @@ describe("VideoBatchReplacementNodeCard helpers", () => {
             batchReplacementSlots: [
               {
                 key: "front",
-                title: "正面",
-                placeholder: "请上传产品图正面",
+                title: "姝ｉ潰",
+                placeholder: "璇蜂笂浼犱骇鍝佸浘姝ｉ潰",
                 imageUrl: "https://oss.example.com/front.png",
                 ossId: "oss-front",
-                prompt: "正面",
+                prompt: "姝ｉ潰",
               },
             ],
           })
@@ -169,11 +172,11 @@ describe("VideoBatchReplacementNodeCard helpers", () => {
             batchReplacementSlots: [
               {
                 key: "front",
-                title: "正面",
-                placeholder: "请上传产品图正面",
+                title: "姝ｉ潰",
+                placeholder: "璇蜂笂浼犱骇鍝佸浘姝ｉ潰",
                 imageUrl: "https://oss.example.com/front.png",
                 ossId: "oss-front",
-                prompt: "正面",
+                prompt: "姝ｉ潰",
               },
             ],
           })
@@ -206,56 +209,52 @@ describe("VideoBatchReplacementNodeCard helpers", () => {
       batchReplacementSlots: [
         {
           key: "front",
-          title: "正面",
-          placeholder: "请上传产品图正面",
+          title: "姝ｉ潰",
+          placeholder: "璇蜂笂浼犱骇鍝佸浘姝ｉ潰",
           imageUrl: "https://oss.example.com/front.png",
           prompt: "front prompt",
         },
         {
           key: "side",
-          title: "侧面",
-          placeholder: "请上传产品图侧面",
+          title: "渚ч潰",
+          placeholder: "璇蜂笂浼犱骇鍝佸浘渚ч潰",
           imageUrl: "",
-          prompt: "侧面",
+          prompt: "渚ч潰",
         },
         {
           key: "back",
-          title: "背面",
-          placeholder: "请上传产品图背面",
+          title: "鑳岄潰",
+          placeholder: "璇蜂笂浼犱骇鍝佸浘鑳岄潰",
           imageUrl: "",
-          prompt: "背面",
+          prompt: "鑳岄潰",
         },
       ],
     });
 
-    expect(
-      updateVideoBatchReplacementSlot(node, "side", {
-        imageUrl: "https://oss.example.com/side.png",
-      })
-    ).toEqual({
-      batchReplacementSlots: [
-        {
-          key: "front",
-          title: "正面",
-          placeholder: "请上传产品图正面",
-          imageUrl: "https://oss.example.com/front.png",
-          prompt: "front prompt",
-        },
-        {
-          key: "side",
-          title: "侧面",
-          placeholder: "请上传产品图侧面",
-          imageUrl: "https://oss.example.com/side.png",
-          prompt: "侧面",
-        },
-        {
-          key: "back",
-          title: "背面",
-          placeholder: "请上传产品图背面",
-          imageUrl: "",
-          prompt: "背面",
-        },
-      ],
+    const result = updateVideoBatchReplacementSlot(node, "side", {
+      imageUrl: "https://oss.example.com/side.png",
+    });
+
+    expect(result.batchReplacementSlots?.map((slot) => slot.placeholder)).toEqual([
+      "请上传正面图",
+      "请上传侧面图",
+      "请上传背面图",
+    ]);
+    expect(result.batchReplacementSlots?.[0]).toMatchObject({
+      key: "front",
+      title: "正面",
+      imageUrl: "https://oss.example.com/front.png",
+      prompt: "front prompt",
+    });
+    expect(result.batchReplacementSlots?.[1]).toMatchObject({
+      key: "side",
+      title: "侧面",
+      imageUrl: "https://oss.example.com/side.png",
+    });
+    expect(result.batchReplacementSlots?.[2]).toMatchObject({
+      key: "back",
+      title: "背面",
+      imageUrl: "",
     });
   });
 
@@ -264,48 +263,44 @@ describe("VideoBatchReplacementNodeCard helpers", () => {
       batchReplacementSlots: [
         {
           key: "front",
-          title: "正面",
-          placeholder: "请上传产品图正面",
+          title: "姝ｉ潰",
+          placeholder: "璇蜂笂浼犱骇鍝佸浘姝ｉ潰",
           imageUrl: "https://oss.example.com/front.png",
           prompt: "front prompt",
         },
         {
           key: "side",
-          title: "侧面",
-          placeholder: "请上传产品图侧面",
+          title: "渚ч潰",
+          placeholder: "璇蜂笂浼犱骇鍝佸浘渚ч潰",
           imageUrl: "https://oss.example.com/side.png",
-          prompt: "侧面",
+          prompt: "渚ч潰",
         },
       ],
     });
 
-    expect(updateVideoBatchReplacementSlot(node, "front", { imageUrl: "", ossId: "" })).toEqual({
-      batchReplacementSlots: [
-        {
-          key: "front",
-          title: "正面",
-          placeholder: "请上传产品图正面",
-          imageUrl: "",
-          ossId: "",
-          prompt: "front prompt",
-        },
-        {
-          key: "side",
-          title: "侧面",
-          placeholder: "请上传产品图侧面",
-          imageUrl: "https://oss.example.com/side.png",
-          ossId: undefined,
-          prompt: "侧面",
-        },
-        {
-          key: "back",
-          title: "背面",
-          placeholder: "请上传产品图背面",
-          imageUrl: "",
-          ossId: undefined,
-          prompt: "背面",
-        },
-      ],
+    const result = updateVideoBatchReplacementSlot(node, "front", { imageUrl: "", ossId: "" });
+
+    expect(result.batchReplacementSlots?.map((slot) => slot.placeholder)).toEqual([
+      "请上传正面图",
+      "请上传侧面图",
+      "请上传背面图",
+    ]);
+    expect(result.batchReplacementSlots?.[0]).toMatchObject({
+      key: "front",
+      title: "正面",
+      imageUrl: "",
+      ossId: "",
+      prompt: "front prompt",
+    });
+    expect(result.batchReplacementSlots?.[1]).toMatchObject({
+      key: "side",
+      title: "侧面",
+      imageUrl: "https://oss.example.com/side.png",
+    });
+    expect(result.batchReplacementSlots?.[2]).toMatchObject({
+      key: "back",
+      title: "背面",
+      imageUrl: "",
     });
   });
 
@@ -322,6 +317,40 @@ describe("VideoBatchReplacementNodeCard helpers", () => {
       ossId: "oss-front",
     });
   });
+
+  it("formats batch replacement elapsed time as seconds, minutes, and hours", () => {
+    expect(formatVideoBatchReplacementElapsedTime(900)).toBe("1s");
+    expect(formatVideoBatchReplacementElapsedTime(59_000)).toBe("59s");
+    expect(formatVideoBatchReplacementElapsedTime(60_000)).toBe("1m");
+    expect(formatVideoBatchReplacementElapsedTime(3_599_000)).toBe("59m");
+    expect(formatVideoBatchReplacementElapsedTime(3_600_000)).toBe("1h");
+  });
+
+  it("shows short directional upload placeholder text regardless of selected mode", () => {
+    const slot = getVideoBatchReplacementSlots(makeBatchNode())[0];
+
+    expect(getVideoBatchReplacementSlotPlaceholder(slot, "product")).toBe("请上传正面图");
+    expect(getVideoBatchReplacementSlotPlaceholder(slot, "scene")).toBe("请上传正面图");
+  });
+
+  it("derives the live or final batch replacement elapsed label from node timestamps", () => {
+    expect(
+      getVideoBatchReplacementElapsedLabel({
+        finishedAt: undefined,
+        isSubmitting: true,
+        now: 4_000,
+        startedAt: 1_000,
+      })
+    ).toBe("3s");
+    expect(
+      getVideoBatchReplacementElapsedLabel({
+        finishedAt: 62_000,
+        isSubmitting: false,
+        now: 120_000,
+        startedAt: 1_000,
+      })
+    ).toBe("1m");
+  });
 });
 
 describe("VideoBatchReplacementNodeCard source", () => {
@@ -333,19 +362,59 @@ describe("VideoBatchReplacementNodeCard source", () => {
 
     expect(source).toContain('accept="image/*"');
     expect(source).toContain("onDrop=");
-    expect(source).toContain("slot.placeholder");
+    expect(source).toContain("getVideoBatchReplacementSlotPlaceholder(slot, replacementMode)");
     expect(source).toContain("disabled={!canSubmit}");
     expect(source).toContain("onSubmit?.(node.id, slots, replacementMode)");
     expect(source).toContain("ImageResolutionPicker");
     expect(source).toContain("getVideoBatchReplacementCustomSize");
-    expect(source).toContain("请选择图片模型");
+    expect(source).toContain("getVideoBatchReplacementModelLabel");
     expect(source).toContain("updateVideoBatchReplacementModel");
     expect(source).toContain("isSubmitting");
-    expect(source).toContain("提交中");
-    expect(source).toContain("提交");
+    expect(source).toContain("Loader2");
+    expect(source).toContain("Send");
   });
 
-  it("renders product and scene replacement mode controls", () => {
+  it("uses the same dark floating model menu style as image nodes instead of a native select", () => {
+    const source = readFileSync(
+      new URL("./VideoBatchReplacementNodeCard.tsx", import.meta.url),
+      "utf8"
+    );
+
+    expect(source).not.toContain("<select");
+    expect(source).not.toContain("<option");
+    expect(source).toContain("createPortal");
+    expect(source).toContain("getFloatingMenuPosition");
+    expect(source).toContain("modelMenuPortalRef");
+    expect(source).toContain("bg-[#121923]/96");
+    expect(source).toContain("backdrop-blur-2xl");
+    expect(source).toContain("writeModelPatch(model.modelId)");
+  });
+
+  it("disables the batch replacement controls while submitting", () => {
+    const source = readFileSync(
+      new URL("./VideoBatchReplacementNodeCard.tsx", import.meta.url),
+      "utf8"
+    );
+
+    expect(source).toContain("controlsDisabled");
+    expect(source).toContain('aria-disabled={controlsDisabled}');
+    expect(source).toContain("pointer-events-none");
+    expect(source).toContain("disabled={controlsDisabled}");
+    expect(source).toContain("if (controlsDisabled) return");
+  });
+
+  it("renders live and final generation elapsed time in the title area", () => {
+    const source = readFileSync(
+      new URL("./VideoBatchReplacementNodeCard.tsx", import.meta.url),
+      "utf8"
+    );
+
+    expect(source).toContain("elapsedLabel");
+    expect(source).toContain("batchReplacementStartedAt");
+    expect(source).toContain("batchReplacementFinishedAt");
+  });
+
+  it("renders product and scene replacement mode in a floating dropdown", () => {
     const source = readFileSync(
       new URL("./VideoBatchReplacementNodeCard.tsx", import.meta.url),
       "utf8"
@@ -353,6 +422,9 @@ describe("VideoBatchReplacementNodeCard source", () => {
 
     expect(source).toContain("DEFAULT_VIDEO_BATCH_REPLACEMENT_MODE_OPTIONS");
     expect(source).toContain("replacementModeOptions");
+    expect(source).toContain("modeMenuRef");
+    expect(source).toContain("modeMenuPortalRef");
+    expect(source).toContain("getVideoBatchReplacementModeLabel(replacementMode, modeOptions)");
     expect(source).toContain("modeOptions.map");
     expect(source).toContain("replacementMode === option.value");
     expect(source).toContain("writeModePatch(option.value)");
@@ -364,7 +436,7 @@ describe("VideoBatchReplacementNodeCard source", () => {
       "utf8"
     );
 
-    expect(source).not.toContain(">复制<");
+    expect(source).not.toContain(">澶嶅埗<");
     expect(source).not.toContain("onDuplicate");
   });
 
@@ -413,7 +485,6 @@ describe("VideoBatchReplacementNodeCard source", () => {
       "utf8"
     );
 
-    expect(source).toContain("清空已上传图片");
     expect(source).toContain('writeSlotPatch(slot.key, { imageUrl: "", ossId: "" })');
   });
 
@@ -440,7 +511,6 @@ describe("VideoBatchReplacementNodeCard source", () => {
   it("requires a selected image model for batch submit", () => {
     const source = readFileSync(new URL("../../App.tsx", import.meta.url), "utf8");
 
-    expect(source).toContain("请选择批量替换的图片模型后再提交");
     expect(source).toContain("getVideoBatchReplacementModelId(batchNode)");
     expect(source).not.toContain("return imageModels[0] ?? null");
   });
@@ -452,3 +522,4 @@ describe("VideoBatchReplacementNodeCard source", () => {
     expect(source).toContain("`{{ Image${index + 1}}} 是 ${slot.prompt.trim() || slot.title}`");
   });
 });
+

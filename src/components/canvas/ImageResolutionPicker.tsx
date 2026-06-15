@@ -24,6 +24,7 @@ interface ImageResolutionPickerProps {
   panelTitle?: string;
   presetGroups?: ImageResolutionPresetGroup[];
   triggerIcon?: LucideIcon;
+  disabled?: boolean;
 }
 
 const PANEL_WIDTH = 430;
@@ -122,6 +123,7 @@ export function ImageResolutionPicker({
   panelTitle,
   presetGroups = IMAGE_RESOLUTION_PRESET_GROUPS,
   triggerIcon: TriggerIcon = Image,
+  disabled = false,
 }: ImageResolutionPickerProps) {
   const [open, setOpen] = React.useState(false);
   const [activeResolution, setActiveResolution] = React.useState<ImageResolution>(() =>
@@ -134,6 +136,10 @@ export function ImageResolutionPicker({
   React.useEffect(() => {
     if (open) setActiveResolution(getFallbackResolution(resolution, presetGroups));
   }, [open, presetGroups, resolution]);
+
+  React.useEffect(() => {
+    if (disabled) setOpen(false);
+  }, [disabled]);
 
   React.useLayoutEffect(() => {
     if (!open || !buttonRef.current) return;
@@ -196,10 +202,12 @@ export function ImageResolutionPicker({
       <button
         ref={buttonRef}
         type="button"
+        disabled={disabled}
         data-node-action="true"
         onPointerDown={(event) => event.stopPropagation()}
         onClick={(event) => {
           event.stopPropagation();
+          if (disabled) return;
           setOpen((current) => !current);
         }}
         className={buttonClassName}

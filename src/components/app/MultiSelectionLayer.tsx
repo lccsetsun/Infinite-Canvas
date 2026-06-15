@@ -1,25 +1,33 @@
 import React from "react";
-import { Plus } from "lucide-react";
+import { Box, Plus } from "lucide-react";
 import type { Rect } from "../../utils/multiSelection";
+import {
+  mediaNodeFloatingToolbarClass,
+  mediaNodeToolbarButtonClass,
+} from "../canvas/mediaNodeToolbarStyles";
 
 interface MultiSelectionLayerProps {
   bounds?: Rect | null;
   dragRect?: Rect | null;
   hasLinkableSources?: boolean;
+  canCreateGroup?: boolean;
   pan: { x: number; y: number };
   zoom: number;
   onBeginBatchLink?: (clientX: number, clientY: number) => void;
   onBeginSelectionDrag?: (event: React.PointerEvent) => void;
+  onCreateGroup?: () => void;
 }
 
 export default function MultiSelectionLayer({
   bounds,
+  canCreateGroup = false,
   dragRect,
   hasLinkableSources = false,
   pan,
   zoom,
   onBeginBatchLink,
   onBeginSelectionDrag,
+  onCreateGroup,
 }: MultiSelectionLayerProps) {
   return (
     <div
@@ -68,6 +76,29 @@ export default function MultiSelectionLayer({
             onBeginSelectionDrag?.(event);
           }}
         >
+          {canCreateGroup && (
+            <div
+              data-node-action="true"
+              className={`pointer-events-auto ${mediaNodeFloatingToolbarClass}`}
+              onPointerDown={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+              }}
+            >
+              <button
+                type="button"
+                className={`${mediaNodeToolbarButtonClass} w-auto gap-1.5 px-3 text-[12px] font-semibold text-slate-200/88 hover:text-white`}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onCreateGroup?.();
+                }}
+              >
+                <Box className="h-3.5 w-3.5" aria-hidden="true" />
+                <span className="whitespace-nowrap">打组</span>
+              </button>
+            </div>
+          )}
           <svg className="pointer-events-none absolute inset-0 h-full w-full overflow-visible" aria-hidden="true">
             <rect
               x={0}

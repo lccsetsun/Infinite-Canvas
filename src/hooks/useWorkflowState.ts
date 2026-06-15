@@ -17,6 +17,11 @@ import {
 import { applyNodePositionUpdates, type NodePositionUpdate } from "../utils/nodePositionUpdates";
 import { buildCanvasGraphIndex, getGraphLinkKey } from "../utils/canvasGraphIndex";
 import {
+  getGroupBoundsForNodes,
+  getNextGroupTitle,
+  syncNodeGroupMembership,
+} from "../utils/canvasGroups";
+import {
   duplicateNodeAsSource,
   isSourceNode,
   markNodeAsSource,
@@ -52,6 +57,8 @@ import type {
 } from "../features/workspace/remoteCanvas";
 import type { RemoteVideoTaskResult } from "../features/video/remoteVideoGeneration";
 import { queryRemoteVideoGenerationTask } from "../features/video/remoteVideoGeneration";
+import type { BatchEditImagesTaskResult } from "../features/api/videoBatchReplacement";
+import { queryBatchEditImagesTask } from "../features/api/videoBatchReplacement";
 import {
   REMOTE_FULL_SNAPSHOT_MIN_INTERVAL_MS,
   shouldDeferRemoteSnapshotForInFlight,
@@ -68,6 +75,12 @@ const TRASH_RETENTION_DAYS = 30;
 const TRASH_RETENTION_MS = TRASH_RETENTION_DAYS * 86_400_000;
 const TRASH_PURGE_INTERVAL_MS = 60 * 60 * 1000;
 const REMOTE_VIDEO_POLL_INTERVAL_MS = 10_000;
+const VIDEO_BATCH_REPLACEMENT_RESULT_GAP_X = 160;
+const VIDEO_BATCH_REPLACEMENT_RESULT_GAP_Y = 96;
+const VIDEO_BATCH_REPLACEMENT_NODE_WIDTH = 520;
+const DEFAULT_BATCH_RESULT_TILE_WIDTH = 220;
+const DEFAULT_BATCH_RESULT_TILE_HEIGHT = 391;
+const DEFAULT_BATCH_RESULT_COLUMNS = 5;
 const TEXT_NODE_REQUIRED_MEDIA_INPUTS = [
   { name: "source_image", type: "IMAGE" as const },
   { name: "source_video", type: "VIDEO" as const },
@@ -117,6 +130,30 @@ export const IMAGE_PROMPT_PLACEHOLDER_URL = `data:image/svg+xml,${encodeURICompo
     <rect x="420" y="284" width="312" height="236" rx="28"/>
     <circle cx="512" cy="376" r="34"/>
     <path d="M444 488l92-92 66 66 42-42 64 68"/>
+  </g>
+</svg>
+`)}`;
+const BATCH_REPLACEMENT_RESULT_PLACEHOLDER_URL = `data:image/svg+xml,${encodeURIComponent(`
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="1280" viewBox="0 0 720 1280">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#0b1220"/>
+      <stop offset="1" stop-color="#111827"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="1" y2="0">
+      <stop stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset=".5" stop-color="#ffffff" stop-opacity=".12"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect width="720" height="1280" rx="28" fill="url(#bg)"/>
+  <rect x="-240" y="0" width="280" height="1280" fill="url(#shine)">
+    <animate attributeName="x" values="-280;720" dur="1.4s" repeatCount="indefinite"/>
+  </rect>
+  <g fill="none" stroke="#67e8f9" stroke-width="18" stroke-linecap="round" stroke-linejoin="round" opacity=".62">
+    <rect x="210" y="520" width="300" height="220" rx="28"/>
+    <circle cx="300" cy="606" r="30"/>
+    <path d="M238 706l92-92 62 62 42-42 54 72"/>
   </g>
 </svg>
 `)}`;
@@ -357,7 +394,10 @@ export function syncVideoBatchReplacementTargetsSnapshot({
     links
       .filter((link) => link.fromNodeId === batchNodeId)
       .map((link) => nodes.find((node) => node.id === link.toNodeId))
-      .filter((node): node is GraphNode => node?.type === "image_node")
+      .filter(
+        (node): node is GraphNode =>
+          node?.type === "image_node" && typeof node.data?.batchReplacementRunId !== "string"
+      )
       .map((node) => node.id)
   );
 
@@ -397,6 +437,318 @@ export function syncVideoBatchReplacementTargetsSnapshot({
   });
 
   return { links: nextLinks, nodeOutputs: nextNodeOutputs, nodes: nextNodes };
+}
+
+function getWorkflowNodeWidth(node: GraphNode) {
+  const width =
+    node.data?.imageNodeWidth ??
+    node.data?.videoNodeWidth ??
+    node.data?.imageDisplayWidth ??
+    node.data?.videoDisplayWidth ??
+    (node.type === "video_batch_replacement_node"
+      ? VIDEO_BATCH_REPLACEMENT_NODE_WIDTH
+      : DEFAULT_BATCH_RESULT_TILE_WIDTH);
+  return typeof width === "number" && Number.isFinite(width) && width > 0
+    ? width
+    : DEFAULT_BATCH_RESULT_TILE_WIDTH;
+}
+
+function getWorkflowNodeHeight(node: GraphNode) {
+  const height =
+    node.data?.imageNodeHeight ??
+    node.data?.videoNodeHeight ??
+    node.data?.imageDisplayHeight ??
+    node.data?.videoDisplayHeight ??
+    DEFAULT_BATCH_RESULT_TILE_HEIGHT;
+  return typeof height === "number" && Number.isFinite(height) && height > 0
+    ? height
+    : DEFAULT_BATCH_RESULT_TILE_HEIGHT;
+}
+
+function getBatchReplacementResultItemImage(item: BatchEditImagesTaskResult["items"][number]) {
+  const frameImage = Array.isArray(item.frame_images) ? item.frame_images[0] : undefined;
+  const url = firstNonEmptyString(item.url, frameImage?.url, item.video);
+  const ossId = firstNonEmptyString(item.ossId, frameImage?.ossId);
+  return { ossId, url };
+}
+
+function firstNonEmptyString(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+    if (typeof value === "number" && Number.isFinite(value)) return String(value);
+    if (typeof value === "bigint") return String(value);
+  }
+  return "";
+}
+
+function getBatchReplacementItemIndex(
+  item: BatchEditImagesTaskResult["items"][number],
+  fallbackIndex: number
+) {
+  return typeof item.index === "number" && Number.isFinite(item.index) && item.index >= 0
+    ? Math.trunc(item.index)
+    : fallbackIndex;
+}
+
+function getBatchReplacementResultLayout(
+  nodes: GraphNode[],
+  batchNode: GraphNode,
+  frameAnalysisNode: GraphNode,
+  frameCount: number
+) {
+  const columns = Math.max(
+    1,
+    Math.min(
+      frameCount,
+      Math.round(
+        typeof frameAnalysisNode.data?.frameGridColumns === "number"
+          ? frameAnalysisNode.data.frameGridColumns
+          : DEFAULT_BATCH_RESULT_COLUMNS
+      )
+    )
+  );
+  const tileWidth =
+    typeof frameAnalysisNode.data?.frameTileWidth === "number" &&
+    frameAnalysisNode.data.frameTileWidth > 0
+      ? Math.round(frameAnalysisNode.data.frameTileWidth)
+      : DEFAULT_BATCH_RESULT_TILE_WIDTH;
+  const tileHeight =
+    typeof frameAnalysisNode.data?.frameTileHeight === "number" &&
+    frameAnalysisNode.data.frameTileHeight > 0
+      ? Math.round(frameAnalysisNode.data.frameTileHeight)
+      : DEFAULT_BATCH_RESULT_TILE_HEIGHT;
+  const existingResultNodes = nodes.filter(
+    (node) =>
+      node.type === "image_node" && node.data?.batchReplacementSourceNodeId === batchNode.id
+  );
+  const baseY =
+    existingResultNodes.length > 0
+      ? Math.max(...existingResultNodes.map((node) => node.y + getWorkflowNodeHeight(node))) +
+        VIDEO_BATCH_REPLACEMENT_RESULT_GAP_Y
+      : frameAnalysisNode.y;
+
+  return {
+    columns,
+    startX:
+      batchNode.x + getWorkflowNodeWidth(batchNode) + VIDEO_BATCH_REPLACEMENT_RESULT_GAP_X,
+    startY: baseY,
+    tileHeight,
+    tileWidth,
+  };
+}
+
+export function createBatchEditImagesResultRunSnapshot({
+  batchNodeId,
+  frameAnalysisNodeId,
+  frameCount,
+  links,
+  makeId,
+  nodeOutputs,
+  nodes,
+  result,
+  runId,
+}: {
+  batchNodeId: string;
+  frameAnalysisNodeId: string;
+  frameCount: number;
+  links: GraphLink[];
+  makeId: (prefix: string) => string;
+  nodeOutputs: NodeOutputMap;
+  nodes: GraphNode[];
+  result?: BatchEditImagesTaskResult;
+  runId: string;
+}): { createdNodeIds: string[]; links: GraphLink[]; nodeOutputs: NodeOutputMap; nodes: GraphNode[] } {
+  const batchNode = nodes.find(
+    (node) => node.id === batchNodeId && node.type === "video_batch_replacement_node"
+  );
+  const frameAnalysisNode = nodes.find(
+    (node) => node.id === frameAnalysisNodeId && node.type === "image_node"
+  );
+  const count = Math.max(0, Math.trunc(frameCount));
+  if (!batchNode || !frameAnalysisNode || !runId.trim() || count <= 0) {
+    return { createdNodeIds: [], links, nodeOutputs, nodes };
+  }
+
+  const existingRunNodes = nodes.filter(
+    (node) => node.type === "image_node" && node.data?.batchReplacementRunId === runId
+  );
+  if (existingRunNodes.length > 0) {
+    const synced = result
+      ? applyBatchEditImagesResultNodesSnapshot({
+          batchNodeId,
+          nodeOutputs,
+          nodes,
+          result,
+          runId,
+        })
+      : { nodeOutputs, nodes };
+    return {
+      createdNodeIds: existingRunNodes.map((node) => node.id),
+      links,
+      nodeOutputs: synced.nodeOutputs,
+      nodes: synced.nodes,
+    };
+  }
+
+  const layout = getBatchReplacementResultLayout(nodes, batchNode, frameAnalysisNode, count);
+  const nextOutputs = new Map(nodeOutputs);
+  const rows = Math.max(1, Math.ceil(count / layout.columns));
+  const nodeId = makeId("node");
+  const imageNode = createNodeFromType("image_node", nodeId, layout.startX, layout.startY);
+  const runNumber =
+    nodes.filter(
+      (node) =>
+        node.type === "image_node" && node.data?.batchReplacementSourceNodeId === batchNodeId
+    ).length + 1;
+  imageNode.title = `批量替换结果 ${runNumber}`;
+  imageNode.properties = {
+    ...imageNode.properties,
+    imageUrl: BATCH_REPLACEMENT_RESULT_PLACEHOLDER_URL,
+    text: "",
+  };
+  imageNode.data = {
+    ...(imageNode.data || {}),
+    activeImageIndex: 0,
+    batchReplacementStartedAt: Date.now(),
+    batchReplacementFinishedAt: undefined,
+    batchReplacementResultCount: count,
+    batchReplacementRunId: runId,
+    batchReplacementSourceNodeId: batchNodeId,
+    frameAnalysisSourceNodeId: frameAnalysisNodeId,
+    frameCaptureSourceNodeId:
+      typeof frameAnalysisNode.data?.frameCaptureSourceNodeId === "string"
+        ? frameAnalysisNode.data.frameCaptureSourceNodeId
+        : "",
+    frameGridColumns: layout.columns,
+    frameGridRows: rows,
+    frameTileHeight: layout.tileHeight,
+    frameTileWidth: layout.tileWidth,
+    imageDisplayHeight: rows * layout.tileHeight,
+    imageDisplayWidth: layout.columns * layout.tileWidth,
+    imageNodeHeight: rows * layout.tileHeight + 30,
+    imageNodeWidth: layout.columns * layout.tileWidth,
+    imagePortCenterY: (rows * layout.tileHeight + 30) / 2,
+    imageUrl: BATCH_REPLACEMENT_RESULT_PLACEHOLDER_URL,
+    imageUrls: Array.from({ length: count }, () => BATCH_REPLACEMENT_RESULT_PLACEHOLDER_URL),
+    isFrameStrip: true,
+    loading: true,
+    loadingOperation: "batch-replacement",
+    status: "loading",
+  };
+  const nextNodes = [...nodes, imageNode];
+  const nextLinks = [
+    ...links,
+    {
+      id: makeId("link"),
+      fromNodeId: batchNodeId,
+      fromOutputIndex: 0,
+      toNodeId: nodeId,
+      toInputIndex: 0,
+    },
+  ];
+  const synced = result
+    ? applyBatchEditImagesResultNodesSnapshot({
+        batchNodeId,
+        nodeOutputs: nextOutputs,
+        nodes: nextNodes,
+        result,
+        runId,
+      })
+    : { nodeOutputs: nextOutputs, nodes: nextNodes };
+
+  return {
+    createdNodeIds: [nodeId],
+    links: nextLinks,
+    nodeOutputs: synced.nodeOutputs,
+    nodes: synced.nodes,
+  };
+}
+
+export function applyBatchEditImagesResultNodesSnapshot({
+  batchNodeId,
+  nodeOutputs,
+  nodes,
+  result,
+  runId,
+}: {
+  batchNodeId: string;
+  nodeOutputs: NodeOutputMap;
+  nodes: GraphNode[];
+  result: BatchEditImagesTaskResult;
+  runId: string;
+}): { nodeOutputs: NodeOutputMap; nodes: GraphNode[] } {
+  const runNode = nodes.find(
+    (node) =>
+      node.type === "image_node" &&
+      node.data?.batchReplacementSourceNodeId === batchNodeId &&
+      node.data?.batchReplacementRunId === runId
+  );
+  if (!runNode) return { nodeOutputs, nodes };
+
+  const itemByIndex = new Map<number, BatchEditImagesTaskResult["items"][number]>();
+  result.items.forEach((item, fallbackIndex) => {
+    itemByIndex.set(getBatchReplacementItemIndex(item, fallbackIndex), item);
+  });
+  const frameCount = Math.max(
+    0,
+    Math.trunc(
+      typeof runNode.data?.batchReplacementResultCount === "number"
+        ? runNode.data.batchReplacementResultCount
+        : Math.max(result.items.length, 1)
+    )
+  );
+  const urls = Array.from({ length: frameCount }, (_, index) => {
+    const item = itemByIndex.get(index);
+    const image = item ? getBatchReplacementResultItemImage(item) : { ossId: "", url: "" };
+    return image.url || BATCH_REPLACEMENT_RESULT_PLACEHOLDER_URL;
+  });
+  const ossIds = Array.from({ length: frameCount }, (_, index) => {
+    const item = itemByIndex.get(index);
+    const image = item ? getBatchReplacementResultItemImage(item) : { ossId: "", url: "" };
+    return image.ossId;
+  });
+  const realUrls = urls.filter((url) => url !== BATCH_REPLACEMENT_RESULT_PLACEHOLDER_URL);
+  const primaryUrl = realUrls[0] ?? BATCH_REPLACEMENT_RESULT_PLACEHOLDER_URL;
+  const isComplete = result.status === "success";
+  const nextOutputs = new Map(nodeOutputs);
+  if (realUrls.length > 0) {
+    nextOutputs.set(runNode.id, new Map([[0, realUrls.length === 1 ? realUrls[0] : realUrls]]));
+  } else {
+    nextOutputs.delete(runNode.id);
+  }
+
+  const nextNodes = nodes.map((node) => {
+    if (
+      node.type !== "image_node" ||
+      node.data?.batchReplacementSourceNodeId !== batchNodeId ||
+      node.data?.batchReplacementRunId !== runId
+    ) {
+      return node;
+    }
+
+    return {
+      ...node,
+      properties: {
+        ...node.properties,
+        imageUrl: primaryUrl,
+        imageUrls: realUrls,
+        status: isComplete ? "success" : "loading",
+      },
+      data: {
+        ...(node.data || {}),
+        activeImageIndex: 0,
+        frameImageOssIds: ossIds,
+        imageUrl: primaryUrl,
+        imageUrls: urls,
+        batchReplacementFinishedAt: isComplete ? Date.now() : undefined,
+        loading: !isComplete,
+        loadingOperation: isComplete ? undefined : ("batch-replacement" as const),
+        status: isComplete ? "success" : "loading",
+      },
+    };
+  });
+
+  return { nodeOutputs: nextOutputs, nodes: nextNodes };
 }
 
 export interface WorkflowSummary {
@@ -763,10 +1115,24 @@ export function isPendingRemoteVideoNode(node: GraphNode): boolean {
   );
 }
 
+export function isPendingBatchEditImagesNode(node: GraphNode): boolean {
+  const data = node.data || {};
+  return (
+    node.type === "video_batch_replacement_node" &&
+    typeof data.batchReplacementTaskId === "string" &&
+    data.batchReplacementTaskId.trim().length > 0 &&
+    data.loading === true &&
+    data.loadingOperation === "batch-replacement" &&
+    data.status !== "success" &&
+    data.status !== "error"
+  );
+}
+
 export function sanitizeNodeRuntimeState(node: GraphNode): GraphNode {
   const data = node.data || {};
   if (!hasNodeRuntimeState(node)) return node;
   if (isPendingRemoteVideoNode(node)) return node;
+  if (isPendingBatchEditImagesNode(node)) return node;
 
   const {
     loading: _loading,
@@ -901,6 +1267,112 @@ export function applyRemoteVideoTaskResultSnapshot({
   });
 
   return { nodes: nextNodes, nodeOutputs: nextOutputs };
+}
+
+export function applyPendingBatchEditImagesTaskSnapshot({
+  nodes,
+  nodeId,
+  patch,
+}: {
+  nodes: GraphNode[];
+  nodeId: string;
+  patch: Partial<GraphNode["data"]>;
+}) {
+  return nodes.map((node) => {
+    if (node.id !== nodeId || node.type !== "video_batch_replacement_node") return node;
+    return {
+      ...node,
+      properties: {
+        ...node.properties,
+        status: "loading",
+      },
+      data: {
+        ...(node.data || {}),
+        batchReplacementStartedAt:
+          typeof node.data?.batchReplacementStartedAt === "number"
+            ? node.data.batchReplacementStartedAt
+            : Date.now(),
+        batchReplacementFinishedAt: undefined,
+        loading: true,
+        loadingOperation: "batch-replacement",
+        status: "loading",
+        ...patch,
+      },
+    };
+  });
+}
+
+export function applyBatchEditImagesTaskResultSnapshot({
+  nodes,
+  nodeId,
+  taskId,
+  result,
+}: {
+  nodes: GraphNode[];
+  nodeId: string;
+  taskId: string;
+  result: BatchEditImagesTaskResult;
+}) {
+  return nodes.map((node) => {
+    if (node.id !== nodeId || node.type !== "video_batch_replacement_node") return node;
+    if (node.data?.batchReplacementTaskId !== taskId) return node;
+
+    if (result.status === "success") {
+      return {
+        ...node,
+        properties: {
+          ...node.properties,
+          status: "success",
+        },
+        data: {
+          ...(node.data || {}),
+          batchReplacementResult: result.items,
+          batchReplacementFinishedAt: Date.now(),
+          loading: false,
+          loadingOperation: undefined,
+          status: "success",
+          error: undefined,
+          batchReplacementTaskStatus: result.rawStatus || "success",
+          batchReplacementTaskError: undefined,
+        },
+      };
+    }
+
+    if (result.status === "error") {
+      return {
+        ...node,
+        properties: {
+          ...node.properties,
+          status: "error",
+        },
+        data: {
+          ...(node.data || {}),
+          loading: false,
+          loadingOperation: undefined,
+          batchReplacementFinishedAt: Date.now(),
+          status: "error",
+          error: result.error || "Batch replacement task failed",
+          batchReplacementTaskStatus: result.rawStatus || "error",
+          batchReplacementTaskError: result.error || "Batch replacement task failed",
+        },
+      };
+    }
+
+    return {
+      ...node,
+      properties: {
+        ...node.properties,
+        status: "loading",
+      },
+      data: {
+        ...(node.data || {}),
+        loading: true,
+        loadingOperation: "batch-replacement" as const,
+        status: "loading",
+        batchReplacementTaskStatus: result.rawStatus || "pending",
+      },
+    };
+  });
 }
 
 function normalizeOssIdValue(value: unknown): string {
@@ -1246,6 +1718,9 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
   const currentGroupsRef = useRef<import("../types").GroupBox[]>(initialWf?.data.groups ?? []);
   const currentNodeOutputsRef = useRef(outputsToMap(initialWf?.data.nodeOutputs ?? []));
   const remoteVideoPollsRef = useRef(new Map<string, { cancelled: boolean; timeoutId?: number }>());
+  const batchEditImagesPollsRef = useRef(
+    new Map<string, { cancelled: boolean; timeoutId?: number }>()
+  );
   const canUndo = historyState.pointer > 0;
   const canRedo = historyState.pointer < historyState.stack.length - 1;
 
@@ -1537,10 +2012,11 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
 
   const updateNodePositions = (updates: NodePositionUpdate[]) => {
     if (updates.length === 0) return;
-    const nextNodes = applyNodePositionUpdates(currentNodesRef.current, updates);
+    const positionedNodes = applyNodePositionUpdates(currentNodesRef.current, updates);
+    const nextNodes = syncNodeGroupMembership(positionedNodes, currentGroupsRef.current);
     if (nextNodes === currentNodesRef.current) return;
     currentNodesRef.current = nextNodes;
-    markRemoteDirty("position");
+    markRemoteDirty(nextNodes === positionedNodes ? "position" : "structure");
     markLocalRemotePersistPending({ nodes: nextNodes });
     setNodes(nextNodes);
   };
@@ -2304,13 +2780,19 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
   );
 
   const replaceFrameImageUrl = useCallback(
-    (sourceNodeId: string, frameIndex: number, replacementUrl: string) => {
+    (
+      sourceNodeId: string,
+      frameIndex: number,
+      replacementUrl: string,
+      replacementOssId?: string
+    ) => {
       const snapshot = replaceFrameImageUrlSnapshot({
         nodes,
         nodeOutputs,
         sourceNodeId,
         frameIndex,
         replacementUrl,
+        replacementOssId,
       });
       if (!snapshot) {
         appendLog("warning", "无法覆盖该帧图片");
@@ -2455,6 +2937,62 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     [appendLog, markRemoteDirty, pushHistory, syncCurrentWorkflowMeta]
   );
 
+  const createVideoBatchReplacementResultRun = useCallback(
+    ({
+      batchNodeId,
+      frameAnalysisNodeId,
+      frameCount,
+      result,
+      runId,
+    }: {
+      batchNodeId: string;
+      frameAnalysisNodeId: string;
+      frameCount: number;
+      result?: BatchEditImagesTaskResult;
+      runId: string;
+    }) => {
+      const snapshot = createBatchEditImagesResultRunSnapshot({
+        batchNodeId,
+        frameAnalysisNodeId,
+        frameCount,
+        links: currentLinksRef.current,
+        makeId,
+        nodeOutputs: currentNodeOutputsRef.current,
+        nodes: currentNodesRef.current,
+        result,
+        runId,
+      });
+
+      if (snapshot.createdNodeIds.length === 0) return [];
+
+      markRemoteDirty("structure");
+      currentNodesRef.current = snapshot.nodes;
+      currentLinksRef.current = snapshot.links;
+      currentNodeOutputsRef.current = snapshot.nodeOutputs;
+      markLocalRemotePersistPending({
+        links: snapshot.links,
+        nodeOutputs: snapshot.nodeOutputs,
+        nodes: snapshot.nodes,
+      });
+      setNodes(snapshot.nodes);
+      setLinks(snapshot.links);
+      setNodeOutputs(snapshot.nodeOutputs);
+      syncCurrentWorkflowMeta((wf) => ({
+        ...wf,
+        summary: { ...wf.summary, updatedAt: Date.now() },
+        data: {
+          ...wf.data,
+          links: snapshot.links,
+          nodeOutputs: mapToOutputs(snapshot.nodeOutputs),
+          nodes: snapshot.nodes,
+        },
+      }));
+      pushHistory({ nodes: snapshot.nodes, links: snapshot.links });
+      return snapshot.createdNodeIds;
+    },
+    [markLocalRemotePersistPending, markRemoteDirty, pushHistory, syncCurrentWorkflowMeta]
+  );
+
   const updateSelectedProperty = (key: string, value: unknown) => {
     if (!selectedNodeId) return;
     updateNodeProperty(selectedNodeId, key, value);
@@ -2471,25 +3009,24 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         appendLog("warning", "Grouping requires at least 2 nodes.");
         return null;
       }
-      const minX = Math.min(...selectedNodes.map((n) => n.x)) - 24;
-      const minY = Math.min(...selectedNodes.map((n) => n.y)) - 56;
-      const maxX = Math.max(...selectedNodes.map((n) => n.x + 280)) + 24;
-      const maxY = Math.max(...selectedNodes.map((n) => n.y + 200)) + 24;
+      const bounds = getGroupBoundsForNodes(selectedNodes, 44);
       const id = makeId("group");
       const colors = ["#6366f1", "#a855f7", "#ec4899", "#f59e0b", "#10b981"];
       const color = colors[groups.length % colors.length];
       const group: import("../types").GroupBox = {
         id,
-        title: title?.trim() || `鑺傜偣鍒嗙粍 ${groups.length + 1}`,
-        x: minX,
-        y: minY,
-        width: maxX - minX,
-        height: maxY - minY,
+        title: title?.trim() || getNextGroupTitle(groups),
+        x: bounds.x,
+        y: bounds.y,
+        width: bounds.width,
+        height: bounds.height,
         color,
       };
       const nextGroups = [...groups, group];
       const nextNodes = nodes.map((n) => (nodeIds.includes(n.id) ? { ...n, groupId: id } : n));
       markRemoteDirty("structure");
+      currentGroupsRef.current = nextGroups;
+      currentNodesRef.current = nextNodes;
       setGroups(nextGroups);
       setNodes(nextNodes);
       syncCurrentWorkflowMeta((wf) => ({
@@ -2510,6 +3047,8 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       const nextGroups = groups.filter((g) => g.id !== groupId);
       const nextNodes = nodes.map((n) => (n.groupId === groupId ? { ...n, groupId: null } : n));
       markRemoteDirty("structure");
+      currentGroupsRef.current = nextGroups;
+      currentNodesRef.current = nextNodes;
       setGroups(nextGroups);
       setNodes(nextNodes);
       syncCurrentWorkflowMeta((wf) => ({
@@ -2527,6 +3066,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     (groupId: string, patch: Partial<import("../types").GroupBox>): boolean => {
       const nextGroups = groups.map((g) => (g.id === groupId ? { ...g, ...patch } : g));
       markRemoteDirty("content");
+      currentGroupsRef.current = nextGroups;
       setGroups(nextGroups);
       syncCurrentWorkflowMeta((wf) => ({
         ...wf,
@@ -2536,6 +3076,32 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       return true;
     },
     [groups, markRemoteDirty, syncCurrentWorkflowMeta]
+  );
+
+  const resizeGroup = useCallback(
+    (
+      groupId: string,
+      rect: Pick<import("../types").GroupBox, "x" | "y" | "width" | "height">
+    ): boolean => {
+      const activeGroups = currentGroupsRef.current;
+      const activeNodes = currentNodesRef.current;
+      const nextGroups = activeGroups.map((g) => (g.id === groupId ? { ...g, ...rect } : g));
+      const nextNodes = syncNodeGroupMembership(activeNodes, nextGroups);
+      const nodesChanged = nextNodes !== activeNodes;
+
+      markRemoteDirty(nodesChanged ? "structure" : "content");
+      currentGroupsRef.current = nextGroups;
+      currentNodesRef.current = nextNodes;
+      setGroups(nextGroups);
+      if (nodesChanged) setNodes(nextNodes);
+      syncCurrentWorkflowMeta((wf) => ({
+        ...wf,
+        summary: { ...wf.summary, updatedAt: Date.now() },
+        data: { ...wf.data, groups: nextGroups, nodes: nextNodes },
+      }));
+      return true;
+    },
+    [markRemoteDirty, syncCurrentWorkflowMeta]
   );
 
   const writeNodeOutput = useCallback((nodeId: string, outputs: Record<number, unknown>) => {
@@ -2745,6 +3311,129 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
 
   useEffect(() => {
     const pollMap = remoteVideoPollsRef.current;
+    return () => {
+      pollMap.forEach((entry) => {
+        entry.cancelled = true;
+        if (entry.timeoutId !== undefined) window.clearTimeout(entry.timeoutId);
+      });
+      pollMap.clear();
+    };
+  }, []);
+
+  useEffect(() => {
+    const activeKeys = new Set<string>();
+
+    const stopPoll = (key: string) => {
+      const entry = batchEditImagesPollsRef.current.get(key);
+      if (!entry) return;
+      entry.cancelled = true;
+      if (entry.timeoutId !== undefined) window.clearTimeout(entry.timeoutId);
+      batchEditImagesPollsRef.current.delete(key);
+    };
+
+    nodes.forEach((node) => {
+      if (!isPendingBatchEditImagesNode(node)) return;
+      const taskId = node.data?.batchReplacementTaskId?.trim();
+      if (!taskId) return;
+      const key = `${node.id}:${taskId}`;
+      activeKeys.add(key);
+      if (batchEditImagesPollsRef.current.has(key)) return;
+
+      const entry: { cancelled: boolean; timeoutId?: number } = { cancelled: false };
+      batchEditImagesPollsRef.current.set(key, entry);
+
+      const poll = async () => {
+        if (entry.cancelled) return;
+        const latestNode = currentNodesRef.current.find((candidate) => candidate.id === node.id);
+        if (
+          !latestNode ||
+          latestNode.data?.batchReplacementTaskId !== taskId ||
+          !isPendingBatchEditImagesNode(latestNode)
+        ) {
+          stopPoll(key);
+          return;
+        }
+
+        try {
+          const result = await queryBatchEditImagesTask(taskId);
+          const patchedNodes = applyBatchEditImagesTaskResultSnapshot({
+            nodes: currentNodesRef.current,
+            nodeId: node.id,
+            taskId,
+            result,
+          });
+          const syncedResultNodes = applyBatchEditImagesResultNodesSnapshot({
+            batchNodeId: node.id,
+            nodeOutputs: currentNodeOutputsRef.current,
+            nodes: patchedNodes,
+            result,
+            runId: taskId,
+          });
+          const nextNodes = syncedResultNodes.nodes;
+          const nextNodeOutputs = syncedResultNodes.nodeOutputs;
+
+          currentNodesRef.current = nextNodes;
+          currentNodeOutputsRef.current = nextNodeOutputs;
+          setNodes(nextNodes);
+          setNodeOutputs(nextNodeOutputs);
+          syncCurrentWorkflowMeta((workflow) => ({
+            ...workflow,
+            summary: { ...workflow.summary, updatedAt: Date.now() },
+            data: {
+              ...workflow.data,
+              nodes: nextNodes,
+              nodeOutputs: mapToOutputs(nextNodeOutputs),
+            },
+          }));
+
+          if (result.status === "success") {
+            appendLog("success", `[${latestNode.title}] 批量替换完成`);
+            stopPoll(key);
+            return;
+          }
+
+          if (result.status === "error") {
+            appendLog("error", `[${latestNode.title}] 批量替换失败:${result.error || "任务失败"}`);
+            stopPoll(key);
+            return;
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          setNodes((prev) => {
+            const nextNodes = prev.map((candidate) =>
+              candidate.id === node.id && candidate.data?.batchReplacementTaskId === taskId
+                ? {
+                    ...candidate,
+                    data: {
+                      ...(candidate.data || {}),
+                      loading: true,
+                      status: "loading",
+                      loadingOperation: "batch-replacement",
+                      batchReplacementTaskError: message,
+                    },
+                  }
+                : candidate
+            );
+            currentNodesRef.current = nextNodes;
+            return nextNodes;
+          });
+        }
+
+        if (!entry.cancelled) {
+          entry.timeoutId = window.setTimeout(poll, REMOTE_VIDEO_POLL_INTERVAL_MS);
+        }
+      };
+
+      void poll();
+    });
+
+    Array.from(batchEditImagesPollsRef.current.keys() as Iterable<string>).forEach((key) => {
+      if (!activeKeys.has(key)) stopPoll(key);
+    });
+  }, [appendLog, nodes, syncCurrentWorkflowMeta]);
+
+  useEffect(() => {
+    const pollMap = batchEditImagesPollsRef.current;
     return () => {
       pollMap.forEach((entry) => {
         entry.cancelled = true;
@@ -3645,6 +4334,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     replaceFrameImageUrl,
     addVideoFrameAnalysis,
     addVideoBatchReplacementNode,
+    createVideoBatchReplacementResultRun,
     addVideoPromptTextNode,
     clearCanvas,
     clearExecution,
@@ -3657,6 +4347,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     createGroup,
     ungroup,
     updateGroup,
+    resizeGroup,
     runGroup,
     runNode,
     runWorkflow,

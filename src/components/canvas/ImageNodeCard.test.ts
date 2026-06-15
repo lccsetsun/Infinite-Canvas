@@ -201,6 +201,14 @@ describe("ImageNodeCard prompt composer fullscreen editor", () => {
     expect(source).toContain("getPrimaryImageNodeOssId(node, imageUrl)");
   });
 
+  it("passes dragged image oss ids through when replacing a frame-analysis tile", () => {
+    const source = readFileSync(new URL("./ImageNodeCard.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain(
+      "onReplaceFrameImage?.(targetNodeId, targetFrameIndex, drag.url, drag.ossId)"
+    );
+  });
+
   it("places batch replacement creation in the frame-analysis image toolbar", () => {
     const source = readFileSync(new URL("./ImageNodeCard.tsx", import.meta.url), "utf8");
 

@@ -168,12 +168,25 @@ export function replaceFrameImageFromChildSnapshot({
   if (!childNode || !sourceNode || frameIndex < 0) return null;
 
   const replacementUrl = getNodeImageUrl(childNode);
+  const replacementOssId =
+    typeof childNode.data?.ossId === "string" && childNode.data.ossId.trim()
+      ? childNode.data.ossId.trim()
+      : typeof childNode.properties.ossId === "string" && childNode.properties.ossId.trim()
+        ? childNode.properties.ossId.trim()
+        : "";
   const sourceImageUrls = getImageUrls(sourceNode);
   if (!replacementUrl || frameIndex >= sourceImageUrls.length) return null;
 
   const nextImageUrls = sourceImageUrls.map((url, index) =>
     index === frameIndex ? replacementUrl : url
   );
+  const sourceFrameOssIds = getFrameImageOssIds(sourceNode);
+  const nextFrameImageOssIds =
+    replacementOssId && sourceFrameOssIds.length > 0
+      ? sourceImageUrls.map((_, index) =>
+          index === frameIndex ? replacementOssId : (sourceFrameOssIds[index] ?? "")
+        )
+      : sourceFrameOssIds;
   const activeImageIndex =
     typeof sourceNode.data?.activeImageIndex === "number" ? sourceNode.data.activeImageIndex : 0;
 
@@ -186,11 +199,13 @@ export function replaceFrameImageFromChildSnapshot({
         ...node.properties,
         ...(frameIndex === 0 ? { imageUrl: replacementUrl } : {}),
         imageUrls: nextImageUrls,
+        ...(nextFrameImageOssIds.length > 0 ? { frameImageOssIds: nextFrameImageOssIds } : {}),
       },
       data: {
         ...(node.data || {}),
         imageUrls: nextImageUrls,
         ...(shouldUpdatePrimary ? { imageUrl: replacementUrl } : {}),
+        ...(nextFrameImageOssIds.length > 0 ? { frameImageOssIds: nextFrameImageOssIds } : {}),
       },
     };
   });
@@ -215,12 +230,14 @@ export function replaceFrameImageUrlSnapshot({
   frameIndex,
   nodeOutputs,
   nodes,
+  replacementOssId,
   replacementUrl,
   sourceNodeId,
 }: {
   frameIndex: number;
   nodeOutputs: NodeOutputMap;
   nodes: GraphNode[];
+  replacementOssId?: string;
   replacementUrl: string;
   sourceNodeId: string;
 }): {
@@ -244,6 +261,15 @@ export function replaceFrameImageUrlSnapshot({
   const nextImageUrls = sourceImageUrls.map((url, index) =>
     index === frameIndex ? replacementUrl : url
   );
+  const normalizedReplacementOssId =
+    typeof replacementOssId === "string" ? replacementOssId.trim() : "";
+  const sourceFrameOssIds = getFrameImageOssIds(sourceNode);
+  const nextFrameImageOssIds =
+    normalizedReplacementOssId && sourceFrameOssIds.length > 0
+      ? sourceImageUrls.map((_, index) =>
+          index === frameIndex ? normalizedReplacementOssId : (sourceFrameOssIds[index] ?? "")
+        )
+      : sourceFrameOssIds;
   const activeImageIndex =
     typeof sourceNode.data?.activeImageIndex === "number" ? sourceNode.data.activeImageIndex : 0;
   const shouldUpdatePrimary = frameIndex === 0 || activeImageIndex === frameIndex;
@@ -256,11 +282,13 @@ export function replaceFrameImageUrlSnapshot({
             ...node.properties,
             ...(frameIndex === 0 ? { imageUrl: replacementUrl } : {}),
             imageUrls: nextImageUrls,
+            ...(nextFrameImageOssIds.length > 0 ? { frameImageOssIds: nextFrameImageOssIds } : {}),
           },
           data: {
             ...(node.data || {}),
             imageUrls: nextImageUrls,
             ...(shouldUpdatePrimary ? { imageUrl: replacementUrl } : {}),
+            ...(nextFrameImageOssIds.length > 0 ? { frameImageOssIds: nextFrameImageOssIds } : {}),
           },
         }
       : node
