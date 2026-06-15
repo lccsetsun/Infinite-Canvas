@@ -16,6 +16,7 @@ import {
   applyBatchEditImagesTaskResultSnapshot,
   applyPendingBatchEditImagesTaskSnapshot,
   collectLinkedMediaReferences,
+  createBatchEditImagesResultRunSnapshot,
   shouldApplyRemoteWorkflowSnapshot,
   syncVideoBatchReplacementTargetsSnapshot,
 } from "./useWorkflowState";
@@ -670,7 +671,13 @@ function makeBatchTargetImageNode(): GraphNode {
 
 describe("video batch replacement downstream sync", () => {
   it("syncs filled batch replacement slots into linked image node thumbnails", () => {
-    const batchNode = makeVideoBatchReplacementNode();
+    const batchNode: GraphNode = {
+      ...makeVideoBatchReplacementNode(),
+      data: {
+        ...makeVideoBatchReplacementNode().data,
+        batchReplacementAspectRatio: "16:9",
+      },
+    };
     const imageNode = makeBatchTargetImageNode();
     const link = {
       id: "batch-link",
@@ -894,6 +901,231 @@ describe("applyBatchEditImagesTaskResultSnapshot", () => {
       batchReplacementTaskStatus: "success",
       batchReplacementResult: items,
       batchReplacementFinishedAt: expect.any(Number),
+    });
+  });
+
+  it("creates one result grid matching the source frame-analysis node before polling completes", () => {
+    const batchNode = makeVideoBatchReplacementNode();
+    const frameNode: GraphNode = {
+      id: "frame-1",
+      type: "image_node",
+      title: "逐帧分析 1",
+      x: 300,
+      y: 120,
+      inputs: [{ name: "source_video", type: "VIDEO" }],
+      outputs: [{ name: "图片", type: "IMAGE" }],
+      properties: {},
+      data: {
+        isFrameStrip: true,
+        frameGridColumns: 3,
+        frameGridRows: 1,
+        frameTileHeight: 180,
+        frameTileWidth: 300,
+        imageDisplayHeight: 180,
+        imageDisplayWidth: 900,
+        imageNodeHeight: 210,
+        imageNodeWidth: 900,
+        imagePortCenterY: 105,
+      },
+    };
+    let idIndex = 0;
+
+    const result = createBatchEditImagesResultRunSnapshot({
+      batchNodeId: batchNode.id,
+      frameAnalysisNodeId: frameNode.id,
+      frameCount: 3,
+      links: [],
+      makeId: (prefix) => `${prefix}-${(idIndex += 1)}`,
+      nodeOutputs: new Map(),
+      nodes: [batchNode, frameNode],
+      result: {
+        status: "pending",
+        items: [{ index: 0, url: "https://example.com/generated-1.png", ossId: "oss-1" }],
+        error: "",
+        rawStatus: "running",
+      },
+      runId: "bg_2066531184648785920",
+    });
+
+    const resultNodes = result.nodes.filter(
+      (node) => node.data?.batchReplacementRunId === "bg_2066531184648785920"
+    );
+    expect(resultNodes).toHaveLength(1);
+    expect(resultNodes[0].data).toMatchObject({
+      isFrameStrip: true,
+      frameGridColumns: 3,
+      frameGridRows: 1,
+      frameTileHeight: 180,
+      frameTileWidth: 300,
+      imageDisplayHeight: 180,
+      imageDisplayWidth: 900,
+      imageNodeHeight: 210,
+      imageNodeWidth: 900,
+      imagePortCenterY: 105,
+      loading: true,
+      loadingOperation: "batch-replacement",
+      batchReplacementResultCount: 3,
+    });
+    expect(resultNodes[0].data?.imageUrls).toHaveLength(3);
+    expect(resultNodes[0].data?.imageUrls?.[0]).toBe("https://example.com/generated-1.png");
+    expect(resultNodes[0].data?.imageUrls?.[1]).toBe("__batch_replacement_frame_placeholder__");
+    expect(result.links).toHaveLength(1);
+    expect(result.nodeOutputs.get(resultNodes[0].id)?.get(0)).toBe(
+      "https://example.com/generated-1.png"
+    );
+  });
+
+  it("uses the source frame count and grid layout instead of hard-coding three placeholders", () => {
+    const batchNode = makeVideoBatchReplacementNode();
+    const frameNode: GraphNode = {
+      id: "frame-4",
+      type: "image_node",
+      title: "frame analysis",
+      x: 300,
+      y: 120,
+      inputs: [{ name: "source_video", type: "VIDEO" }],
+      outputs: [{ name: "image", type: "IMAGE" }],
+      properties: {},
+      data: {
+        isFrameStrip: true,
+        frameGridColumns: 2,
+        frameGridRows: 2,
+        frameTileHeight: 180,
+        frameTileWidth: 300,
+        imageDisplayHeight: 360,
+        imageDisplayWidth: 600,
+        imageNodeHeight: 390,
+        imageNodeWidth: 600,
+        imagePortCenterY: 195,
+      },
+    };
+    let idIndex = 0;
+
+    const result = createBatchEditImagesResultRunSnapshot({
+      batchNodeId: batchNode.id,
+      frameAnalysisNodeId: frameNode.id,
+      frameCount: 4,
+      links: [],
+      makeId: (prefix) => `${prefix}-${(idIndex += 1)}`,
+      nodeOutputs: new Map(),
+      nodes: [batchNode, frameNode],
+      runId: "four-frame-run",
+    });
+
+    const resultNode = result.nodes.find(
+      (node) => node.data?.batchReplacementRunId === "four-frame-run"
+    );
+    expect(resultNode?.data?.imageUrls).toEqual([
+      "__batch_replacement_frame_placeholder__",
+      "__batch_replacement_frame_placeholder__",
+      "__batch_replacement_frame_placeholder__",
+      "__batch_replacement_frame_placeholder__",
+    ]);
+    expect(resultNode?.data).toMatchObject({
+      batchReplacementResultCount: 4,
+      frameGridColumns: 2,
+      frameGridRows: 2,
+      imageDisplayHeight: 360,
+      imageDisplayWidth: 600,
+      imageNodeHeight: 390,
+      imageNodeWidth: 600,
+      imagePortCenterY: 195,
+    });
+  });
+
+  it("keeps previous batch replacement results and appends the new loading grid below", () => {
+    const batchNode = makeVideoBatchReplacementNode();
+    const frameNode: GraphNode = {
+      id: "frame-1",
+      type: "image_node",
+      title: "frame analysis",
+      x: 300,
+      y: 120,
+      inputs: [{ name: "source_video", type: "VIDEO" }],
+      outputs: [{ name: "image", type: "IMAGE" }],
+      properties: {},
+      data: {
+        isFrameStrip: true,
+        frameGridColumns: 3,
+        frameGridRows: 1,
+        frameTileHeight: 180,
+        frameTileWidth: 300,
+        imageDisplayHeight: 180,
+        imageDisplayWidth: 900,
+        imageNodeHeight: 210,
+        imageNodeWidth: 900,
+        imagePortCenterY: 105,
+      },
+    };
+    const staleResultNode: GraphNode = {
+      id: "stale-result",
+      type: "image_node",
+      title: "batch result 1",
+      x: 900,
+      y: 120,
+      inputs: [{ name: "input", type: "IMAGE" }],
+      outputs: [{ name: "image", type: "IMAGE" }],
+      properties: {},
+      data: {
+        batchReplacementRunId: "old-run",
+        batchReplacementSourceNodeId: batchNode.id,
+        batchReplacementResultCount: 3,
+        imageDisplayHeight: 391,
+        imageDisplayWidth: 220,
+        imageNodeHeight: 421,
+        imageNodeWidth: 220,
+        imageUrls: [],
+        loading: true,
+        loadingOperation: "batch-replacement",
+      },
+    };
+    let idIndex = 0;
+    const oldOutputs = new Map<string, Map<number, unknown>>([
+      ["stale-result", new Map([[0, "old-placeholder"]])],
+    ]);
+
+    const result = createBatchEditImagesResultRunSnapshot({
+      batchNodeId: batchNode.id,
+      frameAnalysisNodeId: frameNode.id,
+      frameCount: 3,
+      links: [
+        {
+          id: "old-link",
+          fromNodeId: batchNode.id,
+          fromOutputIndex: 0,
+          toNodeId: staleResultNode.id,
+          toInputIndex: 0,
+        },
+      ],
+      makeId: (prefix) => `${prefix}-${(idIndex += 1)}`,
+      nodeOutputs: oldOutputs,
+      nodes: [batchNode, frameNode, staleResultNode],
+      runId: "new-run",
+    });
+
+    expect(result.nodes.some((node) => node.id === "stale-result")).toBe(true);
+    expect(result.links.some((link) => link.id === "old-link")).toBe(true);
+    expect(result.nodeOutputs.has("stale-result")).toBe(true);
+
+    const resultNodes = result.nodes.filter(
+      (node) => node.data?.batchReplacementSourceNodeId === batchNode.id
+    );
+    expect(resultNodes).toHaveLength(2);
+    const newResultNode = resultNodes.find((node) => node.data?.batchReplacementRunId === "new-run");
+    expect(newResultNode?.title).toMatch(/2$/);
+    expect(newResultNode?.y).toBeGreaterThan(staleResultNode.y);
+    expect(newResultNode?.data?.imageUrls).toEqual([
+      "__batch_replacement_frame_placeholder__",
+      "__batch_replacement_frame_placeholder__",
+      "__batch_replacement_frame_placeholder__",
+    ]);
+    expect(newResultNode?.data).toMatchObject({
+      frameGridColumns: 3,
+      frameGridRows: 1,
+      imageDisplayHeight: 180,
+      imageDisplayWidth: 900,
+      imageNodeHeight: 210,
+      imageNodeWidth: 900,
     });
   });
 });

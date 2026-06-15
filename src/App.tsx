@@ -102,6 +102,7 @@ import {
   type CanvasGenerationDictionaries,
 } from "./features/api/canvasGenerationDictionaries";
 import { batchEditImages } from "./features/api/videoBatchReplacement";
+import { resolveVideoBatchReplacementSourceFrames } from "./utils/videoBatchReplacementSubmit";
 import { clearAuthSession } from "./features/auth/authStorage";
 import { logout } from "./features/auth/authApi";
 import { performOptimisticLogout } from "./features/auth/logoutFlow";
@@ -169,24 +170,6 @@ function normalizeOssIdValue(value: unknown): string {
   if (typeof value === "number" && Number.isFinite(value)) return String(Math.trunc(value));
   if (typeof value === "bigint") return String(value);
   return "";
-}
-
-function collectOssIdsFromValue(value: unknown, seen = new Set<unknown>()): string[] {
-  const single = normalizeOssIdValue(value);
-  if (single) return [single];
-  if (!value || typeof value !== "object") return [];
-  if (seen.has(value)) return [];
-  seen.add(value);
-  if (Array.isArray(value)) return value.flatMap((item) => collectOssIdsFromValue(item, seen));
-  const record = value as Record<string, unknown>;
-  return [
-    ...collectOssIdsFromValue(record.ossId, seen),
-    ...collectOssIdsFromValue(record.ossIds, seen),
-    ...collectOssIdsFromValue(record.data, seen),
-    ...collectOssIdsFromValue(record.result, seen),
-    ...collectOssIdsFromValue(record.results, seen),
-    ...collectOssIdsFromValue(record.outputs, seen),
-  ];
 }
 
 function findRemoteImageModelById(
@@ -487,6 +470,7 @@ export default function App({ onLoggedOut }: AppProps) {
   const blankPointerDownRef = React.useRef<{ client: Point; world: Point } | null>(null);
   const groupDragRef = React.useRef<GroupDragState | null>(null);
   const [isGroupDragging, setIsGroupDragging] = React.useState(false);
+  const [hoveredGroupId, setHoveredGroupId] = React.useState<string | null>(null);
   const [nodeContextMenu, setNodeContextMenu] = React.useState<{
     nodeId: string;
     x: number;
@@ -888,6 +872,7 @@ export default function App({ onLoggedOut }: AppProps) {
         pointerStart: { x: e.clientX, y: e.clientY },
       };
       setIsGroupDragging(true);
+      setHoveredGroupId(group.id);
       applyCanvasSelection(selectCanvasGroup(group.id));
       closeNodeContextMenu();
       e.preventDefault();
@@ -941,11 +926,30 @@ export default function App({ onLoggedOut }: AppProps) {
       updateNodePositions(getMovedGroupMemberPositions({ dx, dy, nodeStarts: drag.nodeStarts }));
       groupDragRef.current = null;
       setIsGroupDragging(false);
+      setHoveredGroupId(drag.groupId);
       e.preventDefault();
       e.stopPropagation();
       return true;
     },
     [updateGroup, updateNodePositions, zoom]
+  );
+
+  const updateHoveredGroupCursor = React.useCallback(
+    (e: React.PointerEvent) => {
+      if (currentView !== "canvas" || menuPos || isLinkingOnCanvas || selectionDrag) {
+        setHoveredGroupId(null);
+        return;
+      }
+      const target = e.target as HTMLElement | null;
+      if (target?.closest("[data-canvas-node-id]") || isCanvasSelectionBlocked(target)) {
+        setHoveredGroupId(null);
+        return;
+      }
+
+      const group = findTopGroupAtPoint(groups, toWorld(e.clientX, e.clientY));
+      setHoveredGroupId(group?.id ?? null);
+    },
+    [currentView, groups, isCanvasSelectionBlocked, isLinkingOnCanvas, menuPos, selectionDrag, toWorld]
   );
 
   const handleCanvasSelectionPointerDown = React.useCallback(
@@ -1156,9 +1160,10 @@ export default function App({ onLoggedOut }: AppProps) {
       }
 
       const frameAnalysisNode = findFirstUpstreamFrameAnalysisNode(nodes, links, nodeId);
-      const sourceOssIds = frameAnalysisNode
-        ? Array.from(new Set(collectOssIdsFromValue(frameAnalysisNode.data?.frameImageOssIds)))
-        : [];
+      const sourceFrames = frameAnalysisNode
+        ? resolveVideoBatchReplacementSourceFrames(frameAnalysisNode)
+        : { frameCount: 0, ossIds: [] };
+      const sourceOssIds = sourceFrames.ossIds;
       if (sourceOssIds.length === 0) {
         showNotice("逐帧分析节点缺少可用的帧图片 OSS ID。");
         return;
@@ -1203,7 +1208,7 @@ export default function App({ onLoggedOut }: AppProps) {
           createVideoBatchReplacementResultRun({
             batchNodeId: nodeId,
             frameAnalysisNodeId: frameAnalysisNode.id,
-            frameCount: sourceOssIds.length,
+            frameCount: sourceFrames.frameCount,
             result:
               result.items.length > 0
                 ? { status: "pending", items: result.items, error: "", rawStatus: "pending" }
@@ -1232,7 +1237,7 @@ export default function App({ onLoggedOut }: AppProps) {
         createVideoBatchReplacementResultRun({
           batchNodeId: nodeId,
           frameAnalysisNodeId: frameAnalysisNode.id,
-          frameCount: sourceOssIds.length,
+          frameCount: sourceFrames.frameCount,
           result: { status: "success", items: result.items, error: "", rawStatus: "success" },
           runId: `batch-direct-${Date.now()}`,
         });
@@ -1631,7 +1636,9 @@ export default function App({ onLoggedOut }: AppProps) {
 
         <main
           ref={canvasRef}
-          className={getCanvasViewportClassName()}
+          className={`${getCanvasViewportClassName()} ${
+            isGroupDragging ? "cursor-grabbing" : hoveredGroupId ? "cursor-grab" : ""
+          }`}
           onDoubleClick={handleCanvasDoubleClick}
           onDragOver={(e) => {
             if (currentView !== "canvas") return;
@@ -1670,6 +1677,7 @@ export default function App({ onLoggedOut }: AppProps) {
           onPointerMove={(e) => {
             lastCanvasPointerRef.current = { clientX: e.clientX, clientY: e.clientY };
             if (handleGroupPointerMove(e)) return;
+            updateHoveredGroupCursor(e);
             if (handleCanvasSelectionPointerMove(e)) return;
             onPointerMove(e);
           }}
@@ -1685,6 +1693,7 @@ export default function App({ onLoggedOut }: AppProps) {
             if (shouldFinishCanvasLinkOnCanvasPointerUp(isLinkingOnCanvas)) finishCanvasLink();
           }}
           onPointerLeave={(e) => {
+            setHoveredGroupId(null);
             if (handleGroupPointerUp(e)) return;
             if (selectionDrag) {
               setSelectionDrag(null);

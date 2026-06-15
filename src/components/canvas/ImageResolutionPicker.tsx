@@ -43,9 +43,7 @@ function getFallbackResolution(
   value: string,
   presetGroups: ImageResolutionPresetGroup[]
 ): ImageResolution {
-  return isImageResolution(value, presetGroups)
-    ? value
-    : presetGroups[0]?.resolution || "1K";
+  return isImageResolution(value, presetGroups) ? value : presetGroups[0]?.resolution || "1K";
 }
 
 export function getResolutionPickerPanelTitle(panelTitle?: string) {
@@ -171,22 +169,30 @@ export function ImageResolutionPicker({
     if (!open) return;
     const closeOnOutsidePointer = (event: PointerEvent) => {
       const target = event.target as Node | null;
-      if (
-        target &&
-        !buttonRef.current?.contains(target) &&
-        !panelRef.current?.contains(target)
-      ) {
+      if (target && !buttonRef.current?.contains(target) && !panelRef.current?.contains(target)) {
         setOpen(false);
+        event.stopPropagation();
       }
+    };
+    const blockCanvasWheel = (event: WheelEvent) => {
+      const target = event.target as Node | null;
+      if (target && panelRef.current?.contains(target)) {
+        event.stopPropagation();
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
     };
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") setOpen(false);
     };
 
-    window.addEventListener("pointerdown", closeOnOutsidePointer);
+    window.addEventListener("pointerdown", closeOnOutsidePointer, true);
+    window.addEventListener("wheel", blockCanvasWheel, { capture: true, passive: false });
     window.addEventListener("keydown", closeOnEscape);
     return () => {
-      window.removeEventListener("pointerdown", closeOnOutsidePointer);
+      window.removeEventListener("pointerdown", closeOnOutsidePointer, true);
+      window.removeEventListener("wheel", blockCanvasWheel, true);
       window.removeEventListener("keydown", closeOnEscape);
     };
   }, [open]);
@@ -195,7 +201,11 @@ export function ImageResolutionPicker({
     presetGroups.find((group) => group.resolution === activeResolution) ?? presetGroups[0];
   const selectedPreset =
     getImageResolutionPreset(resolution, aspectRatio, presetGroups) ??
-    getImageResolutionPreset(presetGroups[0]?.resolution || "1K", activeGroup?.presets[0]?.aspectRatio || "16:9", presetGroups);
+    getImageResolutionPreset(
+      presetGroups[0]?.resolution || "1K",
+      activeGroup?.presets[0]?.aspectRatio || "16:9",
+      presetGroups
+    );
 
   return (
     <>

@@ -397,7 +397,7 @@ describe("VideoBatchReplacementNodeCard source", () => {
     );
 
     expect(source).toContain("controlsDisabled");
-    expect(source).toContain('aria-disabled={controlsDisabled}');
+    expect(source).toContain("aria-disabled={controlsDisabled}");
     expect(source).toContain("pointer-events-none");
     expect(source).toContain("disabled={controlsDisabled}");
     expect(source).toContain("if (controlsDisabled) return");
@@ -428,6 +428,22 @@ describe("VideoBatchReplacementNodeCard source", () => {
     expect(source).toContain("modeOptions.map");
     expect(source).toContain("replacementMode === option.value");
     expect(source).toContain("writeModePatch(option.value)");
+  });
+
+  it("closes floating dropdowns from outside pointer capture and blocks canvas wheel while open", () => {
+    const source = readFileSync(
+      new URL("./VideoBatchReplacementNodeCard.tsx", import.meta.url),
+      "utf8"
+    );
+
+    expect(source).toContain('window.addEventListener("pointerdown", handlePointerDown, true)');
+    expect(source).toContain('window.removeEventListener("pointerdown", handlePointerDown, true)');
+    expect(source).toContain(
+      'window.addEventListener("wheel", blockCanvasWheel, { capture: true, passive: false })'
+    );
+    expect(source).toContain('window.removeEventListener("wheel", blockCanvasWheel, true)');
+    expect(source).toContain("event.preventDefault();");
+    expect(source).toContain("event.stopPropagation();");
   });
 
   it("does not render the top-right copy action", () => {
@@ -522,4 +538,3 @@ describe("VideoBatchReplacementNodeCard source", () => {
     expect(source).toContain("`{{ Image${index + 1}}} 是 ${slot.prompt.trim() || slot.title}`");
   });
 });
-

@@ -150,6 +150,7 @@ const FRAME_STRIP_PADDING = 10;
 const IMAGE_FRAME_DROP_LONG_PRESS_MS = 450;
 const QUANTITY_OPTIONS = ["1张", "2张", "3张", "4张"];
 const VISIBLE_THUMBNAIL_COUNT = 3;
+const BATCH_REPLACEMENT_FRAME_PLACEHOLDER = "__batch_replacement_frame_placeholder__";
 const GRID_SPLIT_PRESETS = [
   { label: "4宫格 (2×2)", rows: 2, cols: 2 },
   { label: "9宫格 (3×3)", rows: 3, cols: 3 },
@@ -852,14 +853,43 @@ function ImageNodeCardImpl({
   const canRunImagePrompt = Boolean(
     upstreamPrompt || promptText.trim() || inputReferences.length > 0
   );
+  const isLegacyBatchReplacementResultTitle =
+    typeof node.title === "string" &&
+    (/批量替换结果/.test(node.title) || /鎵归噺鏇挎崲缁撴灉/.test(node.title));
+  const hasBatchReplacementResultCount =
+    typeof node.data?.batchReplacementResultCount === "number" &&
+    node.data.batchReplacementResultCount > 0;
+  const isBatchReplacementResultNode =
+    typeof node.data?.batchReplacementRunId === "string" ||
+    (typeof node.data?.batchReplacementSourceNodeId === "string" &&
+      hasBatchReplacementResultCount) ||
+    (node.data?.loadingOperation === "batch-replacement" && hasBatchReplacementResultCount) ||
+    (isLegacyBatchReplacementResultTitle &&
+      (node.data?.isFrameStrip === true ||
+        (Array.isArray(node.data?.imageUrls) && node.data.imageUrls.length > 0) ||
+        node.data?.loading === true));
   const imageUrls = React.useMemo(
-    () =>
-      Array.isArray(node.data?.imageUrls) && node.data?.imageUrls.length
-        ? node.data.imageUrls.filter(
-            (url): url is string => typeof url === "string" && Boolean(url)
-          )
-        : [],
-    [node.data]
+    () => {
+      const rawImageUrls =
+        Array.isArray(node.data?.imageUrls) && node.data?.imageUrls.length
+          ? node.data.imageUrls.filter(
+              (url): url is string => typeof url === "string" && Boolean(url)
+            )
+          : [];
+      if (!isBatchReplacementResultNode) return rawImageUrls;
+
+      const frameCount =
+        typeof node.data?.batchReplacementResultCount === "number" &&
+        node.data.batchReplacementResultCount > 0
+          ? Math.trunc(node.data.batchReplacementResultCount)
+          : rawImageUrls.length;
+      return Array.from({ length: frameCount }, (_, index) => {
+        const url = rawImageUrls[index];
+        if (!url || url.startsWith("data:image/svg+xml")) return BATCH_REPLACEMENT_FRAME_PLACEHOLDER;
+        return url;
+      });
+    },
+    [isBatchReplacementResultNode, node.data]
   );
   const fallbackImageUrl =
     (node.data?.imageUrl as string) || (node.properties.imageUrl as string) || "";
@@ -869,11 +899,14 @@ function ImageNodeCardImpl({
   );
   const imageUrl = resolvedImageUrls[activeImageIndex] || resolvedImageUrls[0] || "";
   const isSourceAssetNode = isSourceNode(node);
-  const isFrameStrip = node.data?.isFrameStrip === true;
+  const isFrameStrip = node.data?.isFrameStrip === true || isBatchReplacementResultNode;
   const isExtractedFrameNode =
     typeof node.data?.extractedFrameSourceNodeId === "string" &&
     typeof node.data?.extractedFrameIndex === "number";
   const frameGridColumns = Math.max(1, Math.min(8, Math.round(node.data?.frameGridColumns ?? 5)));
+  const batchReplacementResultColumnCount = isBatchReplacementResultNode
+    ? Math.max(1, Math.min(resolvedImageUrls.length || 1, frameGridColumns))
+    : 0;
   const frameTileWidth =
     typeof node.data?.frameTileWidth === "number" && node.data.frameTileWidth > 0
       ? Math.round(node.data.frameTileWidth)
@@ -1863,7 +1896,6 @@ function ImageNodeCardImpl({
       : "";
   const currentModel = selectedImageModel || preferredImageModel;
   const isStarterPlaceholder = node.data?.isUploadPlaceholder === true;
-  const isBatchReplacementResultNode = typeof node.data?.batchReplacementRunId === "string";
   const nodeBadgeTitle =
     node.title === "图片节点" || node.title === "图片" ? "图片节点 1" : node.title;
   const nodeBadgeMatch = nodeBadgeTitle.match(/^(.*?)(\s+\d+)$/);
@@ -1962,13 +1994,17 @@ function ImageNodeCardImpl({
         fixedTileSize: isFrameStrip,
         imageSizes: frameImageSizes,
         imageUrls: resolvedImageUrls,
-        maxColumns: frameGridColumns,
+        maxColumns: isBatchReplacementResultNode
+          ? batchReplacementResultColumnCount
+          : frameGridColumns,
       }),
     [
+      batchReplacementResultColumnCount,
       frameGridColumns,
       frameImageSizes,
       frameTileHeight,
       frameTileWidth,
+      isBatchReplacementResultNode,
       isFrameStrip,
       resolvedImageUrls,
     ]
@@ -1981,13 +2017,35 @@ function ImageNodeCardImpl({
     () =>
       Array.from(
         {
-          length: Math.max(1, Math.ceil(Math.max(1, resolvedImageUrls.length) / frameGridColumns)),
+          length: Math.max(
+            1,
+            Math.ceil(
+              Math.max(1, resolvedImageUrls.length) /
+                (isBatchReplacementResultNode
+                  ? batchReplacementResultColumnCount
+                  : frameGridColumns)
+            )
+          ),
         },
         (_, rowIndex) =>
           resolvedImageUrls
-            .slice(rowIndex * frameGridColumns, (rowIndex + 1) * frameGridColumns)
+            .slice(
+              rowIndex *
+                (isBatchReplacementResultNode
+                  ? batchReplacementResultColumnCount
+                  : frameGridColumns),
+              (rowIndex + 1) *
+                (isBatchReplacementResultNode
+                  ? batchReplacementResultColumnCount
+                  : frameGridColumns)
+            )
             .map((url, offset) => {
-              const index = rowIndex * frameGridColumns + offset;
+              const index =
+                rowIndex *
+                  (isBatchReplacementResultNode
+                    ? batchReplacementResultColumnCount
+                    : frameGridColumns) +
+                offset;
               return {
                 index,
                 tileSize: frameStripLayout.tiles[index] ?? {
@@ -1998,7 +2056,15 @@ function ImageNodeCardImpl({
               };
             })
       ),
-    [frameGridColumns, frameStripLayout.tiles, frameTileHeight, frameTileWidth, resolvedImageUrls]
+    [
+      batchReplacementResultColumnCount,
+      frameGridColumns,
+      frameStripLayout.tiles,
+      frameTileHeight,
+      frameTileWidth,
+      isBatchReplacementResultNode,
+      resolvedImageUrls,
+    ]
   );
   const mediaFrameSize = isFrameStrip ? frameStripSize : resultImageSize;
   const previewNodeWidth = getImagePreviewNodeWidth({
@@ -2044,7 +2110,7 @@ function ImageNodeCardImpl({
   }, [imageUrl, isStarterPlaceholder]);
 
   React.useEffect(() => {
-    if (!imageUrl || !previewNodeRef.current) return;
+    if (!imageUrl || isBatchReplacementResultNode || !previewNodeRef.current) return;
 
     const syncNodeBounds = () => {
       const nextWidth = Math.round(
@@ -2074,6 +2140,7 @@ function ImageNodeCardImpl({
     return () => window.cancelAnimationFrame(frame);
   }, [
     imageUrl,
+    isBatchReplacementResultNode,
     node.data?.imageNodeHeight,
     node.data?.imageNodeWidth,
     node.data?.imagePortCenterY,
@@ -3275,11 +3342,63 @@ function ImageNodeCardImpl({
                   </div>
                 </div>
               )}
-              {isFrameStrip ? (
+              {isBatchReplacementResultNode ? (
+                <div
+                  data-batch-replacement-result-grid="true"
+                  data-batch-replacement-result-count={resolvedImageUrls.length}
+                  className="grid h-full w-full gap-px overflow-hidden rounded-[inherit] bg-[#07101b] p-[10px] shadow-[inset_0_0_0_1px_rgba(148,163,184,0.14)]"
+                  style={{
+                    gridTemplateColumns: `repeat(${batchReplacementResultColumnCount}, ${frameTileWidth}px)`,
+                    gridAutoRows: `${frameTileHeight}px`,
+                  }}
+                >
+                  {resolvedImageUrls.map((url, index) => {
+                    const isBatchReplacementPlaceholder =
+                      url === BATCH_REPLACEMENT_FRAME_PLACEHOLDER ||
+                      !url ||
+                      url.startsWith("data:image/svg+xml");
+                    return (
+                      <div
+                        key={`${url}-${index}`}
+                        data-batch-replacement-result-cell="true"
+                        data-frame-index={index}
+                        className="relative overflow-hidden bg-[#050914] shadow-[inset_0_0_0_1px_rgba(15,23,42,0.92),inset_0_0_32px_rgba(15,23,42,0.3)]"
+                        style={{ height: frameTileHeight, width: frameTileWidth }}
+                      >
+                        {isBatchReplacementPlaceholder ? (
+                          <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-[linear-gradient(135deg,rgba(15,23,42,0.98),rgba(17,24,39,0.94)_50%,rgba(30,41,59,0.98))] text-slate-300/72">
+                            <div className="absolute inset-0 bg-[radial-gradient(circle_at_28%_18%,rgba(34,211,238,0.14),transparent_34%),radial-gradient(circle_at_78%_72%,rgba(129,140,248,0.12),transparent_38%)]" />
+                            <div className="animate-shimmer absolute inset-y-0 left-[-45%] w-1/2 bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.08),transparent)]" />
+                            <ImageIcon className="relative h-7 w-7 text-slate-300/70" />
+                            <div className="relative inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-200/76">
+                              <Loader2 className="h-3 w-3 animate-spin text-cyan-200/80" />
+                              <span>正在生成图片</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <img
+                            src={url}
+                            alt={`批量替换结果 ${index + 1}`}
+                            className="h-full w-full object-contain"
+                            decoding="async"
+                            draggable={false}
+                          />
+                        )}
+                        <span className="pointer-events-none absolute right-2 top-2 z-10 flex h-6 min-w-[24px] items-center justify-center rounded-full border border-white/18 bg-[#0b1018]/82 px-1.5 text-[11px] font-bold tabular-nums text-white shadow-[0_8px_18px_-12px_rgba(0,0,0,0.95)]">
+                          {index + 1}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : isFrameStrip ? (
                 <div className="group/framegrid flex h-full w-full flex-col gap-px overflow-hidden rounded-[inherit] bg-[#07101b] p-[10px] shadow-[inset_0_0_0_1px_rgba(148,163,184,0.14)]">
                   {frameStripRows.map((row, rowIndex) => (
                     <div key={`frame-row-${rowIndex}`} className="flex shrink-0 gap-px">
-                      {row.map(({ index, tileSize, url }) => (
+                      {row.map(({ index, tileSize, url }) => {
+                        const isBatchReplacementPlaceholder =
+                          isBatchReplacementResultNode && url === BATCH_REPLACEMENT_FRAME_PLACEHOLDER;
+                        return (
                         <div
                           key={`${url}-${index}`}
                           role="button"
@@ -3289,11 +3408,20 @@ function ImageNodeCardImpl({
                           data-frame-node-id={node.id}
                           data-frame-index={index}
                           aria-label={`第 ${index + 1} 帧，拖拽到画布生成图片子节点`}
-                          onPointerDown={(event) => beginFrameExtractionDrag(event, index, url)}
-                          onPointerMove={moveFrameExtractionDrag}
-                          onPointerUp={(event) => endFrameExtractionDrag(event, index, url)}
-                          onPointerCancel={cancelFrameExtractionDrag}
+                          onPointerDown={(event) => {
+                            if (!isBatchReplacementPlaceholder) beginFrameExtractionDrag(event, index, url);
+                          }}
+                          onPointerMove={(event) => {
+                            if (!isBatchReplacementPlaceholder) moveFrameExtractionDrag(event);
+                          }}
+                          onPointerUp={(event) => {
+                            if (!isBatchReplacementPlaceholder) endFrameExtractionDrag(event, index, url);
+                          }}
+                          onPointerCancel={(event) => {
+                            if (!isBatchReplacementPlaceholder) cancelFrameExtractionDrag(event);
+                          }}
                           onKeyDown={(event) => {
+                            if (isBatchReplacementPlaceholder) return;
                             if (event.key !== "Enter" && event.key !== " ") return;
                             event.preventDefault();
                             setActiveImageIndex(index);
@@ -3302,41 +3430,54 @@ function ImageNodeCardImpl({
                           className={`group/frame relative shrink-0 overflow-hidden bg-[#050914] shadow-[inset_0_0_0_1px_rgba(15,23,42,0.92),inset_0_0_32px_rgba(15,23,42,0.3)] transition-all duration-200 group-hover/framegrid:opacity-70 hover:z-10 hover:scale-[1.018] hover:opacity-100 hover:shadow-[0_0_0_2px_rgba(125,211,252,0.88),0_18px_44px_-22px_rgba(34,211,238,0.78),inset_0_0_0_1px_rgba(236,254,255,0.34)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300/70 ${onExtractFrameImage ? "cursor-grab active:cursor-grabbing" : ""}`}
                           style={{ height: tileSize.height, width: tileSize.width }}
                         >
-                          <img
-                            src={url}
-                            alt={`\u9010\u5e27\u5206\u6790 ${index + 1}`}
-                            className="h-full w-full object-contain transition-all duration-200 group-hover/frame:brightness-110 group-hover/frame:saturate-110"
-                            loading={getStripThumbnailLoadingMode({
-                              activeIndex: activeImageIndex,
-                              index,
-                            })}
-                            decoding="async"
-                            draggable={false}
-                            onLoad={(event) => {
-                              const img = event.currentTarget;
-                              if (!img.naturalWidth || !img.naturalHeight) return;
-                              setFrameImageSizes((current) => {
-                                const previous = current[index];
-                                if (
-                                  previous?.width === img.naturalWidth &&
-                                  previous?.height === img.naturalHeight
-                                ) {
-                                  return current;
-                                }
-                                return {
-                                  ...current,
-                                  [index]: {
-                                    width: img.naturalWidth,
-                                    height: img.naturalHeight,
-                                  },
-                                };
-                              });
-                            }}
-                          />
+                          {isBatchReplacementPlaceholder ? (
+                            <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-[linear-gradient(135deg,rgba(15,23,42,0.98),rgba(17,24,39,0.94)_50%,rgba(30,41,59,0.98))] text-slate-300/72">
+                              <div className="absolute inset-0 bg-[radial-gradient(circle_at_28%_18%,rgba(34,211,238,0.14),transparent_34%),radial-gradient(circle_at_78%_72%,rgba(129,140,248,0.12),transparent_38%)]" />
+                              <div className="animate-shimmer absolute inset-y-0 left-[-45%] w-1/2 bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.08),transparent)]" />
+                              <ImageIcon className="relative h-7 w-7 text-slate-300/70" />
+                              <div className="relative inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-200/76">
+                                <Loader2 className="h-3 w-3 animate-spin text-cyan-200/80" />
+                                <span>正在生成图片</span>
+                              </div>
+                            </div>
+                          ) : (
+                            <img
+                              src={url}
+                              alt={`\u9010\u5e27\u5206\u6790 ${index + 1}`}
+                              className="h-full w-full object-contain transition-all duration-200 group-hover/frame:brightness-110 group-hover/frame:saturate-110"
+                              loading={getStripThumbnailLoadingMode({
+                                activeIndex: activeImageIndex,
+                                index,
+                              })}
+                              decoding="async"
+                              draggable={false}
+                              onLoad={(event) => {
+                                const img = event.currentTarget;
+                                if (!img.naturalWidth || !img.naturalHeight) return;
+                                setFrameImageSizes((current) => {
+                                  const previous = current[index];
+                                  if (
+                                    previous?.width === img.naturalWidth &&
+                                    previous?.height === img.naturalHeight
+                                  ) {
+                                    return current;
+                                  }
+                                  return {
+                                    ...current,
+                                    [index]: {
+                                      width: img.naturalWidth,
+                                      height: img.naturalHeight,
+                                    },
+                                  };
+                                });
+                              }}
+                            />
+                          )}
                           <span className="pointer-events-none absolute right-2 top-2 z-10 flex h-6 min-w-[24px] items-center justify-center rounded-full border border-white/18 bg-[#0b1018]/82 px-1.5 text-[11px] font-bold tabular-nums text-white shadow-[0_8px_18px_-12px_rgba(0,0,0,0.95)] transition-all duration-200 group-hover/frame:border-cyan-100/42 group-hover/frame:bg-cyan-100/18 group-hover/frame:text-cyan-50 group-hover/frame:shadow-[0_0_20px_rgba(103,232,249,0.26)]">
                             {index + 1}
                           </span>
-                          {(onExtractFrameImage || downloadVisibility.showFrameTileDownload) && (
+                          {!isBatchReplacementPlaceholder &&
+                            (onExtractFrameImage || downloadVisibility.showFrameTileDownload) && (
                             <>
                               <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(236,254,255,0.1)_0%,rgba(236,254,255,0.04)_38%,rgba(2,12,22,0.62)_100%)] opacity-0 transition-opacity duration-200 group-hover/frame:opacity-100" />
                               <span className="pointer-events-none absolute inset-0 opacity-0 shadow-[inset_0_0_0_1px_rgba(236,254,255,0.42)] transition-opacity duration-200 group-hover/frame:opacity-100" />
@@ -3378,7 +3519,8 @@ function ImageNodeCardImpl({
                             </>
                           )}
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   ))}
                 </div>

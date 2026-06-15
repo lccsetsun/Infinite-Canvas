@@ -33,15 +33,33 @@ function getFrameCaptureChildHeight(node: GraphNode) {
     : FALLBACK_FRAME_CHILD_HEIGHT;
 }
 
-function getVideoPromptTextPosition(nodes: GraphNode[], sourceNode: GraphNode) {
-  const frameCaptureChildren = nodes
-    .filter((node) => node.data?.frameCaptureSourceNodeId === sourceNode.id)
-    .sort((a, b) => a.y - b.y || a.x - b.x);
-  const firstChild = frameCaptureChildren[0];
+function getExistingPromptTextChildren(
+  nodes: GraphNode[],
+  links: GraphLink[],
+  sourceNode: GraphNode
+) {
+  const linkedTargetIds = new Set(
+    links.filter((link) => link.fromNodeId === sourceNode.id).map((link) => link.toNodeId)
+  );
+  return nodes.filter(
+    (node) =>
+      node.type === "text_node" && node.title === "视频反推提示词" && linkedTargetIds.has(node.id)
+  );
+}
+
+function getVideoPromptTextPosition(nodes: GraphNode[], links: GraphLink[], sourceNode: GraphNode) {
+  const placementChildren = [
+    ...nodes.filter((node) => node.data?.frameCaptureSourceNodeId === sourceNode.id),
+    ...getExistingPromptTextChildren(nodes, links, sourceNode),
+  ].sort((a, b) => a.y - b.y || a.x - b.x);
+  const firstChild = placementChildren[0];
   if (firstChild) {
+    const maxChildBottom = Math.max(
+      ...placementChildren.map((node) => node.y + getFrameCaptureChildHeight(node))
+    );
     return {
       x: firstChild.x,
-      y: firstChild.y + getFrameCaptureChildHeight(firstChild) + PROMPT_TEXT_NODE_FRAME_CHILD_GAP,
+      y: maxChildBottom + PROMPT_TEXT_NODE_FRAME_CHILD_GAP,
     };
   }
 
@@ -69,15 +87,10 @@ export function createVideoPromptTextSnapshot({
   const sourceNode = nodes.find((node) => node.id === sourceNodeId);
   const normalizedPrompt = prompt.trim();
   if (!sourceNode || !normalizedPrompt) return null;
-  const position = getVideoPromptTextPosition(nodes, sourceNode);
+  const position = getVideoPromptTextPosition(nodes, links, sourceNode);
 
   const textNodeId = makeId("node");
-  const textNode = createNodeFromType(
-    "text_node",
-    textNodeId,
-    position.x,
-    position.y
-  );
+  const textNode = createNodeFromType("text_node", textNodeId, position.x, position.y);
   textNode.title = "视频反推提示词";
   textNode.properties = {
     ...textNode.properties,

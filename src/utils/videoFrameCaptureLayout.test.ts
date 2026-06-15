@@ -98,7 +98,52 @@ describe("createVideoFrameCaptureSnapshot", () => {
     ]);
   });
 
-  it("removes previous frame capture nodes from the same source before regenerating", () => {
+  it("places frame-analysis output after the real source and segment widths", () => {
+    const wideSource: GraphNode = {
+      ...makeSourceNode(),
+      data: {
+        ...makeSourceNode().data,
+        videoNaturalWidth: 864,
+        videoNaturalHeight: 496,
+        videoDisplayWidth: 540,
+        videoDisplayHeight: 310,
+        videoNodeWidth: 540,
+        videoNodeHeight: 340,
+      },
+    };
+
+    const result = createVideoFrameCaptureSnapshot({
+      nodes: [wideSource],
+      links: [],
+      nodeOutputs: new Map([
+        ["source-video", new Map([[0, "https://oss.example.com/source.mp4"]])],
+      ]),
+      sourceNodeId: "source-video",
+      captures: [
+        {
+          index: 0,
+          videoUrl: "https://oss.example.com/segment.mp4",
+          frameImages: [
+            "https://oss.example.com/1.png",
+            "https://oss.example.com/2.png",
+            "https://oss.example.com/3.png",
+          ],
+          frameImageOssIds: ["frame-oss-1", "frame-oss-2", "frame-oss-3"],
+        },
+      ],
+      makeId: (prefix) => `${prefix}-${prefix === "node" ? "node" : "link"}-${Math.random()}`,
+    });
+
+    const segmentVideo = result?.createdNodes[0];
+    const frameGrid = result?.createdNodes[1];
+    const sourceRight = wideSource.x + (wideSource.data?.videoNodeWidth ?? 0);
+    const segmentRight = (segmentVideo?.x ?? 0) + (segmentVideo?.data?.videoDisplayWidth ?? 0);
+
+    expect(segmentVideo?.x).toBeGreaterThanOrEqual(sourceRight + 120);
+    expect(frameGrid?.x).toBeGreaterThanOrEqual(segmentRight + 120);
+  });
+
+  it("keeps previous frame capture nodes and appends regenerated frames below them", () => {
     let nextId = 0;
     const sourceNode = makeSourceNode();
     const staleVideo: GraphNode = {
@@ -178,18 +223,28 @@ describe("createVideoFrameCaptureSnapshot", () => {
       makeId: (prefix) => `${prefix}-${(nextId += 1)}`,
     });
 
-    expect(result?.nodes.some((node) => node.id === staleVideo.id)).toBe(false);
-    expect(result?.nodes.some((node) => node.id === staleFrame.id)).toBe(false);
+    expect(result?.nodes.some((node) => node.id === staleVideo.id)).toBe(true);
+    expect(result?.nodes.some((node) => node.id === staleFrame.id)).toBe(true);
     expect(result?.nodes.some((node) => node.id === unrelatedNode.id)).toBe(true);
-    expect(result?.links.some((link) => link.id.startsWith("old-"))).toBe(false);
+    expect(result?.links.some((link) => link.id === "old-source-to-video")).toBe(true);
+    expect(result?.links.some((link) => link.id === "old-video-to-frame")).toBe(true);
     expect(result?.links.some((link) => link.id === "unrelated-link")).toBe(true);
-    expect(result?.nodeOutputs.has(staleVideo.id)).toBe(false);
-    expect(result?.nodeOutputs.has(staleFrame.id)).toBe(false);
+    expect(result?.nodeOutputs.has(staleVideo.id)).toBe(true);
+    expect(result?.nodeOutputs.has(staleFrame.id)).toBe(true);
     expect(result?.nodeOutputs.has(unrelatedNode.id)).toBe(true);
     expect(result?.createdNodes).toHaveLength(2);
     expect(
       result?.createdNodes.every((node) => node.data?.frameCaptureSourceNodeId === sourceNode.id)
     ).toBe(true);
+
+    const newSegmentVideo = result?.createdNodes[0];
+    const newFrameGrid = result?.createdNodes[1];
+    expect(newSegmentVideo?.title).toBe("分段 2");
+    expect(newFrameGrid?.title).toBe("逐帧分析 2");
+    expect(newSegmentVideo?.x).toBe(staleVideo.x);
+    expect(newFrameGrid?.x).toBe(staleFrame.x);
+    expect(newSegmentVideo?.y).toBeGreaterThan(staleFrame.y);
+    expect(newFrameGrid?.y).toBe(newSegmentVideo?.y);
   });
 
   it("places frame-analysis children below an existing reversed prompt node", () => {
@@ -198,7 +253,9 @@ describe("createVideoFrameCaptureSnapshot", () => {
     const promptSnapshot = createVideoPromptTextSnapshot({
       nodes: [sourceNode],
       links: [],
-      nodeOutputs: new Map([["source-video", new Map([[0, "https://oss.example.com/source.mp4"]])]]),
+      nodeOutputs: new Map([
+        ["source-video", new Map([[0, "https://oss.example.com/source.mp4"]])],
+      ]),
       sourceNodeId: sourceNode.id,
       prompt: "reverse prompt",
       makeId: (prefix) => `${prefix}-${(nextId += 1)}`,

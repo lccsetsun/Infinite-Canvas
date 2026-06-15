@@ -376,6 +376,18 @@ describe("VideoNodeCard preview branch", () => {
     expect(source).not.toContain("shouldShowBatchReplacementAction");
   });
 
+  it("limits hover autoplay to the video frame instead of the floating toolbar", () => {
+    const source = readFileSync(new URL("./VideoNodeCard.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain("const [isVideoFrameHovered, setIsVideoFrameHovered]");
+    expect(source).toContain("onMouseEnter={() => setIsVideoFrameHovered(true)}");
+    expect(source).toContain("onMouseLeave={() => setIsVideoFrameHovered(false)}");
+    expect(source).toContain("if (!isVideoFrameHovered)");
+    expect(source).toContain("hovered: isVideoFrameHovered");
+    expect(source).toContain("muted={isVideoFrameHovered || muted || !audioEnabled}");
+    expect(source).not.toContain("if (!isHovered) {");
+  });
+
   it("rerenders when input reference thumbnails change", () => {
     const source = readFileSync(new URL("./VideoNodeCard.tsx", import.meta.url), "utf8");
     const memoSource = source.slice(source.indexOf("const VideoNodeCard = React.memo"));

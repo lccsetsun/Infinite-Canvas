@@ -254,7 +254,7 @@ function GroupsLayerImpl({
                         onPointerCancel={handleResizePointerUp}
                       >
                         <span
-                          className="h-2.5 w-2.5 rounded-[2px] bg-slate-100/90 shadow-[0_0_10px_rgba(255,255,255,0.18)]"
+                          className="h-3.5 w-3.5 rounded-[3px] bg-slate-100/90 shadow-[0_0_10px_rgba(255,255,255,0.18)]"
                           aria-hidden="true"
                         />
                       </button>

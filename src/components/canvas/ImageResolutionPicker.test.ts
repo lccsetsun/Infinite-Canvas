@@ -30,6 +30,21 @@ describe("ImageResolutionPicker panel layer", () => {
     expect(source).toContain("bg-violet-500/[0.16] text-violet-50");
     expect(source).not.toContain("bg-cyan-300/[0.13]");
   });
+
+  it("closes from outside pointer capture and blocks canvas wheel while open", () => {
+    const source = readFileSync(new URL("./ImageResolutionPicker.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain('window.addEventListener("pointerdown", closeOnOutsidePointer, true)');
+    expect(source).toContain(
+      'window.removeEventListener("pointerdown", closeOnOutsidePointer, true)'
+    );
+    expect(source).toContain(
+      'window.addEventListener("wheel", blockCanvasWheel, { capture: true, passive: false })'
+    );
+    expect(source).toContain('window.removeEventListener("wheel", blockCanvasWheel, true)');
+    expect(source).toContain("event.preventDefault();");
+    expect(source).toContain("event.stopPropagation();");
+  });
 });
 
 describe("getAspectRatioPreviewStyle", () => {

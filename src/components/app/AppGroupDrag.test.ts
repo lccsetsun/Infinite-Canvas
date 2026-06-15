@@ -10,6 +10,9 @@ describe("App group dragging source", () => {
     expect(source).toContain("applyCanvasSelection(selectCanvasGroup(group.id))");
     expect(source).toContain("setIsGroupDragging(true)");
     expect(source).toContain("setIsGroupDragging(false)");
+    expect(source).toContain("setHoveredGroupId(group.id)");
+    expect(source).toContain("updateHoveredGroupCursor(e)");
+    expect(source).toContain('isGroupDragging ? "cursor-grabbing" : hoveredGroupId ? "cursor-grab" : ""');
     expect(source).toContain("isGroupDragging={isGroupDragging}");
     expect(source).toContain("onResizeGroup={resizeGroup}");
     expect(source).toContain("getMovedGroupMemberPositions({ dx, dy, nodeStarts: drag.nodeStarts })");

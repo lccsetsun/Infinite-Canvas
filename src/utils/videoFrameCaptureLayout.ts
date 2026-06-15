@@ -6,6 +6,7 @@ import type { VideoFrameCaptureItem } from "../features/video/frameCapture";
 const FRAME_GRID_COLUMNS = 5;
 const CAPTURE_VIDEO_NODE_FOOTPRINT_WIDTH = 540;
 const CAPTURE_VIDEO_NODE_FOOTPRINT_HEIGHT = 540;
+const CAPTURE_HORIZONTAL_GAP = 120;
 const CAPTURE_VERTICAL_GAP = 132;
 const DEFAULT_TEXT_NODE_HEIGHT = 360;
 
@@ -117,6 +118,20 @@ function getNodeHeight(node: GraphNode) {
     : DEFAULT_TEXT_NODE_HEIGHT;
 }
 
+function getNodeWidth(node: GraphNode) {
+  const width =
+    node.data?.textNodeWidth ??
+    node.data?.videoNodeWidth ??
+    node.data?.imageNodeWidth ??
+    node.data?.videoDisplayWidth ??
+    node.data?.imageDisplayWidth ??
+    node.data?.videoNaturalWidth ??
+    node.data?.imageNaturalWidth;
+  return typeof width === "number" && Number.isFinite(width) && width > 0
+    ? width
+    : CAPTURE_VIDEO_NODE_FOOTPRINT_WIDTH;
+}
+
 function findReversePromptChild(nodes: GraphNode[], links: GraphLink[], sourceNodeId: string) {
   const linkedTargetIds = new Set(
     links.filter((link) => link.fromNodeId === sourceNodeId).map((link) => link.toNodeId)
@@ -124,11 +139,24 @@ function findReversePromptChild(nodes: GraphNode[], links: GraphLink[], sourceNo
   return nodes
     .filter(
       (node) =>
-        node.type === "text_node" &&
-        node.title === "视频反推提示词" &&
-        linkedTargetIds.has(node.id)
+        node.type === "text_node" && node.title === "视频反推提示词" && linkedTargetIds.has(node.id)
     )
     .sort((a, b) => a.y - b.y || a.x - b.x)[0];
+}
+
+function getFrameCaptureChildren(nodes: GraphNode[], sourceNodeId: string) {
+  return nodes
+    .filter((node) => node.data?.frameCaptureSourceNodeId === sourceNodeId)
+    .sort((a, b) => a.y - b.y || a.x - b.x);
+}
+
+function getExistingFrameAnalysisCount(nodes: GraphNode[], sourceNodeId: string) {
+  return nodes.filter(
+    (node) =>
+      node.type === "image_node" &&
+      node.data?.frameCaptureSourceNodeId === sourceNodeId &&
+      node.data?.isFrameStrip === true
+  ).length;
 }
 
 export function createVideoFrameCaptureSnapshot({
@@ -150,27 +178,35 @@ export function createVideoFrameCaptureSnapshot({
   if (!sourceNode || captures.length === 0) return null;
 
   const sourceVideoUrl = getSourceVideoUrl(sourceNode);
-  const staleNodeIds = new Set(
-    nodes
-      .filter((node) => node.data?.frameCaptureSourceNodeId === sourceNodeId)
-      .map((node) => node.id)
+  const existingCaptureChildren = getFrameCaptureChildren(nodes, sourceNodeId);
+  const firstExistingSegment = existingCaptureChildren.find((node) => node.type === "video_node");
+  const firstExistingFrameGrid = existingCaptureChildren.find(
+    (node) => node.type === "image_node" && node.data?.isFrameStrip === true
   );
-  const nextNodes = nodes.filter((node) => !staleNodeIds.has(node.id));
-  const nextLinks = links.filter(
-    (link) => !staleNodeIds.has(link.fromNodeId) && !staleNodeIds.has(link.toNodeId)
-  );
+  const existingFrameAnalysisCount = getExistingFrameAnalysisCount(nodes, sourceNodeId);
+  const nextNodes = [...nodes];
+  const nextLinks = [...links];
   const nextOutputs: NodeOutputMap = new Map(nodeOutputs);
-  staleNodeIds.forEach((nodeId) => nextOutputs.delete(nodeId));
   const createdNodes: GraphNode[] = [];
-  const reversePromptChild = findReversePromptChild(nextNodes, nextLinks, sourceNodeId);
-  const baseX = reversePromptChild ? reversePromptChild.x : sourceNode.x + 520;
-  const frameNodeX = baseX + CAPTURE_VIDEO_NODE_FOOTPRINT_WIDTH + 120;
-  let nextY = reversePromptChild
-    ? reversePromptChild.y + getNodeHeight(reversePromptChild) + CAPTURE_VERTICAL_GAP
-    : sourceNode.y;
+  const reversePromptChild = findReversePromptChild(nodes, links, sourceNodeId);
+  const sourceRight = sourceNode.x + getNodeWidth(sourceNode);
+  const preferredBaseX =
+    firstExistingSegment?.x ?? (reversePromptChild ? reversePromptChild.x : sourceNode.x + 520);
+  const baseX = Math.max(preferredBaseX, sourceRight + CAPTURE_HORIZONTAL_GAP);
+  const preferredFrameNodeX = firstExistingFrameGrid?.x;
+  const previousCaptureBottom =
+    existingCaptureChildren.length > 0
+      ? Math.max(...existingCaptureChildren.map((node) => node.y + getNodeHeight(node)))
+      : null;
+  const promptBottom = reversePromptChild
+    ? reversePromptChild.y + getNodeHeight(reversePromptChild)
+    : null;
+  let nextY =
+    Math.max(previousCaptureBottom ?? -Infinity, promptBottom ?? -Infinity) + CAPTURE_VERTICAL_GAP;
+  if (!Number.isFinite(nextY)) nextY = sourceNode.y;
 
   captures.forEach((capture, captureIndex) => {
-    const displayIndex = captureIndex + 1;
+    const displayIndex = existingFrameAnalysisCount + captureIndex + 1;
     const segmentVideoUrl = capture.videoUrl || sourceVideoUrl;
     const frameImages = capture.frameImages;
     const frameImageOssIds = capture.frameImageOssIds;
@@ -178,6 +214,10 @@ export function createVideoFrameCaptureSnapshot({
     const gridSize =
       frameImages.length > 0 ? makeFrameGridSize(frameImages.length, videoDisplaySize) : null;
     const y = nextY;
+    const frameNodeX = Math.max(
+      preferredFrameNodeX ?? -Infinity,
+      baseX + videoDisplaySize.width + CAPTURE_HORIZONTAL_GAP
+    );
 
     const videoId = makeId("node");
     const videoNode = createNodeFromType("video_node", videoId, baseX, y);

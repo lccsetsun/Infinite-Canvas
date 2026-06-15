@@ -216,6 +216,38 @@ describe("ImageNodeCard prompt composer fullscreen editor", () => {
     expect(source).toContain('Tooltip content="批量替换"');
     expect(source).toContain("isFrameStrip && (");
   });
+  it("renders batch replacement result placeholders as separate loading frame cells", () => {
+    const source = readFileSync(new URL("./ImageNodeCard.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain("BATCH_REPLACEMENT_FRAME_PLACEHOLDER");
+    expect(source).toContain("isBatchReplacementPlaceholder");
+    expect(source).toContain("正在生成图片");
+    expect(source).toContain("!isBatchReplacementPlaceholder &&");
+    expect(source).toContain("batchReplacementResultCount");
+    expect(source).toContain("isLegacyBatchReplacementResultTitle");
+    expect(source).toContain('node.data?.loadingOperation === "batch-replacement"');
+    expect(source).toContain("hasBatchReplacementResultCount");
+    expect(source).toContain('data-batch-replacement-result-grid="true"');
+    expect(source).toContain('data-batch-replacement-result-cell="true"');
+    expect(source).toContain('url.startsWith("data:image/svg+xml")');
+    expect(source).toContain("batchReplacementResultColumnCount");
+    expect(source).toContain("Math.min(resolvedImageUrls.length || 1, frameGridColumns)");
+    expect(source).not.toContain("Math.min(5, resolvedImageUrls.length || 1)");
+    expect(source).toContain("maxColumns: isBatchReplacementResultNode");
+    expect(source).toContain("gridTemplateColumns: `repeat(${batchReplacementResultColumnCount}");
+  });
+
+  it("does not let single-image bounds syncing resize batch replacement result grids", () => {
+    const source = readFileSync(new URL("./ImageNodeCard.tsx", import.meta.url), "utf8");
+    const syncBoundsBlock = source.slice(
+      source.indexOf("React.useEffect(() => {\n    if (!imageUrl ||"),
+      source.indexOf("React.useEffect(() => {\n    if (!isFrameStrip) return;")
+    );
+
+    expect(syncBoundsBlock).toContain(
+      "if (!imageUrl || isBatchReplacementResultNode || !previewNodeRef.current) return;"
+    );
+  });
 });
 
 describe("getImagePreviewFrameClassName", () => {

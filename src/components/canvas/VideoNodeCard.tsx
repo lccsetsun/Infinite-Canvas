@@ -460,6 +460,7 @@ function VideoNodeCardImpl({
   const [isHovered, setIsHovered] = React.useState(false);
   const [expandedPromptEditorOpen, setExpandedPromptEditorOpen] = React.useState(false);
   const [isPlaying, setIsPlaying] = React.useState(false);
+  const [isVideoFrameHovered, setIsVideoFrameHovered] = React.useState(false);
   const [currentTime, setCurrentTime] = React.useState(0);
   const [mediaDuration, setMediaDuration] = React.useState(0);
   const [muted, setMuted] = React.useState(false);
@@ -650,7 +651,7 @@ function VideoNodeCardImpl({
   const shouldShowVideoLoadingOverlay = Boolean(isUploadingAsset || (isRunning && hasVideoPreview));
   const showVideoCustomControls = shouldShowVideoCustomControls({
     hasVideoPreview,
-    isHovered,
+    isHovered: isVideoFrameHovered,
   });
   const portTopStyle = getVideoNodePortTopStyle({
     emptyVideoNodePortCenterY: visibleEmptyBranchSize.portCenterY,
@@ -682,7 +683,7 @@ function VideoNodeCardImpl({
     const video = videoRef.current;
     if (!video || !hasVideoPreview) return;
 
-    if (!isHovered) {
+    if (!isVideoFrameHovered) {
       video.pause();
       setFrameMenuOpen(false);
       return;
@@ -690,7 +691,7 @@ function VideoNodeCardImpl({
 
     video.muted = true;
     void video.play().catch(() => undefined);
-  }, [hasVideoPreview, isHovered, videoUrl]);
+  }, [hasVideoPreview, isVideoFrameHovered, videoUrl]);
 
   React.useEffect(() => {
     if (node.properties.model !== currentModel) {
@@ -1876,18 +1877,20 @@ function VideoNodeCardImpl({
             ref={mediaFrameRef}
             className={`relative overflow-hidden rounded-[8px] bg-black ${selected ? "shadow-[0_0_0_1.5px_rgba(192,132,252,0.58),0_0_0_6px_rgba(139,92,246,0.14),0_0_38px_rgba(109,40,217,0.18)]" : ""}`}
             style={{ width: resultVideoSize.width, height: resultVideoSize.height }}
+            onMouseEnter={() => setIsVideoFrameHovered(true)}
+            onMouseLeave={() => setIsVideoFrameHovered(false)}
           >
             <video
               key={videoUrl}
               ref={videoRef}
               src={videoUrl}
               preload={getVideoPreloadMode({
-                hovered: isHovered,
+                hovered: isVideoFrameHovered,
                 playing: isPlaying,
                 selected,
               })}
               className="block h-full w-full object-contain"
-              muted={isHovered || muted || !audioEnabled}
+              muted={isVideoFrameHovered || muted || !audioEnabled}
               playsInline
               onLoadedMetadata={(e) => {
                 const video = e.currentTarget;
@@ -1986,9 +1989,9 @@ function VideoNodeCardImpl({
                     type="button"
                     onClick={() => setMuted((value) => !value)}
                     className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-slate-200/82 transition hover:bg-white/[0.08] hover:text-white"
-                    title={isHovered || muted || !audioEnabled ? "打开声音" : "静音"}
+                    title={isVideoFrameHovered || muted || !audioEnabled ? "打开声音" : "静音"}
                   >
-                    {isHovered || muted || !audioEnabled ? (
+                    {isVideoFrameHovered || muted || !audioEnabled ? (
                       <VolumeX className="h-[18px] w-[18px]" />
                     ) : (
                       <Volume2 className="h-[18px] w-[18px]" />

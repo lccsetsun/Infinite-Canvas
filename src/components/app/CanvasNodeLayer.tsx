@@ -67,11 +67,17 @@ function getDetachedMediaNodeSizeLabel(node: GraphNode) {
 }
 
 function DetachedMediaNodeTitle({
+  isLinkingOnCanvas,
   node,
+  onDragStart,
+  onSelect,
   pan,
   zoom,
 }: {
+  isLinkingOnCanvas: boolean;
   node: GraphNode;
+  onDragStart: (event: React.PointerEvent, node: GraphNode) => void;
+  onSelect: (nodeId: string, event?: React.MouseEvent) => void;
   pan: { x: number; y: number };
   zoom: number;
 }) {
@@ -97,10 +103,23 @@ function DetachedMediaNodeTitle({
 
   return (
     <div
-      className="absolute left-0 top-0 text-slate-300/82 drop-shadow-[0_1px_10px_rgba(15,23,42,0.9)]"
+      className="absolute left-0 top-0 cursor-grab text-slate-300/82 drop-shadow-[0_1px_10px_rgba(15,23,42,0.9)] active:cursor-grabbing pointer-events-auto"
       data-canvas-node-title-id={node.id}
       style={{
         transform: `translate3d(${pan.x + node.x * zoom}px, ${pan.y + node.y * zoom - 24}px, 0)`,
+      }}
+      onPointerDown={(event) => {
+        if (isLinkingOnCanvas) {
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+        event.stopPropagation();
+        onDragStart(event, node);
+      }}
+      onClick={(event) => {
+        event.stopPropagation();
+        onSelect(node.id, event);
       }}
     >
       <div
@@ -728,10 +747,17 @@ export default function CanvasNodeLayer({
           });
         })}
       </div>
-      <div className="pointer-events-none absolute inset-0 z-[19]" aria-hidden="true">
+      <div className="pointer-events-none absolute inset-0 z-[21]">
         {visibleNodes.map((node) => (
           <React.Fragment key={`title_${node.id}`}>
-            <DetachedMediaNodeTitle node={node} pan={pan} zoom={zoom} />
+            <DetachedMediaNodeTitle
+              isLinkingOnCanvas={isLinkingOnCanvas}
+              node={node}
+              onDragStart={handleNodeDragStart}
+              onSelect={handleNodeSelect}
+              pan={pan}
+              zoom={zoom}
+            />
           </React.Fragment>
         ))}
       </div>

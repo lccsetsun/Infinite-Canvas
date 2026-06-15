@@ -81,6 +81,7 @@ const VIDEO_BATCH_REPLACEMENT_NODE_WIDTH = 520;
 const DEFAULT_BATCH_RESULT_TILE_WIDTH = 220;
 const DEFAULT_BATCH_RESULT_TILE_HEIGHT = 391;
 const DEFAULT_BATCH_RESULT_COLUMNS = 5;
+const BATCH_REPLACEMENT_FRAME_PLACEHOLDER = "__batch_replacement_frame_placeholder__";
 const TEXT_NODE_REQUIRED_MEDIA_INPUTS = [
   { name: "source_image", type: "IMAGE" as const },
   { name: "source_video", type: "VIDEO" as const },
@@ -130,30 +131,6 @@ export const IMAGE_PROMPT_PLACEHOLDER_URL = `data:image/svg+xml,${encodeURICompo
     <rect x="420" y="284" width="312" height="236" rx="28"/>
     <circle cx="512" cy="376" r="34"/>
     <path d="M444 488l92-92 66 66 42-42 64 68"/>
-  </g>
-</svg>
-`)}`;
-const BATCH_REPLACEMENT_RESULT_PLACEHOLDER_URL = `data:image/svg+xml,${encodeURIComponent(`
-<svg xmlns="http://www.w3.org/2000/svg" width="720" height="1280" viewBox="0 0 720 1280">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop stop-color="#0b1220"/>
-      <stop offset="1" stop-color="#111827"/>
-    </linearGradient>
-    <linearGradient id="shine" x1="0" y1="0" x2="1" y2="0">
-      <stop stop-color="#ffffff" stop-opacity="0"/>
-      <stop offset=".5" stop-color="#ffffff" stop-opacity=".12"/>
-      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
-    </linearGradient>
-  </defs>
-  <rect width="720" height="1280" rx="28" fill="url(#bg)"/>
-  <rect x="-240" y="0" width="280" height="1280" fill="url(#shine)">
-    <animate attributeName="x" values="-280;720" dur="1.4s" repeatCount="indefinite"/>
-  </rect>
-  <g fill="none" stroke="#67e8f9" stroke-width="18" stroke-linecap="round" stroke-linejoin="round" opacity=".62">
-    <rect x="210" y="520" width="300" height="220" rx="28"/>
-    <circle cx="300" cy="606" r="30"/>
-    <path d="M238 706l92-92 62 62 42-42 54 72"/>
   </g>
 </svg>
 `)}`;
@@ -490,33 +467,42 @@ function getBatchReplacementItemIndex(
     : fallbackIndex;
 }
 
+function positiveRoundedNumber(value: unknown, fallback: number) {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? Math.round(value)
+    : fallback;
+}
+
 function getBatchReplacementResultLayout(
   nodes: GraphNode[],
   batchNode: GraphNode,
   frameAnalysisNode: GraphNode,
   frameCount: number
 ) {
-  const columns = Math.max(
-    1,
-    Math.min(
-      frameCount,
-      Math.round(
-        typeof frameAnalysisNode.data?.frameGridColumns === "number"
-          ? frameAnalysisNode.data.frameGridColumns
-          : DEFAULT_BATCH_RESULT_COLUMNS
-      )
-    )
+  const sourceColumns = positiveRoundedNumber(
+    frameAnalysisNode.data?.frameGridColumns,
+    DEFAULT_BATCH_RESULT_COLUMNS
   );
-  const tileWidth =
-    typeof frameAnalysisNode.data?.frameTileWidth === "number" &&
-    frameAnalysisNode.data.frameTileWidth > 0
-      ? Math.round(frameAnalysisNode.data.frameTileWidth)
-      : DEFAULT_BATCH_RESULT_TILE_WIDTH;
-  const tileHeight =
-    typeof frameAnalysisNode.data?.frameTileHeight === "number" &&
-    frameAnalysisNode.data.frameTileHeight > 0
-      ? Math.round(frameAnalysisNode.data.frameTileHeight)
-      : DEFAULT_BATCH_RESULT_TILE_HEIGHT;
+  const columns = Math.max(1, Math.min(frameCount, sourceColumns));
+  const rows = positiveRoundedNumber(
+    frameAnalysisNode.data?.frameGridRows,
+    Math.max(1, Math.ceil(frameCount / columns))
+  );
+  const sourceDisplayWidth = positiveRoundedNumber(frameAnalysisNode.data?.imageDisplayWidth, 0);
+  const sourceDisplayHeight = positiveRoundedNumber(frameAnalysisNode.data?.imageDisplayHeight, 0);
+  const tileWidth = positiveRoundedNumber(
+    frameAnalysisNode.data?.frameTileWidth,
+    sourceDisplayWidth > 0 ? Math.max(1, Math.round(sourceDisplayWidth / columns)) : DEFAULT_BATCH_RESULT_TILE_WIDTH
+  );
+  const tileHeight = positiveRoundedNumber(
+    frameAnalysisNode.data?.frameTileHeight,
+    sourceDisplayHeight > 0 ? Math.max(1, Math.round(sourceDisplayHeight / rows)) : DEFAULT_BATCH_RESULT_TILE_HEIGHT
+  );
+  const displayWidth = sourceDisplayWidth > 0 ? sourceDisplayWidth : columns * tileWidth;
+  const displayHeight = sourceDisplayHeight > 0 ? sourceDisplayHeight : rows * tileHeight;
+  const nodeWidth = positiveRoundedNumber(frameAnalysisNode.data?.imageNodeWidth, displayWidth);
+  const nodeHeight = positiveRoundedNumber(frameAnalysisNode.data?.imageNodeHeight, displayHeight + 30);
+  const portCenterY = positiveRoundedNumber(frameAnalysisNode.data?.imagePortCenterY, nodeHeight / 2);
   const existingResultNodes = nodes.filter(
     (node) =>
       node.type === "image_node" && node.data?.batchReplacementSourceNodeId === batchNode.id
@@ -529,6 +515,12 @@ function getBatchReplacementResultLayout(
 
   return {
     columns,
+    displayHeight,
+    displayWidth,
+    nodeHeight,
+    nodeWidth,
+    portCenterY,
+    rows,
     startX:
       batchNode.x + getWorkflowNodeWidth(batchNode) + VIDEO_BATCH_REPLACEMENT_RESULT_GAP_X,
     startY: baseY,
@@ -592,7 +584,6 @@ export function createBatchEditImagesResultRunSnapshot({
 
   const layout = getBatchReplacementResultLayout(nodes, batchNode, frameAnalysisNode, count);
   const nextOutputs = new Map(nodeOutputs);
-  const rows = Math.max(1, Math.ceil(count / layout.columns));
   const nodeId = makeId("node");
   const imageNode = createNodeFromType("image_node", nodeId, layout.startX, layout.startY);
   const runNumber =
@@ -603,7 +594,7 @@ export function createBatchEditImagesResultRunSnapshot({
   imageNode.title = `批量替换结果 ${runNumber}`;
   imageNode.properties = {
     ...imageNode.properties,
-    imageUrl: BATCH_REPLACEMENT_RESULT_PLACEHOLDER_URL,
+    imageUrl: "",
     text: "",
   };
   imageNode.data = {
@@ -611,6 +602,10 @@ export function createBatchEditImagesResultRunSnapshot({
     activeImageIndex: 0,
     batchReplacementStartedAt: Date.now(),
     batchReplacementFinishedAt: undefined,
+    batchReplacementAspectRatio:
+      typeof batchNode.data?.batchReplacementAspectRatio === "string"
+        ? batchNode.data.batchReplacementAspectRatio
+        : undefined,
     batchReplacementResultCount: count,
     batchReplacementRunId: runId,
     batchReplacementSourceNodeId: batchNodeId,
@@ -620,16 +615,16 @@ export function createBatchEditImagesResultRunSnapshot({
         ? frameAnalysisNode.data.frameCaptureSourceNodeId
         : "",
     frameGridColumns: layout.columns,
-    frameGridRows: rows,
+    frameGridRows: layout.rows,
     frameTileHeight: layout.tileHeight,
     frameTileWidth: layout.tileWidth,
-    imageDisplayHeight: rows * layout.tileHeight,
-    imageDisplayWidth: layout.columns * layout.tileWidth,
-    imageNodeHeight: rows * layout.tileHeight + 30,
-    imageNodeWidth: layout.columns * layout.tileWidth,
-    imagePortCenterY: (rows * layout.tileHeight + 30) / 2,
-    imageUrl: BATCH_REPLACEMENT_RESULT_PLACEHOLDER_URL,
-    imageUrls: Array.from({ length: count }, () => BATCH_REPLACEMENT_RESULT_PLACEHOLDER_URL),
+    imageDisplayHeight: layout.displayHeight,
+    imageDisplayWidth: layout.displayWidth,
+    imageNodeHeight: layout.nodeHeight,
+    imageNodeWidth: layout.nodeWidth,
+    imagePortCenterY: layout.portCenterY,
+    imageUrl: "",
+    imageUrls: Array.from({ length: count }, () => BATCH_REPLACEMENT_FRAME_PLACEHOLDER),
     isFrameStrip: true,
     loading: true,
     loadingOperation: "batch-replacement",
@@ -700,15 +695,15 @@ export function applyBatchEditImagesResultNodesSnapshot({
   const urls = Array.from({ length: frameCount }, (_, index) => {
     const item = itemByIndex.get(index);
     const image = item ? getBatchReplacementResultItemImage(item) : { ossId: "", url: "" };
-    return image.url || BATCH_REPLACEMENT_RESULT_PLACEHOLDER_URL;
+    return image.url || BATCH_REPLACEMENT_FRAME_PLACEHOLDER;
   });
   const ossIds = Array.from({ length: frameCount }, (_, index) => {
     const item = itemByIndex.get(index);
     const image = item ? getBatchReplacementResultItemImage(item) : { ossId: "", url: "" };
     return image.ossId;
   });
-  const realUrls = urls.filter((url) => url !== BATCH_REPLACEMENT_RESULT_PLACEHOLDER_URL);
-  const primaryUrl = realUrls[0] ?? BATCH_REPLACEMENT_RESULT_PLACEHOLDER_URL;
+  const realUrls = urls.filter((url) => url !== BATCH_REPLACEMENT_FRAME_PLACEHOLDER);
+  const primaryUrl = realUrls[0] ?? "";
   const isComplete = result.status === "success";
   const nextOutputs = new Map(nodeOutputs);
   if (realUrls.length > 0) {

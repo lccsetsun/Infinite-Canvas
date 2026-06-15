@@ -138,4 +138,83 @@ describe("createVideoPromptTextSnapshot", () => {
     expect(promptSnapshot?.createdNode.x).toBe(firstFrameChild?.x);
     expect(promptSnapshot?.createdNode.y).toBeGreaterThan(firstFrameChild?.y || 0);
   });
+
+  it("places the reversed prompt below every existing frame-analysis child", () => {
+    const videoNode = makeVideoNode();
+    const firstSegment: GraphNode = {
+      ...createNodeFromType("video_node", "segment-1", 720, 200),
+      data: {
+        frameCaptureSourceNodeId: videoNode.id,
+        videoNodeHeight: 340,
+      },
+    };
+    const firstFrameGrid: GraphNode = {
+      ...createNodeFromType("image_node", "frames-1", 1380, 200),
+      data: {
+        frameCaptureSourceNodeId: videoNode.id,
+        imageNodeHeight: 180,
+        isFrameStrip: true,
+      },
+    };
+    const secondSegment: GraphNode = {
+      ...createNodeFromType("video_node", "segment-2", 720, 672),
+      data: {
+        frameCaptureSourceNodeId: videoNode.id,
+        videoNodeHeight: 340,
+      },
+    };
+    const secondFrameGrid: GraphNode = {
+      ...createNodeFromType("image_node", "frames-2", 1380, 672),
+      data: {
+        frameCaptureSourceNodeId: videoNode.id,
+        imageNodeHeight: 180,
+        isFrameStrip: true,
+      },
+    };
+
+    const promptSnapshot = createVideoPromptTextSnapshot({
+      nodes: [videoNode, firstSegment, firstFrameGrid, secondSegment, secondFrameGrid],
+      links: [],
+      nodeOutputs: new Map() as NodeOutputMap,
+      sourceNodeId: videoNode.id,
+      prompt: "reverse prompt",
+      makeId: (prefix) => `${prefix}-new`,
+    });
+
+    expect(promptSnapshot?.createdNode.x).toBe(firstSegment.x);
+    expect(promptSnapshot?.createdNode.y).toBeGreaterThanOrEqual(secondSegment.y + 340 + 96);
+  });
+
+  it("keeps previous reversed prompt nodes and appends the next one below them", () => {
+    const videoNode = makeVideoNode();
+    const previousPrompt = createNodeFromType("text_node", "prompt-1", 720, 200);
+    previousPrompt.title = "视频反推提示词";
+    previousPrompt.data = {
+      textNodeHeight: 360,
+      response: "first prompt",
+    };
+
+    const promptSnapshot = createVideoPromptTextSnapshot({
+      nodes: [videoNode, previousPrompt],
+      links: [
+        {
+          id: "source-to-prompt-1",
+          fromNodeId: videoNode.id,
+          fromOutputIndex: 0,
+          toNodeId: previousPrompt.id,
+          toInputIndex: 3,
+        },
+      ],
+      nodeOutputs: new Map([[previousPrompt.id, new Map([[0, "first prompt"]])]]) as NodeOutputMap,
+      sourceNodeId: videoNode.id,
+      prompt: "second prompt",
+      makeId: (prefix) => `${prefix}-new`,
+    });
+
+    expect(promptSnapshot?.nodes.some((node) => node.id === previousPrompt.id)).toBe(true);
+    expect(promptSnapshot?.links.some((link) => link.id === "source-to-prompt-1")).toBe(true);
+    expect(promptSnapshot?.nodeOutputs.get(previousPrompt.id)?.get(0)).toBe("first prompt");
+    expect(promptSnapshot?.createdNode.x).toBe(previousPrompt.x);
+    expect(promptSnapshot?.createdNode.y).toBeGreaterThanOrEqual(previousPrompt.y + 360 + 96);
+  });
 });

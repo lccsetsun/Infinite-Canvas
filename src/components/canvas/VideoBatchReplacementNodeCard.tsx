@@ -322,18 +322,30 @@ export default function VideoBatchReplacementNodeCard({
         !modeMenuPortalRef.current?.contains(target)
       ) {
         setModeMenuOpen(false);
+        event.stopPropagation();
       }
+    };
+    const blockCanvasWheel = (event: WheelEvent) => {
+      const target = event.target as Node | null;
+      if (target && modeMenuPortalRef.current?.contains(target)) {
+        event.stopPropagation();
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
     };
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") setModeMenuOpen(false);
     };
     updateModeMenuPosition();
-    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("pointerdown", handlePointerDown, true);
+    window.addEventListener("wheel", blockCanvasWheel, { capture: true, passive: false });
     window.addEventListener("keydown", handleEscape);
     window.addEventListener("resize", updateModeMenuPosition);
     window.addEventListener("scroll", updateModeMenuPosition, true);
     return () => {
-      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("pointerdown", handlePointerDown, true);
+      window.removeEventListener("wheel", blockCanvasWheel, true);
       window.removeEventListener("keydown", handleEscape);
       window.removeEventListener("resize", updateModeMenuPosition);
       window.removeEventListener("scroll", updateModeMenuPosition, true);
@@ -361,18 +373,30 @@ export default function VideoBatchReplacementNodeCard({
         !modelMenuPortalRef.current?.contains(target)
       ) {
         setModelMenuOpen(false);
+        event.stopPropagation();
       }
+    };
+    const blockCanvasWheel = (event: WheelEvent) => {
+      const target = event.target as Node | null;
+      if (target && modelMenuPortalRef.current?.contains(target)) {
+        event.stopPropagation();
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
     };
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") setModelMenuOpen(false);
     };
     updateModelMenuPosition();
-    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("pointerdown", handlePointerDown, true);
+    window.addEventListener("wheel", blockCanvasWheel, { capture: true, passive: false });
     window.addEventListener("keydown", handleEscape);
     window.addEventListener("resize", updateModelMenuPosition);
     window.addEventListener("scroll", updateModelMenuPosition, true);
     return () => {
-      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("pointerdown", handlePointerDown, true);
+      window.removeEventListener("wheel", blockCanvasWheel, true);
       window.removeEventListener("keydown", handleEscape);
       window.removeEventListener("resize", updateModelMenuPosition);
       window.removeEventListener("scroll", updateModelMenuPosition, true);

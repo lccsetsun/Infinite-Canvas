@@ -21,7 +21,9 @@ describe("GroupsLayer source", () => {
     expect(source).toContain("onResizeGroup?.(resize.groupId");
     expect(source).toContain("cursor-nwse-resize");
     expect(source).toContain("cursor-nesw-resize");
-    expect(source).toContain("h-2.5 w-2.5 rounded-[2px] bg-slate-100/90");
+    expect(source).not.toContain("squareCornerClass");
+    expect(source).toContain("place-items-center");
+    expect(source).toContain("h-3.5 w-3.5 rounded-[3px] bg-slate-100/90");
     expect(source).not.toContain("Maximize2");
     expect(source).toContain("mediaNodeFloatingToolbarClass");
     expect(source).toContain("mediaNodeToolbarDividerClass");
