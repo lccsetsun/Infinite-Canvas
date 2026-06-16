@@ -605,6 +605,39 @@ export function resolveEmptyImageNodeSize({
   };
 }
 
+export function resolveImageNodeSizePresetData({
+  aspectRatio,
+  hasImageUrl,
+  isExtractedFrameNode,
+  isFrameStrip,
+  isUploadPlaceholder,
+  resolution,
+}: {
+  aspectRatio: string;
+  hasImageUrl: boolean;
+  isExtractedFrameNode: boolean;
+  isFrameStrip: boolean;
+  isUploadPlaceholder: boolean;
+  resolution: string;
+}) {
+  if (hasImageUrl || isFrameStrip) return null;
+
+  const nextNodeSize = resolveEmptyImageNodeSize({
+    aspectRatio,
+    isExtractedFrameNode,
+    isUploadPlaceholder,
+    resolution,
+  });
+
+  return {
+    imageDisplayHeight: nextNodeSize.displayHeight,
+    imageDisplayWidth: nextNodeSize.displayWidth,
+    imageNodeHeight: nextNodeSize.nodeHeight,
+    imageNodeWidth: nextNodeSize.nodeWidth,
+    imagePortCenterY: nextNodeSize.portCenterY,
+  };
+}
+
 function isFinitePositiveNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
 }
@@ -882,7 +915,10 @@ function ImageNodeCardImpl({
         typeof node.data?.batchReplacementResultCount === "number" &&
         node.data.batchReplacementResultCount > 0
           ? Math.trunc(node.data.batchReplacementResultCount)
-          : rawImageUrls.length;
+          : rawImageUrls.length ||
+            (Array.isArray(node.data?.frameImageOssIds)
+              ? node.data.frameImageOssIds.length
+              : 0);
       return Array.from({ length: frameCount }, (_, index) => {
         const url = rawImageUrls[index];
         if (!url || url.startsWith("data:image/svg+xml")) return BATCH_REPLACEMENT_FRAME_PLACEHOLDER;
@@ -2827,21 +2863,15 @@ function ImageNodeCardImpl({
                             `${preset.width}x${preset.height}`
                           );
                         }
-                        if (!imageUrl && !isFrameStrip) {
-                          const nextNodeSize = resolveEmptyImageNodeSize({
-                            aspectRatio: nextAspectRatio,
-                            isExtractedFrameNode,
-                            isUploadPlaceholder: node.data?.isUploadPlaceholder === true,
-                            resolution: nextResolution,
-                          });
-                          onUpdateData?.(node.id, {
-                            imageDisplayHeight: nextNodeSize.displayHeight,
-                            imageDisplayWidth: nextNodeSize.displayWidth,
-                            imageNodeHeight: nextNodeSize.nodeHeight,
-                            imageNodeWidth: nextNodeSize.nodeWidth,
-                            imagePortCenterY: nextNodeSize.portCenterY,
-                          });
-                        }
+                        const nextNodeSizeData = resolveImageNodeSizePresetData({
+                          aspectRatio: nextAspectRatio,
+                          hasImageUrl: Boolean(imageUrl),
+                          isExtractedFrameNode,
+                          isFrameStrip,
+                          isUploadPlaceholder: node.data?.isUploadPlaceholder === true,
+                          resolution: nextResolution,
+                        });
+                        if (nextNodeSizeData) onUpdateData?.(node.id, nextNodeSizeData);
                       }}
                       buttonClassName="relative inline-flex h-11 w-[300px] shrink-0 items-center justify-center gap-2 rounded-[15px] border border-slate-400/16 bg-slate-950/18 px-3 text-[14px] font-medium text-slate-200/82 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors hover:border-violet-200/22 hover:bg-violet-500/[0.08]"
                     />
@@ -3005,7 +3035,7 @@ function ImageNodeCardImpl({
       : null;
 
   const imagePreviewContent =
-    imageUrl && !isRunning && !isUploadingNodeAsset ? (
+    imageUrl && (!isRunning || isBatchReplacementResultNode) && !isUploadingNodeAsset ? (
       <motion.div
         onPointerDown={(e) => {
           if (e.button !== 0) {
@@ -3965,21 +3995,15 @@ function ImageNodeCardImpl({
                     if (preset) {
                       onUpdateProperty?.(node.id, "customSize", `${preset.width}x${preset.height}`);
                     }
-                    if (!imageUrl && !isFrameStrip) {
-                      const nextNodeSize = resolveEmptyImageNodeSize({
-                        aspectRatio: nextAspectRatio,
-                        isExtractedFrameNode,
-                        isUploadPlaceholder: node.data?.isUploadPlaceholder === true,
-                        resolution: nextResolution,
-                      });
-                      onUpdateData?.(node.id, {
-                        imageDisplayHeight: nextNodeSize.displayHeight,
-                        imageDisplayWidth: nextNodeSize.displayWidth,
-                        imageNodeHeight: nextNodeSize.nodeHeight,
-                        imageNodeWidth: nextNodeSize.nodeWidth,
-                        imagePortCenterY: nextNodeSize.portCenterY,
-                      });
-                    }
+                    const nextNodeSizeData = resolveImageNodeSizePresetData({
+                      aspectRatio: nextAspectRatio,
+                      hasImageUrl: Boolean(imageUrl),
+                      isExtractedFrameNode,
+                      isFrameStrip,
+                      isUploadPlaceholder: node.data?.isUploadPlaceholder === true,
+                      resolution: nextResolution,
+                    });
+                    if (nextNodeSizeData) onUpdateData?.(node.id, nextNodeSizeData);
                   }}
                   buttonClassName="relative inline-flex h-10 min-w-[230px] items-center justify-center gap-2 rounded-[14px] border border-slate-400/16 bg-slate-950/18 px-3 text-[13px] font-medium text-slate-200/82 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors hover:border-violet-200/22 hover:bg-violet-500/[0.08]"
                 />

@@ -479,15 +479,29 @@ function getBatchReplacementResultLayout(
   frameAnalysisNode: GraphNode,
   frameCount: number
 ) {
+  const visibleFrameCount = Math.max(
+    frameCount,
+    Array.isArray(frameAnalysisNode.data?.imageUrls) ? frameAnalysisNode.data.imageUrls.length : 0,
+    Array.isArray(frameAnalysisNode.data?.frameImageOssIds)
+      ? frameAnalysisNode.data.frameImageOssIds.length
+      : 0
+  );
   const sourceColumns = positiveRoundedNumber(
     frameAnalysisNode.data?.frameGridColumns,
     DEFAULT_BATCH_RESULT_COLUMNS
   );
-  const columns = Math.max(1, Math.min(frameCount, sourceColumns));
+  const shouldNormalizeStaleSingleColumn =
+    frameCount > 1 && visibleFrameCount > 1 && sourceColumns <= 1;
+  const columns = shouldNormalizeStaleSingleColumn
+    ? Math.max(1, Math.min(frameCount, DEFAULT_BATCH_RESULT_COLUMNS))
+    : Math.max(1, Math.min(frameCount, sourceColumns));
   const rows = positiveRoundedNumber(
     frameAnalysisNode.data?.frameGridRows,
     Math.max(1, Math.ceil(frameCount / columns))
   );
+  const normalizedRows = shouldNormalizeStaleSingleColumn
+    ? Math.max(1, Math.ceil(frameCount / columns))
+    : rows;
   const sourceDisplayWidth = positiveRoundedNumber(frameAnalysisNode.data?.imageDisplayWidth, 0);
   const sourceDisplayHeight = positiveRoundedNumber(frameAnalysisNode.data?.imageDisplayHeight, 0);
   const tileWidth = positiveRoundedNumber(
@@ -496,13 +510,29 @@ function getBatchReplacementResultLayout(
   );
   const tileHeight = positiveRoundedNumber(
     frameAnalysisNode.data?.frameTileHeight,
-    sourceDisplayHeight > 0 ? Math.max(1, Math.round(sourceDisplayHeight / rows)) : DEFAULT_BATCH_RESULT_TILE_HEIGHT
+    sourceDisplayHeight > 0
+      ? Math.max(1, Math.round(sourceDisplayHeight / normalizedRows))
+      : DEFAULT_BATCH_RESULT_TILE_HEIGHT
   );
-  const displayWidth = sourceDisplayWidth > 0 ? sourceDisplayWidth : columns * tileWidth;
-  const displayHeight = sourceDisplayHeight > 0 ? sourceDisplayHeight : rows * tileHeight;
-  const nodeWidth = positiveRoundedNumber(frameAnalysisNode.data?.imageNodeWidth, displayWidth);
-  const nodeHeight = positiveRoundedNumber(frameAnalysisNode.data?.imageNodeHeight, displayHeight + 30);
-  const portCenterY = positiveRoundedNumber(frameAnalysisNode.data?.imagePortCenterY, nodeHeight / 2);
+  const displayWidth = shouldNormalizeStaleSingleColumn
+    ? columns * tileWidth
+    : sourceDisplayWidth > 0
+      ? sourceDisplayWidth
+      : columns * tileWidth;
+  const displayHeight = shouldNormalizeStaleSingleColumn
+    ? normalizedRows * tileHeight
+    : sourceDisplayHeight > 0
+      ? sourceDisplayHeight
+      : normalizedRows * tileHeight;
+  const nodeWidth = shouldNormalizeStaleSingleColumn
+    ? displayWidth
+    : positiveRoundedNumber(frameAnalysisNode.data?.imageNodeWidth, displayWidth);
+  const nodeHeight = shouldNormalizeStaleSingleColumn
+    ? displayHeight + 30
+    : positiveRoundedNumber(frameAnalysisNode.data?.imageNodeHeight, displayHeight + 30);
+  const portCenterY = shouldNormalizeStaleSingleColumn
+    ? nodeHeight / 2
+    : positiveRoundedNumber(frameAnalysisNode.data?.imagePortCenterY, nodeHeight / 2);
   const existingResultNodes = nodes.filter(
     (node) =>
       node.type === "image_node" && node.data?.batchReplacementSourceNodeId === batchNode.id
@@ -520,7 +550,7 @@ function getBatchReplacementResultLayout(
     nodeHeight,
     nodeWidth,
     portCenterY,
-    rows,
+    rows: normalizedRows,
     startX:
       batchNode.x + getWorkflowNodeWidth(batchNode) + VIDEO_BATCH_REPLACEMENT_RESULT_GAP_X,
     startY: baseY,
@@ -2535,11 +2565,11 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
 
   const updateNodeProperty = (nodeId: string, key: string, value: unknown) => {
     markRemoteDirty("content");
-    setNodes((prev) => {
-      const next = updateNodePropertySnapshot(prev, nodeId, key, value);
-      markLocalRemotePersistPending({ nodes: next });
-      return next;
-    });
+    const activeNodes = currentNodesRef.current;
+    const next = updateNodePropertySnapshot(activeNodes, nodeId, key, value);
+    currentNodesRef.current = next;
+    markLocalRemotePersistPending({ nodes: next });
+    setNodes(next);
   };
 
   const updateNodeData = useCallback(

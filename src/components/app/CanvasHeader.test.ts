@@ -43,6 +43,14 @@ describe("CanvasHeader remote project loading", () => {
     expect(source).toContain("pr-[704px]");
     expect(source).toContain("transition-[padding]");
   });
+
+  it("lets the canvas receive events through empty header space while controls stay clickable", () => {
+    const source = readFileSync(new URL("./CanvasHeader.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain("pointer-events-none relative z-[120]");
+    expect(source).toContain("pointer-events-auto relative flex min-w-0 items-center");
+    expect(source).toContain("pointer-events-auto fixed inset-0 z-[160]");
+  });
 });
 
 describe("resolveCanvasProjectRename", () => {

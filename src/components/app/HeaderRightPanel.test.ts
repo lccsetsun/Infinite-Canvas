@@ -28,4 +28,10 @@ describe("HeaderRightPanel", () => {
     expect(source).not.toContain("text-cyan-200");
     expect(source).not.toContain("from-indigo-500 via-blue-500");
   });
+
+  it("keeps the account panel clickable inside a non-interactive canvas header", () => {
+    const source = readFileSync(new URL("./HeaderRightPanel.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain("pointer-events-auto flex items-center gap-2.5");
+  });
 });

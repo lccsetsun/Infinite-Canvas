@@ -11,6 +11,7 @@ import {
   getVideoNodeInputReferences,
   normalizeVideoDurationSeconds,
   resolveEmptyVideoNodeSize,
+  resolveVideoNodeSizePresetData,
   shouldShowVideoPreview,
   shouldShowVideoPromptComposer,
   shouldShowVideoCustomControls,
@@ -44,6 +45,34 @@ describe("resolveEmptyVideoNodeSize", () => {
       nodeWidth: 304,
       portCenterY: 270,
     });
+  });
+});
+
+describe("resolveVideoNodeSizePresetData", () => {
+  it("resolves node dimensions from the selected size preset for empty video nodes", () => {
+    expect(
+      resolveVideoNodeSizePresetData({
+        resolution: "720p",
+        aspectRatio: "9:16",
+        hasVideoUrl: false,
+      })
+    ).toEqual({
+      videoDisplayHeight: 540,
+      videoDisplayWidth: 304,
+      videoNodeHeight: 540,
+      videoNodeWidth: 304,
+      videoPortCenterY: 270,
+    });
+  });
+
+  it("does not resize video nodes that already have media", () => {
+    expect(
+      resolveVideoNodeSizePresetData({
+        resolution: "720p",
+        aspectRatio: "1:1",
+        hasVideoUrl: true,
+      })
+    ).toBeNull();
   });
 });
 
@@ -376,15 +405,26 @@ describe("VideoNodeCard preview branch", () => {
     expect(source).not.toContain("shouldShowBatchReplacementAction");
   });
 
-  it("limits hover autoplay to the video frame instead of the floating toolbar", () => {
-    const source = readFileSync(new URL("./VideoNodeCard.tsx", import.meta.url), "utf8");
+  it("limits hover autoplay to the video frame without forcing the video to stay muted", () => {
+    const source = readFileSync(new URL("./VideoNodeCard.tsx", import.meta.url), "utf8").replace(
+      /\r\n/g,
+      "\n"
+    );
+    const hoverAutoplayBlock = source.slice(
+      source.indexOf("React.useEffect(() => {\n    const video = videoRef.current;"),
+      source.indexOf("React.useEffect(() => {\n    if (node.properties.model")
+    );
 
     expect(source).toContain("const [isVideoFrameHovered, setIsVideoFrameHovered]");
     expect(source).toContain("onMouseEnter={() => setIsVideoFrameHovered(true)}");
     expect(source).toContain("onMouseLeave={() => setIsVideoFrameHovered(false)}");
-    expect(source).toContain("if (!isVideoFrameHovered)");
+    expect(hoverAutoplayBlock).toContain("if (!isVideoFrameHovered)");
     expect(source).toContain("hovered: isVideoFrameHovered");
-    expect(source).toContain("muted={isVideoFrameHovered || muted || !audioEnabled}");
+    expect(source).toContain("const isVideoMuted = muted || !audioEnabled");
+    expect(source).toContain("muted={isVideoMuted}");
+    expect(source).toContain('title={isVideoMuted ? "打开声音" : "静音"}');
+    expect(source).not.toContain("muted={isVideoFrameHovered || muted || !audioEnabled}");
+    expect(hoverAutoplayBlock).not.toContain("video.muted = true;");
     expect(source).not.toContain("if (!isHovered) {");
   });
 

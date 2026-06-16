@@ -4,6 +4,7 @@ import {
   getAspectRatioPreviewStyle,
   getResolutionPickerPanelTitle,
   getResolutionPickerPanelPosition,
+  getResolutionPickerResolutionSelection,
 } from "./ImageResolutionPicker";
 
 describe("getResolutionPickerPanelTitle", () => {
@@ -45,6 +46,16 @@ describe("ImageResolutionPicker panel layer", () => {
     expect(source).toContain("event.preventDefault();");
     expect(source).toContain("event.stopPropagation();");
   });
+
+  it("updates the trigger label optimistically when a size preset is selected", () => {
+    const source = readFileSync(new URL("./ImageResolutionPicker.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain("const [committedSelection, setCommittedSelection]");
+    expect(source).toContain("setCommittedSelection(nextSelection);");
+    expect(source).toContain("setCommittedSelection({");
+    expect(source).toContain("resolution: preset.resolution,");
+    expect(source).toContain("aspectRatio: preset.aspectRatio,");
+  });
 });
 
 describe("getAspectRatioPreviewStyle", () => {
@@ -58,6 +69,38 @@ describe("getAspectRatioPreviewStyle", () => {
 
   it("renders square ratios as a square", () => {
     expect(getAspectRatioPreviewStyle("1:1")).toMatchObject({ width: 30, height: 30 });
+  });
+});
+
+describe("getResolutionPickerResolutionSelection", () => {
+  it("keeps the current aspect ratio when selecting another resolution", () => {
+    expect(
+      getResolutionPickerResolutionSelection(
+        {
+          resolution: "2K",
+          presets: [
+            { resolution: "2K", aspectRatio: "1:1", width: 2048, height: 2048 },
+            { resolution: "2K", aspectRatio: "9:16", width: 1600, height: 2848 },
+          ],
+        },
+        "9:16"
+      )
+    ).toEqual({ resolution: "2K", aspectRatio: "9:16" });
+  });
+
+  it("falls back to the first aspect ratio in the selected resolution group", () => {
+    expect(
+      getResolutionPickerResolutionSelection(
+        {
+          resolution: "4K",
+          presets: [
+            { resolution: "4K", aspectRatio: "1:1", width: 4096, height: 4096 },
+            { resolution: "4K", aspectRatio: "16:9", width: 5504, height: 3040 },
+          ],
+        },
+        "3:4"
+      )
+    ).toEqual({ resolution: "4K", aspectRatio: "1:1" });
   });
 });
 

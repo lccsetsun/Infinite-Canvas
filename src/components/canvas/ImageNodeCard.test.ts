@@ -14,6 +14,7 @@ import {
   getResultImageBounds,
   hasFrameExtractionDragStarted,
   resolveEmptyImageNodeSize,
+  resolveImageNodeSizePresetData,
   resolveResultImageSize,
   shouldShowImageUploadButton,
   shouldShowImagePromptComposer,
@@ -237,8 +238,24 @@ describe("ImageNodeCard prompt composer fullscreen editor", () => {
     expect(source).toContain("gridTemplateColumns: `repeat(${batchReplacementResultColumnCount}");
   });
 
-  it("does not let single-image bounds syncing resize batch replacement result grids", () => {
+  it("uses frame oss id count as a fallback for pending batch replacement result placeholders", () => {
     const source = readFileSync(new URL("./ImageNodeCard.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain("Array.isArray(node.data?.frameImageOssIds)");
+    expect(source).toContain("node.data.frameImageOssIds.length");
+  });
+
+  it("renders batch replacement result grids while the result node is still running", () => {
+    const source = readFileSync(new URL("./ImageNodeCard.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain("(!isRunning || isBatchReplacementResultNode)");
+  });
+
+  it("does not let single-image bounds syncing resize batch replacement result grids", () => {
+    const source = readFileSync(new URL("./ImageNodeCard.tsx", import.meta.url), "utf8").replace(
+      /\r\n/g,
+      "\n"
+    );
     const syncBoundsBlock = source.slice(
       source.indexOf("React.useEffect(() => {\n    if (!imageUrl ||"),
       source.indexOf("React.useEffect(() => {\n    if (!isFrameStrip) return;")
@@ -413,6 +430,53 @@ describe("resolveEmptyImageNodeSize", () => {
       nodeWidth: 540,
       portCenterY: 116,
     });
+  });
+});
+
+describe("resolveImageNodeSizePresetData", () => {
+  it("resolves node dimensions from the selected size preset for empty image nodes", () => {
+    expect(
+      resolveImageNodeSizePresetData({
+        aspectRatio: "9:16",
+        hasImageUrl: false,
+        isExtractedFrameNode: false,
+        isFrameStrip: false,
+        isUploadPlaceholder: false,
+        resolution: "2K",
+      })
+    ).toEqual({
+      imageDisplayHeight: 540,
+      imageDisplayWidth: 304,
+      imageNodeHeight: 540,
+      imageNodeWidth: 304,
+      imagePortCenterY: 270,
+    });
+  });
+
+  it("does not resize image nodes that already have media", () => {
+    expect(
+      resolveImageNodeSizePresetData({
+        aspectRatio: "1:1",
+        hasImageUrl: true,
+        isExtractedFrameNode: false,
+        isFrameStrip: false,
+        isUploadPlaceholder: false,
+        resolution: "4K",
+      })
+    ).toBeNull();
+  });
+
+  it("does not resize frame-strip image grids from the size picker", () => {
+    expect(
+      resolveImageNodeSizePresetData({
+        aspectRatio: "1:1",
+        hasImageUrl: false,
+        isExtractedFrameNode: false,
+        isFrameStrip: true,
+        isUploadPlaceholder: false,
+        resolution: "4K",
+      })
+    ).toBeNull();
   });
 });
 

@@ -156,7 +156,7 @@ export default function HeaderRightPanel({
   );
 
   return (
-    <div className="flex items-center gap-2.5" data-no-canvas-context-menu="true">
+    <div className="pointer-events-auto flex items-center gap-2.5" data-no-canvas-context-menu="true">
       <div ref={menuRef} className="relative">
         <button
           type="button"

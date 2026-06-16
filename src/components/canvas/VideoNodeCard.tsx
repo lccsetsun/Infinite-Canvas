@@ -249,6 +249,28 @@ export function resolveEmptyVideoNodeSize({
   };
 }
 
+export function resolveVideoNodeSizePresetData({
+  aspectRatio,
+  hasVideoUrl,
+  resolution,
+}: {
+  aspectRatio: string;
+  hasVideoUrl: boolean;
+  resolution: string;
+}) {
+  if (hasVideoUrl) return null;
+
+  const nextNodeSize = resolveEmptyVideoNodeSize({ aspectRatio, resolution });
+
+  return {
+    videoDisplayHeight: nextNodeSize.displayHeight,
+    videoDisplayWidth: nextNodeSize.displayWidth,
+    videoNodeHeight: nextNodeSize.nodeHeight,
+    videoNodeWidth: nextNodeSize.nodeWidth,
+    videoPortCenterY: nextNodeSize.portCenterY,
+  };
+}
+
 export function getVideoNodePortTopStyle({
   emptyVideoNodePortCenterY,
   hasVideoPreview,
@@ -558,6 +580,7 @@ function VideoNodeCardImpl({
   const durationSeconds = normalizeVideoDurationSeconds(node.properties.duration);
   const durationSliderPercent = getVideoDurationSliderPercent(durationSeconds);
   const audioEnabled = node.properties.audio !== false;
+  const isVideoMuted = muted || !audioEnabled;
   const videoModelOptionGroups = React.useMemo(
     () => getModelOptionGroups([], apiConfig?.remoteModelsByType?.[AI_MODEL_TYPES[2]] ?? []),
     [apiConfig?.remoteModelsByType]
@@ -689,7 +712,6 @@ function VideoNodeCardImpl({
       return;
     }
 
-    video.muted = true;
     void video.play().catch(() => undefined);
   }, [hasVideoPreview, isVideoFrameHovered, videoUrl]);
 
@@ -966,19 +988,12 @@ function VideoNodeCardImpl({
                       onChange={(nextResolution, nextAspectRatio) => {
                         onUpdateProperty?.(node.id, "resolution", nextResolution);
                         onUpdateProperty?.(node.id, "aspect_ratio", nextAspectRatio);
-                        if (!videoUrl) {
-                          const nextNodeSize = resolveEmptyVideoNodeSize({
-                            aspectRatio: nextAspectRatio,
-                            resolution: nextResolution,
-                          });
-                          onUpdateData?.(node.id, {
-                            videoDisplayHeight: nextNodeSize.displayHeight,
-                            videoDisplayWidth: nextNodeSize.displayWidth,
-                            videoNodeHeight: nextNodeSize.nodeHeight,
-                            videoNodeWidth: nextNodeSize.nodeWidth,
-                            videoPortCenterY: nextNodeSize.portCenterY,
-                          });
-                        }
+                        const nextNodeSizeData = resolveVideoNodeSizePresetData({
+                          aspectRatio: nextAspectRatio,
+                          hasVideoUrl: Boolean(videoUrl),
+                          resolution: nextResolution,
+                        });
+                        if (nextNodeSizeData) onUpdateData?.(node.id, nextNodeSizeData);
                       }}
                       buttonClassName="relative inline-flex h-11 w-[286px] shrink-0 items-center justify-center gap-2 rounded-[15px] border border-slate-400/16 bg-slate-950/18 px-3 text-[14px] font-medium text-slate-200/82 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors hover:border-violet-200/22 hover:bg-violet-500/[0.08]"
                     />
@@ -1638,19 +1653,12 @@ function VideoNodeCardImpl({
         onChange={(nextResolution, nextAspectRatio) => {
           onUpdateProperty?.(node.id, "resolution", nextResolution);
           onUpdateProperty?.(node.id, "aspect_ratio", nextAspectRatio);
-          if (!videoUrl) {
-            const nextNodeSize = resolveEmptyVideoNodeSize({
-              aspectRatio: nextAspectRatio,
-              resolution: nextResolution,
-            });
-            onUpdateData?.(node.id, {
-              videoDisplayHeight: nextNodeSize.displayHeight,
-              videoDisplayWidth: nextNodeSize.displayWidth,
-              videoNodeHeight: nextNodeSize.nodeHeight,
-              videoNodeWidth: nextNodeSize.nodeWidth,
-              videoPortCenterY: nextNodeSize.portCenterY,
-            });
-          }
+          const nextNodeSizeData = resolveVideoNodeSizePresetData({
+            aspectRatio: nextAspectRatio,
+            hasVideoUrl: Boolean(videoUrl),
+            resolution: nextResolution,
+          });
+          if (nextNodeSizeData) onUpdateData?.(node.id, nextNodeSizeData);
         }}
         buttonClassName="relative inline-flex h-10 w-[246px] shrink-0 items-center justify-center gap-2 rounded-[14px] border border-slate-400/16 bg-slate-950/18 px-3 text-[13px] font-medium text-slate-200/82 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors hover:border-violet-200/22 hover:bg-violet-500/[0.08]"
       />
@@ -1890,7 +1898,7 @@ function VideoNodeCardImpl({
                 selected,
               })}
               className="block h-full w-full object-contain"
-              muted={isVideoFrameHovered || muted || !audioEnabled}
+              muted={isVideoMuted}
               playsInline
               onLoadedMetadata={(e) => {
                 const video = e.currentTarget;
@@ -1989,9 +1997,9 @@ function VideoNodeCardImpl({
                     type="button"
                     onClick={() => setMuted((value) => !value)}
                     className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-slate-200/82 transition hover:bg-white/[0.08] hover:text-white"
-                    title={isVideoFrameHovered || muted || !audioEnabled ? "打开声音" : "静音"}
+                    title={isVideoMuted ? "打开声音" : "静音"}
                   >
-                    {isVideoFrameHovered || muted || !audioEnabled ? (
+                    {isVideoMuted ? (
                       <VolumeX className="h-[18px] w-[18px]" />
                     ) : (
                       <Volume2 className="h-[18px] w-[18px]" />
@@ -2309,19 +2317,12 @@ function VideoNodeCardImpl({
                 onChange={(nextResolution, nextAspectRatio) => {
                   onUpdateProperty?.(node.id, "resolution", nextResolution);
                   onUpdateProperty?.(node.id, "aspect_ratio", nextAspectRatio);
-                  if (!videoUrl) {
-                    const nextNodeSize = resolveEmptyVideoNodeSize({
-                      aspectRatio: nextAspectRatio,
-                      resolution: nextResolution,
-                    });
-                    onUpdateData?.(node.id, {
-                      videoDisplayHeight: nextNodeSize.displayHeight,
-                      videoDisplayWidth: nextNodeSize.displayWidth,
-                      videoNodeHeight: nextNodeSize.nodeHeight,
-                      videoNodeWidth: nextNodeSize.nodeWidth,
-                      videoPortCenterY: nextNodeSize.portCenterY,
-                    });
-                  }
+                  const nextNodeSizeData = resolveVideoNodeSizePresetData({
+                    aspectRatio: nextAspectRatio,
+                    hasVideoUrl: Boolean(videoUrl),
+                    resolution: nextResolution,
+                  });
+                  if (nextNodeSizeData) onUpdateData?.(node.id, nextNodeSizeData);
                 }}
                 buttonClassName="relative inline-flex h-10 w-[246px] shrink-0 items-center justify-center gap-2 rounded-[14px] border border-slate-400/16 bg-slate-950/18 px-3 text-[13px] font-medium text-slate-200/82 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors hover:border-violet-200/22 hover:bg-violet-500/[0.08]"
               />

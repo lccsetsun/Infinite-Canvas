@@ -221,7 +221,7 @@ export default function CanvasHeader({
       initial={{ y: -24, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       transition={{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }}
-      className={`relative z-[120] flex h-16 items-center justify-between overflow-visible px-5 transition-[padding] duration-300 ease-out ${
+      className={`pointer-events-none relative z-[120] flex h-16 items-center justify-between overflow-visible px-5 transition-[padding] duration-300 ease-out ${
         assistantPanelOpen ? "pr-[704px]" : ""
       }`}
     >
@@ -231,7 +231,7 @@ export default function CanvasHeader({
         initial={{ x: -14, opacity: 0 }}
         animate={{ x: 0, opacity: 1 }}
         transition={{ duration: 0.24 }}
-        className="relative flex min-w-0 items-center"
+        className="pointer-events-auto relative flex min-w-0 items-center"
       >
         <button
           type="button"
@@ -314,7 +314,7 @@ export default function CanvasHeader({
 
       {renameDialogOpen ? (
         <div
-          className="fixed inset-0 z-[160] flex items-center justify-center bg-black/46 px-4 backdrop-blur-sm"
+          className="pointer-events-auto fixed inset-0 z-[160] flex items-center justify-center bg-black/46 px-4 backdrop-blur-sm"
           onPointerDown={(event) => {
             if (event.target === event.currentTarget && !isBusy) {
               setRenameDialogOpen(false);

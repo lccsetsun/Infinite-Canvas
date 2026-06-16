@@ -45,6 +45,20 @@ describe("useWorkflowState remote-only persistence", () => {
     expect(resizeGroupBlock).toContain('markRemoteDirty(nodesChanged ? "structure" : "content")');
     expect(source).toContain("resizeGroup,");
   });
+
+  it("keeps current node refs in sync when updating node properties before data", () => {
+    const source = readFileSync(new URL("./useWorkflowState.ts", import.meta.url), "utf8");
+    const updatePropertyBlock = source.slice(
+      source.indexOf("const updateNodeProperty ="),
+      source.indexOf("const updateNodeData =")
+    );
+
+    expect(updatePropertyBlock).toContain("const activeNodes = currentNodesRef.current");
+    expect(updatePropertyBlock).toContain("const next = updateNodePropertySnapshot");
+    expect(updatePropertyBlock).toContain("currentNodesRef.current = next");
+    expect(updatePropertyBlock).toContain("setNodes(next)");
+    expect(updatePropertyBlock).not.toContain("setNodes((prev)");
+  });
 });
 
 describe("video helper operations", () => {
@@ -1030,6 +1044,69 @@ describe("applyBatchEditImagesTaskResultSnapshot", () => {
       imageNodeHeight: 390,
       imageNodeWidth: 600,
       imagePortCenterY: 195,
+    });
+  });
+
+  it("normalizes stale one-column frame metadata into one horizontal result row for three visible frames", () => {
+    const batchNode = makeVideoBatchReplacementNode();
+    const frameNode: GraphNode = {
+      id: "frame-stale",
+      type: "image_node",
+      title: "逐帧分析 1",
+      x: 300,
+      y: 120,
+      inputs: [{ name: "source_video", type: "VIDEO" }],
+      outputs: [{ name: "image", type: "IMAGE" }],
+      properties: {},
+      data: {
+        isFrameStrip: true,
+        imageUrls: [
+          "https://example.com/frame-1.png",
+          "https://example.com/frame-2.png",
+          "https://example.com/frame-3.png",
+        ],
+        frameGridColumns: 1,
+        frameGridRows: 3,
+        frameTileHeight: 391,
+        frameTileWidth: 220,
+        imageDisplayHeight: 1173,
+        imageDisplayWidth: 220,
+        imageNodeHeight: 1203,
+        imageNodeWidth: 220,
+        imagePortCenterY: 602,
+      },
+    };
+    let idIndex = 0;
+
+    const result = createBatchEditImagesResultRunSnapshot({
+      batchNodeId: batchNode.id,
+      frameAnalysisNodeId: frameNode.id,
+      frameCount: 3,
+      links: [],
+      makeId: (prefix) => `${prefix}-${(idIndex += 1)}`,
+      nodeOutputs: new Map(),
+      nodes: [batchNode, frameNode],
+      runId: "stale-three-frame-run",
+    });
+
+    const resultNode = result.nodes.find(
+      (node) => node.data?.batchReplacementRunId === "stale-three-frame-run"
+    );
+    expect(resultNode?.data?.imageUrls).toEqual([
+      "__batch_replacement_frame_placeholder__",
+      "__batch_replacement_frame_placeholder__",
+      "__batch_replacement_frame_placeholder__",
+    ]);
+    expect(resultNode?.data).toMatchObject({
+      batchReplacementResultCount: 3,
+      frameGridColumns: 3,
+      frameGridRows: 1,
+      frameTileHeight: 391,
+      frameTileWidth: 220,
+      imageDisplayHeight: 391,
+      imageDisplayWidth: 660,
+      imageNodeHeight: 421,
+      imageNodeWidth: 660,
     });
   });
 

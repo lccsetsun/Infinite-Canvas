@@ -74,6 +74,19 @@ export function getAspectRatioPreviewStyle(aspectRatio: string): React.CSSProper
   };
 }
 
+export function getResolutionPickerResolutionSelection(
+  group: ImageResolutionPresetGroup,
+  currentAspectRatio: string
+): { resolution: ImageResolution; aspectRatio: ImageAspectRatio } {
+  const nextPreset =
+    group.presets.find((preset) => preset.aspectRatio === currentAspectRatio) ?? group.presets[0];
+
+  return {
+    resolution: group.resolution,
+    aspectRatio: nextPreset?.aspectRatio ?? "16:9",
+  };
+}
+
 export function getResolutionPickerPanelPosition({
   align,
   anchorRect,
@@ -124,12 +137,22 @@ export function ImageResolutionPicker({
   disabled = false,
 }: ImageResolutionPickerProps) {
   const [open, setOpen] = React.useState(false);
+  const [committedSelection, setCommittedSelection] = React.useState(() => ({
+    aspectRatio,
+    resolution,
+  }));
   const [activeResolution, setActiveResolution] = React.useState<ImageResolution>(() =>
     getFallbackResolution(resolution, presetGroups)
   );
   const [position, setPosition] = React.useState<FloatingMenuPosition | null>(null);
   const buttonRef = React.useRef<HTMLButtonElement | null>(null);
   const panelRef = React.useRef<HTMLDivElement | null>(null);
+  const displayResolution = committedSelection.resolution;
+  const displayAspectRatio = committedSelection.aspectRatio;
+
+  React.useEffect(() => {
+    setCommittedSelection({ aspectRatio, resolution });
+  }, [aspectRatio, resolution]);
 
   React.useEffect(() => {
     if (open) setActiveResolution(getFallbackResolution(resolution, presetGroups));
@@ -200,7 +223,7 @@ export function ImageResolutionPicker({
   const activeGroup =
     presetGroups.find((group) => group.resolution === activeResolution) ?? presetGroups[0];
   const selectedPreset =
-    getImageResolutionPreset(resolution, aspectRatio, presetGroups) ??
+    getImageResolutionPreset(displayResolution, displayAspectRatio, presetGroups) ??
     getImageResolutionPreset(
       presetGroups[0]?.resolution || "1K",
       activeGroup?.presets[0]?.aspectRatio || "16:9",
@@ -224,7 +247,8 @@ export function ImageResolutionPicker({
       >
         <TriggerIcon className="h-3.5 w-3.5 shrink-0 text-violet-200/58" />
         <span className="min-w-0 truncate">
-          {resolution} · {formatImageResolutionPreset(resolution, aspectRatio, presetGroups)}
+          {displayResolution} ·{" "}
+          {formatImageResolutionPreset(displayResolution, displayAspectRatio, presetGroups)}
         </span>
         <ChevronDown
           className={`ml-auto h-3.5 w-3.5 shrink-0 text-slate-300/56 transition-transform ${
@@ -266,7 +290,15 @@ export function ImageResolutionPicker({
                     <button
                       key={group.resolution}
                       type="button"
-                      onClick={() => setActiveResolution(group.resolution)}
+                      onClick={() => {
+                        const nextSelection = getResolutionPickerResolutionSelection(
+                          group,
+                          displayAspectRatio
+                        );
+                        setActiveResolution(nextSelection.resolution);
+                        setCommittedSelection(nextSelection);
+                        onChange(nextSelection.resolution, nextSelection.aspectRatio);
+                      }}
                       className={`h-10 rounded-xl border text-[14px] font-semibold transition-colors ${
                         isActive
                           ? "border-violet-300/24 bg-violet-500/[0.16] text-violet-50"
@@ -297,6 +329,10 @@ export function ImageResolutionPicker({
                       type="button"
                       title={`${preset.resolution} ${preset.aspectRatio} · ${preset.width}×${preset.height}`}
                       onClick={() => {
+                        setCommittedSelection({
+                          resolution: preset.resolution,
+                          aspectRatio: preset.aspectRatio,
+                        });
                         onChange(preset.resolution, preset.aspectRatio);
                         setOpen(false);
                       }}
