@@ -1,6 +1,6 @@
 import { ChevronLeft, ChevronRight, Download, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { downloadMediaAsset, extensionFromAssetUrl, isPreviewableAsset } from "../../utils/mediaAssets";
 
 export interface PreviewContent {
@@ -43,10 +43,34 @@ function renderMarkdown(text: string) {
   );
 }
 
+function getSelectedPreviewText(container: HTMLElement | null) {
+  if (!container || typeof window === "undefined" || !window.getSelection) return "";
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return "";
+
+  const range = selection.getRangeAt(0);
+  const ancestor = range.commonAncestorContainer;
+  const ancestorElement = ancestor.nodeType === 1 ? ancestor : ancestor.parentNode;
+  const selectionIntersectsContainer =
+    typeof range.intersectsNode === "function" ? range.intersectsNode(container) : false;
+
+  if (
+    !selectionIntersectsContainer &&
+    (!ancestorElement || !container.contains(ancestorElement))
+  ) {
+    return "";
+  }
+
+  return selection.toString().trim();
+}
+
 export default function PreviewModal({ preview, onClose, onPreviewChange, onUpdateNodeText, onSetPrimaryImageResult, showNotice }: PreviewModalProps) {
   const isMediaAsset = isPreviewableAsset(preview.content);
   const isPromptEditor = preview.title === PROMPT_EDITOR_TITLE;
+  const isTextPreview = !isMediaAsset && !isPromptEditor;
   const currentPreviewIndex = preview.currentIndex ?? 0;
+  const previewTextContentRef = useRef<HTMLDivElement | null>(null);
+  const [selectedPreviewText, setSelectedPreviewText] = useState("");
   const visiblePreviewItems = useMemo(() => {
     if (!preview.items?.length) return [];
     if (preview.items.length <= VISIBLE_PREVIEW_THUMBNAILS) {
@@ -102,6 +126,20 @@ export default function PreviewModal({ preview, onClose, onPreviewChange, onUpda
       showNotice("下载失败，请稍后重试");
     }
   };
+
+  const refreshSelectedPreviewText = useCallback(() => {
+    setSelectedPreviewText(isTextPreview ? getSelectedPreviewText(previewTextContentRef.current) : "");
+  }, [isTextPreview]);
+
+  useEffect(() => {
+    if (!isTextPreview) {
+      setSelectedPreviewText("");
+      return;
+    }
+
+    document.addEventListener("selectionchange", refreshSelectedPreviewText);
+    return () => document.removeEventListener("selectionchange", refreshSelectedPreviewText);
+  }, [isTextPreview, preview.content, refreshSelectedPreviewText]);
 
   if (isMediaAsset && !isPromptEditor) {
     const isVideo = isVideoPreview(preview);
@@ -312,7 +350,14 @@ export default function PreviewModal({ preview, onClose, onPreviewChange, onUpda
                 autoFocus
               />
             ) : (
-              <div className="text-[15px] text-gray-300 leading-relaxed whitespace-pre-wrap font-sans">{renderMarkdown(preview.content)}</div>
+              <div
+                ref={previewTextContentRef}
+                onKeyUp={refreshSelectedPreviewText}
+                onMouseUp={refreshSelectedPreviewText}
+                className="text-[15px] text-gray-300 leading-relaxed whitespace-pre-wrap font-sans"
+              >
+                {renderMarkdown(preview.content)}
+              </div>
             )}
           </div>
 
@@ -334,6 +379,32 @@ export default function PreviewModal({ preview, onClose, onPreviewChange, onUpda
               <button onClick={downloadAsset} className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-gray-300 text-sm font-bold transition-all flex items-center gap-2">
                 <Download className="w-4 h-4" />
                 下载文件
+              </button>
+            )}
+
+            {isTextPreview && (
+              <button
+                type="button"
+                disabled={!selectedPreviewText}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => {
+                  const textToCopy =
+                    selectedPreviewText || getSelectedPreviewText(previewTextContentRef.current);
+                  if (!textToCopy) {
+                    showNotice("请先选中要复制的文字");
+                    return;
+                  }
+                  navigator.clipboard.writeText(textToCopy);
+                  setSelectedPreviewText(textToCopy);
+                  showNotice("选中文字已复制到剪贴板");
+                }}
+                className={`px-4 py-2 rounded-lg text-sm font-bold transition-all active:scale-95 ${
+                  selectedPreviewText
+                    ? "bg-white/5 hover:bg-white/10 text-gray-200"
+                    : "cursor-not-allowed bg-white/[0.03] text-gray-500"
+                }`}
+              >
+                复制选中
               </button>
             )}
 

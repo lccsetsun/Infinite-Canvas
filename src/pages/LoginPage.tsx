@@ -26,8 +26,8 @@ interface LoginPageProps {
 
 type FieldKey = "username" | "password" | "captcha";
 
-const DEFAULT_USERNAME = "lccsetsun";
-const DEFAULT_PASSWORD = "lccsetsun";
+const DEFAULT_USERNAME = "";
+const DEFAULT_PASSWORD = "";
 const CAPTCHA_FALLBACK_ERROR = "验证码获取失败，请稍后重试";
 
 type CaptchaRefreshOptions = {
