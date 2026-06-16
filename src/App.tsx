@@ -49,6 +49,7 @@ import {
   getBatchOutputDrafts,
   getNodesFullyInsideSelection,
   getSelectionBounds,
+  getViewportAwareSelectionPadding,
   isClickWithoutDrag,
   normalizeSelectionRect,
   type Point,
@@ -517,10 +518,6 @@ export default function App({ onLoggedOut }: AppProps) {
     () => nodes.filter((node) => selectedNodeIds.has(node.id)),
     [nodes, selectedNodeIds]
   );
-  const multiSelectionBounds = React.useMemo(
-    () => (selectedNodes.length > 1 ? getSelectionBounds(selectedNodes, 44) : null),
-    [selectedNodes]
-  );
   const selectionDragRect = React.useMemo<Rect | null>(
     () =>
       selectionDrag ? normalizeSelectionRect(selectionDrag.start, selectionDrag.current) : null,
@@ -580,6 +577,14 @@ export default function App({ onLoggedOut }: AppProps) {
     updateNodePositions,
     viewportKey: activeWorkflowId,
   });
+
+  const multiSelectionBounds = React.useMemo(
+    () =>
+      selectedNodes.length > 1
+        ? getSelectionBounds(selectedNodes, getViewportAwareSelectionPadding({ zoom }))
+        : null,
+    [selectedNodes, zoom]
+  );
 
   React.useEffect(() => {
     if (currentView !== "canvas" || !activeWorkflowId) return;

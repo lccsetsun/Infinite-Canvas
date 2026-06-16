@@ -18,6 +18,9 @@ export interface LinkSourceDraft {
   fromOutputIndex: number;
 }
 
+const DEFAULT_SELECTION_WORLD_PADDING = 44;
+const MIN_SELECTION_SCREEN_PADDING = 24;
+
 export function normalizeSelectionRect(start: Point, end: Point): Rect {
   const x = Math.min(start.x, end.x);
   const y = Math.min(start.y, end.y);
@@ -66,6 +69,19 @@ export function getSelectionBounds(nodes: GraphNode[], padding = 0): Rect | null
     x: minX - padding,
     y: minY - padding,
   };
+}
+
+export function getViewportAwareSelectionPadding({
+  baseWorldPadding = DEFAULT_SELECTION_WORLD_PADDING,
+  minScreenPadding = MIN_SELECTION_SCREEN_PADDING,
+  zoom,
+}: {
+  baseWorldPadding?: number;
+  minScreenPadding?: number;
+  zoom: number;
+}) {
+  const safeZoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+  return Math.max(baseWorldPadding, minScreenPadding / safeZoom);
 }
 
 export function getBatchOutputDrafts(nodes: GraphNode[]): LinkSourceDraft[] {

@@ -5,6 +5,7 @@ import {
   getClickDragDistance,
   getNodesFullyInsideSelection,
   getSelectionBounds,
+  getViewportAwareSelectionPadding,
   isClickWithoutDrag,
   normalizeSelectionRect,
 } from "./multiSelection";
@@ -57,6 +58,12 @@ describe("multiSelection", () => {
     );
 
     expect(bounds).toEqual({ x: 88, y: 68, width: 174, height: 334 });
+  });
+
+  it("keeps multi-selection padding readable at tiny canvas zoom levels", () => {
+    expect(getViewportAwareSelectionPadding({ zoom: 1 })).toBe(44);
+    expect(getViewportAwareSelectionPadding({ zoom: 0.5 })).toBe(48);
+    expect(getViewportAwareSelectionPadding({ zoom: 0.15 })).toBe(160);
   });
 
   it("keeps batch output drafts in the selected node order and skips nodes without outputs", () => {
