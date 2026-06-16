@@ -387,6 +387,15 @@ describe("VideoNodeCard preview branch", () => {
     expect(source).toContain("disabled={isRunning || !canRunVideoPrompt}");
   });
 
+  it("keeps prompt composer expand control out of the reference row layout", () => {
+    const source = readFileSync(new URL("./VideoNodeCard.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain("absolute right-4 top-4 z-20");
+    expect(source).toContain("{inputReferences.length > 0 && (");
+    expect(source).not.toContain('<div className="mb-3 flex items-start gap-3">');
+    expect(source).not.toContain('<div className="ml-auto shrink-0">{expandPromptEditorButton}</div>');
+  });
+
   it("keeps frame analysis and prompt reversal as independent auxiliary actions", () => {
     const source = readFileSync(new URL("./VideoNodeCard.tsx", import.meta.url), "utf8");
 

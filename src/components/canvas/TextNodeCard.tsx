@@ -34,7 +34,11 @@ import { ReferencePreviewCard } from "./ReferencePreviewCard";
 import { calculateTextNodeResize } from "../../utils/textNodeResize";
 import { PromptTokenEditor, type PromptTokenEditorHandle } from "./PromptTokenEditor";
 import { InlineNodePortHandle } from "./InlineNodePortHandle";
-import { getReadableCanvasOverlayScale } from "./mediaNodeToolbarStyles";
+import {
+  getReadableCanvasOverlayScale,
+  mediaNodeFloatingToolbarRaisedClass,
+  mediaNodeToolbarButtonClass,
+} from "./mediaNodeToolbarStyles";
 
 interface TextNodeCardProps {
   node: GraphNode;
@@ -307,7 +311,7 @@ function TextNodeCardImpl({
   const promptComposerCanvasScale = getReadableCanvasOverlayScale(canvasZoom);
   const renderedNodeWidth = resizeDraftSize?.width ?? nodeWidth;
   const renderedNodeHeight = resizeDraftSize?.height ?? nodeHeight;
-  const responseAreaMaxHeight = Math.max(132, renderedNodeHeight - 72);
+  const responseAreaMaxHeight = Math.max(132, renderedNodeHeight - 40);
   const nodeBadgeTitle = node.title === "文本" ? "文本节点 1" : node.title;
   const nodeBadgeMatch = nodeBadgeTitle.match(/^(.*?)(\s+\d+)$/);
   const showPortHandles =
@@ -386,7 +390,7 @@ function TextNodeCardImpl({
   const applyTextNodeResizeSize = (size: { width: number; height: number }) => {
     const width = `${size.width}px`;
     const height = `${size.height}px`;
-    const responseHeight = `${Math.max(132, size.height - 72)}px`;
+    const responseHeight = `${Math.max(132, size.height - 40)}px`;
 
     if (rootRef.current) {
       rootRef.current.style.width = width;
@@ -619,7 +623,7 @@ function TextNodeCardImpl({
         event.stopPropagation();
         setExpandedPromptEditorOpen(true);
       }}
-      className="flex h-8 w-8 items-center justify-center rounded-[11px] bg-slate-950/22 text-slate-200/78 transition hover:bg-violet-200/10 hover:text-white"
+      className="flex h-8 w-8 items-center justify-center rounded-[11px] bg-slate-950/42 text-slate-200/78 shadow-[0_8px_22px_-16px_rgba(0,0,0,0.9)] transition hover:bg-violet-200/10 hover:text-white"
     >
       <Maximize2 className="h-3.5 w-3.5" />
     </button>
@@ -898,14 +902,14 @@ function TextNodeCardImpl({
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 8, scale: 0.96 }}
               transition={{ duration: 0.16, ease: "easeOut" }}
-              className="absolute left-1/2 top-0 z-40 flex h-14 -translate-x-1/2 -translate-y-[calc(100%+18px)] items-center gap-2 rounded-[20px] border border-slate-500/18 bg-[#121923]/95 px-4 shadow-[0_18px_44px_-24px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-2xl"
+              className={mediaNodeFloatingToolbarRaisedClass}
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}
             >
               <button
                 type="button"
                 onClick={handlePreview}
-                className="flex h-9 w-9 items-center justify-center rounded-[12px] text-slate-400 transition-colors hover:bg-white/[0.06] hover:text-slate-100"
+                className={mediaNodeToolbarButtonClass}
                 title="全屏预览"
               >
                 <Eye className="h-5 w-5" />
@@ -1028,7 +1032,7 @@ function TextNodeCardImpl({
           )}
 
         <div
-          className={`relative flex h-full min-h-[250px] flex-col ${hasCompactContent ? "px-5 py-5" : "px-5 pb-5 pt-8"}`}
+          className={`relative flex h-full min-h-[250px] flex-col ${hasCompactContent ? "px-5 pb-3 pt-5" : "px-5 pb-5 pt-8"}`}
         >
           <AnimatePresence mode="wait">
             <motion.div key={contentViewKey} className="flex flex-1 flex-col">
@@ -1158,12 +1162,11 @@ function TextNodeCardImpl({
             aria-label="调整文本节点大小"
             title="拖拽调整文本节点大小"
             onPointerDown={handleResizePointerDown}
-            className={`absolute bottom-0 right-0 z-30 h-14 w-14 cursor-nwse-resize rounded-br-[18px] rounded-tl-[30px] text-slate-300/42 opacity-0 transition-all duration-200 hover:bg-[#0a1019]/62 hover:text-violet-100/74 focus-visible:bg-[#0a1019]/72 focus-visible:text-violet-100/78 focus-visible:opacity-100 group-hover:opacity-100 ${
+            className={`absolute -bottom-1 -right-1 z-30 h-8 w-8 cursor-nwse-resize opacity-0 transition-all duration-200 focus-visible:opacity-100 group-hover:opacity-100 ${
               selected ? "opacity-100" : ""
             }`}
           >
-            <span className="pointer-events-none absolute bottom-[17px] right-[14px] h-[2px] w-[14px] -rotate-45 rounded-full bg-current" />
-            <span className="pointer-events-none absolute bottom-[22px] right-[20px] h-[2px] w-[11px] -rotate-45 rounded-full bg-current" />
+            <span className="pointer-events-none absolute bottom-1 right-1 h-5 w-5 rounded-br-[14px] border-b border-r border-slate-300/28 transition-colors duration-200 group-hover:border-violet-100/62" />
           </button>
         )}
       </motion.div>
@@ -1181,8 +1184,9 @@ function TextNodeCardImpl({
             style={{ scale: promptComposerCanvasScale, transformOrigin: "top center" }}
           >
             <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-slate-100/22 to-transparent" />
-            <div className="mb-3 flex items-start gap-3">
-              {composerReferences.length > 0 && (
+            <div className="absolute right-4 top-4 z-20">{expandPromptEditorButton}</div>
+            {composerReferences.length > 0 && (
+              <div className="mb-3 flex items-start gap-3 pr-10">
                 <div className="flex flex-wrap items-center gap-2">
                   {composerReferences.map((reference, index) => (
                     <React.Fragment key={`${reference.id}-${reference.value}-${index}`}>
@@ -1194,9 +1198,8 @@ function TextNodeCardImpl({
                     </React.Fragment>
                   ))}
                 </div>
-              )}
-              <div className="ml-auto shrink-0">{expandPromptEditorButton}</div>
-            </div>
+              </div>
+            )}
             <div className="relative">
               <PromptTokenEditor
                 ref={promptEditorRef}

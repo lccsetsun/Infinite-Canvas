@@ -3840,8 +3840,9 @@ function ImageNodeCardImpl({
               style={{ scale: promptComposerCanvasScale, transformOrigin: "top center" }}
             >
               <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-slate-100/22 to-transparent" />
-              <div className="mb-3 flex items-start gap-3">
-                {inputReferences.length > 0 && (
+              <div className="absolute right-4 top-4 z-20">{expandPromptEditorButton}</div>
+              {inputReferences.length > 0 && (
+                <div className="mb-3 flex items-start gap-3 pr-10">
                   <div className="flex flex-wrap items-center gap-2">
                     {inputReferences.map((reference, index) => (
                       <React.Fragment key={`${reference.key}-${reference.value}-${index}`}>
@@ -3853,9 +3854,8 @@ function ImageNodeCardImpl({
                       </React.Fragment>
                     ))}
                   </div>
-                )}
-                <div className="ml-auto shrink-0">{expandPromptEditorButton}</div>
-              </div>
+                </div>
+              )}
               <div className="relative">
                 <PromptTokenEditor
                   value={promptText}

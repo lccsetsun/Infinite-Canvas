@@ -168,6 +168,15 @@ describe("ImageNodeCard prompt composer fullscreen editor", () => {
     expect(source).toContain("disabled={isRunning || !canRunImagePrompt}");
   });
 
+  it("keeps prompt composer expand control out of the reference row layout", () => {
+    const source = readFileSync(new URL("./ImageNodeCard.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain("absolute right-4 top-4 z-20");
+    expect(source).toContain("{inputReferences.length > 0 && (");
+    expect(source).not.toContain('<div className="mb-3 flex items-start gap-3">');
+    expect(source).not.toContain('<div className="ml-auto shrink-0">{expandPromptEditorButton}</div>');
+  });
+
   it("does not render check icons inside image model option rows", () => {
     const source = readFileSync(new URL("./ImageNodeCard.tsx", import.meta.url), "utf8");
     const firstModelMenu = source.indexOf("imageModelOptionGroups.builtIn");

@@ -16,6 +16,7 @@ interface PreviewModalProps {
   onClose: () => void;
   onPreviewChange: (preview: PreviewContent) => void;
   onUpdateNodeText: (nodeId: string, text: string) => void;
+  onUpdateNodeResponse?: (nodeId: string, text: string) => void;
   onSetPrimaryImageResult?: (nodeId: string, imageUrl: string, imageIndex: number) => void;
   showNotice: (message: string) => void;
 }
@@ -43,34 +44,47 @@ function renderMarkdown(text: string) {
   );
 }
 
-function getSelectedPreviewText(container: HTMLElement | null) {
-  if (!container || typeof window === "undefined" || !window.getSelection) return "";
-  const selection = window.getSelection();
-  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return "";
-
-  const range = selection.getRangeAt(0);
-  const ancestor = range.commonAncestorContainer;
-  const ancestorElement = ancestor.nodeType === 1 ? ancestor : ancestor.parentNode;
-  const selectionIntersectsContainer =
-    typeof range.intersectsNode === "function" ? range.intersectsNode(container) : false;
-
-  if (
-    !selectionIntersectsContainer &&
-    (!ancestorElement || !container.contains(ancestorElement))
-  ) {
-    return "";
-  }
-
-  return selection.toString().trim();
+function getSelectedPreviewText(input: HTMLTextAreaElement | null) {
+  if (!input) return "";
+  const { selectionStart, selectionEnd, value } = input;
+  if (selectionStart === selectionEnd) return "";
+  return value.slice(selectionStart, selectionEnd).trim();
 }
 
-export default function PreviewModal({ preview, onClose, onPreviewChange, onUpdateNodeText, onSetPrimaryImageResult, showNotice }: PreviewModalProps) {
+function safeDownloadFilename(value: string) {
+  const normalized = value.trim().replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, "-");
+  return normalized.slice(0, 60) || "text-preview";
+}
+
+function downloadTextFile({ content, filename, mimeType }: { content: string; filename: string; mimeType: string }) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+export default function PreviewModal({
+  preview,
+  onClose,
+  onPreviewChange,
+  onUpdateNodeText,
+  onUpdateNodeResponse,
+  onSetPrimaryImageResult,
+  showNotice,
+}: PreviewModalProps) {
   const isMediaAsset = isPreviewableAsset(preview.content);
   const isPromptEditor = preview.title === PROMPT_EDITOR_TITLE;
   const isTextPreview = !isMediaAsset && !isPromptEditor;
   const currentPreviewIndex = preview.currentIndex ?? 0;
-  const previewTextContentRef = useRef<HTMLDivElement | null>(null);
+  const previewTextInputRef = useRef<HTMLTextAreaElement | null>(null);
   const [selectedPreviewText, setSelectedPreviewText] = useState("");
+  const safeTextPreviewFilename = useMemo(
+    () => safeDownloadFilename(preview.title.replace(/\s*-\s*完整内容$/, "")),
+    [preview.title]
+  );
   const visiblePreviewItems = useMemo(() => {
     if (!preview.items?.length) return [];
     if (preview.items.length <= VISIBLE_PREVIEW_THUMBNAILS) {
@@ -128,8 +142,41 @@ export default function PreviewModal({ preview, onClose, onPreviewChange, onUpda
   };
 
   const refreshSelectedPreviewText = useCallback(() => {
-    setSelectedPreviewText(isTextPreview ? getSelectedPreviewText(previewTextContentRef.current) : "");
+    setSelectedPreviewText(isTextPreview ? getSelectedPreviewText(previewTextInputRef.current) : "");
   }, [isTextPreview]);
+
+  const handleTextPreviewChange = (value: string) => {
+    onPreviewChange({ ...preview, content: value });
+    if (preview.nodeId) {
+      onUpdateNodeResponse?.(preview.nodeId, value);
+    }
+  };
+
+  const downloadTextPreviewAsTxt = () => {
+    downloadTextFile({
+      content: preview.content,
+      filename: `${safeTextPreviewFilename}.txt`,
+      mimeType: "text/plain;charset=utf-8",
+    });
+    showNotice("TXT 已下载");
+  };
+
+  const downloadTextPreviewAsJson = () => {
+    downloadTextFile({
+      content: JSON.stringify(
+        {
+          title: preview.title,
+          nodeId: preview.nodeId ?? null,
+          content: preview.content,
+        },
+        null,
+        2
+      ),
+      filename: `${safeTextPreviewFilename}.json`,
+      mimeType: "application/json;charset=utf-8",
+    });
+    showNotice("JSON 已下载");
+  };
 
   useEffect(() => {
     if (!isTextPreview) {
@@ -349,15 +396,19 @@ export default function PreviewModal({ preview, onClose, onPreviewChange, onUpda
                 className="w-full h-[400px] bg-[#0d1117] border border-indigo-500/30 rounded-xl p-6 text-[15px] text-gray-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 transition-all resize-none leading-relaxed placeholder:text-gray-700 custom-scrollbar"
                 autoFocus
               />
-            ) : (
-              <div
-                ref={previewTextContentRef}
+            ) : isTextPreview ? (
+              <textarea
+                ref={previewTextInputRef}
+                value={preview.content}
+                onChange={(e) => handleTextPreviewChange(e.target.value)}
                 onKeyUp={refreshSelectedPreviewText}
                 onMouseUp={refreshSelectedPreviewText}
-                className="text-[15px] text-gray-300 leading-relaxed whitespace-pre-wrap font-sans"
-              >
-                {renderMarkdown(preview.content)}
-              </div>
+                onSelect={refreshSelectedPreviewText}
+                className="w-full h-[400px] bg-transparent border-0 p-0 text-[15px] text-gray-300 outline-none focus:outline-none focus:ring-0 resize-none leading-relaxed placeholder:text-gray-700 custom-scrollbar"
+                autoFocus
+              />
+            ) : (
+              <div className="text-[15px] text-gray-300 leading-relaxed whitespace-pre-wrap font-sans">{renderMarkdown(preview.content)}</div>
             )}
           </div>
 
@@ -383,13 +434,34 @@ export default function PreviewModal({ preview, onClose, onPreviewChange, onUpda
             )}
 
             {isTextPreview && (
+              <>
+                <button
+                  type="button"
+                  onClick={downloadTextPreviewAsTxt}
+                  className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-gray-300 text-sm font-bold transition-all active:scale-95 flex items-center gap-2"
+                >
+                  <Download className="w-4 h-4" />
+                  下载 TXT
+                </button>
+                <button
+                  type="button"
+                  onClick={downloadTextPreviewAsJson}
+                  className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-gray-300 text-sm font-bold transition-all active:scale-95 flex items-center gap-2"
+                >
+                  <Download className="w-4 h-4" />
+                  下载 JSON
+                </button>
+              </>
+            )}
+
+            {isTextPreview && (
               <button
                 type="button"
                 disabled={!selectedPreviewText}
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => {
                   const textToCopy =
-                    selectedPreviewText || getSelectedPreviewText(previewTextContentRef.current);
+                    selectedPreviewText || getSelectedPreviewText(previewTextInputRef.current);
                   if (!textToCopy) {
                     showNotice("请先选中要复制的文字");
                     return;

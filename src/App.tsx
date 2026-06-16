@@ -2100,6 +2100,7 @@ export default function App({ onLoggedOut }: AppProps) {
             onClose={() => setPreviewContent(null)}
             onPreviewChange={setPreviewContent}
             onUpdateNodeText={(nodeId, text) => updateNodeProperty(nodeId, "text", text)}
+            onUpdateNodeResponse={(nodeId, text) => updateNodeData(nodeId, { response: text, status: "success" })}
             onSetPrimaryImageResult={setPrimaryImageResult}
             showNotice={showNotice}
           />
