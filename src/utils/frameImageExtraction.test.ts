@@ -85,6 +85,39 @@ describe("createFrameImageChildSnapshot", () => {
     expect(result?.createdNode.data?.ossId).toBe("oss-frame-2");
   });
 
+  it("extracts completed batch replacement result images without requiring an isFrameStrip flag", () => {
+    const resultNode: GraphNode = {
+      ...makeFrameNode(
+        ["https://oss.example.com/result-1.png", "https://oss.example.com/result-2.png"],
+        ["oss-result-1", "oss-result-2"]
+      ),
+      id: "batch-results",
+      title: "批量替换结果",
+      data: {
+        imageUrls: ["https://oss.example.com/result-1.png", "https://oss.example.com/result-2.png"],
+        frameImageOssIds: ["oss-result-1", "oss-result-2"],
+        batchReplacementRunId: "run-1",
+        batchReplacementResultCount: 2,
+        isFrameStrip: undefined,
+      },
+    };
+
+    const result = createFrameImageChildSnapshot({
+      nodes: [resultNode],
+      links: [],
+      sourceNodeId: "batch-results",
+      frameIndex: 1,
+      makeId: (prefix) => (prefix === "link" ? "link-child" : "child"),
+    });
+
+    expect(result?.createdNode.data?.imageUrl).toBe("https://oss.example.com/result-2.png");
+    expect(result?.createdNode.data?.ossId).toBe("oss-result-2");
+    expect(result?.createdNode.data?.imageNaturalWidth).toBeUndefined();
+    expect(result?.createdNode.data?.imageNaturalHeight).toBeUndefined();
+    expect(result?.createdNode.data?.imageDisplayWidth).toBeUndefined();
+    expect(result?.createdNode.data?.imageDisplayHeight).toBeUndefined();
+  });
+
   it("uses the requested drop position when one is provided", () => {
     const result = createFrameImageChildSnapshot({
       nodes: [makeFrameNode(["https://oss.example.com/1.png"])],
@@ -251,5 +284,42 @@ describe("replaceFrameImageUrlSnapshot", () => {
       "oss-2",
       "oss-replacement",
     ]);
+  });
+
+  it("replaces a completed batch replacement result image without requiring an isFrameStrip flag", () => {
+    const resultNode: GraphNode = {
+      ...makeFrameNode(
+        ["https://oss.example.com/result-1.png", "https://oss.example.com/result-2.png"],
+        ["oss-result-1", "oss-result-2"]
+      ),
+      id: "batch-results",
+      title: "批量替换结果",
+      data: {
+        imageUrls: ["https://oss.example.com/result-1.png", "https://oss.example.com/result-2.png"],
+        frameImageOssIds: ["oss-result-1", "oss-result-2"],
+        batchReplacementRunId: "run-1",
+        batchReplacementResultCount: 2,
+        isFrameStrip: undefined,
+      },
+    };
+    const nodeOutputs: NodeOutputMap = new Map<string, Map<number, unknown>>([
+      [resultNode.id, new Map<number, unknown>([[0, resultNode.data?.imageUrls]])],
+    ]);
+
+    const result = replaceFrameImageUrlSnapshot({
+      nodes: [resultNode],
+      nodeOutputs,
+      sourceNodeId: resultNode.id,
+      frameIndex: 0,
+      replacementUrl: "https://oss.example.com/replacement.png",
+      replacementOssId: "oss-replacement",
+    });
+
+    const updatedFrameNode = result?.nodes.find((node) => node.id === resultNode.id);
+    expect(updatedFrameNode?.data?.imageUrls).toEqual([
+      "https://oss.example.com/replacement.png",
+      "https://oss.example.com/result-2.png",
+    ]);
+    expect(updatedFrameNode?.data?.frameImageOssIds).toEqual(["oss-replacement", "oss-result-2"]);
   });
 });

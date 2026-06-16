@@ -52,6 +52,27 @@ function getFrameImageOssIds(node: GraphNode): string[] {
   return raw.map((id) => (typeof id === "string" ? id.trim() : ""));
 }
 
+function isExtractableFrameImageSource(node: GraphNode) {
+  if (node.data?.isFrameStrip === true) return true;
+
+  const batchReplacementResultCount =
+    typeof node.data?.batchReplacementResultCount === "number" &&
+    node.data.batchReplacementResultCount > 0;
+  const hasBatchReplacementIdentity =
+    typeof node.data?.batchReplacementRunId === "string" ||
+    typeof node.data?.batchReplacementSourceNodeId === "string" ||
+    node.data?.loadingOperation === "batch-replacement" ||
+    (typeof node.title === "string" && /批量替换结果/.test(node.title));
+
+  return (
+    hasBatchReplacementIdentity && (batchReplacementResultCount || getImageUrls(node).length > 0)
+  );
+}
+
+function isBatchReplacementFrameImageSource(node: GraphNode) {
+  return isExtractableFrameImageSource(node) && node.data?.isFrameStrip !== true;
+}
+
 function getNodeImageUrl(node: GraphNode): string {
   const urls = getImageUrls(node);
   return (
@@ -78,7 +99,7 @@ export function createFrameImageChildSnapshot({
   sourceNodeId: string;
 }): { nodes: GraphNode[]; links: GraphLink[]; createdNode: GraphNode } | null {
   const sourceNode = nodes.find((node) => node.id === sourceNodeId && node.type === "image_node");
-  if (!sourceNode || sourceNode.data?.isFrameStrip !== true) return null;
+  if (!sourceNode || !isExtractableFrameImageSource(sourceNode)) return null;
 
   const imageUrls = getImageUrls(sourceNode);
   const imageUrl = imageUrls[frameIndex];
@@ -86,6 +107,7 @@ export function createFrameImageChildSnapshot({
   const frameOssId = getFrameImageOssIds(sourceNode)[frameIndex];
 
   const id = makeId("node");
+  const isBatchReplacementSource = isBatchReplacementFrameImageSource(sourceNode);
   const sourceWidth =
     typeof sourceNode.data?.imageDisplayWidth === "number" && sourceNode.data.imageDisplayWidth > 0
       ? sourceNode.data.imageDisplayWidth
@@ -96,7 +118,7 @@ export function createFrameImageChildSnapshot({
     position?.x ?? sourceNode.x + sourceWidth + 120,
     position?.y ?? sourceNode.y
   );
-  const childDisplaySize = fitExtractedFrameChildSize(sourceNode);
+  const childDisplaySize = isBatchReplacementSource ? null : fitExtractedFrameChildSize(sourceNode);
   childNode.title = `${sourceNode.title} · 第 ${frameIndex + 1} 帧`;
   childNode.properties = {
     ...childNode.properties,
@@ -112,10 +134,14 @@ export function createFrameImageChildSnapshot({
     activeImageIndex: 0,
     extractedFrameSourceNodeId: sourceNode.id,
     extractedFrameIndex: frameIndex,
-    imageNaturalWidth: sourceNode.data?.imageNaturalWidth,
-    imageNaturalHeight: sourceNode.data?.imageNaturalHeight,
-    imageDisplayWidth: childDisplaySize.width,
-    imageDisplayHeight: childDisplaySize.height,
+    ...(childDisplaySize
+      ? {
+          imageNaturalWidth: sourceNode.data?.imageNaturalWidth,
+          imageNaturalHeight: sourceNode.data?.imageNaturalHeight,
+          imageDisplayWidth: childDisplaySize.width,
+          imageDisplayHeight: childDisplaySize.height,
+        }
+      : {}),
     isSourceNode: true,
     status: "success",
     loading: false,
@@ -250,7 +276,7 @@ export function replaceFrameImageUrlSnapshot({
   const sourceImageUrls = sourceNode ? getImageUrls(sourceNode) : [];
   if (
     !sourceNode ||
-    sourceNode.data?.isFrameStrip !== true ||
+    !isExtractableFrameImageSource(sourceNode) ||
     !replacementUrl.trim() ||
     frameIndex < 0 ||
     frameIndex >= sourceImageUrls.length

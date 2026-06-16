@@ -1,7 +1,7 @@
 import React from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowUp, GitBranch, ListTree, MessageSquare, Mic, Paperclip, PencilLine, Plus, X } from "lucide-react";
-import assistantIcon from "../../assets/brand/awoawo-bot-icon.png";
+import assistantIcon from "../../assets/brand/awoawo-bot-icon-no-eyes.png";
 
 const ASSISTANT_BUBBLE_TEXTS = [
   "哈喽，我是灵感，接住你所有空白思绪",
@@ -18,6 +18,17 @@ const ASSISTANT_BUBBLE_TEXTS = [
 
 const BUBBLE_INTERVAL_MS = 60000;
 const BUBBLE_AUTO_HIDE_MS = 10000;
+const assistantMascotBlinkTransition = {
+  duration: 4.6,
+  repeat: Infinity,
+  ease: "easeInOut",
+  times: [0, 0.78, 0.8, 0.84, 0.86, 0.9, 1],
+} as const;
+const assistantMascotGreetingTransition = {
+  duration: 3.8,
+  repeat: Infinity,
+  ease: "easeInOut",
+} as const;
 
 const ASSISTANT_ACTIONS = [
   {
@@ -47,6 +58,69 @@ export function getNextAssistantBubbleIndex(previousIndex: number | null, random
 
 interface FloatingAssistantButtonProps {
   onPanelOpenChange?: (open: boolean) => void;
+}
+
+interface AssistantMascotProps {
+  size: "button" | "panel";
+  panelGreeting?: boolean;
+}
+
+function AssistantMascot({ size, panelGreeting = false }: AssistantMascotProps) {
+  const wrapperClassName =
+    size === "panel"
+      ? "relative h-[82px] w-[82px]"
+      : "relative h-[64px] w-[64px] transition duration-200 group-hover:scale-[1.03]";
+  const imageClassName =
+    size === "panel"
+      ? "h-[82px] w-[82px] object-contain drop-shadow-[0_14px_28px_rgba(0,0,0,0.45)]"
+      : "h-[64px] w-[64px] object-contain drop-shadow-[0_10px_20px_rgba(0,0,0,0.36)]";
+  const assistantMascotSparkClassName =
+    size === "panel"
+      ? "absolute right-[-10%] top-[-8%] text-[15px] leading-none text-violet-200 drop-shadow-[0_0_10px_rgba(196,181,253,0.9)]"
+      : "absolute right-[-12%] top-[-10%] text-[12px] leading-none text-violet-200 drop-shadow-[0_0_10px_rgba(196,181,253,0.9)]";
+  const eyeClassName =
+    "assistant-mascot-animated-eye absolute top-[40.3%] h-[9.2%] w-[3.5%] origin-center rounded-full bg-gradient-to-b from-white via-slate-50 to-blue-100 shadow-[0_0_0_1px_rgba(255,255,255,0.18),0_0_8px_rgba(255,255,255,0.34)]";
+  const blinkAnimate = {
+    scaleY: [1, 1, 0.16, 1, 0.16, 1, 1],
+    y: ["0%", "0%", "42%", "0%", "42%", "0%", "0%"],
+  };
+
+  return (
+    <motion.span
+      aria-hidden="true"
+      className={wrapperClassName}
+      animate={
+        panelGreeting
+          ? { y: [0, -7, -2, -4, 0], rotate: [0, -5, 4, 0, 0] }
+          : { y: [0, -2, 0] }
+      }
+      transition={
+        panelGreeting ? assistantMascotGreetingTransition : { duration: 3.4, repeat: Infinity, ease: "easeInOut" }
+      }
+    >
+      <img src={assistantIcon} alt="" className={imageClassName} />
+      <motion.span
+        className={`${eyeClassName} left-[38.3%]`}
+        animate={blinkAnimate}
+        transition={assistantMascotBlinkTransition}
+      />
+      <motion.span
+        className={`${eyeClassName} left-[58.2%]`}
+        animate={blinkAnimate}
+        transition={{ ...assistantMascotBlinkTransition, delay: 0.02 }}
+      />
+      {panelGreeting && (
+        <motion.span
+          aria-hidden="true"
+          className={assistantMascotSparkClassName}
+          animate={{ opacity: [0.28, 1, 0.28], scale: [0.78, 1.18, 0.78], rotate: [0, 12, 0] }}
+          transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
+        >
+          ✦
+        </motion.span>
+      )}
+    </motion.span>
+  );
 }
 
 export default function FloatingAssistantButton({ onPanelOpenChange }: FloatingAssistantButtonProps) {
@@ -230,14 +304,7 @@ export default function FloatingAssistantButton({ onPanelOpenChange }: FloatingA
                       animate={{ scaleX: [1, 0.78, 1], opacity: [0.34, 0.58, 0.34] }}
                       transition={{ duration: 3.4, repeat: Infinity, ease: "easeInOut" }}
                     />
-                    <motion.img
-                      src={assistantIcon}
-                      alt=""
-                      aria-hidden="true"
-                      className="relative h-[82px] w-[82px] object-contain drop-shadow-[0_14px_28px_rgba(0,0,0,0.45)]"
-                      animate={{ y: [0, -2, 0] }}
-                      transition={{ duration: 3.4, repeat: Infinity, ease: "easeInOut" }}
-                    />
+                    <AssistantMascot size="panel" panelGreeting />
                   </div>
                   <h3 className="mt-4 text-[24px] font-black leading-tight tracking-normal text-slate-100">
                     你好，我是小影
@@ -353,7 +420,7 @@ export default function FloatingAssistantButton({ onPanelOpenChange }: FloatingA
       <button
         type="button"
         aria-label="助手小影"
-        className={`group grid h-[66px] w-[66px] cursor-pointer appearance-none place-items-center rounded-full border-0 bg-transparent p-0 shadow-none outline-none transition duration-200 hover:-translate-y-0.5 ${
+        className={`group grid h-[72px] w-[72px] cursor-pointer appearance-none place-items-center rounded-full border-0 bg-transparent p-0 shadow-none outline-none transition duration-200 hover:-translate-y-0.5 ${
           panelOpen ? "pointer-events-none opacity-0" : ""
         }`}
         onMouseEnter={() => showBubble(false)}
@@ -364,12 +431,7 @@ export default function FloatingAssistantButton({ onPanelOpenChange }: FloatingA
         onBlur={hideBubble}
         onClick={openPanel}
       >
-        <img
-          src={assistantIcon}
-          alt=""
-          aria-hidden="true"
-          className="h-[58px] w-[58px] object-contain drop-shadow-[0_10px_20px_rgba(0,0,0,0.36)] transition duration-200 group-hover:scale-[1.03]"
-        />
+        <AssistantMascot size="button" panelGreeting={bubbleVisible} />
       </button>
     </div>
   );

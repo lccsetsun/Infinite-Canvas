@@ -174,7 +174,9 @@ describe("ImageNodeCard prompt composer fullscreen editor", () => {
     expect(source).toContain("absolute right-4 top-4 z-20");
     expect(source).toContain("{inputReferences.length > 0 && (");
     expect(source).not.toContain('<div className="mb-3 flex items-start gap-3">');
-    expect(source).not.toContain('<div className="ml-auto shrink-0">{expandPromptEditorButton}</div>');
+    expect(source).not.toContain(
+      '<div className="ml-auto shrink-0">{expandPromptEditorButton}</div>'
+    );
   });
 
   it("does not render check icons inside image model option rows", () => {
@@ -245,6 +247,34 @@ describe("ImageNodeCard prompt composer fullscreen editor", () => {
     expect(source).not.toContain("Math.min(5, resolvedImageUrls.length || 1)");
     expect(source).toContain("maxColumns: isBatchReplacementResultNode");
     expect(source).toContain("gridTemplateColumns: `repeat(${batchReplacementResultColumnCount}");
+  });
+
+  it("gives completed batch replacement result cells the same extract, download, and drag affordances as frame cells", () => {
+    const source = readFileSync(new URL("./ImageNodeCard.tsx", import.meta.url), "utf8");
+    const batchResultGridSource = source.slice(
+      source.indexOf('data-batch-replacement-result-grid="true"'),
+      source.indexOf(") : isFrameStrip ? (")
+    );
+
+    expect(batchResultGridSource).toContain('role="button"');
+    expect(batchResultGridSource).toContain('data-frame-strip-cell="true"');
+    expect(batchResultGridSource).toContain("getFrameImageOssId(index)");
+    expect(batchResultGridSource).toContain(
+      "beginFrameExtractionDrag(event, index, url, getFrameImageOssId(index))"
+    );
+    expect(batchResultGridSource).toContain("onExtractFrameImage(node.id, index)");
+    expect(batchResultGridSource).toContain("void downloadFrameImage(url, index)");
+    expect(source).toContain("FRAME_TILE_EXTRACT_BUTTON_CLASS");
+    expect(source).toContain("whitespace-nowrap");
+  });
+
+  it("does not classify extracted batch result images as batch replacement result grids", () => {
+    const source = readFileSync(new URL("./ImageNodeCard.tsx", import.meta.url), "utf8");
+
+    expect(source.indexOf("const isExtractedFrameNode")).toBeLessThan(
+      source.indexOf("const isBatchReplacementResultNode")
+    );
+    expect(source).toContain("const isBatchReplacementResultNode =\n    !isExtractedFrameNode &&");
   });
 
   it("uses frame oss id count as a fallback for pending batch replacement result placeholders", () => {
