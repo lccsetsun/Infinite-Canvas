@@ -19,6 +19,7 @@ import {
   resolveLoginSubmitState,
   shouldShowCaptchaRefreshBadge,
 } from "../features/auth/loginUiState";
+import { useRefreshOnPageVisible } from "../hooks/useRefreshOnPageVisible";
 
 interface LoginPageProps {
   onLogin: (accessToken: string) => void;
@@ -112,6 +113,11 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     hasBootstrappedRef.current = true;
     void bootstrapLogin();
   }, [bootstrapLogin]);
+
+  const refreshCaptchaOnPageVisible = React.useCallback(() => {
+    void refreshCaptcha({ updateGlobalError: false });
+  }, [refreshCaptcha]);
+  useRefreshOnPageVisible(refreshCaptchaOnPageVisible);
 
   const clearFieldError = (field: FieldKey) => {
     setFieldErrors((current) => {

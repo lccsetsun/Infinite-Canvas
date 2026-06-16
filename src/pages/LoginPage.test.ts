@@ -11,3 +11,13 @@ describe("LoginPage defaults", () => {
     expect(source).not.toContain('const DEFAULT_PASSWORD = "lccsetsun";');
   });
 });
+
+describe("LoginPage captcha refresh", () => {
+  it("refreshes the captcha when the login tab becomes visible again", () => {
+    const source = readFileSync(new URL("./LoginPage.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain('import { useRefreshOnPageVisible } from "../hooks/useRefreshOnPageVisible";');
+    expect(source).toContain("useRefreshOnPageVisible(refreshCaptchaOnPageVisible);");
+    expect(source).toContain("void refreshCaptcha({ updateGlobalError: false })");
+  });
+});
