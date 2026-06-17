@@ -11,5 +11,6 @@ describe("MultiSelectionLayer source", () => {
     expect(source).toContain("mediaNodeToolbarButtonClass");
     expect(source).toContain("打组");
     expect(source).not.toContain("absolute left-0 top-0 flex h-8");
+    expect(source).not.toContain("批量拖拽连线");
   });
 });

@@ -76,7 +76,10 @@ import {
   type CanvasSelection,
 } from "./utils/canvasSelection";
 import { buildCanvasGraphIndex } from "./utils/canvasGraphIndex";
-import type { VideoBatchReplacementSlotKey } from "./utils/videoBatchReplacementLayout";
+import {
+  getGroupBatchReplacementSourceImages,
+  type VideoBatchReplacementSlotKey,
+} from "./utils/videoBatchReplacementLayout";
 import {
   shouldShowCanvasProjectLoading,
   shouldShowEmptyCanvasState,
@@ -320,6 +323,7 @@ export default function App({ onLoggedOut }: AppProps) {
     setPrimaryImageResult,
     addVideoFrameAnalysis,
     addVideoBatchReplacementNode,
+    addGroupVideoBatchReplacementNode,
     createVideoBatchReplacementResultRun,
     addVideoPromptTextNode,
     extractFrameImageNode,
@@ -513,6 +517,14 @@ export default function App({ onLoggedOut }: AppProps) {
     }
     return m;
   }, [nodes]);
+  const batchReplacementSourceCountByGroup = React.useMemo(() => {
+    const m = new Map<string, number>();
+    for (const group of groups) {
+      const sourceCount = getGroupBatchReplacementSourceImages(nodes, group.id).length;
+      if (sourceCount > 0) m.set(group.id, sourceCount);
+    }
+    return m;
+  }, [groups, nodes]);
 
   const selectedNodes = React.useMemo(
     () => nodes.filter((node) => selectedNodeIds.has(node.id)),
@@ -1110,6 +1122,18 @@ export default function App({ onLoggedOut }: AppProps) {
     [addVideoBatchReplacementNode, showNotice]
   );
 
+  const handleCreateGroupVideoBatchReplacement = React.useCallback(
+    (groupId: string) => {
+      const createdNode = addGroupVideoBatchReplacementNode(groupId);
+      if (createdNode) {
+        showNotice("已为分组创建批量替换节点。");
+      } else {
+        showNotice("当前分组中没有可用于批量替换的图片节点。");
+      }
+    },
+    [addGroupVideoBatchReplacementNode, showNotice]
+  );
+
   const handleDropImageToVideoBatchReplacement = React.useCallback(
     (nodeId: string, slotKey: VideoBatchReplacementSlotKey, imageUrl: string, ossId?: string) => {
       const batchNode = nodes.find(
@@ -1165,12 +1189,21 @@ export default function App({ onLoggedOut }: AppProps) {
       }
 
       const frameAnalysisNode = findFirstUpstreamFrameAnalysisNode(nodes, links, nodeId);
+      const groupSourceNodeId =
+        Array.isArray(batchNode.data?.groupBatchReplacementSourceNodeIds) &&
+        typeof batchNode.data.groupBatchReplacementSourceNodeIds[0] === "string"
+          ? batchNode.data.groupBatchReplacementSourceNodeIds[0]
+          : "";
+      const groupSourceAnchorNode = groupSourceNodeId
+        ? nodes.find((node) => node.id === groupSourceNodeId && node.type === "image_node")
+        : null;
       const sourceFrames = frameAnalysisNode
         ? resolveVideoBatchReplacementSourceFrames(frameAnalysisNode)
-        : { frameCount: 0, ossIds: [] };
+        : resolveVideoBatchReplacementSourceFrames(batchNode);
+      const sourceAnchorNode = frameAnalysisNode ?? groupSourceAnchorNode;
       const sourceOssIds = sourceFrames.ossIds;
-      if (sourceOssIds.length === 0) {
-        showNotice("逐帧分析节点缺少可用的帧图片 OSS ID。");
+      if (sourceOssIds.length === 0 || !sourceAnchorNode) {
+        showNotice("批量替换缺少可用的源图片 OSS ID。");
         return;
       }
 
@@ -1204,6 +1237,7 @@ export default function App({ onLoggedOut }: AppProps) {
           productOssId,
           customSize,
           ossId: sourceOssIds,
+          batchEditType: mode,
           model: {
             apiId: model.apiId,
             modelId: model.modelId,
@@ -1212,7 +1246,7 @@ export default function App({ onLoggedOut }: AppProps) {
         if (result.taskId) {
           createVideoBatchReplacementResultRun({
             batchNodeId: nodeId,
-            frameAnalysisNodeId: frameAnalysisNode.id,
+            frameAnalysisNodeId: sourceAnchorNode.id,
             frameCount: sourceFrames.frameCount,
             result:
               result.items.length > 0
@@ -1241,7 +1275,7 @@ export default function App({ onLoggedOut }: AppProps) {
 
         createVideoBatchReplacementResultRun({
           batchNodeId: nodeId,
-          frameAnalysisNodeId: frameAnalysisNode.id,
+          frameAnalysisNodeId: sourceAnchorNode.id,
           frameCount: sourceFrames.frameCount,
           result: { status: "success", items: result.items, error: "", rawStatus: "success" },
           runId: `batch-direct-${Date.now()}`,
@@ -1757,8 +1791,10 @@ export default function App({ onLoggedOut }: AppProps) {
               zoom={zoom}
               selectedNodeId={selectedNodeId}
               selectedGroupId={selectedGroupId}
+              batchReplacementSourceCountByGroup={batchReplacementSourceCountByGroup}
               memberCountByGroup={memberCountByGroup}
               onSelectGroup={(groupId) => applyCanvasSelection(selectCanvasGroup(groupId))}
+              onCreateBatchReplacement={handleCreateGroupVideoBatchReplacement}
               onChangeGroupColor={(groupId, color) => updateGroup(groupId, { color })}
               onUngroup={handleUngroup}
               onMoveGroup={moveGroup}
@@ -2021,12 +2057,8 @@ export default function App({ onLoggedOut }: AppProps) {
               bounds={multiSelectionBounds}
               canCreateGroup={selectedNodes.length > 1}
               dragRect={selectionDragRect}
-              hasLinkableSources={batchLinkSources.length > 1 && !isLinkingOnCanvas}
               pan={pan}
               zoom={zoom}
-              onBeginBatchLink={(clientX, clientY) => {
-                beginBatchCanvasLink(batchLinkSources, clientX, clientY);
-              }}
               onBeginSelectionDrag={handleSelectionDragStart}
               onCreateGroup={handleCreateGroupFromSelection}
             />

@@ -26,6 +26,41 @@ describe("batchEditImages", () => {
       productOssId: ["product-1"],
       customSize: "1280x720",
       ossId: ["source-1"],
+      batchEditType: "product",
+      model: {
+        apiId: "api-1",
+        modelId: "image-model",
+      },
+    });
+
+    expect(devApiFetch).toHaveBeenCalledWith("/system/generator/batchEditImgaes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        prompt: "replace product",
+        productOssId: ["product-1"],
+        customSize: "1280x720",
+        ossId: ["source-1"],
+        batchEditType: "product",
+        model: {
+          apiId: "api-1",
+          modelId: "image-model",
+        },
+      }),
+    });
+    expect(result).toEqual({ taskId: "", items: [] });
+  });
+
+  it("defaults the batch edit type to product when callers omit it", async () => {
+    vi.mocked(devApiFetch).mockResolvedValue(
+      new Response(JSON.stringify({ code: 200, msg: "ok", data: [] }))
+    );
+
+    await batchEditImages({
+      prompt: "replace product",
+      productOssId: ["product-1"],
+      customSize: "1280x720",
+      ossId: ["source-1"],
       model: {
         apiId: "api-1",
         modelId: "image-model",
@@ -44,9 +79,9 @@ describe("batchEditImages", () => {
           apiId: "api-1",
           modelId: "image-model",
         },
+        batchEditType: "product",
       }),
     });
-    expect(result).toEqual({ taskId: "", items: [] });
   });
 
   it("treats a string response data payload as a pending batch edit task id", async () => {
@@ -59,6 +94,7 @@ describe("batchEditImages", () => {
       productOssId: ["product-1"],
       customSize: "1080x1080",
       ossId: ["source-1"],
+      batchEditType: "scene",
       model: {
         apiId: "api-1",
         modelId: "image-model",

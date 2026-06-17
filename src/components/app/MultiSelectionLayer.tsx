@@ -1,5 +1,5 @@
 import React from "react";
-import { Box, Plus } from "lucide-react";
+import { Box } from "lucide-react";
 import type { Rect } from "../../utils/multiSelection";
 import {
   mediaNodeFloatingToolbarClass,
@@ -9,11 +9,9 @@ import {
 interface MultiSelectionLayerProps {
   bounds?: Rect | null;
   dragRect?: Rect | null;
-  hasLinkableSources?: boolean;
   canCreateGroup?: boolean;
   pan: { x: number; y: number };
   zoom: number;
-  onBeginBatchLink?: (clientX: number, clientY: number) => void;
   onBeginSelectionDrag?: (event: React.PointerEvent) => void;
   onCreateGroup?: () => void;
 }
@@ -22,10 +20,8 @@ export default function MultiSelectionLayer({
   bounds,
   canCreateGroup = false,
   dragRect,
-  hasLinkableSources = false,
   pan,
   zoom,
-  onBeginBatchLink,
   onBeginSelectionDrag,
   onCreateGroup,
 }: MultiSelectionLayerProps) {
@@ -114,22 +110,6 @@ export default function MultiSelectionLayer({
               vectorEffect="non-scaling-stroke"
             />
           </svg>
-          {hasLinkableSources && (
-            <button
-              type="button"
-              data-node-action="true"
-              aria-label="批量拖拽连线"
-              title="批量拖拽连线"
-              className="pointer-events-auto absolute right-0 top-1/2 flex h-10 w-10 translate-x-1/2 -translate-y-1/2 cursor-crosshair items-center justify-center rounded-full border border-white/14 bg-[#20242c]/96 text-white shadow-[0_14px_34px_rgba(0,0,0,0.48),inset_0_1px_0_rgba(255,255,255,0.08)] transition hover:border-cyan-100/42 hover:bg-[#29313d] hover:text-cyan-50"
-              onPointerDown={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                onBeginBatchLink?.(event.clientX, event.clientY);
-              }}
-            >
-              <Plus className="h-5 w-5" aria-hidden="true" />
-            </button>
-          )}
         </div>
       )}
     </div>

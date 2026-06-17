@@ -7,6 +7,7 @@ export interface BatchEditImagesRequest {
   productOssId: string[];
   customSize: string;
   ossId: string[];
+  batchEditType?: "product" | "scene";
   model: Pick<AiModel, "apiId" | "modelId">;
 }
 
@@ -149,10 +150,14 @@ async function parseBatchEditImagesRunningError(
 export async function batchEditImages(
   payload: BatchEditImagesRequest
 ): Promise<BatchEditImagesSubmitResult> {
+  const requestPayload: BatchEditImagesRequest = {
+    ...payload,
+    batchEditType: payload.batchEditType ?? "product",
+  };
   const response = await devApiFetch("/system/generator/batchEditImgaes", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(requestPayload),
   });
   const parsed = await parseDevApiEnvelope<unknown>(response);
   return {

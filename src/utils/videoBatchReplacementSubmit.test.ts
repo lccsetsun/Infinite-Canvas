@@ -79,4 +79,16 @@ describe("resolveVideoBatchReplacementSourceFrames", () => {
       ossIds: ["oss-same", "oss-same", "oss-same"],
     });
   });
+
+  it("uses grouped image oss ids for group batch replacement placeholders", () => {
+    const node = makeFrameAnalysisNode({
+      groupBatchReplacementSourceOssIds: ["oss-a", "oss-b", "oss-c", "oss-d"],
+      isFrameStrip: false,
+    });
+
+    expect(resolveVideoBatchReplacementSourceFrames(node)).toEqual({
+      frameCount: 4,
+      ossIds: ["oss-a", "oss-b", "oss-c", "oss-d"],
+    });
+  });
 });

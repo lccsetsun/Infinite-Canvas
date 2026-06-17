@@ -27,6 +27,9 @@ describe("GroupsLayer source", () => {
     expect(source).not.toContain("Maximize2");
     expect(source).toContain("mediaNodeFloatingToolbarClass");
     expect(source).toContain("mediaNodeToolbarDividerClass");
+    expect(source).toContain("batchReplacementSourceCountByGroup");
+    expect(source).toContain("onCreateBatchReplacement?.(group.id)");
+    expect(source).toContain("批量替换");
     expect(source).toContain("onUngroup?.(group.id)");
     expect(source).not.toContain("border-dashed");
     expect(source).not.toContain("strokeDasharray");

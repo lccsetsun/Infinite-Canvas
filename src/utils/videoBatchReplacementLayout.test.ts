@@ -1,5 +1,6 @@
 ﻿import { describe, expect, it } from "vitest";
 import {
+  createGroupVideoBatchReplacementSnapshot,
   createVideoBatchReplacementSlots,
   createVideoBatchReplacementSnapshot,
   hasFrameAnalysisDescendant,
@@ -40,6 +41,26 @@ function makeFrameNode(sourceNodeId: string): GraphNode {
       isFrameStrip: true,
       frameCaptureSourceNodeId: sourceNodeId,
       frameImageOssIds: ["frame-oss-1"],
+    },
+  };
+}
+
+function makeGroupImageNode(id: string, x: number, ossId?: string): GraphNode {
+  return {
+    id,
+    type: "image_node",
+    title: `图片 ${id}`,
+    x,
+    y: 200,
+    inputs: [],
+    outputs: [{ name: "图片", type: "IMAGE" }],
+    properties: { imageUrl: `https://oss.example.com/${id}.png` },
+    groupId: "group-1",
+    data: {
+      imageDisplayWidth: 220,
+      imageDisplayHeight: 391,
+      imageUrl: `https://oss.example.com/${id}.png`,
+      ossId,
     },
   };
 }
@@ -137,6 +158,53 @@ describe("video batch replacement layout", () => {
       {
         id: "link-2",
         fromNodeId: frameNode.id,
+        fromOutputIndex: 0,
+        toNodeId: "node-1",
+        toInputIndex: 0,
+      },
+    ]);
+  });
+
+  it("creates one group batch replacement node from every grouped image with an oss id", () => {
+    let nextId = 0;
+    const sourceA = makeGroupImageNode("image-a", 120, "oss-a");
+    const sourceB = makeGroupImageNode("image-b", 420, "oss-b");
+    const sourceWithoutOss = makeGroupImageNode("image-c", 720);
+    const outsideGroup = {
+      ...makeGroupImageNode("image-outside", 1020, "oss-outside"),
+      groupId: "other-group",
+    };
+
+    const result = createGroupVideoBatchReplacementSnapshot({
+      groupId: "group-1",
+      links: [],
+      makeId: (prefix) => `${prefix}-${(nextId += 1)}`,
+      nodes: [sourceA, sourceB, sourceWithoutOss, outsideGroup],
+    });
+
+    expect(result).not.toBeNull();
+    expect(result?.createdNode.type).toBe("video_batch_replacement_node");
+    expect(result?.createdNode.title).toBe("批量替换");
+    expect(result?.createdNode.x).toBeGreaterThan(sourceB.x);
+    expect(result?.createdNode.data?.groupBatchReplacementSourceNodeIds).toEqual([
+      "image-a",
+      "image-b",
+    ]);
+    expect(result?.createdNode.data?.groupBatchReplacementSourceOssIds).toEqual(["oss-a", "oss-b"]);
+    expect(result?.createdNode.data?.batchReplacementSlots).toEqual(
+      createVideoBatchReplacementSlots()
+    );
+    expect(result?.links).toEqual([
+      {
+        id: "link-2",
+        fromNodeId: "image-a",
+        fromOutputIndex: 0,
+        toNodeId: "node-1",
+        toInputIndex: 0,
+      },
+      {
+        id: "link-3",
+        fromNodeId: "image-b",
         fromOutputIndex: 0,
         toNodeId: "node-1",
         toInputIndex: 0,

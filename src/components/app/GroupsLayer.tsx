@@ -1,6 +1,6 @@
 import React from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Box, X } from "lucide-react";
+import { Box, Replace, X } from "lucide-react";
 import { GroupBox } from "../../types";
 import {
   mediaNodeFloatingToolbarClass,
@@ -32,8 +32,10 @@ interface GroupsLayerProps {
   zoom: number;
   selectedNodeId: string | null;
   selectedGroupId: string | null;
+  batchReplacementSourceCountByGroup?: Map<string, number>;
   memberCountByGroup: Map<string, number>;
   onSelectGroup?: (groupId: string) => void;
+  onCreateBatchReplacement?: (groupId: string) => void;
   onChangeGroupColor?: (groupId: string, color?: string) => void;
   onUngroup?: (groupId: string) => void;
   onMoveGroup?: (groupId: string, x: number, y: number) => void;
@@ -89,8 +91,10 @@ function GroupsLayerImpl({
   pan,
   zoom,
   selectedGroupId,
+  batchReplacementSourceCountByGroup,
   memberCountByGroup,
   onChangeGroupColor,
+  onCreateBatchReplacement,
   onSelectGroup,
   onUngroup,
   onMoveGroup,
@@ -180,6 +184,7 @@ function GroupsLayerImpl({
         {groups.map((group) => {
           const isSelected = selectedGroupId === group.id;
           const memberCount = memberCountByGroup.get(group.id) ?? 0;
+          const batchReplacementSourceCount = batchReplacementSourceCountByGroup?.get(group.id) ?? 0;
           const groupColor = group.color || DEFAULT_GROUP_COLOR;
           const isColorPickerOpen = openColorGroupId === group.id;
           return (
@@ -284,6 +289,25 @@ function GroupsLayerImpl({
                       style={{ background: groupColor }}
                     />
                   </button>
+                  {batchReplacementSourceCount > 0 && (
+                    <>
+                      <div className={mediaNodeToolbarDividerClass} />
+                      <button
+                        type="button"
+                        className={`${mediaNodeToolbarButtonClass} w-auto gap-1.5 px-3 text-[12px] font-semibold text-slate-200/88 hover:text-white`}
+                        title={`批量替换 ${batchReplacementSourceCount} 张图`}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          onCreateBatchReplacement?.(group.id);
+                          setOpenColorGroupId(null);
+                        }}
+                      >
+                        <Replace className="h-3.5 w-3.5" aria-hidden="true" />
+                        <span className="whitespace-nowrap">批量替换</span>
+                      </button>
+                    </>
+                  )}
                   <div className={mediaNodeToolbarDividerClass} />
                   <button
                     type="button"

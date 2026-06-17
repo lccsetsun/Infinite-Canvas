@@ -35,7 +35,10 @@ import {
   topologicalLevels,
 } from "../runtime/dataflow";
 import { createVideoFrameCaptureSnapshot } from "../utils/videoFrameCaptureLayout";
-import { createVideoBatchReplacementSnapshot } from "../utils/videoBatchReplacementLayout";
+import {
+  createGroupVideoBatchReplacementSnapshot,
+  createVideoBatchReplacementSnapshot,
+} from "../utils/videoBatchReplacementLayout";
 import { createVideoPromptTextSnapshot } from "../utils/videoPromptTextLayout";
 import { collectImageReferenceUrls, collectNodeInputReferences } from "../utils/textNodeReferences";
 import { isLinkInputValueExcluded } from "../utils/inputReferenceExclusions";
@@ -479,6 +482,9 @@ function getBatchReplacementResultLayout(
   frameAnalysisNode: GraphNode,
   frameCount: number
 ) {
+  const isGroupBatchReplacement =
+    Array.isArray(batchNode.data?.groupBatchReplacementSourceOssIds) &&
+    batchNode.data.groupBatchReplacementSourceOssIds.length > 0;
   const visibleFrameCount = Math.max(
     frameCount,
     Array.isArray(frameAnalysisNode.data?.imageUrls) ? frameAnalysisNode.data.imageUrls.length : 0,
@@ -491,22 +497,28 @@ function getBatchReplacementResultLayout(
     DEFAULT_BATCH_RESULT_COLUMNS
   );
   const shouldNormalizeStaleSingleColumn =
-    frameCount > 1 && visibleFrameCount > 1 && sourceColumns <= 1;
-  const columns = shouldNormalizeStaleSingleColumn
+    !isGroupBatchReplacement && frameCount > 1 && visibleFrameCount > 1 && sourceColumns <= 1;
+  const columns = isGroupBatchReplacement
+    ? Math.max(1, frameCount)
+    : shouldNormalizeStaleSingleColumn
     ? Math.max(1, Math.min(frameCount, DEFAULT_BATCH_RESULT_COLUMNS))
     : Math.max(1, Math.min(frameCount, sourceColumns));
   const rows = positiveRoundedNumber(
     frameAnalysisNode.data?.frameGridRows,
     Math.max(1, Math.ceil(frameCount / columns))
   );
-  const normalizedRows = shouldNormalizeStaleSingleColumn
+  const normalizedRows = isGroupBatchReplacement
+    ? 1
+    : shouldNormalizeStaleSingleColumn
     ? Math.max(1, Math.ceil(frameCount / columns))
     : rows;
   const sourceDisplayWidth = positiveRoundedNumber(frameAnalysisNode.data?.imageDisplayWidth, 0);
   const sourceDisplayHeight = positiveRoundedNumber(frameAnalysisNode.data?.imageDisplayHeight, 0);
   const tileWidth = positiveRoundedNumber(
     frameAnalysisNode.data?.frameTileWidth,
-    sourceDisplayWidth > 0 ? Math.max(1, Math.round(sourceDisplayWidth / columns)) : DEFAULT_BATCH_RESULT_TILE_WIDTH
+    sourceDisplayWidth > 0
+      ? Math.max(1, Math.round(sourceDisplayWidth / (isGroupBatchReplacement ? 1 : columns)))
+      : DEFAULT_BATCH_RESULT_TILE_WIDTH
   );
   const tileHeight = positiveRoundedNumber(
     frameAnalysisNode.data?.frameTileHeight,
@@ -514,17 +526,21 @@ function getBatchReplacementResultLayout(
       ? Math.max(1, Math.round(sourceDisplayHeight / normalizedRows))
       : DEFAULT_BATCH_RESULT_TILE_HEIGHT
   );
-  const displayWidth = shouldNormalizeStaleSingleColumn
+  const displayWidth = isGroupBatchReplacement
+    ? columns * tileWidth
+    : shouldNormalizeStaleSingleColumn
     ? columns * tileWidth
     : sourceDisplayWidth > 0
       ? sourceDisplayWidth
       : columns * tileWidth;
-  const displayHeight = shouldNormalizeStaleSingleColumn
+  const displayHeight = isGroupBatchReplacement
+    ? normalizedRows * tileHeight
+    : shouldNormalizeStaleSingleColumn
     ? normalizedRows * tileHeight
     : sourceDisplayHeight > 0
       ? sourceDisplayHeight
       : normalizedRows * tileHeight;
-  const nodeWidth = shouldNormalizeStaleSingleColumn
+  const nodeWidth = isGroupBatchReplacement || shouldNormalizeStaleSingleColumn
     ? displayWidth
     : positiveRoundedNumber(frameAnalysisNode.data?.imageNodeWidth, displayWidth);
   const nodeHeight = shouldNormalizeStaleSingleColumn
@@ -2962,6 +2978,42 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     [appendLog, markRemoteDirty, pushHistory, syncCurrentWorkflowMeta]
   );
 
+  const addGroupVideoBatchReplacementNode = useCallback(
+    (groupId: string) => {
+      const snapshot = createGroupVideoBatchReplacementSnapshot({
+        nodes: currentNodesRef.current,
+        links: currentLinksRef.current,
+        groupId,
+        makeId,
+      });
+
+      if (!snapshot) {
+        appendLog("warning", "批量替换失败：当前分组中没有可用的图片节点");
+        return null;
+      }
+
+      markRemoteDirty("structure");
+      currentNodesRef.current = snapshot.nodes;
+      currentLinksRef.current = snapshot.links;
+      setNodes(snapshot.nodes);
+      setLinks(snapshot.links);
+      setSelectedNodeId(snapshot.createdNode.id);
+      syncCurrentWorkflowMeta((wf) => ({
+        ...wf,
+        summary: { ...wf.summary, updatedAt: Date.now() },
+        data: {
+          ...wf.data,
+          nodes: snapshot.nodes,
+          links: snapshot.links,
+        },
+      }));
+      pushHistory({ nodes: snapshot.nodes, links: snapshot.links });
+      appendLog("success", "已为分组创建批量替换节点");
+      return snapshot.createdNode;
+    },
+    [appendLog, markRemoteDirty, pushHistory, syncCurrentWorkflowMeta]
+  );
+
   const createVideoBatchReplacementResultRun = useCallback(
     ({
       batchNodeId,
@@ -4359,6 +4411,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     replaceFrameImageUrl,
     addVideoFrameAnalysis,
     addVideoBatchReplacementNode,
+    addGroupVideoBatchReplacementNode,
     createVideoBatchReplacementResultRun,
     addVideoPromptTextNode,
     clearCanvas,

@@ -34,6 +34,16 @@ export function resolveVideoBatchReplacementSourceFrames(frameAnalysisNode: Grap
   frameCount: number;
   ossIds: string[];
 } {
+  const groupSourceOssIds = collectOssIdsFromValue(
+    frameAnalysisNode.data?.groupBatchReplacementSourceOssIds
+  );
+  if (groupSourceOssIds.length > 0) {
+    return {
+      frameCount: groupSourceOssIds.length,
+      ossIds: groupSourceOssIds,
+    };
+  }
+
   const ossIds = collectOssIdsFromValue(frameAnalysisNode.data?.frameImageOssIds);
   const visibleFrameUrls = [
     ...normalizeStringList(frameAnalysisNode.data?.imageUrls),

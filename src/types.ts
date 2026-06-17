@@ -108,6 +108,8 @@ export interface GraphNode {
     batchReplacementSourceNodeId?: string;
     batchReplacementResultIndex?: number;
     batchReplacementResultCount?: number;
+    groupBatchReplacementSourceNodeIds?: string[];
+    groupBatchReplacementSourceOssIds?: string[];
     extractedFrameSourceNodeId?: string;
     extractedFrameIndex?: number;
     videoFrameCaptureChild?: boolean;

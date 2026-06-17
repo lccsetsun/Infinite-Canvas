@@ -1110,6 +1110,61 @@ describe("applyBatchEditImagesTaskResultSnapshot", () => {
     });
   });
 
+  it("keeps each grouped source image at full width in batch replacement result placeholders", () => {
+    const batchNode: GraphNode = {
+      ...makeVideoBatchReplacementNode(),
+      data: {
+        ...makeVideoBatchReplacementNode().data,
+        groupBatchReplacementSourceNodeIds: ["group-image-1", "group-image-2"],
+        groupBatchReplacementSourceOssIds: ["oss-1", "oss-2"],
+      },
+    };
+    const firstGroupImage: GraphNode = {
+      id: "group-image-1",
+      type: "image_node",
+      title: "图片 1",
+      x: 300,
+      y: 120,
+      inputs: [],
+      outputs: [{ name: "image", type: "IMAGE" }],
+      properties: {},
+      data: {
+        imageDisplayHeight: 391,
+        imageDisplayWidth: 220,
+        imageNodeHeight: 421,
+        imageNodeWidth: 220,
+        imagePortCenterY: 210,
+      },
+    };
+    let idIndex = 0;
+
+    const result = createBatchEditImagesResultRunSnapshot({
+      batchNodeId: batchNode.id,
+      frameAnalysisNodeId: firstGroupImage.id,
+      frameCount: 2,
+      links: [],
+      makeId: (prefix) => `${prefix}-${(idIndex += 1)}`,
+      nodeOutputs: new Map(),
+      nodes: [batchNode, firstGroupImage],
+      runId: "group-two-image-run",
+    });
+
+    const resultNode = result.nodes.find(
+      (node) => node.data?.batchReplacementRunId === "group-two-image-run"
+    );
+    expect(resultNode?.data).toMatchObject({
+      batchReplacementResultCount: 2,
+      frameGridColumns: 2,
+      frameGridRows: 1,
+      frameTileHeight: 391,
+      frameTileWidth: 220,
+      imageDisplayHeight: 391,
+      imageDisplayWidth: 440,
+      imageNodeHeight: 421,
+      imageNodeWidth: 440,
+    });
+  });
+
   it("keeps previous batch replacement results and appends the new loading grid below", () => {
     const batchNode = makeVideoBatchReplacementNode();
     const frameNode: GraphNode = {
