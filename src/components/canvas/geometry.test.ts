@@ -155,8 +155,8 @@ describe("video batch replacement node sizing", () => {
       properties: {},
     };
 
-    expect(getNodeWidth(node)).toBe(520);
+    expect(getNodeWidth(node)).toBe(760);
     expect(getNodeHeight(node)).toBe(464);
-    expect(getOutputAnchor(node, 0)).toEqual({ x: 640, y: 312 });
+    expect(getOutputAnchor(node, 0)).toEqual({ x: 880, y: 312 });
   });
 });

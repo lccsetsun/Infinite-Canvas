@@ -5,6 +5,7 @@ import {
   getGroupBoundsForNodes,
   getMovedGroupMemberPositions,
   getNextGroupTitle,
+  expandGroupBoundsToIncludeNodes,
   syncNodeGroupMembership,
 } from "./canvasGroups";
 
@@ -39,6 +40,16 @@ describe("canvas group helpers", () => {
       y: 0,
       width: 310,
       height: 240,
+    });
+  });
+
+  it("extends an existing group to include newly created member nodes", () => {
+    const group = makeGroup("group-1", 0, 0, 200, 180);
+    const newNode = makeNode("result", 260, 40, "group-1");
+
+    expect(expandGroupBoundsToIncludeNodes(group, [newNode], 20)).toEqual({
+      ...group,
+      width: 380,
     });
   });
 

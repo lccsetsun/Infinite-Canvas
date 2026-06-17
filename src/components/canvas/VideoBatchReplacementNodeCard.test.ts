@@ -319,7 +319,7 @@ describe("VideoBatchReplacementNodeCard helpers", () => {
   });
 
   it("formats batch replacement elapsed time as seconds, minutes, and hours", () => {
-    expect(formatVideoBatchReplacementElapsedTime(900)).toBe("1s");
+    expect(formatVideoBatchReplacementElapsedTime(900)).toBe("0s");
     expect(formatVideoBatchReplacementElapsedTime(59_000)).toBe("59s");
     expect(formatVideoBatchReplacementElapsedTime(60_000)).toBe("1m");
     expect(formatVideoBatchReplacementElapsedTime(3_599_000)).toBe("59m");
@@ -372,6 +372,12 @@ describe("VideoBatchReplacementNodeCard source", () => {
     expect(source).toContain("isSubmitting");
     expect(source).toContain("Loader2");
     expect(source).toContain("Send");
+    expect(source).toContain('placeholder="补充提示词（可选）"');
+    expect(source).toContain("batchReplacementPromptAppend");
+    expect(source).toContain("<textarea");
+    expect(source).toContain("h-[108px]");
+    expect(source).toContain("overflow-y-auto");
+    expect(source).toContain("custom-scrollbar");
   });
 
   it("uses the same dark floating model menu style as image nodes instead of a native select", () => {
@@ -428,6 +434,20 @@ describe("VideoBatchReplacementNodeCard source", () => {
     expect(source).toContain("modeOptions.map");
     expect(source).toContain("replacementMode === option.value");
     expect(source).toContain("writeModePatch(option.value)");
+  });
+
+  it("lays out mode, size, and model controls in one wider row", () => {
+    const source = readFileSync(
+      new URL("./VideoBatchReplacementNodeCard.tsx", import.meta.url),
+      "utf8"
+    );
+
+    expect(source).toContain("w-[760px]");
+    expect(source).toContain(
+      "grid grid-cols-[minmax(150px,0.8fr)_minmax(210px,1fr)_minmax(260px,1.2fr)]"
+    );
+    expect(source).toContain("batch-replacement-control-row");
+    expect(source).not.toContain("node-card relative w-[520px]");
   });
 
   it("closes floating dropdowns from outside pointer capture and blocks canvas wheel while open", () => {
@@ -534,7 +554,9 @@ describe("VideoBatchReplacementNodeCard source", () => {
   it("builds batch submit prompt from valid slot prompts", () => {
     const source = readFileSync(new URL("../../App.tsx", import.meta.url), "utf8");
 
-    expect(source).toContain("buildBatchReplacementPrompt(slots)");
+    expect(source).toContain("buildBatchReplacementPrompt(slots, batchNode.data?.batchReplacementPromptAppend)");
     expect(source).toContain("`{{ Image${index + 1}}} 是 ${slot.prompt.trim() || slot.title}`");
+    expect(source).toContain("const normalizedPromptAppend = promptAppend.trim()");
+    expect(source).toContain("`${basePrompt} ${normalizedPromptAppend}`");
   });
 });

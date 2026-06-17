@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  getPromptTokenEditorPasteHtml,
   getPromptTokenEditorResourceSignature,
   shouldRefreshPromptTokenEditorHtml,
 } from "./PromptTokenEditor";
@@ -43,5 +44,32 @@ describe("shouldRefreshPromptTokenEditorHtml", () => {
         value: "{{ Image1 }}",
       })
     ).toBe(false);
+  });
+});
+
+describe("getPromptTokenEditorPasteHtml", () => {
+  it("renders pasted mention text back into a non-editable image token", () => {
+    const html = getPromptTokenEditorPasteHtml("{{ Image1 }} 123", firstImageSet);
+
+    expect(html).toContain('contenteditable="false"');
+    expect(html).toContain('data-mention-text="{{ Image1 }}"');
+    expect(html).toContain('data-selected="false"');
+    expect(html).toContain("prompt-token-mention");
+    expect(html).toContain('src="https://example.com/a.png"');
+    expect(html).toContain("123");
+  });
+
+  it("allows native selection highlight to include image mention tokens", () => {
+    const html = getPromptTokenEditorPasteHtml("{{ Image1 }} 123", firstImageSet);
+
+    expect(html).not.toContain("select-none");
+  });
+
+  it("includes a visible selected overlay for image mention tokens", () => {
+    const html = getPromptTokenEditorPasteHtml("{{ Image1 }}", firstImageSet);
+
+    expect(html).toContain('data-token-selection-overlay="true"');
+    expect(html).toContain("group-data-[selected=true]/token:bg-cyan-300/32");
+    expect(html).toContain("data-[selected=true]:shadow");
   });
 });

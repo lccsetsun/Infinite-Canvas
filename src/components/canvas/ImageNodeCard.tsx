@@ -335,7 +335,7 @@ export function getImageNodeDownloadVisibility({ isFrameStrip }: { isFrameStrip:
 
 function formatBatchReplacementElapsedTime(elapsedMs: number) {
   const safeElapsedMs = Math.max(0, elapsedMs);
-  const seconds = Math.max(1, Math.floor(safeElapsedMs / 1000));
+  const seconds = Math.floor(safeElapsedMs / 1000);
   if (seconds < 60) return `${seconds}s`;
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `${minutes}m`;
@@ -353,7 +353,11 @@ function getBatchReplacementResultElapsedLabel({
   now: number;
   startedAt?: number;
 }) {
-  if (typeof startedAt !== "number" || startedAt <= 0) return "";
+  if (typeof startedAt !== "number" || startedAt <= 0) {
+    return isRunning || typeof finishedAt === "number"
+      ? formatBatchReplacementElapsedTime(0)
+      : "";
+  }
   const endAt = typeof finishedAt === "number" && finishedAt >= startedAt ? finishedAt : now;
   if (!isRunning && typeof finishedAt !== "number") return "";
   return formatBatchReplacementElapsedTime(endAt - startedAt);
@@ -866,6 +870,10 @@ function ImageNodeCardImpl({
   const floatingCanvasUiScale = 1 / Math.max(0.55, Math.min(3, canvasZoom));
   const floatingToolbarGap = getMediaNodeFloatingToolbarGap(canvasZoom);
   const promptComposerCanvasScale = getReadableCanvasOverlayScale(canvasZoom);
+  const elapsedBadgeStyle = {
+    scale: promptComposerCanvasScale,
+    transformOrigin: "center",
+  } as React.CSSProperties;
   const [imageLoadState, setImageLoadState] = React.useState<{
     status: "idle" | "loaded" | "error";
     url: string;
@@ -914,6 +922,10 @@ function ImageNodeCardImpl({
         (node.data?.isFrameStrip === true ||
           (Array.isArray(node.data?.imageUrls) && node.data.imageUrls.length > 0) ||
           node.data?.loading === true)));
+  const isBatchReplacementResultLoading =
+    node.data?.loading === true ||
+    node.data?.status === "loading" ||
+    node.data?.loadingOperation === "batch-replacement";
   const imageUrls = React.useMemo(() => {
     const rawImageUrls =
       Array.isArray(node.data?.imageUrls) && node.data?.imageUrls.length
@@ -922,6 +934,12 @@ function ImageNodeCardImpl({
           )
         : [];
     if (!isBatchReplacementResultNode) return rawImageUrls;
+    if (!isBatchReplacementResultLoading) {
+      return rawImageUrls.filter(
+        (url) =>
+          url !== BATCH_REPLACEMENT_FRAME_PLACEHOLDER && !url.startsWith("data:image/svg+xml")
+      );
+    }
 
     const frameCount =
       typeof node.data?.batchReplacementResultCount === "number" &&
@@ -934,7 +952,7 @@ function ImageNodeCardImpl({
       if (!url || url.startsWith("data:image/svg+xml")) return BATCH_REPLACEMENT_FRAME_PLACEHOLDER;
       return url;
     });
-  }, [isBatchReplacementResultNode, node.data]);
+  }, [isBatchReplacementResultLoading, isBatchReplacementResultNode, node.data]);
   const fallbackImageUrl =
     (node.data?.imageUrl as string) || (node.properties.imageUrl as string) || "";
   const resolvedImageUrls = React.useMemo(
@@ -942,6 +960,12 @@ function ImageNodeCardImpl({
     [fallbackImageUrl, imageUrls]
   );
   const imageUrl = resolvedImageUrls[activeImageIndex] || resolvedImageUrls[0] || "";
+  const isEmptyBatchReplacementSuccess =
+    isBatchReplacementResultNode &&
+    !isBatchReplacementResultLoading &&
+    node.data?.status === "success" &&
+    hasBatchReplacementResultCount &&
+    resolvedImageUrls.length === 0;
   const isSourceAssetNode = isSourceNode(node);
   const isFrameStrip = node.data?.isFrameStrip === true || isBatchReplacementResultNode;
   const frameGridColumns = Math.max(1, Math.min(8, Math.round(node.data?.frameGridColumns ?? 5)));
@@ -1961,6 +1985,39 @@ function ImageNodeCardImpl({
   const [batchReplacementElapsedNow, setBatchReplacementElapsedNow] = React.useState(() =>
     Date.now()
   );
+  const effectiveBatchReplacementFinishedAt =
+    batchReplacementFinishedAt ??
+    (isBatchReplacementResultNode && node.data?.status === "success"
+      ? batchReplacementElapsedNow
+      : undefined);
+  React.useEffect(() => {
+    if (
+      !isBatchReplacementResultNode ||
+      typeof batchReplacementStartedAt === "number" ||
+      !onUpdateData
+    ) {
+      return;
+    }
+    const shouldBackfillRunningStart = node.data?.loading === true;
+    const shouldBackfillCompletedStart =
+      node.data?.status === "success" || typeof batchReplacementFinishedAt === "number";
+    if (!shouldBackfillRunningStart && !shouldBackfillCompletedStart) return;
+    const now = Date.now();
+    onUpdateData(node.id, {
+      batchReplacementStartedAt: now,
+      batchReplacementFinishedAt: shouldBackfillRunningStart
+        ? undefined
+        : (batchReplacementFinishedAt ?? now),
+    });
+  }, [
+    batchReplacementFinishedAt,
+    batchReplacementStartedAt,
+    isBatchReplacementResultNode,
+    node.data?.loading,
+    node.data?.status,
+    node.id,
+    onUpdateData,
+  ]);
   React.useEffect(() => {
     if (!isBatchReplacementResultNode || node.data?.loading !== true) return;
     setBatchReplacementElapsedNow(Date.now());
@@ -1969,7 +2026,7 @@ function ImageNodeCardImpl({
   }, [isBatchReplacementResultNode, node.data?.loading]);
   const batchReplacementElapsedLabel = isBatchReplacementResultNode
     ? getBatchReplacementResultElapsedLabel({
-        finishedAt: batchReplacementFinishedAt,
+        finishedAt: effectiveBatchReplacementFinishedAt,
         isRunning: node.data?.loading === true,
         now: batchReplacementElapsedNow,
         startedAt: batchReplacementStartedAt,
@@ -2117,15 +2174,38 @@ function ImageNodeCardImpl({
       resolvedImageUrls,
     ]
   );
-  const mediaFrameSize = isFrameStrip ? frameStripSize : resultImageSize;
-  const previewNodeWidth = getImagePreviewNodeWidth({
-    frameStripWidth: frameStripSize.width,
-    isFrameStrip,
-    resultImageWidth: resultImageSize.width,
-  });
+  const batchReplacementEmptySuccessFrameSize = {
+    height:
+      isEmptyBatchReplacementSuccess && typeof node.data?.imageNodeHeight === "number"
+        ? node.data.imageNodeHeight
+        : isEmptyBatchReplacementSuccess && typeof node.data?.imageDisplayHeight === "number"
+          ? node.data.imageDisplayHeight
+          : frameStripSize.height,
+    width:
+      isEmptyBatchReplacementSuccess && typeof node.data?.imageNodeWidth === "number"
+        ? node.data.imageNodeWidth
+        : isEmptyBatchReplacementSuccess && typeof node.data?.imageDisplayWidth === "number"
+          ? node.data.imageDisplayWidth
+          : frameStripSize.width,
+  };
+  const mediaFrameSize = isEmptyBatchReplacementSuccess
+    ? batchReplacementEmptySuccessFrameSize
+    : isFrameStrip
+      ? frameStripSize
+      : resultImageSize;
+  const previewNodeWidth = isEmptyBatchReplacementSuccess
+    ? batchReplacementEmptySuccessFrameSize.width
+    : getImagePreviewNodeWidth({
+        frameStripWidth: frameStripSize.width,
+        isFrameStrip,
+        resultImageWidth: resultImageSize.width,
+      });
   const imageSetKey = React.useMemo(() => resolvedImageUrls.join("||"), [resolvedImageUrls]);
+  const batchReplacementVisibleFrameCount = isEmptyBatchReplacementSuccess
+    ? 0
+    : resolvedImageUrls.length;
   const naturalSizeLabel = isFrameStrip
-    ? `${resolvedImageUrls.length} \u5e27`
+    ? `${batchReplacementVisibleFrameCount} \u5e27`
     : naturalImageSize && naturalImageSize.width > 0 && naturalImageSize.height > 0
       ? `${naturalImageSize.width} \u00d7 ${naturalImageSize.height}`
       : `${resultImageSize.width} \u00d7 ${resultImageSize.height}`;
@@ -2652,7 +2732,7 @@ function ImageNodeCardImpl({
   const hasInputPorts = !isSourceAssetNode && node.inputs.length > 0;
   const portTopStyle = getImageNodePortTopStyle({
     emptyImageNodePortCenterY: emptyImageNodeSize.portCenterY,
-    hasImageUrl: Boolean(imageUrl),
+    hasImageUrl: Boolean(imageUrl || isEmptyBatchReplacementSuccess),
     imagePortCenterY: node.data?.imagePortCenterY,
   });
   const portHandles = (
@@ -3050,7 +3130,9 @@ function ImageNodeCardImpl({
       : null;
 
   const imagePreviewContent =
-    imageUrl && (!isRunning || isBatchReplacementResultNode) && !isUploadingNodeAsset ? (
+    (imageUrl || isEmptyBatchReplacementSuccess) &&
+    (!isRunning || isBatchReplacementResultNode) &&
+    !isUploadingNodeAsset ? (
       <motion.div
         onPointerDown={(e) => {
           if (e.button !== 0) {
@@ -3316,11 +3398,6 @@ function ImageNodeCardImpl({
                     nodeBadgeTitle
                   )}
                 </span>
-                {batchReplacementElapsedLabel && (
-                  <span className="shrink-0 rounded-full border border-cyan-200/16 bg-cyan-300/[0.08] px-2 py-0.5 text-[11px] font-semibold tabular-nums text-cyan-50/80">
-                    {batchReplacementElapsedLabel}
-                  </span>
-                )}
               </div>
             )}
             {!detachedCanvasTitle && (
@@ -3330,7 +3407,7 @@ function ImageNodeCardImpl({
             )}
           </>
         ) : (
-          <div className="mb-2 flex items-center justify-between gap-4 text-slate-300/82 drop-shadow-[0_1px_10px_rgba(15,23,42,0.9)]">
+          <div className="relative mb-2 flex items-center justify-between gap-4 text-slate-300/82 drop-shadow-[0_1px_10px_rgba(15,23,42,0.9)]">
             {!detachedCanvasTitle && (
               <div className="flex min-w-0 items-center gap-1.5">
                 <ImageIcon className="h-4 w-4 shrink-0 text-slate-300/72" />
@@ -3344,12 +3421,16 @@ function ImageNodeCardImpl({
                     nodeBadgeTitle
                   )}
                 </span>
-                {batchReplacementElapsedLabel && (
-                  <span className="shrink-0 rounded-full border border-cyan-200/16 bg-cyan-300/[0.08] px-2 py-0.5 text-[11px] font-semibold tabular-nums text-cyan-50/80">
-                    {batchReplacementElapsedLabel}
-                  </span>
-                )}
               </div>
+            )}
+            {batchReplacementElapsedLabel && !detachedCanvasTitle && (
+              <span
+                data-batch-replacement-elapsed-badge="true"
+                className="absolute left-1/2 top-0 z-30 -translate-x-1/2 rounded-full border border-cyan-200/16 bg-cyan-300/[0.08] px-3 py-0.5 text-[15px] font-medium tracking-tight text-cyan-50/90 shadow-[0_10px_24px_-18px_rgba(34,211,238,0.8),inset_0_1px_0_rgba(255,255,255,0.08)]"
+                style={elapsedBadgeStyle}
+              >
+                {batchReplacementElapsedLabel}
+              </span>
             )}
             <div className="flex shrink-0 items-center gap-3">
               {!isFrameStrip && resolvedImageUrls.length > 1 && (
@@ -3369,7 +3450,7 @@ function ImageNodeCardImpl({
           <div
             ref={mediaFrameRef}
             className={getImagePreviewFrameClassName({
-              isImageLoaded: isFrameStrip || isImageLoaded,
+              isImageLoaded: isEmptyBatchReplacementSuccess ? false : isFrameStrip || isImageLoaded,
               isSelected: selected,
               isStarterPlaceholder,
             })}
@@ -3393,7 +3474,21 @@ function ImageNodeCardImpl({
                   </div>
                 </div>
               )}
-              {isBatchReplacementResultNode ? (
+              {isEmptyBatchReplacementSuccess ? (
+                <div
+                  data-batch-replacement-empty-success="true"
+                  className="flex h-full w-full flex-col items-center justify-center gap-4 text-center"
+                >
+                  <div className="relative flex h-[96px] w-[96px] items-center justify-center rounded-[24px] border border-emerald-200/16 bg-emerald-300/[0.055] text-emerald-100/72 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_18px_42px_-28px_rgba(16,185,129,0.72)]">
+                    <ImageIcon className="h-12 w-12" strokeWidth={1.55} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <div className="text-[14px] font-semibold text-emerald-50/92">
+                      生成完成，未返回图片
+                    </div>
+                  </div>
+                </div>
+              ) : isBatchReplacementResultNode ? (
                 <div
                   data-batch-replacement-result-grid="true"
                   data-batch-replacement-result-count={resolvedImageUrls.length}
@@ -3860,21 +3955,24 @@ function ImageNodeCardImpl({
                 </div>
               )}
               <AnimatePresence>
-                {selected && !isUploadingNodeAsset && shouldShowUploadButton && (
-                  <motion.div
-                    data-node-action="true"
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 8 }}
-                    transition={{ duration: 0.16, ease: "easeOut" }}
-                    className="absolute left-1/2 top-0 z-40 flex -translate-x-1/2 -translate-y-[calc(100%+14px)] items-center"
-                    style={{ scale: floatingCanvasUiScale, transformOrigin: "bottom center" }}
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    {uploadControl}
-                  </motion.div>
-                )}
+                {selected &&
+                  !isUploadingNodeAsset &&
+                  !isEmptyBatchReplacementSuccess &&
+                  shouldShowUploadButton && (
+                    <motion.div
+                      data-node-action="true"
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 8 }}
+                      transition={{ duration: 0.16, ease: "easeOut" }}
+                      className="absolute left-1/2 top-0 z-40 flex -translate-x-1/2 -translate-y-[calc(100%+14px)] items-center"
+                      style={{ scale: floatingCanvasUiScale, transformOrigin: "bottom center" }}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {uploadControl}
+                    </motion.div>
+                  )}
               </AnimatePresence>
               {!detachedCanvasTitle && (
                 <div className="absolute -top-8 left-0 z-30 flex items-center gap-1.5 text-slate-300/82 drop-shadow-[0_1px_10px_rgba(15,23,42,0.9)]">

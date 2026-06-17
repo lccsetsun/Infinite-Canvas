@@ -19,6 +19,37 @@ export function getGroupBoundsForNodes(nodes: GraphNode[], padding = 24) {
   };
 }
 
+export function expandGroupBoundsToIncludeNodes(
+  group: GroupBox,
+  nodes: GraphNode[],
+  padding = 24
+): GroupBox {
+  if (nodes.length === 0) return group;
+
+  const bounds = getGroupBoundsForNodes(nodes, padding);
+  const left = Math.min(group.x, bounds.x);
+  const top = Math.min(group.y, bounds.y);
+  const right = Math.max(group.x + group.width, bounds.x + bounds.width);
+  const bottom = Math.max(group.y + group.height, bounds.y + bounds.height);
+
+  if (
+    left === group.x &&
+    top === group.y &&
+    right === group.x + group.width &&
+    bottom === group.y + group.height
+  ) {
+    return group;
+  }
+
+  return {
+    ...group,
+    x: left,
+    y: top,
+    width: right - left,
+    height: bottom - top,
+  };
+}
+
 function getNodeCenter(node: GraphNode) {
   return {
     x: node.x + getNodeWidth(node) / 2,

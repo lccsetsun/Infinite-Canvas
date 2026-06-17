@@ -52,6 +52,7 @@ import { getVideoPreloadMode } from "../../utils/mediaPreviewPolicy";
 import type { VideoFrameImageCaptureMode } from "../../utils/videoFrameImageExtraction";
 import {
   getReadableCanvasOverlayScale,
+  getMediaNodeFloatingToolbarGap,
   mediaNodeFloatingToolbarClass,
   mediaNodeToolbarButtonClass,
   mediaNodeToolbarDividerClass,
@@ -289,6 +290,34 @@ function formatTime(seconds: number): string {
   const minutes = Math.floor(seconds / 60);
   const rest = Math.floor(seconds % 60);
   return `${minutes}:${String(rest).padStart(2, "0")}`;
+}
+
+export function formatVideoGenerationElapsedTime(elapsedMs: number): string {
+  const safeElapsedMs = Math.max(0, elapsedMs);
+  const seconds = Math.floor(safeElapsedMs / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  return `${Math.floor(minutes / 60)}h`;
+}
+
+export function getVideoGenerationElapsedLabel({
+  finishedAt,
+  isGenerating,
+  now,
+  startedAt,
+}: {
+  finishedAt?: number;
+  isGenerating: boolean;
+  now: number;
+  startedAt?: number;
+}) {
+  if (typeof startedAt !== "number" || startedAt <= 0) {
+    return isGenerating || typeof finishedAt === "number" ? formatVideoGenerationElapsedTime(0) : "";
+  }
+  const endAt = typeof finishedAt === "number" && finishedAt >= startedAt ? finishedAt : now;
+  if (!isGenerating && typeof finishedAt !== "number") return "";
+  return formatVideoGenerationElapsedTime(endAt - startedAt);
 }
 
 export function getVideoControlDisplayTime({
@@ -560,6 +589,60 @@ function VideoNodeCardImpl({
   );
   const videoUrl = (node.data?.videoUrl as string) || (node.properties.videoUrl as string) || "";
   const loadingOperation = node.data?.loadingOperation as MediaNodeLoadingOperation | undefined;
+  const videoGenerationStartedAt =
+    typeof node.data?.generationStartedAt === "number"
+      ? node.data.generationStartedAt
+      : undefined;
+  const videoGenerationFinishedAt =
+    typeof node.data?.generationFinishedAt === "number"
+      ? node.data.generationFinishedAt
+      : undefined;
+  const isGeneratingVideo =
+    !isUploadingAsset &&
+    isRunning &&
+    (loadingOperation === "generate" ||
+      (typeof node.data?.remoteVideoTaskId === "string" &&
+        node.data.remoteVideoTaskId.trim().length > 0));
+  const [videoGenerationElapsedNow, setVideoGenerationElapsedNow] = React.useState(() =>
+    Date.now()
+  );
+  const effectiveVideoGenerationFinishedAt =
+    videoGenerationFinishedAt ??
+    (!isGeneratingVideo && node.data?.status === "success" && Boolean(videoUrl)
+      ? videoGenerationElapsedNow
+      : undefined);
+  React.useEffect(() => {
+    if (typeof videoGenerationStartedAt === "number" || !onUpdateData) return;
+    const shouldBackfillRunningStart = isGeneratingVideo;
+    const shouldBackfillCompletedStart =
+      node.data?.status === "success" && Boolean(videoUrl || videoGenerationFinishedAt);
+    if (!shouldBackfillRunningStart && !shouldBackfillCompletedStart) return;
+    const now = Date.now();
+    onUpdateData(node.id, {
+      generationStartedAt: now,
+      generationFinishedAt: shouldBackfillRunningStart ? undefined : (videoGenerationFinishedAt ?? now),
+    });
+  }, [
+    isGeneratingVideo,
+    node.data?.status,
+    node.id,
+    onUpdateData,
+    videoGenerationFinishedAt,
+    videoGenerationStartedAt,
+    videoUrl,
+  ]);
+  React.useEffect(() => {
+    if (!isGeneratingVideo) return;
+    setVideoGenerationElapsedNow(Date.now());
+    const timerId = window.setInterval(() => setVideoGenerationElapsedNow(Date.now()), 1000);
+    return () => window.clearInterval(timerId);
+  }, [isGeneratingVideo]);
+  const videoGenerationElapsedLabel = getVideoGenerationElapsedLabel({
+    finishedAt: effectiveVideoGenerationFinishedAt,
+    isGenerating: isGeneratingVideo,
+    now: videoGenerationElapsedNow,
+    startedAt: videoGenerationStartedAt,
+  });
   const promptComposerVisible = shouldShowVideoPromptComposer({
     isExternalUploadSourceVideoNode: node.data?.externalUploadSource === true,
     isRunning,
@@ -608,6 +691,15 @@ function VideoNodeCardImpl({
   });
   const progressStyle = {
     "--video-progress": `${playbackProgress}%`,
+  } as React.CSSProperties;
+  const elapsedBadgeStyle = {
+    scale: promptComposerCanvasScale,
+    transformOrigin: "center",
+  } as React.CSSProperties;
+  const floatingToolbarStyle = {
+    "--media-node-toolbar-gap": `${getMediaNodeFloatingToolbarGap(canvasZoom)}px`,
+    scale: floatingCanvasUiScale,
+    transformOrigin: "bottom center",
   } as React.CSSProperties;
 
   React.useEffect(() => {
@@ -1798,7 +1890,7 @@ function VideoNodeCardImpl({
                 exit={{ opacity: 0, y: 8 }}
                 transition={{ duration: 0.16, ease: "easeOut" }}
                 className={mediaNodeFloatingToolbarClass}
-                style={{ scale: floatingCanvasUiScale, transformOrigin: "bottom center" }}
+                style={floatingToolbarStyle}
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => e.stopPropagation()}
               >
@@ -1859,7 +1951,7 @@ function VideoNodeCardImpl({
               </motion.div>
             )}
           </AnimatePresence>
-          <div className="mb-2 flex items-center justify-between gap-4 text-slate-300/82 drop-shadow-[0_1px_10px_rgba(15,23,42,0.9)]">
+          <div className="relative mb-2 flex items-center justify-between gap-4 text-slate-300/82 drop-shadow-[0_1px_10px_rgba(15,23,42,0.9)]">
             {!detachedCanvasTitle && (
               <div className="flex min-w-0 items-center gap-1.5">
                 <Video className="h-4 w-4 shrink-0 text-slate-300/72" />
@@ -1874,6 +1966,15 @@ function VideoNodeCardImpl({
                   )}
                 </span>
               </div>
+            )}
+            {videoGenerationElapsedLabel && !detachedCanvasTitle && (
+              <span
+                data-video-generation-elapsed-badge="true"
+                className="absolute left-1/2 top-0 z-30 -translate-x-1/2 rounded-full border border-cyan-200/16 bg-cyan-300/[0.08] px-3 py-0.5 text-[15px] font-medium tracking-tight text-cyan-50/90 shadow-[0_10px_24px_-18px_rgba(34,211,238,0.8),inset_0_1px_0_rgba(255,255,255,0.08)]"
+                style={elapsedBadgeStyle}
+              >
+                {videoGenerationElapsedLabel}
+              </span>
             )}
             {!detachedCanvasTitle && (
               <span className="shrink-0 text-[12px] font-medium tabular-nums text-slate-400/72">
@@ -2133,6 +2234,15 @@ function VideoNodeCardImpl({
               )}
             </span>
           </div>
+        )}
+        {videoGenerationElapsedLabel && !detachedCanvasTitle && (
+          <span
+            data-video-generation-elapsed-badge="true"
+            className="absolute -top-8 left-1/2 z-30 -translate-x-1/2 rounded-full border border-cyan-200/16 bg-cyan-300/[0.08] px-3 py-0.5 text-[15px] font-medium tracking-tight text-cyan-50/90 shadow-[0_10px_24px_-18px_rgba(34,211,238,0.8),inset_0_1px_0_rgba(255,255,255,0.08)]"
+            style={elapsedBadgeStyle}
+          >
+            {videoGenerationElapsedLabel}
+          </span>
         )}
         <div className="relative px-5 pb-5 pt-8">
           {isRunning || isUploadingAsset ? (

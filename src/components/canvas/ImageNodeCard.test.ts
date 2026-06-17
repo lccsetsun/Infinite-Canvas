@@ -244,9 +244,53 @@ describe("ImageNodeCard prompt composer fullscreen editor", () => {
     expect(source).toContain('url.startsWith("data:image/svg+xml")');
     expect(source).toContain("batchReplacementResultColumnCount");
     expect(source).toContain("Math.min(resolvedImageUrls.length || 1, frameGridColumns)");
+    expect(source).toContain("const isBatchReplacementResultLoading");
+    expect(source).toContain("if (!isBatchReplacementResultLoading)");
+    expect(source).toContain("url !== BATCH_REPLACEMENT_FRAME_PLACEHOLDER");
     expect(source).not.toContain("Math.min(5, resolvedImageUrls.length || 1)");
     expect(source).toContain("maxColumns: isBatchReplacementResultNode");
     expect(source).toContain("gridTemplateColumns: `repeat(${batchReplacementResultColumnCount}");
+  });
+
+  it("shows a clear completed-empty state for successful batch replacement runs with no resultList items", () => {
+    const source = readFileSync(new URL("./ImageNodeCard.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain("const isEmptyBatchReplacementSuccess");
+    expect(source).toContain("const batchReplacementVisibleFrameCount");
+    expect(source).toContain("生成完成，未返回图片");
+    expect(source).not.toContain("resultList 为空");
+    expect(source).toContain("imagePreviewContent =");
+    expect(source).toContain("imageUrl || isEmptyBatchReplacementSuccess");
+    expect(source).toContain("const batchReplacementEmptySuccessFrameSize");
+    const emptySuccessSizeSource = source.slice(
+      source.indexOf("const batchReplacementEmptySuccessFrameSize"),
+      source.indexOf("const mediaFrameSize")
+    );
+    expect(emptySuccessSizeSource.indexOf("node.data?.imageNodeWidth")).toBeLessThan(
+      emptySuccessSizeSource.indexOf("node.data?.imageDisplayWidth")
+    );
+    expect(source).toContain(
+      "const batchReplacementVisibleFrameCount = isEmptyBatchReplacementSuccess"
+    );
+    expect(source).toContain("isImageLoaded: isEmptyBatchReplacementSuccess ? false");
+    expect(source).toContain("const mediaFrameSize = isEmptyBatchReplacementSuccess");
+    expect(source).toContain("hasImageUrl: Boolean(imageUrl || isEmptyBatchReplacementSuccess)");
+    expect(source).toContain("!isEmptyBatchReplacementSuccess");
+    expect(source).toContain("shouldShowUploadButton &&");
+  });
+
+  it("shows batch replacement elapsed time centered above result nodes from 0s", () => {
+    const source = readFileSync(new URL("./ImageNodeCard.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain("const seconds = Math.floor(safeElapsedMs / 1000)");
+    expect(source).toContain('data-batch-replacement-elapsed-badge="true"');
+    expect(source).toContain("absolute left-1/2 top-0");
+    expect(source).toContain("batchReplacementStartedAt: now");
+    expect(source).toContain("formatBatchReplacementElapsedTime(0)");
+    expect(source).toContain("const elapsedBadgeStyle");
+    expect(source).toContain("scale: promptComposerCanvasScale");
+    expect(source).toContain("text-[15px] font-medium");
+    expect(source).not.toContain("shrink-0 rounded-full border border-cyan-200/16");
   });
 
   it("gives completed batch replacement result cells the same extract, download, and drag affordances as frame cells", () => {

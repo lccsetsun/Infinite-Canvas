@@ -4,6 +4,7 @@ import {
   fitVideoSize,
   getVideoControlDisplayTime,
   getVideoDurationSliderPercent,
+  getVideoGenerationElapsedLabel,
   getVideoFrameCaptureTime,
   getVideoFrameCaptureSourceUrl,
   getVideoNodePortTopStyle,
@@ -356,6 +357,38 @@ describe("shouldShowVideoPromptComposer", () => {
 });
 
 describe("VideoNodeCard preview branch", () => {
+  it("shows video generation elapsed time centered above running and completed nodes", () => {
+    expect(
+      getVideoGenerationElapsedLabel({
+        finishedAt: undefined,
+        isGenerating: true,
+        now: 1_400,
+        startedAt: 1_000,
+      })
+    ).toBe("0s");
+    expect(
+      getVideoGenerationElapsedLabel({
+        finishedAt: 66_000,
+        isGenerating: false,
+        now: 99_000,
+        startedAt: 1_000,
+      })
+    ).toBe("1m");
+
+    const source = readFileSync(new URL("./VideoNodeCard.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain("generationStartedAt");
+    expect(source).toContain("generationFinishedAt");
+    expect(source).toContain('data-video-generation-elapsed-badge="true"');
+    expect(source).toContain("absolute -top-8 left-1/2");
+    expect(source).toContain("formatVideoGenerationElapsedTime(0)");
+    expect(source).toContain("getMediaNodeFloatingToolbarGap(canvasZoom)");
+    expect(source).toContain('"--media-node-toolbar-gap"');
+    expect(source).toContain("const elapsedBadgeStyle");
+    expect(source).toContain("scale: promptComposerCanvasScale");
+    expect(source).toContain("text-[15px] font-medium");
+  });
+
   it("renders the prompt composer for completed video nodes as well as empty video nodes", () => {
     const source = readFileSync(new URL("./VideoNodeCard.tsx", import.meta.url), "utf8");
 

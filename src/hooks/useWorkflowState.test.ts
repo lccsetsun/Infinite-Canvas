@@ -769,6 +769,8 @@ describe("applyRemoteVideoTaskResultSnapshot", () => {
       status: "loading",
       remoteVideoTaskId: "remote-video-task-1",
       remoteVideoTaskStatus: "pending",
+      generationStartedAt: expect.any(Number),
+      generationFinishedAt: undefined,
     });
     expect(nextNodes[0].properties.status).toBe("loading");
   });
@@ -803,6 +805,7 @@ describe("applyRemoteVideoTaskResultSnapshot", () => {
       status: "success",
       remoteVideoTaskId: "remote-video-task-1",
       remoteVideoTaskStatus: "success",
+      generationFinishedAt: expect.any(Number),
     });
     expect(result.nodeOutputs.get("video-1")?.get(0)).toBe("https://example.com/generated.mp4");
   });
@@ -1047,6 +1050,56 @@ describe("applyBatchEditImagesTaskResultSnapshot", () => {
     });
   });
 
+  it("clears loading placeholders when a successful batch replacement returns no result items", () => {
+    const batchNode = makeVideoBatchReplacementNode();
+    const frameNode: GraphNode = {
+      id: "frame-empty-success",
+      type: "image_node",
+      title: "frame analysis",
+      x: 300,
+      y: 120,
+      inputs: [{ name: "source_video", type: "VIDEO" }],
+      outputs: [{ name: "image", type: "IMAGE" }],
+      properties: {},
+      data: {
+        isFrameStrip: true,
+        frameGridColumns: 2,
+        frameGridRows: 1,
+        frameTileHeight: 180,
+        frameTileWidth: 300,
+        imageDisplayHeight: 180,
+        imageDisplayWidth: 600,
+        imageNodeHeight: 210,
+        imageNodeWidth: 600,
+        imagePortCenterY: 105,
+      },
+    };
+    let idIndex = 0;
+
+    const result = createBatchEditImagesResultRunSnapshot({
+      batchNodeId: batchNode.id,
+      frameAnalysisNodeId: frameNode.id,
+      frameCount: 2,
+      links: [],
+      makeId: (prefix) => `${prefix}-${(idIndex += 1)}`,
+      nodeOutputs: new Map(),
+      nodes: [batchNode, frameNode],
+      result: { status: "success", items: [], error: "", rawStatus: "success" },
+      runId: "empty-success-run",
+    });
+
+    const resultNode = result.nodes.find(
+      (node) => node.data?.batchReplacementRunId === "empty-success-run"
+    );
+    expect(resultNode?.data).toMatchObject({
+      imageUrls: [],
+      loading: false,
+      loadingOperation: undefined,
+      status: "success",
+    });
+    expect(result.nodeOutputs.has(resultNode?.id ?? "")).toBe(false);
+  });
+
   it("normalizes stale one-column frame metadata into one horizontal result row for three visible frames", () => {
     const batchNode = makeVideoBatchReplacementNode();
     const frameNode: GraphNode = {
@@ -1165,6 +1218,58 @@ describe("applyBatchEditImagesTaskResultSnapshot", () => {
     });
   });
 
+  it("keeps group batch replacement result nodes inside the source group and expands the group", () => {
+    const batchNode: GraphNode = {
+      ...makeVideoBatchReplacementNode(),
+      x: 640,
+      y: 120,
+      groupId: "group-1",
+      data: {
+        ...makeVideoBatchReplacementNode().data,
+        groupBatchReplacementSourceNodeIds: ["group-image-1", "group-image-2"],
+        groupBatchReplacementSourceOssIds: ["oss-1", "oss-2"],
+      },
+    };
+    const firstGroupImage: GraphNode = {
+      id: "group-image-1",
+      type: "image_node",
+      title: "图片 1",
+      x: 120,
+      y: 120,
+      groupId: "group-1",
+      inputs: [],
+      outputs: [{ name: "image", type: "IMAGE" }],
+      properties: {},
+      data: {
+        imageDisplayHeight: 391,
+        imageDisplayWidth: 220,
+        imageNodeHeight: 421,
+        imageNodeWidth: 220,
+        imagePortCenterY: 210,
+      },
+    };
+    let idIndex = 0;
+
+    const result = createBatchEditImagesResultRunSnapshot({
+      batchNodeId: batchNode.id,
+      frameAnalysisNodeId: firstGroupImage.id,
+      frameCount: 2,
+      groups: [{ id: "group-1", title: "分组1", x: 76, y: 76, width: 1388, height: 520 }],
+      links: [],
+      makeId: (prefix) => `${prefix}-${(idIndex += 1)}`,
+      nodeOutputs: new Map(),
+      nodes: [firstGroupImage, batchNode],
+      runId: "group-result-run",
+    });
+
+    const resultNode = result.nodes.find(
+      (node) => node.data?.batchReplacementRunId === "group-result-run"
+    );
+    expect(resultNode?.groupId).toBe("group-1");
+    expect(result.groups.find((group) => group.id === "group-1")?.width).toBeGreaterThan(1388);
+    expect(result.groups.find((group) => group.id === "group-1")?.x).toBe(76);
+  });
+
   it("keeps previous batch replacement results and appends the new loading grid below", () => {
     const batchNode = makeVideoBatchReplacementNode();
     const frameNode: GraphNode = {
@@ -1243,7 +1348,9 @@ describe("applyBatchEditImagesTaskResultSnapshot", () => {
       (node) => node.data?.batchReplacementSourceNodeId === batchNode.id
     );
     expect(resultNodes).toHaveLength(2);
-    const newResultNode = resultNodes.find((node) => node.data?.batchReplacementRunId === "new-run");
+    const newResultNode = resultNodes.find(
+      (node) => node.data?.batchReplacementRunId === "new-run"
+    );
     expect(newResultNode?.title).toMatch(/2$/);
     expect(newResultNode?.y).toBeGreaterThan(staleResultNode.y);
     expect(newResultNode?.data?.imageUrls).toEqual([

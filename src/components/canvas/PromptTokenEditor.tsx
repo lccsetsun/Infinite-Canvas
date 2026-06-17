@@ -46,8 +46,10 @@ function renderTokenHtml(resource: MentionResource, index: number, mentionText: 
     resource.kind === "image"
       ? `<img src="${escapeHtml(resource.value)}" alt="" draggable="false" class="h-7 w-7 rounded-[8px] object-cover shadow-[0_8px_18px_-12px_rgba(0,0,0,0.9)]" />`
       : `<span class="flex h-7 w-7 items-center justify-center rounded-[8px] border border-white/8 bg-white/[0.04] text-violet-100/78">${getTokenIconSvg(resource.kind)}</span>`;
+  const selectedOverlay =
+    '<span data-token-selection-overlay="true" class="pointer-events-none absolute inset-0 rounded-[8px] bg-cyan-300/0 transition-colors group-data-[selected=true]/token:bg-cyan-300/32"></span>';
 
-  return `<span contenteditable="false" data-mention-text="${escapeHtml(mentionText)}" class="relative mx-1 inline-flex h-7 w-7 select-none align-middle">${body}${badge}</span>`;
+  return `<span contenteditable="false" data-mention-text="${escapeHtml(mentionText)}" data-selected="false" class="prompt-token-mention group/token relative mx-1 inline-flex h-7 w-7 align-middle data-[selected=true]:shadow-[0_0_0_2px_rgba(103,232,249,0.44)]">${body}${selectedOverlay}${badge}</span>`;
 }
 
 function buildEditorHtml(value: string, resources: MentionResource[]) {
@@ -58,6 +60,10 @@ function buildEditorHtml(value: string, resources: MentionResource[]) {
         : escapeHtml(part.text).replace(/\n/g, "<br>")
     )
     .join("");
+}
+
+export function getPromptTokenEditorPasteHtml(value: string, resources: MentionResource[]) {
+  return buildEditorHtml(value, resources);
 }
 
 function serializeEditorNode(node: Node): string {
@@ -85,6 +91,37 @@ function getCaretTextOffset(root: HTMLElement) {
 
 function serializeEditor(root: HTMLElement) {
   return Array.from(root.childNodes).map(serializeEditorNode).join("");
+}
+
+function setMentionTokenSelectionState(root: HTMLElement) {
+  const selection = window.getSelection();
+  const hasActiveRange =
+    Boolean(selection) &&
+    selection!.rangeCount > 0 &&
+    !selection!.isCollapsed &&
+    selection!.getRangeAt(0).intersectsNode(root);
+  const range = hasActiveRange ? selection!.getRangeAt(0) : null;
+
+  root.querySelectorAll<HTMLElement>("[data-mention-text]").forEach((token) => {
+    token.dataset.selected = range?.intersectsNode(token) ? "true" : "false";
+  });
+}
+
+function insertFragmentAtSelection(root: HTMLElement, fragment: DocumentFragment) {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) return false;
+  const range = selection.getRangeAt(0);
+  if (!root.contains(range.startContainer)) return false;
+  const lastNode = fragment.lastChild;
+  range.deleteContents();
+  range.insertNode(fragment);
+  if (lastNode) {
+    range.setStartAfter(lastNode);
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }
+  return true;
 }
 
 export function getPromptTokenEditorResourceSignature(resources: readonly MentionResource[]) {
@@ -234,6 +271,17 @@ function PromptTokenEditorImpl<T extends MentionResource>(
     setEmpty(value.length === 0);
   }, [resources, value]);
 
+  React.useEffect(() => {
+    const handleSelectionChange = () => {
+      const editor = editorRef.current;
+      if (!editor) return;
+      setMentionTokenSelectionState(editor);
+    };
+
+    document.addEventListener("selectionchange", handleSelectionChange);
+    return () => document.removeEventListener("selectionchange", handleSelectionChange);
+  }, []);
+
   const syncValue = React.useCallback(() => {
     const editor = editorRef.current;
     if (!editor) return;
@@ -267,6 +315,25 @@ function PromptTokenEditorImpl<T extends MentionResource>(
         onInput={syncValue}
         onFocus={syncValue}
         onBlur={onBlur}
+        onMouseUp={() => {
+          const editor = editorRef.current;
+          if (editor) setMentionTokenSelectionState(editor);
+        }}
+        onKeyUp={() => {
+          const editor = editorRef.current;
+          if (editor) setMentionTokenSelectionState(editor);
+        }}
+        onCopy={(event) => {
+          const editor = editorRef.current;
+          const selection = window.getSelection();
+          if (!editor || !selection || selection.rangeCount === 0) return;
+          const range = selection.getRangeAt(0);
+          if (!editor.contains(range.commonAncestorContainer)) return;
+          const copiedText = serializeEditorNode(range.cloneContents());
+          if (!copiedText) return;
+          event.preventDefault();
+          event.clipboardData.setData("text/plain", copiedText);
+        }}
         onKeyDown={(event) => {
           if (event.key === "Escape") {
             setMentionMenuOpen(false);
@@ -276,7 +343,14 @@ function PromptTokenEditorImpl<T extends MentionResource>(
         onPaste={(event) => {
           event.preventDefault();
           const text = event.clipboardData.getData("text/plain");
-          document.execCommand("insertText", false, text);
+          const editor = editorRef.current;
+          if (!editor) return;
+          const template = document.createElement("template");
+          template.innerHTML = getPromptTokenEditorPasteHtml(text, resources);
+          if (!insertFragmentAtSelection(editor, template.content)) {
+            document.execCommand("insertText", false, text);
+          }
+          syncValue();
         }}
         onWheel={(event) => event.stopPropagation()}
       />

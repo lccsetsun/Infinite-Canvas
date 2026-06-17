@@ -195,7 +195,7 @@ export function canSubmitVideoBatchReplacement(
 
 export function formatVideoBatchReplacementElapsedTime(elapsedMs: number): string {
   const safeElapsedMs = Math.max(0, elapsedMs);
-  const seconds = Math.max(1, Math.floor(safeElapsedMs / 1000));
+  const seconds = Math.floor(safeElapsedMs / 1000);
   if (seconds < 60) return `${seconds}s`;
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `${minutes}m`;
@@ -281,6 +281,10 @@ export default function VideoBatchReplacementNodeCard({
   const selectedResolution = getVideoBatchReplacementResolution(node);
   const selectedAspectRatio = getVideoBatchReplacementAspectRatio(node);
   const customSize = getVideoBatchReplacementCustomSize(node, resolutionPresetGroups);
+  const promptAppend =
+    typeof node.data?.batchReplacementPromptAppend === "string"
+      ? node.data.batchReplacementPromptAppend
+      : "";
   const imageModelOptions = apiConfig?.remoteModelsByType?.[AI_MODEL_TYPES[1]] ?? [];
   const isSubmitting =
     node.data?.loading === true && node.data.loadingOperation === "batch-replacement";
@@ -518,7 +522,7 @@ export default function VideoBatchReplacementNodeCard({
 
   return (
     <div
-      className="node-card relative w-[520px] cursor-grab rounded-[8px] border border-slate-500/20 bg-[#111722]/94 p-4 text-left shadow-[0_28px_70px_-30px_rgba(0,0,0,0.92),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-xl active:cursor-grabbing"
+      className="node-card relative w-[760px] cursor-grab rounded-[8px] border border-slate-500/20 bg-[#111722]/94 p-4 text-left shadow-[0_28px_70px_-30px_rgba(0,0,0,0.92),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-xl active:cursor-grabbing"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       onPointerDown={(event) => {
@@ -553,151 +557,153 @@ export default function VideoBatchReplacementNodeCard({
         aria-disabled={controlsDisabled}
         className={controlsDisabled ? "pointer-events-none opacity-60" : undefined}
       >
-        <div
-          ref={modeMenuRef}
-          className="relative mb-3 flex h-9 w-full items-center rounded-[7px] border border-slate-500/18 bg-slate-950/28 px-3 text-[12px] font-semibold text-slate-200 transition"
-          data-node-action="true"
-        >
-          <button
-            type="button"
-            disabled={controlsDisabled}
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={(event) => {
-              event.stopPropagation();
-              if (controlsDisabled) return;
-              const rect = modeMenuRef.current?.getBoundingClientRect();
-              if (rect) {
-                setModeMenuPosition(
-                  getFloatingMenuPosition({
-                    anchorRect: rect,
-                    viewportHeight: window.innerHeight,
-                    viewportWidth: window.innerWidth,
-                  })
-                );
-              }
-              setModelMenuOpen(false);
-              setModeMenuOpen((open) => !open);
-            }}
-            className="flex h-full min-w-0 flex-1 cursor-pointer items-center justify-between gap-2 bg-transparent text-left text-[12px] font-semibold text-inherit outline-none disabled:cursor-not-allowed"
+        <div className="batch-replacement-control-row mb-3 grid grid-cols-[minmax(150px,0.8fr)_minmax(210px,1fr)_minmax(260px,1.2fr)] gap-3">
+          <div
+            ref={modeMenuRef}
+            className="relative flex h-9 w-full items-center rounded-[7px] border border-slate-500/18 bg-slate-950/28 px-3 text-[12px] font-semibold text-slate-200 transition"
+            data-node-action="true"
           >
-            <span className="min-w-0 flex-1 truncate">
-              {getVideoBatchReplacementModeLabel(replacementMode, modeOptions)}
-            </span>
-            <ChevronDown
-              className={`h-3.5 w-3.5 shrink-0 text-slate-300/56 transition-transform ${
-                modeMenuOpen ? "rotate-180" : ""
-              }`}
-            />
-          </button>
-        </div>
-        {typeof document !== "undefined" &&
-          createPortal(
-            <AnimatePresence>
-              {modeMenuOpen && modeMenuPosition && (
-                <motion.div
-                  ref={modeMenuPortalRef}
-                  initial={{
-                    opacity: 0,
-                    y: modeMenuPosition.placement === "bottom" ? 8 : -8,
-                    scale: 0.98,
-                  }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{
-                    opacity: 0,
-                    y: modeMenuPosition.placement === "bottom" ? 8 : -8,
-                    scale: 0.98,
-                  }}
-                  transition={{ duration: 0.16, ease: "easeOut" }}
-                  className="fixed z-[240] overflow-y-auto rounded-2xl border border-slate-400/16 bg-[#121923]/96 p-1.5 shadow-[0_28px_70px_-28px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl custom-scrollbar"
-                  style={{
-                    left: modeMenuPosition.left,
-                    maxHeight: modeMenuPosition.maxHeight,
-                    top: modeMenuPosition.top,
-                    bottom: modeMenuPosition.bottom,
-                    width: modeMenuPosition.width,
-                  }}
-                  onPointerDown={(event) => event.stopPropagation()}
-                  onClick={(event) => event.stopPropagation()}
-                  onWheel={(event) => event.stopPropagation()}
-                >
-                  {modeOptions.map((option) => {
-                    const isActive = replacementMode === option.value;
-                    return (
-                      <button
-                        key={option.value}
-                        type="button"
-                        onClick={() => writeModePatch(option.value)}
-                        className={`flex h-9 w-full items-center gap-2 rounded-xl px-3 text-left text-[13px] font-medium transition-colors ${
-                          isActive
-                            ? "bg-violet-500/[0.16] text-violet-50"
-                            : "text-slate-200/82 hover:bg-white/[0.05] hover:text-white"
-                        }`}
-                      >
-                        <span className="min-w-0 flex-1 truncate">{option.label}</span>
-                      </button>
-                    );
-                  })}
-                </motion.div>
-              )}
-            </AnimatePresence>,
-            document.body
-          )}
+            <button
+              type="button"
+              disabled={controlsDisabled}
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation();
+                if (controlsDisabled) return;
+                const rect = modeMenuRef.current?.getBoundingClientRect();
+                if (rect) {
+                  setModeMenuPosition(
+                    getFloatingMenuPosition({
+                      anchorRect: rect,
+                      viewportHeight: window.innerHeight,
+                      viewportWidth: window.innerWidth,
+                    })
+                  );
+                }
+                setModelMenuOpen(false);
+                setModeMenuOpen((open) => !open);
+              }}
+              className="flex h-full min-w-0 flex-1 cursor-pointer items-center justify-between gap-2 bg-transparent text-left text-[12px] font-semibold text-inherit outline-none disabled:cursor-not-allowed"
+            >
+              <span className="min-w-0 flex-1 truncate">
+                {getVideoBatchReplacementModeLabel(replacementMode, modeOptions)}
+              </span>
+              <ChevronDown
+                className={`h-3.5 w-3.5 shrink-0 text-slate-300/56 transition-transform ${
+                  modeMenuOpen ? "rotate-180" : ""
+                }`}
+              />
+            </button>
+          </div>
+          {typeof document !== "undefined" &&
+            createPortal(
+              <AnimatePresence>
+                {modeMenuOpen && modeMenuPosition && (
+                  <motion.div
+                    ref={modeMenuPortalRef}
+                    initial={{
+                      opacity: 0,
+                      y: modeMenuPosition.placement === "bottom" ? 8 : -8,
+                      scale: 0.98,
+                    }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{
+                      opacity: 0,
+                      y: modeMenuPosition.placement === "bottom" ? 8 : -8,
+                      scale: 0.98,
+                    }}
+                    transition={{ duration: 0.16, ease: "easeOut" }}
+                    className="fixed z-[240] overflow-y-auto rounded-2xl border border-slate-400/16 bg-[#121923]/96 p-1.5 shadow-[0_28px_70px_-28px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-2xl custom-scrollbar"
+                    style={{
+                      left: modeMenuPosition.left,
+                      maxHeight: modeMenuPosition.maxHeight,
+                      top: modeMenuPosition.top,
+                      bottom: modeMenuPosition.bottom,
+                      width: modeMenuPosition.width,
+                    }}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => event.stopPropagation()}
+                    onWheel={(event) => event.stopPropagation()}
+                  >
+                    {modeOptions.map((option) => {
+                      const isActive = replacementMode === option.value;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => writeModePatch(option.value)}
+                          className={`flex h-9 w-full items-center gap-2 rounded-xl px-3 text-left text-[13px] font-medium transition-colors ${
+                            isActive
+                              ? "bg-violet-500/[0.16] text-violet-50"
+                              : "text-slate-200/82 hover:bg-white/[0.05] hover:text-white"
+                          }`}
+                        >
+                          <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                        </button>
+                      );
+                    })}
+                  </motion.div>
+                )}
+              </AnimatePresence>,
+              document.body
+            )}
 
-        <ImageResolutionPicker
-          resolution={selectedResolution}
-          aspectRatio={selectedAspectRatio}
-          onChange={writeSizePatch}
-          disabled={controlsDisabled}
-          buttonClassName={`mb-3 flex h-9 w-full items-center gap-2 rounded-[7px] border px-3 text-[12px] font-semibold transition ${
-            customSize
-              ? "border-slate-500/22 bg-slate-950/26 text-slate-200 hover:border-cyan-200/36 hover:text-cyan-50"
-              : "border-amber-300/32 bg-amber-400/[0.08] text-amber-100"
-          }`}
-          panelTitle="Image Size"
-          presetGroups={resolutionPresetGroups}
-        />
-
-        <div
-          ref={modelMenuRef}
-          className={`relative mb-3 flex h-9 w-full items-center gap-2 rounded-[7px] border px-3 text-[12px] font-semibold transition ${
-            selectedModelId
-              ? "border-slate-500/22 bg-slate-950/26 text-slate-200"
-              : "border-amber-300/32 bg-amber-400/[0.08] text-amber-100"
-          }`}
-          data-node-action="true"
-        >
-          <Wand2 className="h-3.5 w-3.5 shrink-0 text-violet-200/58" />
-          <button
-            type="button"
+          <ImageResolutionPicker
+            resolution={selectedResolution}
+            aspectRatio={selectedAspectRatio}
+            onChange={writeSizePatch}
             disabled={controlsDisabled}
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={(event) => {
-              event.stopPropagation();
-              if (controlsDisabled) return;
-              const rect = modelMenuRef.current?.getBoundingClientRect();
-              if (rect) {
-                setModelMenuPosition(
-                  getFloatingMenuPosition({
-                    anchorRect: rect,
-                    viewportHeight: window.innerHeight,
-                    viewportWidth: window.innerWidth,
-                  })
-                );
-              }
-              setModeMenuOpen(false);
-              setModelMenuOpen((open) => !open);
-            }}
-            className="flex h-full min-w-0 flex-1 cursor-pointer items-center justify-between gap-2 bg-transparent text-left text-[12px] font-semibold text-inherit outline-none disabled:cursor-not-allowed"
+            buttonClassName={`flex h-9 w-full items-center gap-2 rounded-[7px] border px-3 text-[12px] font-semibold transition ${
+              customSize
+                ? "border-slate-500/22 bg-slate-950/26 text-slate-200 hover:border-cyan-200/36 hover:text-cyan-50"
+                : "border-amber-300/32 bg-amber-400/[0.08] text-amber-100"
+            }`}
+            panelTitle="Image Size"
+            presetGroups={resolutionPresetGroups}
+          />
+
+          <div
+            ref={modelMenuRef}
+            className={`relative flex h-9 w-full items-center gap-2 rounded-[7px] border px-3 text-[12px] font-semibold transition ${
+              selectedModelId
+                ? "border-slate-500/22 bg-slate-950/26 text-slate-200"
+                : "border-amber-300/32 bg-amber-400/[0.08] text-amber-100"
+            }`}
+            data-node-action="true"
           >
-            <span className="min-w-0 flex-1 truncate">
-              {getVideoBatchReplacementModelLabel(selectedModelId)}
-            </span>
-            <ChevronDown
-              className={`h-3.5 w-3.5 shrink-0 text-slate-300/56 transition-transform ${
-                modelMenuOpen ? "rotate-180" : ""
-              }`}
-            />
-          </button>
+            <Wand2 className="h-3.5 w-3.5 shrink-0 text-violet-200/58" />
+            <button
+              type="button"
+              disabled={controlsDisabled}
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation();
+                if (controlsDisabled) return;
+                const rect = modelMenuRef.current?.getBoundingClientRect();
+                if (rect) {
+                  setModelMenuPosition(
+                    getFloatingMenuPosition({
+                      anchorRect: rect,
+                      viewportHeight: window.innerHeight,
+                      viewportWidth: window.innerWidth,
+                    })
+                  );
+                }
+                setModeMenuOpen(false);
+                setModelMenuOpen((open) => !open);
+              }}
+              className="flex h-full min-w-0 flex-1 cursor-pointer items-center justify-between gap-2 bg-transparent text-left text-[12px] font-semibold text-inherit outline-none disabled:cursor-not-allowed"
+            >
+              <span className="min-w-0 flex-1 truncate">
+                {getVideoBatchReplacementModelLabel(selectedModelId)}
+              </span>
+              <ChevronDown
+                className={`h-3.5 w-3.5 shrink-0 text-slate-300/56 transition-transform ${
+                  modelMenuOpen ? "rotate-180" : ""
+                }`}
+              />
+            </button>
+          </div>
         </div>
         {typeof document !== "undefined" &&
           createPortal(
@@ -882,6 +888,19 @@ export default function VideoBatchReplacementNodeCard({
           })}
         </div>
       </div>
+
+      <textarea
+        data-node-action="true"
+        disabled={controlsDisabled}
+        value={promptAppend}
+        placeholder="补充提示词（可选）"
+        onChange={(event) =>
+          onUpdateData?.(node.id, { batchReplacementPromptAppend: event.currentTarget.value })
+        }
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
+        className="mt-3 h-[108px] w-full resize-none overflow-y-auto rounded-[7px] border border-slate-500/20 bg-slate-950/34 px-3 py-2 text-[13px] font-medium leading-6 text-slate-100 outline-none transition placeholder:text-slate-400/56 focus:border-cyan-200/50 focus:bg-slate-950/46 disabled:cursor-not-allowed disabled:text-slate-400/60 custom-scrollbar"
+      />
 
       <button
         type="button"

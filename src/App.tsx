@@ -186,12 +186,15 @@ function findRemoteImageModelById(
 }
 
 function buildBatchReplacementPrompt(
-  slots: NonNullable<GraphNode["data"]>["batchReplacementSlots"] = []
+  slots: NonNullable<GraphNode["data"]>["batchReplacementSlots"] = [],
+  promptAppend = ""
 ) {
-  return slots
+  const basePrompt = slots
     .filter((slot) => slot.imageUrl.trim().length > 0 && normalizeOssIdValue(slot.ossId))
     .map((slot, index) => `{{ Image${index + 1}}} 是 ${slot.prompt.trim() || slot.title}`)
     .join("，");
+  const normalizedPromptAppend = promptAppend.trim();
+  return normalizedPromptAppend ? `${basePrompt} ${normalizedPromptAppend}` : basePrompt;
 }
 
 function findFirstUpstreamFrameAnalysisNode(
@@ -1233,7 +1236,7 @@ export default function App({ onLoggedOut }: AppProps) {
 
       try {
         const result = await batchEditImages({
-          prompt: buildBatchReplacementPrompt(slots),
+          prompt: buildBatchReplacementPrompt(slots, batchNode.data?.batchReplacementPromptAppend),
           productOssId,
           customSize,
           ossId: sourceOssIds,

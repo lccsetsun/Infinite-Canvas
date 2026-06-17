@@ -17,6 +17,7 @@ import {
 import { applyNodePositionUpdates, type NodePositionUpdate } from "../utils/nodePositionUpdates";
 import { buildCanvasGraphIndex, getGraphLinkKey } from "../utils/canvasGraphIndex";
 import {
+  expandGroupBoundsToIncludeNodes,
   getGroupBoundsForNodes,
   getNextGroupTitle,
   syncNodeGroupMembership,
@@ -80,7 +81,7 @@ const TRASH_PURGE_INTERVAL_MS = 60 * 60 * 1000;
 const REMOTE_VIDEO_POLL_INTERVAL_MS = 10_000;
 const VIDEO_BATCH_REPLACEMENT_RESULT_GAP_X = 160;
 const VIDEO_BATCH_REPLACEMENT_RESULT_GAP_Y = 96;
-const VIDEO_BATCH_REPLACEMENT_NODE_WIDTH = 520;
+const VIDEO_BATCH_REPLACEMENT_NODE_WIDTH = 760;
 const DEFAULT_BATCH_RESULT_TILE_WIDTH = 220;
 const DEFAULT_BATCH_RESULT_TILE_HEIGHT = 391;
 const DEFAULT_BATCH_RESULT_COLUMNS = 5;
@@ -501,8 +502,8 @@ function getBatchReplacementResultLayout(
   const columns = isGroupBatchReplacement
     ? Math.max(1, frameCount)
     : shouldNormalizeStaleSingleColumn
-    ? Math.max(1, Math.min(frameCount, DEFAULT_BATCH_RESULT_COLUMNS))
-    : Math.max(1, Math.min(frameCount, sourceColumns));
+      ? Math.max(1, Math.min(frameCount, DEFAULT_BATCH_RESULT_COLUMNS))
+      : Math.max(1, Math.min(frameCount, sourceColumns));
   const rows = positiveRoundedNumber(
     frameAnalysisNode.data?.frameGridRows,
     Math.max(1, Math.ceil(frameCount / columns))
@@ -510,8 +511,8 @@ function getBatchReplacementResultLayout(
   const normalizedRows = isGroupBatchReplacement
     ? 1
     : shouldNormalizeStaleSingleColumn
-    ? Math.max(1, Math.ceil(frameCount / columns))
-    : rows;
+      ? Math.max(1, Math.ceil(frameCount / columns))
+      : rows;
   const sourceDisplayWidth = positiveRoundedNumber(frameAnalysisNode.data?.imageDisplayWidth, 0);
   const sourceDisplayHeight = positiveRoundedNumber(frameAnalysisNode.data?.imageDisplayHeight, 0);
   const tileWidth = positiveRoundedNumber(
@@ -529,20 +530,21 @@ function getBatchReplacementResultLayout(
   const displayWidth = isGroupBatchReplacement
     ? columns * tileWidth
     : shouldNormalizeStaleSingleColumn
-    ? columns * tileWidth
-    : sourceDisplayWidth > 0
-      ? sourceDisplayWidth
-      : columns * tileWidth;
+      ? columns * tileWidth
+      : sourceDisplayWidth > 0
+        ? sourceDisplayWidth
+        : columns * tileWidth;
   const displayHeight = isGroupBatchReplacement
     ? normalizedRows * tileHeight
     : shouldNormalizeStaleSingleColumn
-    ? normalizedRows * tileHeight
-    : sourceDisplayHeight > 0
-      ? sourceDisplayHeight
-      : normalizedRows * tileHeight;
-  const nodeWidth = isGroupBatchReplacement || shouldNormalizeStaleSingleColumn
-    ? displayWidth
-    : positiveRoundedNumber(frameAnalysisNode.data?.imageNodeWidth, displayWidth);
+      ? normalizedRows * tileHeight
+      : sourceDisplayHeight > 0
+        ? sourceDisplayHeight
+        : normalizedRows * tileHeight;
+  const nodeWidth =
+    isGroupBatchReplacement || shouldNormalizeStaleSingleColumn
+      ? displayWidth
+      : positiveRoundedNumber(frameAnalysisNode.data?.imageNodeWidth, displayWidth);
   const nodeHeight = shouldNormalizeStaleSingleColumn
     ? displayHeight + 30
     : positiveRoundedNumber(frameAnalysisNode.data?.imageNodeHeight, displayHeight + 30);
@@ -550,8 +552,7 @@ function getBatchReplacementResultLayout(
     ? nodeHeight / 2
     : positiveRoundedNumber(frameAnalysisNode.data?.imagePortCenterY, nodeHeight / 2);
   const existingResultNodes = nodes.filter(
-    (node) =>
-      node.type === "image_node" && node.data?.batchReplacementSourceNodeId === batchNode.id
+    (node) => node.type === "image_node" && node.data?.batchReplacementSourceNodeId === batchNode.id
   );
   const baseY =
     existingResultNodes.length > 0
@@ -567,8 +568,7 @@ function getBatchReplacementResultLayout(
     nodeWidth,
     portCenterY,
     rows: normalizedRows,
-    startX:
-      batchNode.x + getWorkflowNodeWidth(batchNode) + VIDEO_BATCH_REPLACEMENT_RESULT_GAP_X,
+    startX: batchNode.x + getWorkflowNodeWidth(batchNode) + VIDEO_BATCH_REPLACEMENT_RESULT_GAP_X,
     startY: baseY,
     tileHeight,
     tileWidth,
@@ -579,6 +579,7 @@ export function createBatchEditImagesResultRunSnapshot({
   batchNodeId,
   frameAnalysisNodeId,
   frameCount,
+  groups = [],
   links,
   makeId,
   nodeOutputs,
@@ -589,13 +590,20 @@ export function createBatchEditImagesResultRunSnapshot({
   batchNodeId: string;
   frameAnalysisNodeId: string;
   frameCount: number;
+  groups?: GroupBox[];
   links: GraphLink[];
   makeId: (prefix: string) => string;
   nodeOutputs: NodeOutputMap;
   nodes: GraphNode[];
   result?: BatchEditImagesTaskResult;
   runId: string;
-}): { createdNodeIds: string[]; links: GraphLink[]; nodeOutputs: NodeOutputMap; nodes: GraphNode[] } {
+}): {
+  createdNodeIds: string[];
+  groups: GroupBox[];
+  links: GraphLink[];
+  nodeOutputs: NodeOutputMap;
+  nodes: GraphNode[];
+} {
   const batchNode = nodes.find(
     (node) => node.id === batchNodeId && node.type === "video_batch_replacement_node"
   );
@@ -604,7 +612,7 @@ export function createBatchEditImagesResultRunSnapshot({
   );
   const count = Math.max(0, Math.trunc(frameCount));
   if (!batchNode || !frameAnalysisNode || !runId.trim() || count <= 0) {
-    return { createdNodeIds: [], links, nodeOutputs, nodes };
+    return { createdNodeIds: [], groups, links, nodeOutputs, nodes };
   }
 
   const existingRunNodes = nodes.filter(
@@ -622,6 +630,7 @@ export function createBatchEditImagesResultRunSnapshot({
       : { nodeOutputs, nodes };
     return {
       createdNodeIds: existingRunNodes.map((node) => node.id),
+      groups,
       links,
       nodeOutputs: synced.nodeOutputs,
       nodes: synced.nodes,
@@ -632,6 +641,7 @@ export function createBatchEditImagesResultRunSnapshot({
   const nextOutputs = new Map(nodeOutputs);
   const nodeId = makeId("node");
   const imageNode = createNodeFromType("image_node", nodeId, layout.startX, layout.startY);
+  imageNode.groupId = batchNode.groupId ?? null;
   const runNumber =
     nodes.filter(
       (node) =>
@@ -696,9 +706,22 @@ export function createBatchEditImagesResultRunSnapshot({
         runId,
       })
     : { nodeOutputs: nextOutputs, nodes: nextNodes };
+  const nextGroups =
+    imageNode.groupId && groups.length > 0
+      ? groups.map((group) =>
+          group.id === imageNode.groupId
+            ? expandGroupBoundsToIncludeNodes(
+                group,
+                synced.nodes.filter((node) => node.groupId === imageNode.groupId),
+                44
+              )
+            : group
+        )
+      : groups;
 
   return {
     createdNodeIds: [nodeId],
+    groups: nextGroups,
     links: nextLinks,
     nodeOutputs: synced.nodeOutputs,
     nodes: synced.nodes,
@@ -751,6 +774,7 @@ export function applyBatchEditImagesResultNodesSnapshot({
   const realUrls = urls.filter((url) => url !== BATCH_REPLACEMENT_FRAME_PLACEHOLDER);
   const primaryUrl = realUrls[0] ?? "";
   const isComplete = result.status === "success";
+  const visibleUrls = isComplete ? realUrls : urls;
   const nextOutputs = new Map(nodeOutputs);
   if (realUrls.length > 0) {
     nextOutputs.set(runNode.id, new Map([[0, realUrls.length === 1 ? realUrls[0] : realUrls]]));
@@ -780,7 +804,7 @@ export function applyBatchEditImagesResultNodesSnapshot({
         activeImageIndex: 0,
         frameImageOssIds: ossIds,
         imageUrl: primaryUrl,
-        imageUrls: urls,
+        imageUrls: visibleUrls,
         batchReplacementFinishedAt: isComplete ? Date.now() : undefined,
         loading: !isComplete,
         loadingOperation: isComplete ? undefined : ("batch-replacement" as const),
@@ -1223,6 +1247,11 @@ export function applyPendingRemoteVideoTaskSnapshot({
       },
       data: {
         ...(node.data || {}),
+        generationStartedAt:
+          typeof node.data?.generationStartedAt === "number"
+            ? node.data.generationStartedAt
+            : Date.now(),
+        generationFinishedAt: undefined,
         loading: true,
         loadingOperation: "generate",
         status: "loading",
@@ -1262,6 +1291,7 @@ export function applyRemoteVideoTaskResultSnapshot({
         data: {
           ...(node.data || {}),
           videoUrl: result.videoUrl,
+          generationFinishedAt: Date.now(),
           loading: false,
           loadingOperation: undefined,
           status: "success",
@@ -1281,6 +1311,7 @@ export function applyRemoteVideoTaskResultSnapshot({
         },
         data: {
           ...(node.data || {}),
+          generationFinishedAt: Date.now(),
           loading: false,
           loadingOperation: undefined,
           status: "error",
@@ -3032,6 +3063,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         batchNodeId,
         frameAnalysisNodeId,
         frameCount,
+        groups: currentGroupsRef.current,
         links: currentLinksRef.current,
         makeId,
         nodeOutputs: currentNodeOutputsRef.current,
@@ -3046,7 +3078,9 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       currentNodesRef.current = snapshot.nodes;
       currentLinksRef.current = snapshot.links;
       currentNodeOutputsRef.current = snapshot.nodeOutputs;
+      currentGroupsRef.current = snapshot.groups;
       markLocalRemotePersistPending({
+        groups: snapshot.groups,
         links: snapshot.links,
         nodeOutputs: snapshot.nodeOutputs,
         nodes: snapshot.nodes,
@@ -3054,11 +3088,13 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       setNodes(snapshot.nodes);
       setLinks(snapshot.links);
       setNodeOutputs(snapshot.nodeOutputs);
+      setGroups(snapshot.groups);
       syncCurrentWorkflowMeta((wf) => ({
         ...wf,
         summary: { ...wf.summary, updatedAt: Date.now() },
         data: {
           ...wf.data,
+          groups: snapshot.groups,
           links: snapshot.links,
           nodeOutputs: mapToOutputs(snapshot.nodeOutputs),
           nodes: snapshot.nodes,
@@ -3222,11 +3258,19 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         if (audioUrls.length > 0) inputs.reference_audios = audioUrls;
         if (ossIds.length > 0) inputs.reference_oss_ids = ossIds;
       }
+      const runStartedAt = Date.now();
       updateNodeData(nodeId, {
         loading: true,
         error: undefined,
         response: undefined,
         status: "loading",
+        ...(node.type === "video_node"
+          ? {
+              generationStartedAt: runStartedAt,
+              generationFinishedAt: undefined,
+              loadingOperation: "generate" as const,
+            }
+          : {}),
       });
       appendLog("info", `寮€濮嬫墽琛?[${node.title}]`);
 
@@ -3259,13 +3303,23 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
           loading: false,
           error: undefined,
           ...(result.patch || {}),
+          ...(node.type === "video_node"
+            ? { generationFinishedAt: Date.now(), loadingOperation: undefined }
+            : {}),
         };
         if (typeof result.outputs[0] === "string") patch.response = result.outputs[0];
         updateNodeData(nodeId, patch);
         appendLog("success", `[${node.title}] 瀹屾垚`);
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
-        updateNodeData(nodeId, { loading: false, error: message, status: "error" });
+        updateNodeData(nodeId, {
+          loading: false,
+          error: message,
+          status: "error",
+          ...(node.type === "video_node"
+            ? { generationFinishedAt: Date.now(), loadingOperation: undefined }
+            : {}),
+        });
         appendLog("error", `[${node.title}] 澶辫触:${message}`);
       }
     },

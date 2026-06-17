@@ -98,6 +98,7 @@ export interface GraphNode {
     batchReplacementModelId?: string;
     batchReplacementResolution?: string;
     batchReplacementAspectRatio?: string;
+    batchReplacementPromptAppend?: string;
     batchReplacementResult?: unknown;
     batchReplacementTaskId?: string;
     batchReplacementTaskStatus?: string;
@@ -118,6 +119,8 @@ export interface GraphNode {
     uploadingAsset?: boolean;
     uploadedAssetName?: string;
     externalUploadSource?: boolean;
+    generationStartedAt?: number;
+    generationFinishedAt?: number;
     loading?: boolean;
     loadingOperation?: "generate" | "frame-analysis" | "video-prompt" | "batch-replacement";
     progress?: number;
