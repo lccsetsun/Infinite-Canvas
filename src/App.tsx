@@ -460,6 +460,7 @@ export default function App({ onLoggedOut }: AppProps) {
     sources?: Array<{ fromNodeId: string; fromOutputIndex: number }>;
   } | null>(null);
   const [previewContent, setPreviewContent] = React.useState<PreviewContent | null>(null);
+  const isPreviewOpen = Boolean(previewContent);
   const [assistantPanelOpen, setAssistantPanelOpen] = React.useState(false);
   const [canvasSize, setCanvasSize] = React.useState({ width: 0, height: 0 });
   const [selectedGroupId, setSelectedGroupId] = React.useState<string | null>(null);
@@ -1667,19 +1668,21 @@ export default function App({ onLoggedOut }: AppProps) {
         data-canvas-panning={isCanvasPanning ? "true" : undefined}
         onContextMenu={handleCanvasContextMenu}
       >
-        <CanvasHeader
-          assistantPanelOpen={assistantPanelOpen}
-          projectName={remoteProject?.name}
-          onProjectRenamed={(name) => {
-            setRemoteProject((project) => (project ? { ...project, name } : project));
-            setWorkflowName(name);
-            if (currentWorkflowSummary) {
-              renameWorkflow(currentWorkflowSummary.id, name);
-            }
-          }}
-          onNotice={showNotice}
-          onLogout={handleLogout}
-        />
+        {!isPreviewOpen && (
+          <CanvasHeader
+            assistantPanelOpen={assistantPanelOpen}
+            projectName={remoteProject?.name}
+            onProjectRenamed={(name) => {
+              setRemoteProject((project) => (project ? { ...project, name } : project));
+              setWorkflowName(name);
+              if (currentWorkflowSummary) {
+                renameWorkflow(currentWorkflowSummary.id, name);
+              }
+            }}
+            onNotice={showNotice}
+            onLogout={handleLogout}
+          />
+        )}
 
         <main
           ref={canvasRef}
