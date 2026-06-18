@@ -1315,10 +1315,15 @@ export default function App({ onLoggedOut }: AppProps) {
   );
 
   const handleExtractFrameImage = React.useCallback(
-    (nodeId: string, frameIndex: number, clientPoint?: { clientX: number; clientY: number }) => {
+    (
+      nodeId: string,
+      frameIndex: number,
+      clientPoint?: { clientX: number; clientY: number },
+      frameNaturalSize?: { width: number; height: number }
+    ) => {
       const worldPoint = clientPoint ? toWorld(clientPoint.clientX, clientPoint.clientY) : null;
       const position = worldPoint ? getPointerAlignedNodePosition(worldPoint) : undefined;
-      extractFrameImageNode(nodeId, frameIndex, position);
+      extractFrameImageNode(nodeId, frameIndex, position, frameNaturalSize);
     },
     [extractFrameImageNode, toWorld]
   );

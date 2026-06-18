@@ -432,12 +432,22 @@ describe("VideoNodeCard preview branch", () => {
   it("keeps frame analysis and prompt reversal as independent auxiliary actions", () => {
     const source = readFileSync(new URL("./VideoNodeCard.tsx", import.meta.url), "utf8");
 
-    expect(source).toContain("if (!videoUrl || isAnalyzingFrames) return;");
-    expect(source).toContain("if (!videoUrl || isReversingPrompt) return;");
+    expect(source).toContain("if (!videoUrl || isAnalyzingFramesLocal");
+    expect(source).toContain("if (!videoUrl || isReversingPromptLocal");
     expect(source).toContain("disabled={isAnalyzingFrames}");
     expect(source).toContain("disabled={isReversingPrompt}");
-    expect(source).not.toContain('loadingOperation: "frame-analysis"');
-    expect(source).not.toContain('loadingOperation: "video-prompt"');
+    expect(source).toContain('loadingOperation: "frame-analysis"');
+    expect(source).toContain('loadingOperation: "video-prompt"');
+  });
+
+  it("resumes pending frame analysis and prompt reversal after refresh", () => {
+    const source = readFileSync(new URL("./VideoNodeCard.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain("resumedAuxiliaryOperationKeyRef");
+    expect(source).toContain('loadingOperation === "frame-analysis"');
+    expect(source).toContain('loadingOperation === "video-prompt"');
+    expect(source).toContain("void analyzeFrames({ resuming: true })");
+    expect(source).toContain("void reverseVideoPrompt({ resuming: true })");
   });
 
   it("keeps batch replacement out of the source video toolbar", () => {

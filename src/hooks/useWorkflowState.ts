@@ -65,6 +65,7 @@ import type { BatchEditImagesTaskResult } from "../features/api/videoBatchReplac
 import { queryBatchEditImagesTask } from "../features/api/videoBatchReplacement";
 import {
   REMOTE_FULL_SNAPSHOT_MIN_INTERVAL_MS,
+  isDuplicateRemotePersistError,
   shouldDeferRemoteSnapshotForInFlight,
   shouldPersistRemoteSnapshot,
   type RemoteDirtyKind,
@@ -1193,11 +1194,69 @@ export function isPendingBatchEditImagesNode(node: GraphNode): boolean {
   );
 }
 
+export function isPendingBatchEditImagesResultNode(node: GraphNode): boolean {
+  const data = node.data || {};
+  return (
+    node.type === "image_node" &&
+    typeof data.batchReplacementRunId === "string" &&
+    data.batchReplacementRunId.trim().length > 0 &&
+    typeof data.batchReplacementSourceNodeId === "string" &&
+    data.batchReplacementSourceNodeId.trim().length > 0 &&
+    typeof data.batchReplacementResultCount === "number" &&
+    data.batchReplacementResultCount > 0 &&
+    data.loading === true &&
+    data.loadingOperation === "batch-replacement" &&
+    data.status !== "success" &&
+    data.status !== "error"
+  );
+}
+
+export function isPendingVideoAuxiliaryNode(node: GraphNode): boolean {
+  const data = node.data || {};
+  const videoUrl =
+    (typeof data.videoUrl === "string" && data.videoUrl.trim()) ||
+    (typeof node.properties.videoUrl === "string" && node.properties.videoUrl.trim());
+  return (
+    node.type === "video_node" &&
+    Boolean(videoUrl) &&
+    data.loading === true &&
+    (data.loadingOperation === "frame-analysis" || data.loadingOperation === "video-prompt") &&
+    data.status !== "success" &&
+    data.status !== "error"
+  );
+}
+
+export function isPersistablePendingRuntimeNode(node: GraphNode): boolean {
+  return (
+    isPendingRemoteVideoNode(node) ||
+    isPendingBatchEditImagesNode(node) ||
+    isPendingBatchEditImagesResultNode(node) ||
+    isPendingVideoAuxiliaryNode(node)
+  );
+}
+
+export function collectPendingBatchEditImagesPollTargets(nodes: GraphNode[]) {
+  const targets = new Map<string, { batchNodeId: string; taskId: string }>();
+  nodes.forEach((node) => {
+    if (!isPendingBatchEditImagesNode(node)) return;
+    const taskId = node.data?.batchReplacementTaskId?.trim();
+    if (!taskId) return;
+    targets.set(`${node.id}:${taskId}`, { batchNodeId: node.id, taskId });
+  });
+  nodes.forEach((node) => {
+    if (!isPendingBatchEditImagesResultNode(node)) return;
+    const batchNodeId = node.data?.batchReplacementSourceNodeId?.trim();
+    const taskId = node.data?.batchReplacementRunId?.trim();
+    if (!batchNodeId || !taskId) return;
+    targets.set(`${batchNodeId}:${taskId}`, { batchNodeId, taskId });
+  });
+  return Array.from(targets.values());
+}
+
 export function sanitizeNodeRuntimeState(node: GraphNode): GraphNode {
   const data = node.data || {};
   if (!hasNodeRuntimeState(node)) return node;
-  if (isPendingRemoteVideoNode(node)) return node;
-  if (isPendingBatchEditImagesNode(node)) return node;
+  if (isPersistablePendingRuntimeNode(node)) return node;
 
   const {
     loading: _loading,
@@ -2696,12 +2755,18 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
   );
 
   const extractFrameImageNode = useCallback(
-    (sourceNodeId: string, frameIndex: number, position?: { x: number; y: number }) => {
+    (
+      sourceNodeId: string,
+      frameIndex: number,
+      position?: { x: number; y: number },
+      frameNaturalSize?: { width: number; height: number }
+    ) => {
       const snapshot = createFrameImageChildSnapshot({
         nodes,
         links,
         sourceNodeId,
         frameIndex,
+        frameNaturalSize,
         position,
         makeId,
       });
@@ -3462,11 +3527,8 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       batchEditImagesPollsRef.current.delete(key);
     };
 
-    nodes.forEach((node) => {
-      if (!isPendingBatchEditImagesNode(node)) return;
-      const taskId = node.data?.batchReplacementTaskId?.trim();
-      if (!taskId) return;
-      const key = `${node.id}:${taskId}`;
+    collectPendingBatchEditImagesPollTargets(nodes).forEach(({ batchNodeId, taskId }) => {
+      const key = `${batchNodeId}:${taskId}`;
       activeKeys.add(key);
       if (batchEditImagesPollsRef.current.has(key)) return;
 
@@ -3475,26 +3537,44 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
 
       const poll = async () => {
         if (entry.cancelled) return;
-        const latestNode = currentNodesRef.current.find((candidate) => candidate.id === node.id);
-        if (
-          !latestNode ||
-          latestNode.data?.batchReplacementTaskId !== taskId ||
-          !isPendingBatchEditImagesNode(latestNode)
-        ) {
+        const latestNodes = currentNodesRef.current;
+        const latestNode = latestNodes.find((candidate) => candidate.id === batchNodeId);
+        const hasPendingBatchNode =
+          Boolean(latestNode) &&
+          latestNode?.data?.batchReplacementTaskId === taskId &&
+          isPendingBatchEditImagesNode(latestNode);
+        const hasPendingResultNode = latestNodes.some(
+          (candidate) =>
+            isPendingBatchEditImagesResultNode(candidate) &&
+            candidate.data?.batchReplacementSourceNodeId === batchNodeId &&
+            candidate.data?.batchReplacementRunId === taskId
+        );
+        if (!latestNode || (!hasPendingBatchNode && !hasPendingResultNode)) {
           stopPoll(key);
           return;
         }
 
         try {
           const result = await queryBatchEditImagesTask(taskId);
+          const nodesWithTask = hasPendingBatchNode
+            ? currentNodesRef.current
+            : applyPendingBatchEditImagesTaskSnapshot({
+                nodes: currentNodesRef.current,
+                nodeId: batchNodeId,
+                patch: {
+                  batchReplacementTaskId: taskId,
+                  batchReplacementTaskStatus: "pending",
+                  batchReplacementTaskError: undefined,
+                },
+              });
           const patchedNodes = applyBatchEditImagesTaskResultSnapshot({
-            nodes: currentNodesRef.current,
-            nodeId: node.id,
+            nodes: nodesWithTask,
+            nodeId: batchNodeId,
             taskId,
             result,
           });
           const syncedResultNodes = applyBatchEditImagesResultNodesSnapshot({
-            batchNodeId: node.id,
+            batchNodeId,
             nodeOutputs: currentNodeOutputsRef.current,
             nodes: patchedNodes,
             result,
@@ -3532,11 +3612,13 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
           const message = error instanceof Error ? error.message : String(error);
           setNodes((prev) => {
             const nextNodes = prev.map((candidate) =>
-              candidate.id === node.id && candidate.data?.batchReplacementTaskId === taskId
+              candidate.id === batchNodeId &&
+              (candidate.data?.batchReplacementTaskId === taskId || hasPendingResultNode)
                 ? {
                     ...candidate,
                     data: {
                       ...(candidate.data || {}),
+                      batchReplacementTaskId: taskId,
                       loading: true,
                       status: "loading",
                       loadingOperation: "batch-replacement",
@@ -4272,7 +4354,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
   useEffect(() => {
     const timer = window.setTimeout(() => {
       const hasPendingRuntimeState = nodes.some(
-        (node) => hasNodeRuntimeState(node) && !isPendingRemoteVideoNode(node)
+        (node) => hasNodeRuntimeState(node) && !isPersistablePendingRuntimeNode(node)
       );
       if (hasPendingRuntimeState) return;
       const persistableNodes = sanitizeNodesRuntimeState(nodes);
@@ -4379,6 +4461,16 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
           .catch((error) => {
             if (inFlightRemotePersistKeyRef.current === persistKey) {
               inFlightRemotePersistKeyRef.current = "";
+            }
+            if (isDuplicateRemotePersistError(error)) {
+              lastRemotePersistSignatureRef.current = persistKey;
+              lastRemotePersistedAtRef.current = Date.now();
+              if (pendingLocalPersistSignatureRef.current === persistSignature) {
+                pendingLocalPersistSignatureRef.current = "";
+              }
+              remoteDirtyKindRef.current = "none";
+              deferredRemotePersistRef.current = false;
+              return;
             }
             console.warn("Failed to persist remote canvas", error);
             deferredRemotePersistRef.current = false;

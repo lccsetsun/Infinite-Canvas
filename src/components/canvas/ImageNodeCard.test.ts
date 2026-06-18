@@ -221,6 +221,15 @@ describe("ImageNodeCard prompt composer fullscreen editor", () => {
     );
   });
 
+  it("passes loaded frame dimensions when extracting frame-analysis tiles", () => {
+    const source = readFileSync(new URL("./ImageNodeCard.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain("const getFrameNaturalSize = React.useCallback");
+    expect(source).toContain("onExtractFrameImage?.(");
+    expect(source).toContain("getFrameNaturalSize(drag.frameIndex)");
+    expect(source).toContain("getFrameNaturalSize(index)");
+  });
+
   it("places batch replacement creation in the frame-analysis image toolbar", () => {
     const source = readFileSync(new URL("./ImageNodeCard.tsx", import.meta.url), "utf8");
 
@@ -306,7 +315,8 @@ describe("ImageNodeCard prompt composer fullscreen editor", () => {
     expect(batchResultGridSource).toContain(
       "beginFrameExtractionDrag(event, index, url, getFrameImageOssId(index))"
     );
-    expect(batchResultGridSource).toContain("onExtractFrameImage(node.id, index)");
+    expect(batchResultGridSource).toContain("onExtractFrameImage(");
+    expect(batchResultGridSource).toContain("getFrameNaturalSize(index)");
     expect(batchResultGridSource).toContain("void downloadFrameImage(url, index)");
     expect(source).toContain("FRAME_TILE_EXTRACT_BUTTON_CLASS");
     expect(source).toContain("whitespace-nowrap");

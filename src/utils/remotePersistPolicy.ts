@@ -35,3 +35,10 @@ export function shouldDeferRemoteSnapshotForInFlight({
 }) {
   return Boolean(inFlightKey && nextKey && inFlightKey !== nextKey);
 }
+
+export function isDuplicateRemotePersistError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return /拒绝重复提交|请勿重复提交|重复提交|duplicate\s+submission|duplicate\s+submit/i.test(
+    message
+  );
+}

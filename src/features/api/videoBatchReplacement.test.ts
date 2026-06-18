@@ -175,6 +175,21 @@ describe("batchEditImages", () => {
     });
   });
 
+  it("keeps SUCCESS payloads without returned images pending", () => {
+    expect(parseBatchEditImagesTaskResult({ status: "SUCCESS", resultList: [] })).toEqual({
+      status: "pending",
+      items: [],
+      error: "",
+      rawStatus: "success",
+    });
+    expect(parseBatchEditImagesTaskResult({ status: "SUCCESS", resultList: [{ index: 0 }] })).toEqual({
+      status: "pending",
+      items: [{ index: 0 }],
+      error: "",
+      rawStatus: "success",
+    });
+  });
+
   it("returns an error state for failed batch edit tasks", () => {
     expect(parseBatchEditImagesTaskResult({ status: "failed", msg: "render failed" })).toEqual({
       status: "error",

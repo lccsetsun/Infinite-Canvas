@@ -16,7 +16,9 @@ import {
   applyBatchEditImagesTaskResultSnapshot,
   applyPendingBatchEditImagesTaskSnapshot,
   collectLinkedMediaReferences,
+  collectPendingBatchEditImagesPollTargets,
   createBatchEditImagesResultRunSnapshot,
+  isPersistablePendingRuntimeNode,
   shouldApplyRemoteWorkflowSnapshot,
   syncVideoBatchReplacementTargetsSnapshot,
 } from "./useWorkflowState";
@@ -32,6 +34,29 @@ describe("useWorkflowState remote-only persistence", () => {
     expect(source).not.toContain("localStorage");
     expect(source).not.toContain("aicanvas_workspace_v2");
     expect(source).not.toContain("sanitizeWorkspaceForStorage");
+  });
+
+  it("does not block remote snapshots for resumable pending batch replacement tasks", () => {
+    const source = readFileSync(new URL("./useWorkflowState.ts", import.meta.url), "utf8");
+    const persistEffectSource = source.slice(
+      source.indexOf("const hasPendingRuntimeState = nodes.some"),
+      source.indexOf("const persistableNodes = sanitizeNodesRuntimeState(nodes)")
+    );
+
+    expect(persistEffectSource).toContain("!isPersistablePendingRuntimeNode(node)");
+  });
+
+  it("handles duplicate remote persist rejection without retrying the same payload", () => {
+    const source = readFileSync(new URL("./useWorkflowState.ts", import.meta.url), "utf8");
+    const persistCatchSource = source.slice(
+      source.indexOf(".catch((error) => {"),
+      source.indexOf("console.warn(\"Failed to persist remote canvas\", error);")
+    );
+
+    expect(persistCatchSource).toContain("isDuplicateRemotePersistError(error)");
+    expect(persistCatchSource).toContain("lastRemotePersistSignatureRef.current = persistKey");
+    expect(persistCatchSource).toContain("pendingLocalPersistSignatureRef.current = \"\"");
+    expect(persistCatchSource).not.toContain("setRemotePersistRetryTick");
   });
 
   it("syncs node group membership while resizing groups", () => {
@@ -485,6 +510,77 @@ describe("sanitizeNodeRuntimeState", () => {
     expect(hasNodeRuntimeState(makeTextNode("node-2"))).toBe(false);
   });
 
+  it("classifies only resumable pending runtime nodes as persistable", () => {
+    const pendingVideoNode: GraphNode = {
+      ...makeTextNode("video-1"),
+      type: "video_node",
+      data: {
+        loading: true,
+        loadingOperation: "generate",
+        remoteVideoTaskId: "remote-video-task-1",
+        status: "loading",
+      },
+    };
+    const pendingBatchNode: GraphNode = {
+      ...makeVideoBatchReplacementNode(),
+      data: {
+        batchReplacementTaskId: "bg_2066519705937645568",
+        loading: true,
+        loadingOperation: "batch-replacement",
+        status: "loading",
+      },
+    };
+    const pendingBatchResultNode: GraphNode = {
+      ...makeTextNode("batch-result-1"),
+      type: "image_node",
+      data: {
+        batchReplacementRunId: "bg_2066519705937645568",
+        batchReplacementSourceNodeId: "batch-1",
+        batchReplacementResultCount: 3,
+        loading: true,
+        loadingOperation: "batch-replacement",
+        status: "loading",
+      },
+    };
+    const uploadingNode: GraphNode = {
+      ...makeTextNode("uploading-image"),
+      type: "image_node",
+      data: {
+        uploadingAsset: true,
+        status: "uploading",
+      },
+    };
+    const frameAnalysisNode: GraphNode = {
+      ...makeTextNode("frame-analysis"),
+      type: "video_node",
+      properties: { videoUrl: "https://example.com/source.mp4" },
+      data: {
+        loading: true,
+        loadingOperation: "frame-analysis",
+        status: "loading",
+        videoUrl: "https://example.com/source.mp4",
+      },
+    };
+    const promptReverseNode: GraphNode = {
+      ...makeTextNode("prompt-reverse"),
+      type: "video_node",
+      properties: { videoUrl: "https://example.com/source.mp4" },
+      data: {
+        loading: true,
+        loadingOperation: "video-prompt",
+        status: "loading",
+        videoUrl: "https://example.com/source.mp4",
+      },
+    };
+
+    expect(isPersistablePendingRuntimeNode(pendingVideoNode)).toBe(true);
+    expect(isPersistablePendingRuntimeNode(pendingBatchNode)).toBe(true);
+    expect(isPersistablePendingRuntimeNode(pendingBatchResultNode)).toBe(true);
+    expect(isPersistablePendingRuntimeNode(frameAnalysisNode)).toBe(true);
+    expect(isPersistablePendingRuntimeNode(promptReverseNode)).toBe(true);
+    expect(isPersistablePendingRuntimeNode(uploadingNode)).toBe(false);
+  });
+
   it("clears stale loading state for every runnable node type after refresh", () => {
     const nodeTypes: Array<GraphNode["type"]> = [
       "text_node",
@@ -581,6 +677,75 @@ describe("sanitizeNodeRuntimeState", () => {
     expect(sanitized.properties.status).toBe("loading");
     expect(sanitized.data?.loading).toBe(true);
     expect(sanitized.data?.batchReplacementTaskId).toBe("bg_2066523725712461824");
+  });
+
+  it("preserves pending batch replacement result grids after refresh", () => {
+    const pendingResultNode: GraphNode = {
+      id: "batch-result-1",
+      type: "image_node",
+      title: "批量替换结果 1",
+      x: 900,
+      y: 120,
+      inputs: [{ name: "input", type: "IMAGE" }],
+      outputs: [{ name: "image", type: "IMAGE" }],
+      properties: { status: "loading" },
+      data: {
+        batchReplacementRunId: "bg_2066531184648785920",
+        batchReplacementSourceNodeId: "batch-1",
+        batchReplacementResultCount: 3,
+        imageUrls: [
+          "__batch_replacement_frame_placeholder__",
+          "__batch_replacement_frame_placeholder__",
+          "__batch_replacement_frame_placeholder__",
+        ],
+        isFrameStrip: true,
+        loading: true,
+        loadingOperation: "batch-replacement",
+        status: "loading",
+      },
+    };
+
+    const sanitized = sanitizeNodeRuntimeState(pendingResultNode);
+
+    expect(sanitized.properties.status).toBe("loading");
+    expect(sanitized.data?.loading).toBe(true);
+    expect(sanitized.data?.status).toBe("loading");
+    expect(sanitized.data?.loadingOperation).toBe("batch-replacement");
+    expect(sanitized.data?.batchReplacementRunId).toBe("bg_2066531184648785920");
+    expect(sanitized.data?.imageUrls).toEqual(pendingResultNode.data?.imageUrls);
+  });
+
+  it("preserves resumable video auxiliary loading state after refresh", () => {
+    const pendingFrameAnalysisNode: GraphNode = {
+      ...makeTextNode("video-frame-analysis"),
+      type: "video_node",
+      properties: { status: "loading", videoUrl: "https://example.com/source.mp4" },
+      data: {
+        loading: true,
+        status: "loading",
+        loadingOperation: "frame-analysis",
+        videoUrl: "https://example.com/source.mp4",
+      },
+    };
+    const pendingPromptReverseNode: GraphNode = {
+      ...makeTextNode("video-prompt-reverse"),
+      type: "video_node",
+      properties: { status: "loading", videoUrl: "https://example.com/source.mp4" },
+      data: {
+        loading: true,
+        status: "loading",
+        loadingOperation: "video-prompt",
+        videoUrl: "https://example.com/source.mp4",
+      },
+    };
+
+    const sanitizedFrameAnalysis = sanitizeNodeRuntimeState(pendingFrameAnalysisNode);
+    const sanitizedPromptReverse = sanitizeNodeRuntimeState(pendingPromptReverseNode);
+
+    expect(sanitizedFrameAnalysis.data?.loading).toBe(true);
+    expect(sanitizedFrameAnalysis.data?.loadingOperation).toBe("frame-analysis");
+    expect(sanitizedPromptReverse.data?.loading).toBe(true);
+    expect(sanitizedPromptReverse.data?.loadingOperation).toBe("video-prompt");
   });
 
   it("clears stale upload state after refresh", () => {
@@ -839,6 +1004,67 @@ describe("applyRemoteVideoTaskResultSnapshot", () => {
 });
 
 describe("applyBatchEditImagesTaskResultSnapshot", () => {
+  it("collects pending batch replacement poll targets from result nodes after refresh", () => {
+    const batchNode: GraphNode = {
+      ...makeVideoBatchReplacementNode(),
+      data: {
+        loading: true,
+        loadingOperation: "batch-replacement",
+        status: "loading",
+      },
+    };
+    const resultNode: GraphNode = {
+      ...makeTextNode("result-1"),
+      type: "image_node",
+      data: {
+        batchReplacementRunId: "bg_2066531184648785920",
+        batchReplacementSourceNodeId: "batch-1",
+        batchReplacementResultCount: 3,
+        loading: true,
+        loadingOperation: "batch-replacement",
+        status: "loading",
+      },
+    };
+
+    expect(collectPendingBatchEditImagesPollTargets([batchNode, resultNode])).toEqual([
+      {
+        batchNodeId: "batch-1",
+        taskId: "bg_2066531184648785920",
+      },
+    ]);
+  });
+
+  it("deduplicates batch replacement poll targets when source and result nodes are both pending", () => {
+    const batchNode: GraphNode = {
+      ...makeVideoBatchReplacementNode(),
+      data: {
+        batchReplacementTaskId: "bg_2066531184648785920",
+        loading: true,
+        loadingOperation: "batch-replacement",
+        status: "loading",
+      },
+    };
+    const resultNode: GraphNode = {
+      ...makeTextNode("result-1"),
+      type: "image_node",
+      data: {
+        batchReplacementRunId: "bg_2066531184648785920",
+        batchReplacementSourceNodeId: "batch-1",
+        batchReplacementResultCount: 3,
+        loading: true,
+        loadingOperation: "batch-replacement",
+        status: "loading",
+      },
+    };
+
+    expect(collectPendingBatchEditImagesPollTargets([batchNode, resultNode])).toEqual([
+      {
+        batchNodeId: "batch-1",
+        taskId: "bg_2066531184648785920",
+      },
+    ]);
+  });
+
   it("creates an immediately persistable pending batch replacement task snapshot", () => {
     const node = makeVideoBatchReplacementNode();
 

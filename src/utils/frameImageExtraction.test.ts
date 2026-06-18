@@ -85,6 +85,24 @@ describe("createFrameImageChildSnapshot", () => {
     expect(result?.createdNode.data?.ossId).toBe("oss-frame-2");
   });
 
+  it("uses provided frame dimensions for the initial extracted node preview", () => {
+    const result = createFrameImageChildSnapshot({
+      nodes: [makeFrameNode(["https://oss.example.com/portrait-frame.png"])],
+      links: [],
+      sourceNodeId: "frames",
+      frameIndex: 0,
+      frameNaturalSize: { width: 496, height: 864 },
+      makeId: (prefix) => (prefix === "link" ? "link-child" : "child"),
+    });
+
+    expect(result?.createdNode.data).toMatchObject({
+      imageNaturalWidth: 496,
+      imageNaturalHeight: 864,
+      imageDisplayWidth: 310,
+      imageDisplayHeight: 540,
+    });
+  });
+
   it("extracts completed batch replacement result images without requiring an isFrameStrip flag", () => {
     const resultNode: GraphNode = {
       ...makeFrameNode(

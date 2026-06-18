@@ -5,22 +5,42 @@ import type { GraphLink, GraphNode } from "../types";
 const EXTRACTED_FRAME_CHILD_MAX_WIDTH = 540;
 const EXTRACTED_FRAME_CHILD_MAX_HEIGHT = 540;
 
-function fitExtractedFrameChildSize(sourceNode: GraphNode) {
-  const width =
-    typeof sourceNode.data?.imageNaturalWidth === "number" && sourceNode.data.imageNaturalWidth > 0
-      ? sourceNode.data.imageNaturalWidth
-      : typeof sourceNode.data?.imageDisplayWidth === "number" &&
-          sourceNode.data.imageDisplayWidth > 0
-        ? sourceNode.data.imageDisplayWidth
-        : 16;
-  const height =
-    typeof sourceNode.data?.imageNaturalHeight === "number" &&
-    sourceNode.data.imageNaturalHeight > 0
-      ? sourceNode.data.imageNaturalHeight
-      : typeof sourceNode.data?.imageDisplayHeight === "number" &&
-          sourceNode.data.imageDisplayHeight > 0
-        ? sourceNode.data.imageDisplayHeight
-        : 9;
+type FrameNaturalSize = { width: number; height: number };
+
+function isFinitePositiveNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
+function normalizeFrameNaturalSize(size?: FrameNaturalSize): FrameNaturalSize | null {
+  if (!size || !isFinitePositiveNumber(size.width) || !isFinitePositiveNumber(size.height)) {
+    return null;
+  }
+  return {
+    width: Math.round(size.width),
+    height: Math.round(size.height),
+  };
+}
+
+function getExtractedFrameSourceSize(sourceNode: GraphNode, frameNaturalSize?: FrameNaturalSize) {
+  const normalizedFrameSize = normalizeFrameNaturalSize(frameNaturalSize);
+  if (normalizedFrameSize) return normalizedFrameSize;
+
+  const width = isFinitePositiveNumber(sourceNode.data?.imageNaturalWidth)
+    ? sourceNode.data.imageNaturalWidth
+    : isFinitePositiveNumber(sourceNode.data?.imageDisplayWidth)
+      ? sourceNode.data.imageDisplayWidth
+      : 16;
+  const height = isFinitePositiveNumber(sourceNode.data?.imageNaturalHeight)
+    ? sourceNode.data.imageNaturalHeight
+    : isFinitePositiveNumber(sourceNode.data?.imageDisplayHeight)
+      ? sourceNode.data.imageDisplayHeight
+      : 9;
+
+  return { width, height };
+}
+
+function fitExtractedFrameChildSize(sourceNode: GraphNode, frameNaturalSize?: FrameNaturalSize) {
+  const { width, height } = getExtractedFrameSourceSize(sourceNode, frameNaturalSize);
   const ratio = width / height;
   if (ratio >= EXTRACTED_FRAME_CHILD_MAX_WIDTH / EXTRACTED_FRAME_CHILD_MAX_HEIGHT) {
     return {
@@ -84,6 +104,7 @@ function getNodeImageUrl(node: GraphNode): string {
 }
 
 export function createFrameImageChildSnapshot({
+  frameNaturalSize,
   frameIndex,
   links,
   makeId,
@@ -91,6 +112,7 @@ export function createFrameImageChildSnapshot({
   position,
   sourceNodeId,
 }: {
+  frameNaturalSize?: FrameNaturalSize;
   frameIndex: number;
   links: GraphLink[];
   makeId: (prefix: string) => string;
@@ -118,7 +140,11 @@ export function createFrameImageChildSnapshot({
     position?.x ?? sourceNode.x + sourceWidth + 120,
     position?.y ?? sourceNode.y
   );
-  const childDisplaySize = isBatchReplacementSource ? null : fitExtractedFrameChildSize(sourceNode);
+  const normalizedFrameSize = normalizeFrameNaturalSize(frameNaturalSize);
+  const childDisplaySize =
+    isBatchReplacementSource && !normalizedFrameSize
+      ? null
+      : fitExtractedFrameChildSize(sourceNode, normalizedFrameSize ?? undefined);
   childNode.title = `${sourceNode.title} · 第 ${frameIndex + 1} 帧`;
   childNode.properties = {
     ...childNode.properties,
@@ -136,8 +162,8 @@ export function createFrameImageChildSnapshot({
     extractedFrameIndex: frameIndex,
     ...(childDisplaySize
       ? {
-          imageNaturalWidth: sourceNode.data?.imageNaturalWidth,
-          imageNaturalHeight: sourceNode.data?.imageNaturalHeight,
+          imageNaturalWidth: normalizedFrameSize?.width ?? sourceNode.data?.imageNaturalWidth,
+          imageNaturalHeight: normalizedFrameSize?.height ?? sourceNode.data?.imageNaturalHeight,
           imageDisplayWidth: childDisplaySize.width,
           imageDisplayHeight: childDisplaySize.height,
         }

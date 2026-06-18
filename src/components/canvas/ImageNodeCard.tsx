@@ -74,7 +74,8 @@ interface ImageNodeCardProps {
   onExtractFrameImage?: (
     nodeId: string,
     frameIndex: number,
-    clientPoint?: { clientX: number; clientY: number }
+    clientPoint?: { clientX: number; clientY: number },
+    frameNaturalSize?: { width: number; height: number }
   ) => void;
   onReplaceExtractedFrame?: (nodeId: string) => void;
   onReplaceFrameImage?: (
@@ -806,6 +807,16 @@ function ImageNodeCardImpl({
   const [frameImageSizes, setFrameImageSizes] = React.useState<
     Record<number, { width: number; height: number }>
   >({});
+  const getFrameNaturalSize = React.useCallback(
+    (frameIndex: number) => {
+      const size = frameImageSizes[frameIndex];
+      if (!size || !isFinitePositiveNumber(size.width) || !isFinitePositiveNumber(size.height)) {
+        return undefined;
+      }
+      return { width: size.width, height: size.height };
+    },
+    [frameImageSizes]
+  );
   const previewNodeRef = React.useRef<HTMLDivElement | null>(null);
   const mediaFrameRef = React.useRef<HTMLDivElement | null>(null);
   const imageElementRef = React.useRef<HTMLImageElement | null>(null);
@@ -1241,10 +1252,15 @@ function ImageNodeCardImpl({
             });
           }
         } else {
-          onExtractFrameImage?.(node.id, drag.frameIndex, {
-            clientX,
-            clientY,
-          });
+          onExtractFrameImage?.(
+            node.id,
+            drag.frameIndex,
+            {
+              clientX,
+              clientY,
+            },
+            getFrameNaturalSize(drag.frameIndex)
+          );
         }
         return;
       }
@@ -1257,6 +1273,7 @@ function ImageNodeCardImpl({
       activeGridSelection?.rows,
       cleanupFrameExtractionDragListeners,
       destroyFrameExtractionOverlay,
+      getFrameNaturalSize,
       imageUrl,
       node.id,
       onExtractFrameImage,
@@ -3555,6 +3572,26 @@ function ImageNodeCardImpl({
                             className="h-full w-full object-contain transition-all duration-200 group-hover/frame:brightness-110 group-hover/frame:saturate-110"
                             decoding="async"
                             draggable={false}
+                            onLoad={(event) => {
+                              const img = event.currentTarget;
+                              if (!img.naturalWidth || !img.naturalHeight) return;
+                              setFrameImageSizes((current) => {
+                                const previous = current[index];
+                                if (
+                                  previous?.width === img.naturalWidth &&
+                                  previous?.height === img.naturalHeight
+                                ) {
+                                  return current;
+                                }
+                                return {
+                                  ...current,
+                                  [index]: {
+                                    width: img.naturalWidth,
+                                    height: img.naturalHeight,
+                                  },
+                                };
+                              });
+                            }}
                           />
                         )}
                         <span className="pointer-events-none absolute right-2 top-2 z-10 flex h-6 min-w-[24px] items-center justify-center rounded-full border border-white/18 bg-[#0b1018]/82 px-1.5 text-[11px] font-bold tabular-nums text-white shadow-[0_8px_18px_-12px_rgba(0,0,0,0.95)] transition-all duration-200 group-hover/frame:border-cyan-100/42 group-hover/frame:bg-cyan-100/18 group-hover/frame:text-cyan-50 group-hover/frame:shadow-[0_0_20px_rgba(103,232,249,0.26)]">
@@ -3576,7 +3613,12 @@ function ImageNodeCardImpl({
                                     }}
                                     onClick={(event) => {
                                       event.stopPropagation();
-                                      onExtractFrameImage(node.id, index);
+                                      onExtractFrameImage(
+                                        node.id,
+                                        index,
+                                        undefined,
+                                        getFrameNaturalSize(index)
+                                      );
                                     }}
                                   >
                                     提取
@@ -3715,7 +3757,12 @@ function ImageNodeCardImpl({
                                         }}
                                         onClick={(event) => {
                                           event.stopPropagation();
-                                          onExtractFrameImage(node.id, index);
+                                          onExtractFrameImage(
+                                            node.id,
+                                            index,
+                                            undefined,
+                                            getFrameNaturalSize(index)
+                                          );
                                         }}
                                       >
                                         提取

@@ -205,7 +205,8 @@ interface CanvasNodeLayerProps {
   onExtractFrameImage?: (
     nodeId: string,
     frameIndex: number,
-    clientPoint?: { clientX: number; clientY: number }
+    clientPoint?: { clientX: number; clientY: number },
+    frameNaturalSize?: { width: number; height: number }
   ) => void;
   onCreateVideoFrameImage?: (
     sourceNodeId: string,

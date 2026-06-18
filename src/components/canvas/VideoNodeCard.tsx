@@ -516,8 +516,8 @@ function VideoNodeCardImpl({
   const [mediaDuration, setMediaDuration] = React.useState(0);
   const [muted, setMuted] = React.useState(false);
   const [frameMenuOpen, setFrameMenuOpen] = React.useState(false);
-  const [isAnalyzingFrames, setIsAnalyzingFrames] = React.useState(false);
-  const [isReversingPrompt, setIsReversingPrompt] = React.useState(false);
+  const [isAnalyzingFramesLocal, setIsAnalyzingFrames] = React.useState(false);
+  const [isReversingPromptLocal, setIsReversingPrompt] = React.useState(false);
   const [isUploadingVideo, setIsUploadingVideo] = React.useState(false);
   const isUploadingAsset = isNodeUploadingAsset || isUploadingVideo;
   const floatingCanvasUiScale = 1 / Math.max(0.55, Math.min(3, canvasZoom));
@@ -537,6 +537,7 @@ function VideoNodeCardImpl({
   const mediaFrameRef = React.useRef<HTMLDivElement | null>(null);
   const uploadInputRef = React.useRef<HTMLInputElement | null>(null);
   const captureQueueRef = React.useRef<Promise<void>>(Promise.resolve());
+  const resumedAuxiliaryOperationKeyRef = React.useRef<string | null>(null);
   const [naturalVideoSize, setNaturalVideoSize] = React.useState<{
     width: number;
     height: number;
@@ -589,6 +590,18 @@ function VideoNodeCardImpl({
   );
   const videoUrl = (node.data?.videoUrl as string) || (node.properties.videoUrl as string) || "";
   const loadingOperation = node.data?.loadingOperation as MediaNodeLoadingOperation | undefined;
+  const hasPersistedFrameAnalysisPending =
+    node.data?.loading === true &&
+    node.data?.status === "loading" &&
+    loadingOperation === "frame-analysis" &&
+    Boolean(videoUrl);
+  const hasPersistedPromptReversePending =
+    node.data?.loading === true &&
+    node.data?.status === "loading" &&
+    loadingOperation === "video-prompt" &&
+    Boolean(videoUrl);
+  const isAnalyzingFrames = isAnalyzingFramesLocal || hasPersistedFrameAnalysisPending;
+  const isReversingPrompt = isReversingPromptLocal || hasPersistedPromptReversePending;
   const videoGenerationStartedAt =
     typeof node.data?.generationStartedAt === "number"
       ? node.data.generationStartedAt
@@ -1543,44 +1556,118 @@ function VideoNodeCardImpl({
     </>
   );
 
-  const analyzeFrames = async () => {
-    if (!videoUrl || isAnalyzingFrames) return;
-    setIsAnalyzingFrames(true);
-    try {
-      const captures = await fetchVideoFrameCapture(videoUrl);
-      if (captures.length === 0)
-        throw new Error(
-          "\u9010\u5e27\u5206\u6790\u63a5\u53e3\u672a\u8fd4\u56de\u53ef\u7528\u5e27\u6570\u636e"
-        );
-      await onAnalyzeVideo?.(node, captures);
+  const analyzeFrames = React.useCallback(
+    async ({ resuming = false }: { resuming?: boolean } = {}) => {
+      if (!videoUrl || isAnalyzingFramesLocal || (!resuming && hasPersistedFrameAnalysisPending))
+        return;
+      setIsAnalyzingFrames(true);
       onUpdateData?.(node.id, {
+        loading: true,
+        status: "loading",
+        loadingOperation: "frame-analysis",
         error: undefined,
       });
-    } catch (error) {
-      onUpdateData?.(node.id, {
-        error: error instanceof Error ? error.message : "\u9010\u5e27\u5206\u6790\u5931\u8d25",
-      });
-    } finally {
-      setIsAnalyzingFrames(false);
-    }
-  };
+      try {
+        const captures = await fetchVideoFrameCapture(videoUrl);
+        if (captures.length === 0)
+          throw new Error(
+            "\u9010\u5e27\u5206\u6790\u63a5\u53e3\u672a\u8fd4\u56de\u53ef\u7528\u5e27\u6570\u636e"
+          );
+        await onAnalyzeVideo?.(node, captures);
+        onUpdateData?.(node.id, {
+          loading: false,
+          status: "success",
+          loadingOperation: undefined,
+          error: undefined,
+        });
+      } catch (error) {
+        onUpdateData?.(node.id, {
+          loading: false,
+          status: "error",
+          loadingOperation: undefined,
+          error: error instanceof Error ? error.message : "\u9010\u5e27\u5206\u6790\u5931\u8d25",
+        });
+      } finally {
+        setIsAnalyzingFrames(false);
+      }
+    },
+    [
+      hasPersistedFrameAnalysisPending,
+      isAnalyzingFramesLocal,
+      node,
+      onAnalyzeVideo,
+      onUpdateData,
+      setIsAnalyzingFrames,
+      videoUrl,
+    ]
+  );
 
-  const reverseVideoPrompt = async () => {
-    if (!videoUrl || isReversingPrompt) return;
-    setIsReversingPrompt(true);
-    try {
-      await onReverseVideoPrompt?.(node, videoUrl);
+  const reverseVideoPrompt = React.useCallback(
+    async ({ resuming = false }: { resuming?: boolean } = {}) => {
+      if (!videoUrl || isReversingPromptLocal || (!resuming && hasPersistedPromptReversePending))
+        return;
+      setIsReversingPrompt(true);
       onUpdateData?.(node.id, {
+        loading: true,
+        status: "loading",
+        loadingOperation: "video-prompt",
         error: undefined,
       });
-    } catch (error) {
-      onUpdateData?.(node.id, {
-        error: error instanceof Error ? error.message : "视频反推提示词失败",
-      });
-    } finally {
-      setIsReversingPrompt(false);
+      try {
+        await onReverseVideoPrompt?.(node, videoUrl);
+        onUpdateData?.(node.id, {
+          loading: false,
+          status: "success",
+          loadingOperation: undefined,
+          error: undefined,
+        });
+      } catch (error) {
+        onUpdateData?.(node.id, {
+          loading: false,
+          status: "error",
+          loadingOperation: undefined,
+          error: error instanceof Error ? error.message : "视频反推提示词失败",
+        });
+      } finally {
+        setIsReversingPrompt(false);
+      }
+    },
+    [
+      hasPersistedPromptReversePending,
+      isReversingPromptLocal,
+      node,
+      onReverseVideoPrompt,
+      onUpdateData,
+      setIsReversingPrompt,
+      videoUrl,
+    ]
+  );
+
+  React.useEffect(() => {
+    if (!videoUrl || node.data?.loading !== true || node.data?.status !== "loading") return;
+    if (loadingOperation !== "frame-analysis" && loadingOperation !== "video-prompt") return;
+
+    const key = `${node.id}:${loadingOperation}:${videoUrl}`;
+    if (resumedAuxiliaryOperationKeyRef.current === key) return;
+    resumedAuxiliaryOperationKeyRef.current = key;
+
+    if (loadingOperation === "frame-analysis") {
+      void analyzeFrames({ resuming: true });
+      return;
     }
-  };
+
+    if (loadingOperation === "video-prompt") {
+      void reverseVideoPrompt({ resuming: true });
+    }
+  }, [
+    analyzeFrames,
+    loadingOperation,
+    node.data?.loading,
+    node.data?.status,
+    node.id,
+    reverseVideoPrompt,
+    videoUrl,
+  ]);
 
   const hasInputPorts = !isSourceAssetNode && node.inputs.length > 0;
   const portHandles = (
@@ -1913,7 +2000,7 @@ function VideoNodeCardImpl({
                 <Tooltip content="逐帧分析" position="top">
                   <button
                     type="button"
-                    onClick={analyzeFrames}
+                    onClick={() => void analyzeFrames()}
                     disabled={isAnalyzingFrames}
                     className={`${mediaNodeToolbarButtonClass} disabled:cursor-wait disabled:text-cyan-200`}
                   >
@@ -1927,7 +2014,7 @@ function VideoNodeCardImpl({
                 <Tooltip content="反推提示词" position="top">
                   <button
                     type="button"
-                    onClick={reverseVideoPrompt}
+                    onClick={() => void reverseVideoPrompt()}
                     disabled={isReversingPrompt}
                     className={`${mediaNodeToolbarButtonClass} disabled:cursor-wait disabled:text-violet-200`}
                   >

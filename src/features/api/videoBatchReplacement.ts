@@ -103,13 +103,21 @@ function extractBatchEditImagesError(data: unknown): string {
   );
 }
 
+function hasBatchEditImagesResultImage(item: BatchEditImagesResultItem) {
+  if (typeof item.url === "string" && item.url.trim()) return true;
+  return Array.isArray(item.frame_images)
+    ? item.frame_images.some((image) => typeof image?.url === "string" && image.url.trim())
+    : false;
+}
+
 export function parseBatchEditImagesTaskResult(data: unknown): BatchEditImagesTaskResult {
   const items = extractBatchEditImagesItems(data);
   const rawStatus = extractBatchEditImagesRawStatus(data);
   const error = extractBatchEditImagesError(data);
 
   if (["success", "succeeded", "completed", "complete", "done"].includes(rawStatus)) {
-    return { status: "success", items, error: "", rawStatus };
+    const hasResultImage = items.some(hasBatchEditImagesResultImage);
+    return { status: hasResultImage ? "success" : "pending", items, error: "", rawStatus };
   }
 
   if (["failed", "fail", "error", "canceled", "cancelled"].includes(rawStatus)) {

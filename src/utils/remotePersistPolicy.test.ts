@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   REMOTE_FULL_SNAPSHOT_MIN_INTERVAL_MS,
+  isDuplicateRemotePersistError,
   shouldDeferRemoteSnapshotForInFlight,
   shouldPersistRemoteSnapshot,
   type RemoteDirtyKind,
@@ -102,5 +103,12 @@ describe("remotePersistPolicy", () => {
         nextKey: "payload-b",
       })
     ).toBe(false);
+  });
+
+  it("treats backend duplicate-submit rejection as an idempotent persist result", () => {
+    expect(isDuplicateRemotePersistError(new Error("拒绝重复提交，请稍后再试"))).toBe(true);
+    expect(isDuplicateRemotePersistError(new Error("请勿重复提交"))).toBe(true);
+    expect(isDuplicateRemotePersistError(new Error("Duplicate submission"))).toBe(true);
+    expect(isDuplicateRemotePersistError(new Error("网络异常"))).toBe(false);
   });
 });
