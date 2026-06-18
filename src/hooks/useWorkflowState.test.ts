@@ -17,6 +17,7 @@ import {
   applyPendingBatchEditImagesTaskSnapshot,
   collectLinkedMediaReferences,
   collectPendingBatchEditImagesPollTargets,
+  collectPendingRemoteVideoPollTargets,
   createBatchEditImagesResultRunSnapshot,
   isPersistablePendingRuntimeNode,
   shouldApplyRemoteWorkflowSnapshot,
@@ -910,6 +911,39 @@ describe("video batch replacement downstream sync", () => {
 });
 
 describe("applyRemoteVideoTaskResultSnapshot", () => {
+  it("uses a three second interval for remote video polling", () => {
+    const source = readFileSync(new URL("./useWorkflowState.ts", import.meta.url), "utf8");
+
+    expect(source).toContain("const REMOTE_VIDEO_POLL_INTERVAL_MS = 3_000;");
+    expect(source).not.toContain("const REMOTE_VIDEO_POLL_INTERVAL_MS = 10_000;");
+  });
+
+  it("collects pending remote video poll targets even when an old video url exists", () => {
+    const node: GraphNode = {
+      ...makeTextNode("video-1"),
+      type: "video_node",
+      properties: {
+        status: "loading",
+        videoUrl: "https://example.com/old-result.mp4",
+      },
+      data: {
+        loading: true,
+        loadingOperation: "generate",
+        status: "loading",
+        videoUrl: "https://example.com/old-result.mp4",
+        remoteVideoTaskId: "remote-video-task-2",
+        remoteVideoTaskStatus: "pending",
+      },
+    };
+
+    expect(collectPendingRemoteVideoPollTargets([node])).toEqual([
+      {
+        nodeId: "video-1",
+        taskId: "remote-video-task-2",
+      },
+    ]);
+  });
+
   it("creates an immediately persistable pending remote video task snapshot", () => {
     const node: GraphNode = {
       ...makeTextNode("video-1"),

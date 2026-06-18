@@ -79,7 +79,7 @@ const WORKSPACE_VERSION = 2 as const;
 const TRASH_RETENTION_DAYS = 30;
 const TRASH_RETENTION_MS = TRASH_RETENTION_DAYS * 86_400_000;
 const TRASH_PURGE_INTERVAL_MS = 60 * 60 * 1000;
-const REMOTE_VIDEO_POLL_INTERVAL_MS = 10_000;
+const REMOTE_VIDEO_POLL_INTERVAL_MS = 3_000;
 const VIDEO_BATCH_REPLACEMENT_RESULT_GAP_X = 160;
 const VIDEO_BATCH_REPLACEMENT_RESULT_GAP_Y = 96;
 const VIDEO_BATCH_REPLACEMENT_NODE_WIDTH = 760;
@@ -1176,8 +1176,10 @@ export function isPendingRemoteVideoNode(node: GraphNode): boolean {
     node.type === "video_node" &&
     typeof data.remoteVideoTaskId === "string" &&
     data.remoteVideoTaskId.trim().length > 0 &&
-    !(typeof data.videoUrl === "string" && data.videoUrl.trim()) &&
-    !(typeof node.properties.videoUrl === "string" && node.properties.videoUrl.trim())
+    data.loading === true &&
+    data.loadingOperation === "generate" &&
+    data.status !== "success" &&
+    data.status !== "error"
   );
 }
 
@@ -1251,6 +1253,16 @@ export function collectPendingBatchEditImagesPollTargets(nodes: GraphNode[]) {
     targets.set(`${batchNodeId}:${taskId}`, { batchNodeId, taskId });
   });
   return Array.from(targets.values());
+}
+
+export function collectPendingRemoteVideoPollTargets(nodes: GraphNode[]) {
+  return nodes
+    .filter(isPendingRemoteVideoNode)
+    .map((node) => ({
+      nodeId: node.id,
+      taskId: node.data?.remoteVideoTaskId?.trim() ?? "",
+    }))
+    .filter((target) => target.taskId);
 }
 
 export function sanitizeNodeRuntimeState(node: GraphNode): GraphNode {
@@ -3414,11 +3426,8 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       remoteVideoPollsRef.current.delete(key);
     };
 
-    nodes.forEach((node) => {
-      if (!isPendingRemoteVideoNode(node)) return;
-      const taskId = node.data?.remoteVideoTaskId?.trim();
-      if (!taskId) return;
-      const key = `${node.id}:${taskId}`;
+    collectPendingRemoteVideoPollTargets(nodes).forEach(({ nodeId, taskId }) => {
+      const key = `${nodeId}:${taskId}`;
       activeKeys.add(key);
       if (remoteVideoPollsRef.current.has(key)) return;
 
@@ -3427,7 +3436,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
 
       const poll = async () => {
         if (entry.cancelled) return;
-        const latestNode = currentNodesRef.current.find((candidate) => candidate.id === node.id);
+        const latestNode = currentNodesRef.current.find((candidate) => candidate.id === nodeId);
         if (
           !latestNode ||
           latestNode.data?.remoteVideoTaskId !== taskId ||
@@ -3442,7 +3451,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
           const snapshot = applyRemoteVideoTaskResultSnapshot({
             nodes: currentNodesRef.current,
             nodeOutputs: currentNodeOutputsRef.current,
-            nodeId: node.id,
+            nodeId,
             taskId,
             result,
           });
@@ -3476,7 +3485,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
           const message = error instanceof Error ? error.message : String(error);
           setNodes((prev) =>
             prev.map((candidate) =>
-              candidate.id === node.id && candidate.data?.remoteVideoTaskId === taskId
+              candidate.id === nodeId && candidate.data?.remoteVideoTaskId === taskId
                 ? {
                     ...candidate,
                     data: {
