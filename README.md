@@ -1,6 +1,7 @@
 # Infinite-Canvas
 Supports comfyui/API calls/modelscope calls
 
+
 详细教程：[https://youtu.be/1y9ShTvgC_w](https://youtu.be/r_y_9ALr7fg)
 
 由于最近很多API网址关停，我找到一个稳定的网址：
@@ -18,18 +19,16 @@ https://www.fhl.mom/register?aff=WYNM75BNYTHT
 【A version file has been added. I update the version number with each update. If you download the version file, the GitHub button in the navigation bar will indicate the new version after opening the project. If you don't want to see update notifications, delete the version file.】
 
 ----
-5/25日更新：
-1. 支持RunningHub的工作流/API/付费模型调用
-2. 支持火山引擎
-3. 支持上传视频/音频，支持comfyui的各种输出结果（视频/音频/文字）
 
-May 25th Update:
-
-1. Supports workflow/API/paid model calls from RunningHub
-
-2. Supports Volcano Engine
-
-3. Supports uploading video/audio, and supports various output results from Comfyui (video/audio/text)
+支持的功能：
+1. 支持几乎所有OpenAI协议的API/异步协议/Gemini协议/方舟协议
+2. RunningHub的工作流/AI应用/收费模型调用
+3. 火山引擎调用（人脸认证还在修复bug）
+4. Modelscope免费LLM模型和图像模型调用
+5. 即梦CLI调用，可直接调用即梦高级会员的积分，支持文生图/图生图/文生视频/图生视频
+6. 支持调用本地局域网的ComfyUI
+7. 扩展图片/360全景图预览截图/视频帧抽取/循环节点等诸多功能
+8. tools文件夹中，增加了chrome批量采集到素材库的插件，PS直连画布调用所有功能的插件
 
 --------
 
@@ -47,6 +46,7 @@ Commercial use is prohibited.
 * Software developed based on this code must remain open source and the original author must be credited.
 
 --------
+
 
 <img width="2079" height="665" alt="image" src="https://github.com/user-attachments/assets/8469923b-f7a2-403c-9c37-e6e789211f28" />
 

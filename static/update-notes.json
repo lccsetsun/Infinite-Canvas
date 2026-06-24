@@ -1,0 +1,10 @@
+{
+  "version": "2026.06.24",
+  "updated_at": "2026-06-24T14:52:00+08:00",
+  "items": [
+    {
+      "type": "improve",
+      "text": "修复提示词分组不能编辑bug，增加RunningHub的API调用"
+    }
+  ]
+}
