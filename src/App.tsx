@@ -308,6 +308,8 @@ export default function App({ onLoggedOut }: AppProps) {
     links,
     selectedNodeId,
     isRunning,
+    persistStatus,
+    lastPersistError,
     setSelectedNodeId,
     clearCanvas,
     runNode,
@@ -1672,6 +1674,8 @@ export default function App({ onLoggedOut }: AppProps) {
           <CanvasHeader
             assistantPanelOpen={assistantPanelOpen}
             projectName={remoteProject?.name}
+            persistStatus={persistStatus}
+            lastPersistError={lastPersistError}
             onProjectRenamed={(name) => {
               setRemoteProject((project) => (project ? { ...project, name } : project));
               setWorkflowName(name);

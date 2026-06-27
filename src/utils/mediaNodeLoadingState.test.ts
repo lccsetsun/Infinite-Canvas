@@ -57,4 +57,13 @@ describe("isMediaNodeRunning", () => {
     );
     expect(isMediaNodeRunning({ data: {}, properties: { status: "idle" } })).toBe(false);
   });
+
+  it("does not treat interrupted media nodes as running", () => {
+    expect(
+      isMediaNodeRunning({
+        data: { loading: false, status: "interrupted" },
+        properties: {},
+      })
+    ).toBe(false);
+  });
 });

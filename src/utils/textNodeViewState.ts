@@ -1,7 +1,8 @@
-export type TextNodeViewKind = "idle" | "ready" | "running" | "error" | "success";
+export type TextNodeViewKind = "idle" | "ready" | "running" | "error" | "success" | "interrupted";
 
 interface TextNodeViewStateInput {
   errorText: string;
+  isInterrupted?: boolean;
   isRunning: boolean;
   promptText: string;
   responseText: string;
@@ -17,6 +18,7 @@ interface TextNodeViewState {
 
 export function getTextNodeViewState({
   errorText,
+  isInterrupted = false,
   isRunning,
   promptText,
   responseText,
@@ -38,6 +40,16 @@ export function getTextNodeViewState({
       kind: "error",
       label: "异常",
       shortLabel: "ERR",
+    };
+  }
+
+  if (isInterrupted) {
+    return {
+      accentClass: "text-amber-100 border-amber-300/30 bg-amber-300/10",
+      description: "刷新或离开页面中断了这次生成，可保留参数重新生成",
+      kind: "interrupted",
+      label: "已中断",
+      shortLabel: "STOP",
     };
   }
 

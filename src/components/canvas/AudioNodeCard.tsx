@@ -330,7 +330,7 @@ function AudioNodeCardImpl({
         setIsUploadingAudio(false);
       }
     },
-    [node.id, onUpdateData, onUpdateProperty, readLocalAudioMetadata]
+    [node.id, onUpdateData, onUpdateProperty, readLocalAudioMetadata, setIsUploadingAudio]
   );
 
   const uploadControl = (

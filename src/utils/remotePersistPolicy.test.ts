@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   REMOTE_FULL_SNAPSHOT_MIN_INTERVAL_MS,
   isDuplicateRemotePersistError,
+  getLeaveProtectionState,
   shouldDeferRemoteSnapshotForInFlight,
   shouldPersistRemoteSnapshot,
   type RemoteDirtyKind,
@@ -110,5 +111,39 @@ describe("remotePersistPolicy", () => {
     expect(isDuplicateRemotePersistError(new Error("请勿重复提交"))).toBe(true);
     expect(isDuplicateRemotePersistError(new Error("Duplicate submission"))).toBe(true);
     expect(isDuplicateRemotePersistError(new Error("网络异常"))).toBe(false);
+  });
+
+  it("requires leave protection for unsaved changes or non-recoverable runtime state", () => {
+    expect(
+      getLeaveProtectionState({
+        hasNonRecoverableRuntimeState: false,
+        hasUnsavedRemoteChanges: false,
+        persistStatus: "saved",
+      })
+    ).toEqual({ shouldWarn: false, reason: "none" });
+
+    expect(
+      getLeaveProtectionState({
+        hasNonRecoverableRuntimeState: false,
+        hasUnsavedRemoteChanges: true,
+        persistStatus: "dirty",
+      })
+    ).toEqual({ shouldWarn: true, reason: "unsaved" });
+
+    expect(
+      getLeaveProtectionState({
+        hasNonRecoverableRuntimeState: true,
+        hasUnsavedRemoteChanges: false,
+        persistStatus: "saved",
+      })
+    ).toEqual({ shouldWarn: true, reason: "non-recoverable-runtime" });
+
+    expect(
+      getLeaveProtectionState({
+        hasNonRecoverableRuntimeState: false,
+        hasUnsavedRemoteChanges: false,
+        persistStatus: "error",
+      })
+    ).toEqual({ shouldWarn: true, reason: "save-error" });
   });
 });

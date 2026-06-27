@@ -125,6 +125,8 @@ export interface GraphNode {
     loadingOperation?: "generate" | "frame-analysis" | "video-prompt" | "batch-replacement";
     progress?: number;
     status?: string;
+    interruptedReason?: "refresh" | "navigation" | "upload";
+    interruptedAt?: number;
     error?: string;
     remoteVideoTaskId?: string;
     remoteVideoTaskStatus?: string;

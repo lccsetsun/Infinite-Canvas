@@ -769,6 +769,7 @@ function ImageNodeCardImpl({
     data: node.data,
     properties: node.properties,
   });
+  const isInterrupted = node.data?.status === "interrupted";
   const [isHovered, setIsHovered] = React.useState(false);
   const [expandedPromptEditorOpen, setExpandedPromptEditorOpen] = React.useState(false);
   const [openSelect, setOpenSelect] = React.useState<"quantity" | null>(null);
@@ -4057,12 +4058,17 @@ function ImageNodeCardImpl({
                   </div>
                 ) : (
                   <div
-                    className="flex flex-col items-center justify-center"
+                    className="flex flex-col items-center justify-center text-center"
                     style={{ minHeight: Math.max(120, emptyImageNodeSize.nodeHeight - 52) }}
                   >
-                    <div className="mb-8 flex h-[96px] w-[96px] items-center justify-center text-violet-100/58">
+                    <div className="mb-4 flex h-[96px] w-[96px] items-center justify-center text-violet-100/58">
                       <ImageIcon className="h-14 w-14" strokeWidth={1.55} />
                     </div>
+                    {isInterrupted ? (
+                      <div className="max-w-[260px] text-[13px] leading-5 text-amber-100/78">
+                        上次生成已中断，可保留参数重新生成
+                      </div>
+                    ) : null}
                   </div>
                 )}
               </div>

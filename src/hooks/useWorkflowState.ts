@@ -65,10 +65,12 @@ import type { BatchEditImagesTaskResult } from "../features/api/videoBatchReplac
 import { queryBatchEditImagesTask } from "../features/api/videoBatchReplacement";
 import {
   REMOTE_FULL_SNAPSHOT_MIN_INTERVAL_MS,
+  getLeaveProtectionState,
   isDuplicateRemotePersistError,
   shouldDeferRemoteSnapshotForInFlight,
   shouldPersistRemoteSnapshot,
   type RemoteDirtyKind,
+  type RemotePersistStatus,
 } from "../utils/remotePersistPolicy";
 
 const HISTORY_LIMIT = 50;
@@ -1299,6 +1301,46 @@ function sanitizeNodesRuntimeState(nodes: GraphNode[]): GraphNode[] {
   return nodes.map(sanitizeNodeRuntimeState);
 }
 
+export type InterruptedRuntimeReason = "refresh" | "navigation" | "upload";
+
+export function interruptNonRecoverableRuntimeNode(
+  node: GraphNode,
+  reason: InterruptedRuntimeReason = "refresh",
+  interruptedAt = Date.now()
+): GraphNode {
+  if (!hasNodeRuntimeState(node)) return node;
+  if (isPersistablePendingRuntimeNode(node)) return node;
+
+  const {
+    loading: _loading,
+    loadingOperation: _loadingOperation,
+    progress: _progress,
+    uploadingAsset: _uploadingAsset,
+    ...restData
+  } = node.data || {};
+  const { status: propertyStatus, ...restProperties } = node.properties;
+
+  return {
+    ...node,
+    properties: propertyStatus === "loading" ? restProperties : node.properties,
+    data: {
+      ...restData,
+      loading: false,
+      status: "interrupted",
+      interruptedReason: reason,
+      interruptedAt,
+    },
+  };
+}
+
+function interruptNonRecoverableRuntimeNodes(
+  nodes: GraphNode[],
+  reason: InterruptedRuntimeReason = "refresh",
+  interruptedAt = Date.now()
+) {
+  return nodes.map((node) => interruptNonRecoverableRuntimeNode(node, reason, interruptedAt));
+}
+
 export function applyPendingRemoteVideoTaskSnapshot({
   nodes,
   nodeId,
@@ -1839,6 +1881,8 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     outputsToMap(initialWf?.data.nodeOutputs ?? [])
   );
   const [isRunning, setIsRunning] = useState(false);
+  const [persistStatus, setPersistStatus] = useState<RemotePersistStatus>("idle");
+  const [lastPersistError, setLastPersistError] = useState("");
   const [remotePersistRetryTick, setRemotePersistRetryTick] = useState(0);
 
   const [historyState, setHistoryState] = useState<{ stack: HistorySnapshot[]; pointer: number }>(
@@ -1940,9 +1984,140 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     setLogs((prev) => [...prev, makeLog(type, message)].slice(-80));
   }, []);
 
+  const persistRemoteSnapshot = useCallback(
+    ({ force }: { force: boolean; reason: string }) => {
+      if (!isRemoteMode || !onRemotePersist || !currentWorkflowSummary?.id) return false;
+
+      const activeNodes = currentNodesRef.current;
+      const hasPendingRuntimeState = activeNodes.some(
+        (node) => hasNodeRuntimeState(node) && !isPersistablePendingRuntimeNode(node)
+      );
+      if (hasPendingRuntimeState && !force) return false;
+
+      const persistableNodes = sanitizeNodesRuntimeState(
+        force ? interruptNonRecoverableRuntimeNodes(activeNodes, "refresh") : activeNodes
+      );
+      const activeLinks = currentLinksRef.current;
+      const activeNodeOutputs = currentNodeOutputsRef.current;
+      const activeGroups = currentGroupsRef.current;
+      const persistSignature = serializeRemotePersistSnapshot({
+        workflowId: currentWorkflowSummary.id,
+        name: currentWorkflowSummary.name,
+        category: currentWorkflowSummary.category,
+        tags: currentWorkflowSummary.tags ?? [],
+        nodes: persistableNodes,
+        links: activeLinks,
+        nodeOutputs: activeNodeOutputs,
+        groups: activeGroups,
+      });
+      const projectSnapshot = buildRemoteProjectSnapshot(currentWorkflowSummary, {
+        nodes: persistableNodes,
+        links: activeLinks,
+        nodeOutputs: mapToOutputs(activeNodeOutputs),
+        groups: activeGroups,
+      });
+      const persistKey = getRemotePersistKey?.(projectSnapshot) ?? persistSignature;
+      if (persistKey === lastRemotePersistSignatureRef.current) {
+        setPersistStatus("saved");
+        return false;
+      }
+      if (persistKey === inFlightRemotePersistKeyRef.current) return false;
+      if (
+        shouldDeferRemoteSnapshotForInFlight({
+          inFlightKey: inFlightRemotePersistKeyRef.current,
+          nextKey: persistKey,
+        })
+      ) {
+        deferredRemotePersistRef.current = true;
+        setPersistStatus("dirty");
+        return false;
+      }
+
+      const dirtyKind =
+        remoteDirtyKindRef.current === "none" ? "content" : remoteDirtyKindRef.current;
+      const now = Date.now();
+      if (
+        !force &&
+        !shouldPersistRemoteSnapshot({
+          dirtyKind,
+          hasPendingRuntimeState,
+          lastPersistedAt: lastRemotePersistedAtRef.current,
+          lastSignature: lastRemotePersistSignatureRef.current,
+          now,
+          nextSignature: persistKey,
+        })
+      ) {
+        if (dirtyKind === "position" && lastRemotePersistedAtRef.current > 0) {
+          const retryDelay = Math.max(
+            0,
+            REMOTE_FULL_SNAPSHOT_MIN_INTERVAL_MS - (now - lastRemotePersistedAtRef.current)
+          );
+          remotePersistRetryTimeoutRef.current = window.setTimeout(() => {
+            remotePersistRetryTimeoutRef.current = null;
+            setRemotePersistRetryTick((tick) => tick + 1);
+          }, retryDelay);
+        }
+        return false;
+      }
+
+      pendingLocalPersistSignatureRef.current = persistSignature;
+      inFlightRemotePersistKeyRef.current = persistKey;
+      setPersistStatus("saving");
+      setLastPersistError("");
+
+      void Promise.resolve(onRemotePersist(projectSnapshot))
+        .then(() => {
+          if (inFlightRemotePersistKeyRef.current !== persistKey) return;
+          inFlightRemotePersistKeyRef.current = "";
+          lastRemotePersistSignatureRef.current = persistKey;
+          lastRemotePersistedAtRef.current = Date.now();
+          if (pendingLocalPersistSignatureRef.current === persistSignature) {
+            pendingLocalPersistSignatureRef.current = "";
+          }
+          remoteDirtyKindRef.current = "none";
+          setPersistStatus("saved");
+          if (deferredRemotePersistRef.current) {
+            deferredRemotePersistRef.current = false;
+            setRemotePersistRetryTick((tick) => tick + 1);
+          }
+        })
+        .catch((error) => {
+          if (inFlightRemotePersistKeyRef.current === persistKey) {
+            inFlightRemotePersistKeyRef.current = "";
+          }
+          if (isDuplicateRemotePersistError(error)) {
+            lastRemotePersistSignatureRef.current = persistKey;
+            lastRemotePersistedAtRef.current = Date.now();
+            if (pendingLocalPersistSignatureRef.current === persistSignature) {
+              pendingLocalPersistSignatureRef.current = "";
+            }
+            remoteDirtyKindRef.current = "none";
+            deferredRemotePersistRef.current = false;
+            setPersistStatus("saved");
+            return;
+          }
+          const message = error instanceof Error ? error.message : String(error);
+          setLastPersistError(message);
+          setPersistStatus("error");
+          console.warn("Failed to persist remote canvas", error);
+          deferredRemotePersistRef.current = false;
+          setRemotePersistRetryTick((tick) => tick + 1);
+        });
+
+      return true;
+    },
+    [currentWorkflowSummary, getRemotePersistKey, isRemoteMode, onRemotePersist]
+  );
+
+  const flushRemotePersist = useCallback(
+    (reason: string) => persistRemoteSnapshot({ force: true, reason }),
+    [persistRemoteSnapshot]
+  );
+
   const markRemoteDirty = useCallback(
     (dirtyKind: RemoteDirtyKind) => {
       if (!isRemoteMode || dirtyKind === "none") return;
+      setPersistStatus("dirty");
       const current = remoteDirtyKindRef.current;
       if (current === "structure") return;
       if (dirtyKind === "structure" || current === "none") {
@@ -2032,6 +2207,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       summary: { ...wf.summary, updatedAt: Date.now() },
       data: { ...wf.data, nodes: nextNodes, links: nextLinks },
     }));
+    flushRemotePersist("add-node");
     pushHistory({ nodes: nextNodes, links: nextLinks });
     appendLog("success", `宸叉坊鍔犺妭鐐?${node.title}`);
     return id;
@@ -2055,6 +2231,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       summary: { ...wf.summary, updatedAt: Date.now() },
       data: { ...wf.data, nodes: nextNodes, links: nextLinks },
     }));
+    flushRemotePersist("remove-node");
     pushHistory({ nodes: nextNodes, links: nextLinks });
     appendLog("warning", `宸插垹闄よ妭鐐?${node?.title ?? nodeId}`);
   };
@@ -2095,6 +2272,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         nodes: nextNodes,
       },
     }));
+    flushRemotePersist("remove-nodes");
     pushHistory({ nodes: nextNodes, links: nextLinks });
     appendLog("warning", `已删除 ${removedNodes.length} 个节点。`);
     return removedNodes.length;
@@ -2118,6 +2296,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       summary: { ...wf.summary, updatedAt: Date.now() },
       data: { ...wf.data, nodes: nextNodes },
     }));
+    flushRemotePersist("duplicate-node");
     pushHistory({ nodes: nextNodes, links });
     appendLog("info", `宸插鍒惰妭鐐?${src.title}`);
   };
@@ -2145,6 +2324,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       summary: { ...wf.summary, updatedAt: Date.now() },
       data: { ...wf.data, links: nextLinks, nodes: nextNodes },
     }));
+    flushRemotePersist("insert-nodes");
     pushHistory({ nodes: nextNodes, links: nextLinks });
     appendLog(
       "success",
@@ -2203,6 +2383,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       summary: { ...wf.summary, updatedAt: Date.now() },
       data: { groups: [], nodes: [], links: [], nodeOutputs: [] },
     }));
+    flushRemotePersist("clear-canvas");
     pushHistory({ nodes: [], links: [] });
     appendLog("warning", "Canvas cleared.");
   };
@@ -2259,6 +2440,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       summary: { ...wf.summary, updatedAt: Date.now() },
       data: { ...wf.data, links: nextLinks },
     }));
+    flushRemotePersist("add-link");
     pushHistory({ nodes, links: nextLinks });
     appendLog(
       "success",
@@ -2333,6 +2515,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       summary: { ...wf.summary, updatedAt: Date.now() },
       data: { ...wf.data, links: nextLinks },
     }));
+    flushRemotePersist("add-links");
     pushHistory({ nodes, links: nextLinks });
     appendLog("success", `已批量建立 ${createdLinks.length} 条连线。`);
     if (warnings.length > 0) {
@@ -2366,7 +2549,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     if (currentNodesRef.current.some(hasNodeRuntimeState)) return;
     const nextWorkspace = buildWorkspaceFromRemoteProject(remoteProject);
     const nextWorkflow = nextWorkspace.workflows[nextWorkspace.currentId];
-    const nextNodes = normalizeNodes(nextWorkflow.data.nodes);
+    const nextNodes = interruptNonRecoverableRuntimeNodes(normalizeNodes(nextWorkflow.data.nodes));
     const nextLinks = nextWorkflow.data.links;
     const nextGroups = nextWorkflow.data.groups ?? [];
     const nextNodeOutputs = outputsToMap(nextWorkflow.data.nodeOutputs);
@@ -2417,6 +2600,38 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     resetHistory({ nodes: nextNodes, links: nextLinks });
   }, [remoteProject, clearLinkDraft, resetHistory]);
 
+  useEffect(() => {
+    if (!isRemoteMode) return;
+
+    const hasNonRecoverableRuntimeState = () =>
+      currentNodesRef.current.some(
+        (node) => hasNodeRuntimeState(node) && !isPersistablePendingRuntimeNode(node)
+      );
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      const protection = getLeaveProtectionState({
+        hasNonRecoverableRuntimeState: hasNonRecoverableRuntimeState(),
+        hasUnsavedRemoteChanges: persistStatus === "dirty" || persistStatus === "saving",
+        persistStatus,
+      });
+      if (!protection.shouldWarn) return;
+      flushRemotePersist("beforeunload");
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    const handlePageHide = () => {
+      flushRemotePersist("pagehide");
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    window.addEventListener("pagehide", handlePageHide);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      window.removeEventListener("pagehide", handlePageHide);
+    };
+  }, [flushRemotePersist, isRemoteMode, persistStatus]);
+
   const removeLink = (linkId: string) => {
     const activeLinks = currentLinksRef.current;
     const activeNodes = currentNodesRef.current;
@@ -2434,6 +2649,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       summary: { ...wf.summary, updatedAt: Date.now() },
       data: { ...wf.data, links: nextLinks },
     }));
+    flushRemotePersist("remove-link");
     pushHistory({ nodes: activeNodes, links: nextLinks });
     appendLog("warning", `宸茬Щ闄よ繛绾?${linkId}`);
   };
@@ -2474,6 +2690,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       summary: { ...wf.summary, updatedAt: Date.now() },
       data: { ...wf.data, links: nextLinks },
     }));
+    flushRemotePersist("remove-input-reference");
     pushHistory({ nodes: activeNodes, links: nextLinks });
     appendLog("warning", `宸茬Щ闄よ緭鍏ヨ祫婧?${linkId}`);
   };
@@ -3177,10 +3394,17 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
           nodes: snapshot.nodes,
         },
       }));
+      flushRemotePersist("batch-result-run");
       pushHistory({ nodes: snapshot.nodes, links: snapshot.links });
       return snapshot.createdNodeIds;
     },
-    [markLocalRemotePersistPending, markRemoteDirty, pushHistory, syncCurrentWorkflowMeta]
+    [
+      flushRemotePersist,
+      markLocalRemotePersistPending,
+      markRemoteDirty,
+      pushHistory,
+      syncCurrentWorkflowMeta,
+    ]
   );
 
   const updateSelectedProperty = (key: string, value: unknown) => {
@@ -3302,6 +3526,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         inner.set(Number(k), v);
       });
       next.set(nodeId, inner);
+      currentNodeOutputsRef.current = next;
       return next;
     });
   }, []);
@@ -3347,8 +3572,9 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
               generationFinishedAt: undefined,
               loadingOperation: "generate" as const,
             }
-          : {}),
+            : {}),
       });
+      flushRemotePersist("run-node-start");
       appendLog("info", `寮€濮嬫墽琛?[${node.title}]`);
 
       try {
@@ -3371,6 +3597,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
             summary: { ...workflow.summary, updatedAt: Date.now() },
             data: { ...workflow.data, nodes: nextNodes },
           }));
+          flushRemotePersist("remote-video-task");
           appendLog("info", `[${node.title}] 视频任务已提交，正在后台生成`);
           return;
         }
@@ -3386,6 +3613,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
         };
         if (typeof result.outputs[0] === "string") patch.response = result.outputs[0];
         updateNodeData(nodeId, patch);
+        flushRemotePersist("run-node-complete");
         appendLog("success", `[${node.title}] 瀹屾垚`);
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
@@ -3397,6 +3625,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
             ? { generationFinishedAt: Date.now(), loadingOperation: undefined }
             : {}),
         });
+        flushRemotePersist("run-node-complete");
         appendLog("error", `[${node.title}] 澶辫触:${message}`);
       }
     },
@@ -3411,6 +3640,7 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       collectTextNodeMediaReferences,
       markLocalRemotePersistPending,
       markRemoteDirty,
+      flushRemotePersist,
       syncCurrentWorkflowMeta,
     ]
   );
@@ -4391,100 +4621,11 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       });
 
       if (isRemoteMode) {
-        if (!onRemotePersist) return;
         if (skipNextRemotePersistRef.current) {
           skipNextRemotePersistRef.current = false;
           return;
         }
-        if (!currentWorkflowSummary?.id) return;
-
-        const persistSignature = serializeRemotePersistSnapshot({
-          workflowId: currentWorkflowSummary.id,
-          name: currentWorkflowSummary.name,
-          category: currentWorkflowSummary.category,
-          tags: currentWorkflowSummary.tags ?? [],
-          nodes: persistableNodes,
-          links,
-          nodeOutputs,
-          groups,
-        });
-        const projectSnapshot = buildRemoteProjectSnapshot(currentWorkflowSummary, {
-          ...nextData,
-        });
-        const persistKey = getRemotePersistKey?.(projectSnapshot) ?? persistSignature;
-        if (persistKey === lastRemotePersistSignatureRef.current) return;
-        if (persistKey === inFlightRemotePersistKeyRef.current) return;
-        if (
-          shouldDeferRemoteSnapshotForInFlight({
-            inFlightKey: inFlightRemotePersistKeyRef.current,
-            nextKey: persistKey,
-          })
-        ) {
-          deferredRemotePersistRef.current = true;
-          return;
-        }
-        const dirtyKind =
-          remoteDirtyKindRef.current === "none" ? "content" : remoteDirtyKindRef.current;
-        const now = Date.now();
-        if (
-          !shouldPersistRemoteSnapshot({
-            dirtyKind,
-            hasPendingRuntimeState,
-            lastPersistedAt: lastRemotePersistedAtRef.current,
-            lastSignature: lastRemotePersistSignatureRef.current,
-            now,
-            nextSignature: persistKey,
-          })
-        ) {
-          if (dirtyKind === "position" && lastRemotePersistedAtRef.current > 0) {
-            const retryDelay = Math.max(
-              0,
-              REMOTE_FULL_SNAPSHOT_MIN_INTERVAL_MS - (now - lastRemotePersistedAtRef.current)
-            );
-            remotePersistRetryTimeoutRef.current = window.setTimeout(() => {
-              remotePersistRetryTimeoutRef.current = null;
-              setRemotePersistRetryTick((tick) => tick + 1);
-            }, retryDelay);
-          }
-          return;
-        }
-
-        pendingLocalPersistSignatureRef.current = persistSignature;
-        inFlightRemotePersistKeyRef.current = persistKey;
-
-        void Promise.resolve(onRemotePersist(projectSnapshot))
-          .then(() => {
-            if (inFlightRemotePersistKeyRef.current !== persistKey) return;
-            inFlightRemotePersistKeyRef.current = "";
-            lastRemotePersistSignatureRef.current = persistKey;
-            lastRemotePersistedAtRef.current = Date.now();
-            if (pendingLocalPersistSignatureRef.current === persistSignature) {
-              pendingLocalPersistSignatureRef.current = "";
-            }
-            remoteDirtyKindRef.current = "none";
-            if (deferredRemotePersistRef.current) {
-              deferredRemotePersistRef.current = false;
-              setRemotePersistRetryTick((tick) => tick + 1);
-            }
-          })
-          .catch((error) => {
-            if (inFlightRemotePersistKeyRef.current === persistKey) {
-              inFlightRemotePersistKeyRef.current = "";
-            }
-            if (isDuplicateRemotePersistError(error)) {
-              lastRemotePersistSignatureRef.current = persistKey;
-              lastRemotePersistedAtRef.current = Date.now();
-              if (pendingLocalPersistSignatureRef.current === persistSignature) {
-                pendingLocalPersistSignatureRef.current = "";
-              }
-              remoteDirtyKindRef.current = "none";
-              deferredRemotePersistRef.current = false;
-              return;
-            }
-            console.warn("Failed to persist remote canvas", error);
-            deferredRemotePersistRef.current = false;
-            setRemotePersistRetryTick((tick) => tick + 1);
-          });
+        persistRemoteSnapshot({ force: false, reason: "debounced" });
         return;
       }
     }, PERSIST_DEBOUNCE_MS);
@@ -4496,14 +4637,12 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
       }
     };
   }, [
-    currentWorkflowSummary,
     groups,
     isRemoteMode,
     links,
     nodeOutputs,
-    getRemotePersistKey,
     nodes,
-    onRemotePersist,
+    persistRemoteSnapshot,
     remotePersistRetryTick,
   ]);
 
@@ -4530,6 +4669,12 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     nodeOutputs,
     resolvedInputsMap,
     isRunning,
+    persistStatus,
+    lastPersistError,
+    hasUnsavedRemoteChanges: persistStatus === "dirty" || persistStatus === "saving",
+    hasNonRecoverableRuntimeState: nodes.some(
+      (node) => hasNodeRuntimeState(node) && !isPersistablePendingRuntimeNode(node)
+    ),
     canUndo,
     canRedo,
     workspace,

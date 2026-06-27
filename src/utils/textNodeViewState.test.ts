@@ -15,4 +15,17 @@ describe("getTextNodeViewState", () => {
     expect(getTextNodeViewState({ errorText: "failed", isRunning: false, promptText: "p", responseText: "" }).kind).toBe("error");
     expect(getTextNodeViewState({ errorText: "", isRunning: false, promptText: "p", responseText: "ok" }).kind).toBe("success");
   });
+
+  it("shows interrupted state before ready or idle state", () => {
+    const state = getTextNodeViewState({
+      errorText: "",
+      isInterrupted: true,
+      isRunning: false,
+      promptText: "prompt",
+      responseText: "",
+    });
+
+    expect(state.kind).toBe("interrupted");
+    expect(state.label).toBe("已中断");
+  });
 });

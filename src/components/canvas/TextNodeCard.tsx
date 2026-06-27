@@ -301,6 +301,7 @@ function TextNodeCardImpl({
         : modelOptions[0] || "";
   const viewState = getTextNodeViewState({
     errorText,
+    isInterrupted: node.data?.status === "interrupted",
     isRunning,
     promptText: displayPromptText,
     responseText,

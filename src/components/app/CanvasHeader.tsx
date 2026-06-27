@@ -3,6 +3,7 @@ import { motion } from "motion/react";
 import { ChevronDown, FolderPlus, Home, Layers3, Loader2, Pencil, Trash2 } from "lucide-react";
 import HeaderRightPanel from "./HeaderRightPanel";
 import aiCanvasMark from "../../assets/brand/ai-canvas-mark.svg";
+import type { RemotePersistStatus } from "../../utils/remotePersistPolicy";
 import {
   createRemoteProject,
   deleteRemoteProject,
@@ -16,6 +17,8 @@ interface CanvasHeaderProps {
   onLogout?: () => void;
   onProjectRenamed?: (name: string) => void;
   onNotice?: (message: string) => void;
+  persistStatus?: RemotePersistStatus;
+  lastPersistError?: string;
 }
 
 type ProjectMenuAction = "create" | "rename" | "delete" | null;
@@ -32,6 +35,14 @@ function BrandGlyph() {
 
 export function getCanvasHeaderProjectName(projectName?: string) {
   return projectName?.trim() || "未命名";
+}
+
+export function getCanvasHeaderPersistStatusLabel(status: RemotePersistStatus = "idle") {
+  if (status === "saving") return "保存中";
+  if (status === "saved") return "已保存";
+  if (status === "dirty") return "未保存";
+  if (status === "error") return "保存失败";
+  return "";
 }
 
 export function resolveCanvasProjectRename(currentName: string, draftName: string) {
@@ -115,6 +126,8 @@ export default function CanvasHeader({
   onLogout,
   onProjectRenamed,
   onNotice,
+  persistStatus = "idle",
+  lastPersistError = "",
 }: CanvasHeaderProps) {
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [pendingAction, setPendingAction] = React.useState<ProjectMenuAction>(null);
@@ -124,6 +137,7 @@ export default function CanvasHeader({
   const [localProjectName, setLocalProjectName] = React.useState("");
   const menuRef = React.useRef<HTMLDivElement | null>(null);
   const projectName = getCanvasHeaderProjectName(localProjectName || loadedProjectName);
+  const persistLabel = getCanvasHeaderPersistStatusLabel(persistStatus);
   const renameState = resolveCanvasProjectRename(projectName, renameDraft);
   const canSaveRename = renameState.ok && renameState.changed && pendingAction !== "rename";
 
@@ -247,8 +261,26 @@ export default function CanvasHeader({
           <BrandGlyph />
 
           <div className="min-w-0 flex-1">
-            <div className="truncate text-[14px] font-semibold tracking-[-0.01em] text-slate-100">
-              {projectName}
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="truncate text-[14px] font-semibold tracking-[-0.01em] text-slate-100">
+                {projectName}
+              </span>
+              {persistLabel ? (
+                <span
+                  title={lastPersistError || persistLabel}
+                  className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold leading-none ${
+                    persistStatus === "error"
+                      ? "bg-rose-400/10 text-rose-200"
+                      : persistStatus === "dirty"
+                        ? "bg-amber-300/10 text-amber-200"
+                        : persistStatus === "saving"
+                          ? "bg-cyan-300/10 text-cyan-100"
+                          : "bg-emerald-300/10 text-emerald-200"
+                  }`}
+                >
+                  {persistLabel}
+                </span>
+              ) : null}
             </div>
           </div>
 

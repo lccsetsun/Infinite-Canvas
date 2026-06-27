@@ -19,6 +19,7 @@ import {
   collectPendingBatchEditImagesPollTargets,
   collectPendingRemoteVideoPollTargets,
   createBatchEditImagesResultRunSnapshot,
+  interruptNonRecoverableRuntimeNode,
   isPersistablePendingRuntimeNode,
   shouldApplyRemoteWorkflowSnapshot,
   syncVideoBatchReplacementTargetsSnapshot,
@@ -45,6 +46,46 @@ describe("useWorkflowState remote-only persistence", () => {
     );
 
     expect(persistEffectSource).toContain("!isPersistablePendingRuntimeNode(node)");
+  });
+
+  it("exposes an immediate remote persist flush path for critical transitions", () => {
+    const source = readFileSync(new URL("./useWorkflowState.ts", import.meta.url), "utf8");
+
+    expect(source).toContain("const flushRemotePersist = useCallback");
+    expect(source).toContain('interruptNonRecoverableRuntimeNodes(activeNodes, "refresh")');
+    expect(source).toContain('flushRemotePersist("add-node")');
+    expect(source).toContain('flushRemotePersist("remove-node")');
+    expect(source).toContain('flushRemotePersist("remove-nodes")');
+    expect(source).toContain('flushRemotePersist("duplicate-node")');
+    expect(source).toContain('flushRemotePersist("clear-canvas")');
+    expect(source).toContain('flushRemotePersist("insert-nodes")');
+    expect(source).toContain('flushRemotePersist("add-link")');
+    expect(source).toContain('flushRemotePersist("add-links")');
+    expect(source).toContain('flushRemotePersist("remove-link")');
+    expect(source).toContain('flushRemotePersist("remove-input-reference")');
+    expect(source).toContain('flushRemotePersist("run-node-start")');
+    expect(source).toContain('flushRemotePersist("run-node-complete")');
+    expect(source).toContain('flushRemotePersist("remote-video-task")');
+    expect(source).toContain('flushRemotePersist("batch-result-run")');
+  });
+
+  it("keeps node output refs current before completion flushes", () => {
+    const source = readFileSync(new URL("./useWorkflowState.ts", import.meta.url), "utf8");
+    const writeOutputBlock = source.slice(
+      source.indexOf("const writeNodeOutput = useCallback"),
+      source.indexOf("const collectTextNodeMediaReferences")
+    );
+
+    expect(writeOutputBlock).toContain("currentNodeOutputsRef.current = next");
+  });
+
+  it("registers unload protection for unsaved or non-recoverable work", () => {
+    const source = readFileSync(new URL("./useWorkflowState.ts", import.meta.url), "utf8");
+
+    expect(source).toContain("getLeaveProtectionState");
+    expect(source).toContain('window.addEventListener("beforeunload"');
+    expect(source).toContain('window.addEventListener("pagehide"');
+    expect(source).toContain('flushRemotePersist("pagehide")');
   });
 
   it("handles duplicate remote persist rejection without retrying the same payload", () => {
@@ -771,6 +812,62 @@ describe("sanitizeNodeRuntimeState", () => {
     expect(sanitized.data?.uploadingAsset).toBeUndefined();
     expect(sanitized.data?.status).toBe("idle");
     expect(sanitized.data?.uploadedAssetName).toBe("demo.png");
+  });
+
+  it("converts non-recoverable text and image loading states to interrupted after refresh", () => {
+    const textNode: GraphNode = {
+      ...makeTextNode("text-loading"),
+      type: "text_node",
+      properties: { status: "loading", text: "写一段文案" },
+      data: { loading: true, status: "loading", loadingOperation: "generate" },
+    };
+    const imageNode: GraphNode = {
+      ...makeTextNode("image-loading"),
+      type: "image_node",
+      properties: { status: "loading", prompt: "a glass house" },
+      data: { loading: true, status: "loading", loadingOperation: "generate" },
+    };
+
+    const interruptedText = interruptNonRecoverableRuntimeNode(textNode, "refresh", 1000);
+    const interruptedImage = interruptNonRecoverableRuntimeNode(imageNode, "refresh", 1000);
+
+    expect(interruptedText.data).toMatchObject({
+      loading: false,
+      status: "interrupted",
+      interruptedReason: "refresh",
+      interruptedAt: 1000,
+    });
+    expect(interruptedText.data?.loadingOperation).toBeUndefined();
+    expect(interruptedText.properties.status).toBeUndefined();
+    expect(interruptedText.properties.text).toBe("写一段文案");
+
+    expect(interruptedImage.data).toMatchObject({
+      loading: false,
+      status: "interrupted",
+      interruptedReason: "refresh",
+      interruptedAt: 1000,
+    });
+    expect(interruptedImage.data?.loadingOperation).toBeUndefined();
+    expect(interruptedImage.properties.status).toBeUndefined();
+    expect(interruptedImage.properties.prompt).toBe("a glass house");
+  });
+
+  it("does not interrupt recoverable video pending nodes", () => {
+    const pendingVideoNode: GraphNode = {
+      ...makeTextNode("video-1"),
+      type: "video_node",
+      properties: { status: "loading" },
+      data: {
+        loading: true,
+        loadingOperation: "generate",
+        remoteVideoTaskId: "video-task-1",
+        status: "loading",
+      },
+    };
+
+    const result = interruptNonRecoverableRuntimeNode(pendingVideoNode, "refresh", 1000);
+
+    expect(result).toBe(pendingVideoNode);
   });
 });
 

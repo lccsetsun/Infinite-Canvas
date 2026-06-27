@@ -1,6 +1,10 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { getCanvasHeaderProjectName, resolveCanvasProjectRename } from "./CanvasHeader";
+import {
+  getCanvasHeaderPersistStatusLabel,
+  getCanvasHeaderProjectName,
+  resolveCanvasProjectRename,
+} from "./CanvasHeader";
 
 describe("getCanvasHeaderProjectName", () => {
   it("uses the project name supplied by the parent canvas loader", () => {
@@ -50,6 +54,16 @@ describe("CanvasHeader remote project loading", () => {
     expect(source).toContain("pointer-events-none relative z-[120]");
     expect(source).toContain("pointer-events-auto relative flex min-w-0 items-center");
     expect(source).toContain("pointer-events-auto fixed inset-0 z-[160]");
+  });
+});
+
+describe("getCanvasHeaderPersistStatusLabel", () => {
+  it("maps remote persist state to compact user-facing copy", () => {
+    expect(getCanvasHeaderPersistStatusLabel("saving")).toBe("保存中");
+    expect(getCanvasHeaderPersistStatusLabel("saved")).toBe("已保存");
+    expect(getCanvasHeaderPersistStatusLabel("dirty")).toBe("未保存");
+    expect(getCanvasHeaderPersistStatusLabel("error")).toBe("保存失败");
+    expect(getCanvasHeaderPersistStatusLabel("idle")).toBe("");
   });
 });
 
