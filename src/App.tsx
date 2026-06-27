@@ -19,7 +19,8 @@ import {
 import MiniMap from "./components/app/MiniMap";
 import PreviewModal, { PreviewContent } from "./components/app/PreviewModal";
 import SettingsPanels from "./components/app/SettingsPanels";
-import { Copy, Eye, Loader2, Trash2 } from "lucide-react";
+import { Copy, Eye, Loader2, Send, Trash2 } from "lucide-react";
+import { getPrimaryImageNodeOssId } from "./components/canvas/ImageNodeCard";
 import { snapPointToGrid } from "./components/canvas/geometry";
 import {
   shouldStartCanvasPan,
@@ -40,6 +41,7 @@ import {
 } from "./utils/imageGridSplit";
 import { getPointerAlignedNodePosition } from "./utils/dropAlignedNodePosition";
 import { getCanvasViewportClassName } from "./utils/canvasViewportLayout";
+import { getSearchMenuPosition } from "./utils/searchMenuPosition";
 import {
   isBrowserZoomKeyboardShortcut,
   shouldPreventBrowserZoomWheel,
@@ -105,6 +107,7 @@ import {
   fetchCanvasGenerationDictionaries,
   type CanvasGenerationDictionaries,
 } from "./features/api/canvasGenerationDictionaries";
+import { reviewAsset } from "./features/api/assetReview";
 import { batchEditImages } from "./features/api/videoBatchReplacement";
 import { resolveVideoBatchReplacementSourceFrames } from "./utils/videoBatchReplacementSubmit";
 import { clearAuthSession } from "./features/auth/authStorage";
@@ -120,6 +123,7 @@ import {
 const SearchMenu = React.lazy(() => import("./components/SearchMenu"));
 
 const CANVAS_VIEWPORT_STORAGE_PREFIX = "aistudio:canvas-viewport:";
+const NODE_CONTEXT_MENU_SIZE = { width: 176, height: 96 };
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
@@ -482,6 +486,7 @@ export default function App({ onLoggedOut }: AppProps) {
   const groupDragRef = React.useRef<GroupDragState | null>(null);
   const [isGroupDragging, setIsGroupDragging] = React.useState(false);
   const [hoveredGroupId, setHoveredGroupId] = React.useState<string | null>(null);
+  const [reviewingAssetNodeId, setReviewingAssetNodeId] = React.useState<string | null>(null);
   const [nodeContextMenu, setNodeContextMenu] = React.useState<{
     nodeId: string;
     x: number;
@@ -499,6 +504,25 @@ export default function App({ onLoggedOut }: AppProps) {
       (nodeContextMenuNode.properties.response as string) ||
       ""
     );
+  }, [nodeContextMenuNode]);
+  const nodeContextMenuImageOssId = React.useMemo(() => {
+    if (!nodeContextMenuNode || nodeContextMenuNode.type !== "image_node") return "";
+    const imageUrls = Array.isArray(nodeContextMenuNode.data?.imageUrls)
+      ? nodeContextMenuNode.data.imageUrls.filter(
+          (url): url is string => typeof url === "string" && Boolean(url)
+        )
+      : [];
+    const activeIndex =
+      typeof nodeContextMenuNode.data?.activeImageIndex === "number"
+        ? Math.max(0, Math.trunc(nodeContextMenuNode.data.activeImageIndex))
+        : 0;
+    const imageUrl =
+      imageUrls[activeIndex] ||
+      imageUrls[0] ||
+      (nodeContextMenuNode.data?.imageUrl as string) ||
+      (nodeContextMenuNode.properties.imageUrl as string) ||
+      "";
+    return getPrimaryImageNodeOssId(nodeContextMenuNode, imageUrl);
   }, [nodeContextMenuNode]);
   const menuCloseTimerRef = React.useRef<number | null>(null);
   const autoFitStateRef = React.useRef<{ workflowId: string | null; nodeCount: number } | null>(
@@ -645,7 +669,6 @@ export default function App({ onLoggedOut }: AppProps) {
     showNotice,
     toWorld,
     onBlankLinkDrop: (draft) => {
-      const rect = canvasRef.current?.getBoundingClientRect();
       setPendingLinkMenuDraft({
         clientX: draft.clientX,
         clientY: draft.clientY,
@@ -654,8 +677,8 @@ export default function App({ onLoggedOut }: AppProps) {
         sources: draft.sources,
       });
       setMenuPos({
-        x: draft.clientX - (rect?.left ?? 0),
-        y: draft.clientY - (rect?.top ?? 0),
+        x: draft.clientX,
+        y: draft.clientY,
       });
       setIsMenuFromToolbar(false);
     },
@@ -852,7 +875,6 @@ export default function App({ onLoggedOut }: AppProps) {
     (nodeId: string, event: React.MouseEvent) => {
       event.preventDefault();
       event.stopPropagation();
-      const rect = canvasRef.current?.getBoundingClientRect();
       const node = nodes.find((candidate) => candidate.id === nodeId);
       applyCanvasSelection(selectCanvasNode(nodeId));
       setMenuPos(null);
@@ -863,16 +885,36 @@ export default function App({ onLoggedOut }: AppProps) {
       }
       setNodeContextMenu({
         nodeId,
-        x: event.clientX - (rect?.left ?? 0),
-        y: event.clientY - (rect?.top ?? 0),
+        x: event.clientX,
+        y: event.clientY,
       });
     },
-    [applyCanvasSelection, canvasRef, nodes]
+    [applyCanvasSelection, nodes]
   );
 
   const closeNodeContextMenu = React.useCallback(() => {
     setNodeContextMenu(null);
   }, []);
+
+  const handleReviewImageAsset = React.useCallback(
+    async (nodeId: string, ossId: string) => {
+      if (!ossId.trim()) {
+        showNotice("当前图片没有 ossId，无法送审");
+        return;
+      }
+      setReviewingAssetNodeId(nodeId);
+      try {
+        const result = await reviewAsset(ossId);
+        showNotice(`送审成功：${result || "已完成"}`, 1800);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "接口异常";
+        showNotice(`送审失败：${message}`, 2600);
+      } finally {
+        setReviewingAssetNodeId((current) => (current === nodeId ? null : current));
+      }
+    },
+    [showNotice]
+  );
 
   const handleGroupPointerDown = React.useCallback(
     (e: React.PointerEvent) => {
@@ -1891,17 +1933,23 @@ export default function App({ onLoggedOut }: AppProps) {
           {nodeContextMenu && (
             <div
               data-node-action="true"
-              className="absolute z-50 w-44 overflow-hidden rounded-xl border border-white/10 bg-[#141923]/96 p-1.5 text-sm text-slate-100 shadow-[0_24px_60px_-28px_rgba(0,0,0,0.95),0_0_28px_rgba(56,189,248,0.12)] backdrop-blur-xl"
-              style={{
-                left: Math.min(nodeContextMenu.x, Math.max(12, canvasSize.width - 188)),
-                top: Math.min(
-                  nodeContextMenu.y,
-                  Math.max(
-                    12,
-                    canvasSize.height - (nodeContextMenuNode?.type === "text_node" ? 178 : 96)
-                  )
-                ),
-              }}
+              className="fixed z-50 w-44 overflow-hidden rounded-xl border border-white/10 bg-[#141923]/96 p-1.5 text-sm text-slate-100 shadow-[0_24px_60px_-28px_rgba(0,0,0,0.95),0_0_28px_rgba(56,189,248,0.12)] backdrop-blur-xl"
+              style={getSearchMenuPosition(
+                nodeContextMenu,
+                {
+                  width: NODE_CONTEXT_MENU_SIZE.width,
+                  height:
+                    nodeContextMenuNode?.type === "text_node"
+                      ? 178
+                      : nodeContextMenuNode?.type === "image_node"
+                        ? 136
+                      : NODE_CONTEXT_MENU_SIZE.height,
+                },
+                {
+                  width: typeof window === "undefined" ? 0 : window.innerWidth,
+                  height: typeof window === "undefined" ? 0 : window.innerHeight,
+                }
+              )}
               onPointerDown={(event) => event.stopPropagation()}
               onContextMenu={(event) => {
                 event.preventDefault();
@@ -1946,6 +1994,34 @@ export default function App({ onLoggedOut }: AppProps) {
                   >
                     <Eye className="h-4 w-4" />
                     展开查看
+                  </button>
+                  <div className="my-1 h-px bg-white/10" />
+                </>
+              )}
+              {nodeContextMenuNode?.type === "image_node" && (
+                <>
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left font-semibold text-slate-200 transition hover:bg-cyan-300/10 hover:text-cyan-100 disabled:cursor-wait disabled:text-slate-400"
+                    disabled={reviewingAssetNodeId === nodeContextMenu.nodeId}
+                    onClick={() => {
+                      if (!nodeContextMenuImageOssId) {
+                        showNotice("当前图片没有 ossId，无法送审");
+                        closeNodeContextMenu();
+                        return;
+                      }
+                      void handleReviewImageAsset(
+                        nodeContextMenu.nodeId,
+                        nodeContextMenuImageOssId
+                      ).finally(closeNodeContextMenu);
+                    }}
+                  >
+                    {reviewingAssetNodeId === nodeContextMenu.nodeId ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Send className="h-4 w-4" />
+                    )}
+                    {reviewingAssetNodeId === nodeContextMenu.nodeId ? "送审中" : "送审"}
                   </button>
                   <div className="my-1 h-px bg-white/10" />
                 </>
@@ -2046,6 +2122,8 @@ export default function App({ onLoggedOut }: AppProps) {
               onAnalyzeVideo={handleAnalyzeVideo}
               onReverseVideoPrompt={handleReverseVideoPrompt}
               onCreateVideoBatchReplacement={handleCreateVideoBatchReplacement}
+              onReviewAsset={handleReviewImageAsset}
+              reviewingAssetNodeId={reviewingAssetNodeId}
               onSelectNode={(nodeId, e) => handleSelectNode(nodeId, e)}
               onUpdateNodeData={updateNodeData}
               onUpdateNodeProperty={updateNodeProperty}

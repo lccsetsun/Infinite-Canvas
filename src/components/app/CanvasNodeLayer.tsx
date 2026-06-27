@@ -198,6 +198,8 @@ interface CanvasNodeLayerProps {
   onAnalyzeVideo?: (node: GraphNode, captures: VideoFrameCaptureItem[]) => Promise<void> | void;
   onReverseVideoPrompt?: (node: GraphNode, videoUrl: string) => Promise<void> | void;
   onCreateVideoBatchReplacement?: (node: GraphNode) => void;
+  onReviewAsset?: (nodeId: string, ossId: string) => void;
+  reviewingAssetNodeId?: string | null;
   onSelectNode: (nodeId: string, e?: React.MouseEvent) => void;
   onUpdateNodeData: (nodeId: string, data: any) => void;
   onUpdateNodeProperty: (nodeId: string, key: string, value: unknown) => void;
@@ -290,6 +292,8 @@ export default function CanvasNodeLayer({
   onAnalyzeVideo,
   onReverseVideoPrompt,
   onCreateVideoBatchReplacement,
+  onReviewAsset,
+  reviewingAssetNodeId,
   onSelectNode,
   onUpdateNodeData,
   onUpdateNodeProperty,
@@ -490,11 +494,13 @@ export default function CanvasNodeLayer({
                     onReplaceImageGridCell={onReplaceImageGridCell}
                     onDropImageToVideoBatchReplacement={onDropImageToVideoBatchReplacement}
                     onCreateBatchReplacement={onCreateVideoBatchReplacement}
+                    onReviewAsset={onReviewAsset}
                     onPreview={onPreview}
                     references={inputReferencesMap?.get(node.id) ?? []}
                     resolvedInputs={resolvedInputsMap?.get(node.id)}
                     onRemoveInputReference={onRemoveInputReference}
                     onRun={onRunNode}
+                    isReviewingAsset={reviewingAssetNodeId === node.id}
                     onNotice={onNotice}
                     resolutionPresetGroups={imageResolutionGroups}
                     // 连线相关

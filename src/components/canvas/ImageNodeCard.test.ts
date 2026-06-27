@@ -237,6 +237,83 @@ describe("ImageNodeCard prompt composer fullscreen editor", () => {
     expect(source).toContain('Tooltip content="批量替换"');
     expect(source).toContain("isFrameStrip && (");
   });
+
+  it("places asset review in the regular image toolbar using the displayed image oss id", () => {
+    const source = readFileSync(new URL("./ImageNodeCard.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain("onReviewAsset?:");
+    expect(source).toContain("const reviewOssId = getPrimaryImageNodeOssId(node, imageUrl)");
+    expect(source).toContain("onReviewAsset?.(node.id, reviewOssId)");
+    expect(source).toContain('Tooltip content={isReviewingAsset ? "送审中" : "送审"}');
+    expect(source).toContain('aria-label={isReviewingAsset ? "送审中" : "送审"}');
+    expect(source).toContain("{isReviewingAsset ? \"送审中\" : \"送审\"}");
+    expect(source).toContain("isReviewingAsset ? (");
+  });
+
+  it("adds non-destructive image annotation controls and persists annotation data", () => {
+    const source = readFileSync(new URL("./ImageNodeCard.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain("sanitizeImageAnnotations(node.data?.annotations)");
+    expect(source).toContain("const [annotationMode, setAnnotationMode]");
+    expect(source).toContain("annotationMode && canAnnotateImage ? (");
+    expect(source).toContain('data-image-annotation-toolbar="true"');
+    expect(source).toContain('data-image-default-toolbar="true"');
+    expect(source).toContain('if (!annotationMode) setAnnotationTool("pen")');
+    expect(source).toContain("shrink-0 whitespace-nowrap");
+    expect(source).toContain('Tooltip content={imageAnnotations.length > 0 ? `已标记${imageAnnotations.length}` : "标记"}');
+    const defaultToolbarSource = source
+      .split('data-image-default-toolbar="true"')[1]
+      ?.split("{isFrameStrip &&")[0];
+    expect(defaultToolbarSource).not.toContain("已标记 {imageAnnotations.length}");
+    expect(source).toContain('aria-label="矩形标记"');
+    expect(source).toContain('aria-label="画笔标记"');
+    expect(source).toContain('aria-label="选择标记"');
+    expect(source).toContain('aria-label="箭头标记"');
+    expect(source).toContain('aria-label="文字标记"');
+    expect(source).toContain('aria-label="打开标记颜色选择"');
+    expect(source).toContain('aria-label="打开标记粗细选择"');
+    expect(source).toContain('data-image-annotation-color-menu="true"');
+    expect(source).toContain('data-image-annotation-stroke-menu="true"');
+    expect(source).toContain("annotationColorMenuOpen");
+    expect(source).toContain("annotationStrokeMenuOpen");
+    expect(source).toContain("annotationColorMenuPosition");
+    expect(source).toContain("annotationStrokeMenuPosition");
+    expect(source).toContain("getAnnotationStyleMenuPosition");
+    expect(source).toContain("createPortal(");
+    expect(source).toContain("position.placement === \"bottom\"");
+    expect(source).toContain("flex-col");
+    expect(source).toContain('"#ffffff"');
+    expect(source).toContain('"#a855f7"');
+    expect(source).toContain("16] as const");
+    expect(source).toContain('aria-label="重做标记"');
+    expect(source).toContain('aria-label="删除选中标记"');
+    expect(source).not.toContain('aria-label="送审带标记图片"');
+    expect(source).not.toContain('Tooltip content="送审带标记图片"');
+    expect(source).not.toContain("handleReviewAnnotatedImage");
+    expect(source).not.toContain('aria-label="下载带标记图片"');
+    expect(source).not.toContain('Tooltip content="下载带标记图片"');
+    expect(source).not.toContain('Tooltip content="涂鸦模式"');
+    expect(source).not.toContain('aria-label="涂鸦模式"');
+    expect(source).toContain('data-image-annotation-list="true"');
+    expect(source).toContain('data-image-annotation-overlay="true"');
+    expect(source).toContain("selectedAnnotationId");
+    expect(source).toContain("annotationUndoStack");
+    expect(source).toContain("annotationRedoStack");
+    expect(source).toContain("updateSelectedAnnotation(");
+    expect(source).toContain("createArrowAnnotation({");
+    expect(source).toContain("resizeImageArrowAnnotation(");
+    expect(source).toContain("data-image-annotation-arrow-handle");
+    expect(source).toContain("调整箭头起点");
+    expect(source).toContain("调整箭头终点");
+    expect(source).toContain("resizeEndpoint");
+    expect(source).toContain("createTextAnnotation({");
+    expect(source).toContain("hitTestImageAnnotation(");
+    expect(source).toContain("moveImageAnnotation(");
+    expect(source).toContain("onUpdateData?.(node.id, { annotations: nextAnnotations })");
+    expect(source).toContain("createRectAnnotation({");
+    expect(source).toContain("createPenAnnotation({");
+  });
+
   it("renders batch replacement result placeholders as separate loading frame cells", () => {
     const source = readFileSync(new URL("./ImageNodeCard.tsx", import.meta.url), "utf8");
 

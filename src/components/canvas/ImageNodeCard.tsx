@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
 import {
   ArrowUp,
+  ArrowRight,
+  Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -10,9 +12,17 @@ import {
   Download,
   Grid3X3,
   Image as ImageIcon,
+  ListChecks,
   Loader2,
   Maximize2,
+  MousePointer2,
+  PenLine,
+  Redo2,
   Replace,
+  Send,
+  Square,
+  Trash2,
+  Type,
   Undo2,
   Upload,
   Wand2,
@@ -47,6 +57,20 @@ import { cropImageGridCell } from "../../utils/imageGridSplit";
 import { stringifyInputReferenceValues } from "../../utils/inputReferenceValues";
 import { InlineNodePortHandle } from "./InlineNodePortHandle";
 import { getImageLoadingMode, getStripThumbnailLoadingMode } from "../../utils/mediaPreviewPolicy";
+import {
+  createArrowAnnotation,
+  createPenAnnotation,
+  createRectAnnotation,
+  createTextAnnotation,
+  getNormalizedAnnotationPoint,
+  hitTestImageAnnotation,
+  moveImageAnnotation,
+  resizeImageArrowAnnotation,
+  sanitizeImageAnnotations,
+  type ImageArrowEndpoint,
+  type ImageAnnotation,
+  type ImageAnnotationPoint,
+} from "../../utils/imageAnnotations";
 import {
   getReadableCanvasOverlayScale,
   getMediaNodeFloatingToolbarGap,
@@ -108,6 +132,7 @@ interface ImageNodeCardProps {
     ossId?: string
   ) => void;
   onCreateBatchReplacement?: (node: GraphNode) => void;
+  onReviewAsset?: (nodeId: string, ossId: string) => void;
   onPreview?: (
     content: string,
     title?: string,
@@ -119,6 +144,7 @@ interface ImageNodeCardProps {
   references?: ReferencePreviewItem[];
   resolutionPresetGroups?: ImageResolutionPresetGroup[];
   onRun?: (nodeId: string) => void;
+  isReviewingAsset?: boolean;
   onNotice?: (message: string) => void;
   onRemoveInputReference?: (linkId: string, value: string) => void;
   isLinkingOnCanvas?: boolean;
@@ -164,6 +190,22 @@ const CUSTOM_GRID_MAX_COLS = 5;
 const EMPTY_IMAGE_NODE_MAIN_CARD_CENTER_Y = 145;
 const IMAGE_PORT_HANDLE_SIZE = 36;
 const FRAME_EXTRACTION_DRAG_THRESHOLD_PX = 8;
+const IMAGE_ANNOTATION_COLORS = [
+  "#ff4d4f",
+  "#f97316",
+  "#facc15",
+  "#22c55e",
+  "#38bdf8",
+  "#2563eb",
+  "#a855f7",
+  "#ec4899",
+  "#ffffff",
+  "#111827",
+] as const;
+const IMAGE_ANNOTATION_STROKE_WIDTHS = [1, 2, 4, 6, 8, 12, 16] as const;
+type ImageAnnotationTool = "select" | "pen" | "rect" | "arrow" | "text";
+const IMAGE_ANNOTATION_COLOR_MENU_WIDTH = 180;
+const IMAGE_ANNOTATION_STROKE_MENU_WIDTH = 148;
 const IMAGE_NODE_REFERENCE_IGNORED_KEYS = new Set([
   "negative_prompt",
   "aspect_ratio",
@@ -222,6 +264,21 @@ function getElementEdgeAnchor(element: HTMLElement, targetClientX: number, targe
 
 function getImageModelLabel(model: string) {
   return model;
+}
+
+function isEditableEventTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return Boolean(target.closest("input, textarea, select, [contenteditable='true']"));
+}
+
+function getAnnotationPenPath(points: ImageAnnotationPoint[]) {
+  return points
+    .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`)
+    .join(" ");
+}
+
+function getAnnotationStyleMenuMotionOffset(position: FloatingMenuPosition) {
+  return position.placement === "bottom" ? -8 : 8;
 }
 
 export function getImagePreviewFrameClassName({
@@ -747,11 +804,13 @@ function ImageNodeCardImpl({
   onReplaceImageGridCell,
   onDropImageToVideoBatchReplacement,
   onCreateBatchReplacement,
+  onReviewAsset,
   onPreview,
   references,
   resolvedInputs,
   resolutionPresetGroups,
   onRun,
+  isReviewingAsset = false,
   onNotice,
   onRemoveInputReference,
   isLinkingOnCanvas,
@@ -785,7 +844,39 @@ function ImageNodeCardImpl({
   } | null>(null);
   const [selectedGridCells, setSelectedGridCells] = React.useState<number[]>([]);
   const [hoveredGridCell, setHoveredGridCell] = React.useState<number | null>(null);
+  const [annotationMode, setAnnotationMode] = React.useState(false);
+  const [annotationTool, setAnnotationTool] = React.useState<ImageAnnotationTool>("rect");
+  const [annotationColor, setAnnotationColor] = React.useState<(typeof IMAGE_ANNOTATION_COLORS)[number]>(
+    IMAGE_ANNOTATION_COLORS[0]
+  );
+  const [annotationStrokeWidth, setAnnotationStrokeWidth] =
+    React.useState<(typeof IMAGE_ANNOTATION_STROKE_WIDTHS)[number]>(4);
+  const [annotationColorMenuOpen, setAnnotationColorMenuOpen] = React.useState(false);
+  const [annotationStrokeMenuOpen, setAnnotationStrokeMenuOpen] = React.useState(false);
+  const [annotationColorMenuPosition, setAnnotationColorMenuPosition] =
+    React.useState<FloatingMenuPosition | null>(null);
+  const [annotationStrokeMenuPosition, setAnnotationStrokeMenuPosition] =
+    React.useState<FloatingMenuPosition | null>(null);
+  const [annotationDraft, setAnnotationDraft] = React.useState<
+    | { type: "rect"; start: ImageAnnotationPoint; current: ImageAnnotationPoint }
+    | { type: "arrow"; start: ImageAnnotationPoint; current: ImageAnnotationPoint }
+    | { type: "pen"; points: ImageAnnotationPoint[] }
+    | null
+  >(null);
+  const [selectedAnnotationId, setSelectedAnnotationId] = React.useState<string | null>(null);
+  const [annotationUndoStack, setAnnotationUndoStack] = React.useState<ImageAnnotation[][]>([]);
+  const [annotationRedoStack, setAnnotationRedoStack] = React.useState<ImageAnnotation[][]>([]);
+  const annotationMoveRef = React.useRef<{
+    id: string;
+    moved: boolean;
+    originalAnnotations: ImageAnnotation[];
+    resizeEndpoint?: ImageArrowEndpoint;
+    start: ImageAnnotationPoint;
+  } | null>(null);
   const controlsRef = React.useRef<HTMLDivElement | null>(null);
+  const annotationStyleMenuRef = React.useRef<HTMLDivElement | null>(null);
+  const annotationColorButtonRef = React.useRef<HTMLButtonElement | null>(null);
+  const annotationStrokeButtonRef = React.useRef<HTMLButtonElement | null>(null);
   const modelMenuRef = React.useRef<HTMLDivElement | null>(null);
   const modelMenuPortalRef = React.useRef<HTMLDivElement | null>(null);
   const [modelMenuOpen, setModelMenuOpen] = React.useState(false);
@@ -972,6 +1063,11 @@ function ImageNodeCardImpl({
     [fallbackImageUrl, imageUrls]
   );
   const imageUrl = resolvedImageUrls[activeImageIndex] || resolvedImageUrls[0] || "";
+  const imageAnnotations = React.useMemo(
+    () => sanitizeImageAnnotations(node.data?.annotations),
+    [node.data?.annotations]
+  );
+  const reviewOssId = getPrimaryImageNodeOssId(node, imageUrl);
   const isEmptyBatchReplacementSuccess =
     isBatchReplacementResultNode &&
     !isBatchReplacementResultLoading &&
@@ -2501,8 +2597,97 @@ function ImageNodeCardImpl({
       setActiveGridSelection(null);
       setSelectedGridCells([]);
       setHoveredGridCell(null);
+      setAnnotationMode(false);
+      setAnnotationDraft(null);
+      setSelectedAnnotationId(null);
+      setAnnotationUndoStack([]);
+      setAnnotationRedoStack([]);
+      setAnnotationColorMenuOpen(false);
+      setAnnotationStrokeMenuOpen(false);
+      setAnnotationColorMenuPosition(null);
+      setAnnotationStrokeMenuPosition(null);
     }
   }, [selected]);
+
+  React.useEffect(() => {
+    if (!annotationMode) {
+      setAnnotationColorMenuOpen(false);
+      setAnnotationStrokeMenuOpen(false);
+      setAnnotationColorMenuPosition(null);
+      setAnnotationStrokeMenuPosition(null);
+    }
+  }, [annotationMode]);
+
+  const getAnnotationStyleMenuPosition = React.useCallback(
+    (anchor: HTMLElement | null, menuWidth: number) => {
+      const rect = anchor?.getBoundingClientRect();
+      if (!rect) return null;
+      return getFloatingMenuPosition({
+        anchorRect: {
+          bottom: rect.bottom,
+          left: rect.left,
+          right: rect.left + menuWidth,
+          top: rect.top,
+          width: menuWidth,
+        },
+        gap: 10,
+        margin: 12,
+        maxMenuHeight: 320,
+        minMenuHeight: 120,
+        viewportHeight: window.innerHeight,
+        viewportWidth: window.innerWidth,
+      });
+    },
+    []
+  );
+
+  const updateAnnotationStyleMenuPositions = React.useCallback(() => {
+    if (annotationColorMenuOpen) {
+      setAnnotationColorMenuPosition(
+        getAnnotationStyleMenuPosition(annotationColorButtonRef.current, IMAGE_ANNOTATION_COLOR_MENU_WIDTH)
+      );
+    }
+    if (annotationStrokeMenuOpen) {
+      setAnnotationStrokeMenuPosition(
+        getAnnotationStyleMenuPosition(annotationStrokeButtonRef.current, IMAGE_ANNOTATION_STROKE_MENU_WIDTH)
+      );
+    }
+  }, [
+    annotationColorMenuOpen,
+    annotationStrokeMenuOpen,
+    getAnnotationStyleMenuPosition,
+    setAnnotationColorMenuPosition,
+    setAnnotationStrokeMenuPosition,
+  ]);
+
+  React.useEffect(() => {
+    if (!annotationColorMenuOpen && !annotationStrokeMenuOpen) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (target && annotationStyleMenuRef.current?.contains(target)) return;
+      setAnnotationColorMenuOpen(false);
+      setAnnotationStrokeMenuOpen(false);
+      setAnnotationColorMenuPosition(null);
+      setAnnotationStrokeMenuPosition(null);
+    };
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setAnnotationColorMenuOpen(false);
+      setAnnotationStrokeMenuOpen(false);
+      setAnnotationColorMenuPosition(null);
+      setAnnotationStrokeMenuPosition(null);
+    };
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleEscape);
+    window.addEventListener("resize", updateAnnotationStyleMenuPositions);
+    window.addEventListener("scroll", updateAnnotationStyleMenuPositions, true);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleEscape);
+      window.removeEventListener("resize", updateAnnotationStyleMenuPositions);
+      window.removeEventListener("scroll", updateAnnotationStyleMenuPositions, true);
+    };
+  }, [annotationColorMenuOpen, annotationStrokeMenuOpen, updateAnnotationStyleMenuPositions]);
 
   const handleRun = () => {
     if (isRunning) return;
@@ -2510,6 +2695,347 @@ function ImageNodeCardImpl({
     setModelMenuOpen(false);
     onRun?.(node.id);
   };
+
+  const handleReviewAsset = () => {
+    if (!reviewOssId || isReviewingAsset) return;
+    onReviewAsset?.(node.id, reviewOssId);
+  };
+
+  const persistImageAnnotations = React.useCallback(
+    (nextAnnotations: ImageAnnotation[], history = true) => {
+      if (history) {
+        setAnnotationUndoStack((stack) => [...stack.slice(-24), imageAnnotations]);
+        setAnnotationRedoStack([]);
+      }
+      onUpdateData?.(node.id, { annotations: nextAnnotations });
+    },
+    [imageAnnotations, node.id, onUpdateData]
+  );
+
+  const makeAnnotationId = React.useCallback(
+    () => `annotation-${node.id}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+    [node.id]
+  );
+
+  const commitAnnotationDraft = React.useCallback(
+    (draft: typeof annotationDraft) => {
+      if (!draft) return;
+      const nextAnnotation =
+        draft.type === "rect"
+          ? createRectAnnotation({
+              color: annotationColor,
+              end: draft.current,
+              id: makeAnnotationId(),
+              start: draft.start,
+              strokeWidth: annotationStrokeWidth,
+            })
+          : draft.type === "arrow"
+            ? createArrowAnnotation({
+                color: annotationColor,
+                end: draft.current,
+                id: makeAnnotationId(),
+                start: draft.start,
+                strokeWidth: annotationStrokeWidth,
+              })
+            : createPenAnnotation({
+                color: annotationColor,
+                id: makeAnnotationId(),
+                points: draft.points,
+                strokeWidth: annotationStrokeWidth,
+              });
+      if (!nextAnnotation) return;
+      const nextAnnotations = [...imageAnnotations, nextAnnotation];
+      persistImageAnnotations(nextAnnotations);
+      setSelectedAnnotationId(nextAnnotation.id);
+    },
+    [
+      annotationColor,
+      annotationStrokeWidth,
+      imageAnnotations,
+      makeAnnotationId,
+      persistImageAnnotations,
+      setSelectedAnnotationId,
+    ]
+  );
+
+  const getAnnotationPointFromEvent = React.useCallback((event: React.PointerEvent) => {
+    const rect = mediaFrameRef.current?.getBoundingClientRect();
+    if (!rect) return null;
+    return getNormalizedAnnotationPoint(
+      { clientX: event.clientX, clientY: event.clientY },
+      rect
+    );
+  }, []);
+
+  const handleAnnotationPointerDown = React.useCallback(
+    (event: React.PointerEvent<SVGSVGElement>) => {
+      if (!annotationMode || event.button !== 0) return;
+      const point = getAnnotationPointFromEvent(event);
+      if (!point) return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.currentTarget.setPointerCapture(event.pointerId);
+      if (annotationTool === "select") {
+        const hitId = hitTestImageAnnotation(imageAnnotations, point);
+        setSelectedAnnotationId(hitId);
+        annotationMoveRef.current = hitId
+          ? { id: hitId, moved: false, originalAnnotations: imageAnnotations, start: point }
+          : null;
+        return;
+      }
+      if (annotationTool === "text") {
+        const text =
+          typeof window === "undefined"
+            ? ""
+            : window.prompt("输入文字批注", "需要修改")?.trim() ?? "";
+        const nextAnnotation = createTextAnnotation({
+          color: annotationColor,
+          fontSize: 18,
+          id: makeAnnotationId(),
+          point,
+          text,
+        });
+        if (nextAnnotation) {
+          persistImageAnnotations([...imageAnnotations, nextAnnotation]);
+          setSelectedAnnotationId(nextAnnotation.id);
+        }
+        return;
+      }
+      setSelectedAnnotationId(null);
+      setAnnotationDraft(
+        annotationTool === "rect"
+          ? { type: "rect", start: point, current: point }
+          : annotationTool === "arrow"
+            ? { type: "arrow", start: point, current: point }
+            : { type: "pen", points: [point] }
+      );
+    },
+    [
+      annotationColor,
+      annotationMode,
+      annotationTool,
+      getAnnotationPointFromEvent,
+      imageAnnotations,
+      makeAnnotationId,
+      persistImageAnnotations,
+      setAnnotationDraft,
+      setSelectedAnnotationId,
+    ]
+  );
+
+  const handleArrowEndpointPointerDown = React.useCallback(
+    (
+      annotationId: string,
+      resizeEndpoint: ImageArrowEndpoint,
+      event: React.PointerEvent<SVGCircleElement>
+    ) => {
+      if (!annotationMode || event.button !== 0) return;
+      const point = getAnnotationPointFromEvent(event);
+      if (!point) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setAnnotationTool("select");
+      setSelectedAnnotationId(annotationId);
+      annotationMoveRef.current = {
+        id: annotationId,
+        moved: false,
+        originalAnnotations: imageAnnotations,
+        resizeEndpoint,
+        start: point,
+      };
+    },
+    [
+      annotationMode,
+      getAnnotationPointFromEvent,
+      imageAnnotations,
+      setAnnotationTool,
+      setSelectedAnnotationId,
+    ]
+  );
+
+  const handleAnnotationPointerMove = React.useCallback(
+    (event: React.PointerEvent<SVGSVGElement>) => {
+      if (!annotationMode) return;
+      const point = getAnnotationPointFromEvent(event);
+      if (!point) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (annotationTool === "select" && annotationMoveRef.current) {
+        const moving = annotationMoveRef.current;
+        const delta = { x: point.x - moving.start.x, y: point.y - moving.start.y };
+        moving.moved = Math.abs(delta.x) > 0.0005 || Math.abs(delta.y) > 0.0005;
+        const nextAnnotations = moving.originalAnnotations.map((annotation) => {
+          if (annotation.id !== moving.id) return annotation;
+          if (moving.resizeEndpoint) {
+            return resizeImageArrowAnnotation(annotation, moving.resizeEndpoint, point);
+          }
+          return moveImageAnnotation(annotation, delta);
+        });
+        onUpdateData?.(node.id, { annotations: nextAnnotations });
+        return;
+      }
+      if (!annotationDraft) return;
+      setAnnotationDraft((current) => {
+        if (!current) return current;
+        if (current.type === "rect" || current.type === "arrow") return { ...current, current: point };
+        return { ...current, points: [...current.points, point] };
+      });
+    },
+    [
+      annotationDraft,
+      annotationMode,
+      annotationTool,
+      getAnnotationPointFromEvent,
+      node.id,
+      onUpdateData,
+      setAnnotationDraft,
+    ]
+  );
+
+  const handleAnnotationPointerUp = React.useCallback(
+    (event: React.PointerEvent<SVGSVGElement>) => {
+      if (!annotationMode) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (annotationTool === "select" && annotationMoveRef.current) {
+        const moving = annotationMoveRef.current;
+        if (moving.moved) {
+          setAnnotationUndoStack((stack) => [...stack.slice(-24), moving.originalAnnotations]);
+          setAnnotationRedoStack([]);
+        }
+        annotationMoveRef.current = null;
+      } else if (annotationDraft) {
+        commitAnnotationDraft(annotationDraft);
+        setAnnotationDraft(null);
+      }
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+    },
+    [annotationDraft, annotationMode, annotationTool, commitAnnotationDraft, setAnnotationDraft]
+  );
+
+  const handleUndoAnnotation = React.useCallback(() => {
+    const previous = annotationUndoStack.at(-1);
+    if (!previous) return;
+    setAnnotationUndoStack((stack) => stack.slice(0, -1));
+    setAnnotationRedoStack((stack) => [...stack, imageAnnotations]);
+    persistImageAnnotations(previous, false);
+    setSelectedAnnotationId(null);
+  }, [annotationUndoStack, imageAnnotations, persistImageAnnotations, setSelectedAnnotationId]);
+
+  const handleRedoAnnotation = React.useCallback(() => {
+    const next = annotationRedoStack.at(-1);
+    if (!next) return;
+    setAnnotationRedoStack((stack) => stack.slice(0, -1));
+    setAnnotationUndoStack((stack) => [...stack, imageAnnotations]);
+    persistImageAnnotations(next, false);
+    setSelectedAnnotationId(null);
+  }, [annotationRedoStack, imageAnnotations, persistImageAnnotations, setSelectedAnnotationId]);
+
+  const handleDeleteSelectedAnnotation = React.useCallback(() => {
+    if (!selectedAnnotationId) return;
+    persistImageAnnotations(imageAnnotations.filter((annotation) => annotation.id !== selectedAnnotationId));
+    setSelectedAnnotationId(null);
+  }, [imageAnnotations, persistImageAnnotations, selectedAnnotationId, setSelectedAnnotationId]);
+
+  const updateSelectedAnnotation = React.useCallback(
+    (updater: (annotation: ImageAnnotation) => ImageAnnotation) => {
+      if (!selectedAnnotationId) return false;
+      persistImageAnnotations(
+        imageAnnotations.map((annotation) =>
+          annotation.id === selectedAnnotationId ? updater(annotation) : annotation
+        )
+      );
+      return true;
+    },
+    [imageAnnotations, persistImageAnnotations, selectedAnnotationId]
+  );
+
+  const handleSelectAnnotationColor = React.useCallback(
+    (color: (typeof IMAGE_ANNOTATION_COLORS)[number]) => {
+      setAnnotationColor(color);
+      updateSelectedAnnotation((annotation) => ({ ...annotation, color }));
+      setAnnotationColorMenuOpen(false);
+      setAnnotationColorMenuPosition(null);
+    },
+    [
+      setAnnotationColor,
+      setAnnotationColorMenuOpen,
+      setAnnotationColorMenuPosition,
+      updateSelectedAnnotation,
+    ]
+  );
+
+  const handleSelectAnnotationStrokeWidth = React.useCallback(
+    (width: (typeof IMAGE_ANNOTATION_STROKE_WIDTHS)[number]) => {
+      setAnnotationStrokeWidth(width);
+      updateSelectedAnnotation((annotation) =>
+        annotation.type === "text" ? annotation : { ...annotation, strokeWidth: width }
+      );
+      setAnnotationStrokeMenuOpen(false);
+      setAnnotationStrokeMenuPosition(null);
+    },
+    [
+      setAnnotationStrokeMenuOpen,
+      setAnnotationStrokeMenuPosition,
+      setAnnotationStrokeWidth,
+      updateSelectedAnnotation,
+    ]
+  );
+
+  const handleClearAnnotations = React.useCallback(() => {
+    if (imageAnnotations.length === 0) return;
+    persistImageAnnotations([]);
+    setAnnotationDraft(null);
+    setSelectedAnnotationId(null);
+  }, [imageAnnotations.length, persistImageAnnotations, setAnnotationDraft, setSelectedAnnotationId]);
+
+  React.useEffect(() => {
+    if (!annotationMode || !selected) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (isEditableEventTarget(event.target)) return;
+      if (event.key === "Escape") {
+        if (annotationColorMenuOpen || annotationStrokeMenuOpen) {
+          event.preventDefault();
+          setAnnotationColorMenuOpen(false);
+          setAnnotationStrokeMenuOpen(false);
+          setAnnotationColorMenuPosition(null);
+          setAnnotationStrokeMenuPosition(null);
+          return;
+        }
+        setAnnotationMode(false);
+        setAnnotationDraft(null);
+        setSelectedAnnotationId(null);
+        return;
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        if (event.shiftKey) handleRedoAnnotation();
+        else handleUndoAnnotation();
+        return;
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "y") {
+        event.preventDefault();
+        handleRedoAnnotation();
+        return;
+      }
+      if (event.key === "Delete" || event.key === "Backspace") {
+        handleDeleteSelectedAnnotation();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [
+    annotationMode,
+    annotationColorMenuOpen,
+    annotationStrokeMenuOpen,
+    handleDeleteSelectedAnnotation,
+    handleRedoAnnotation,
+    handleUndoAnnotation,
+    selected,
+    setAnnotationDraft,
+  ]);
 
   const handlePromptChange = (value: string) => {
     onUpdateProperty?.(node.id, "text", value);
@@ -2686,6 +3212,36 @@ function ImageNodeCardImpl({
       </button>
     </>
   );
+
+  const annotationDraftItem = annotationDraft
+    ? annotationDraft.type === "rect"
+      ? createRectAnnotation({
+          color: annotationColor,
+          end: annotationDraft.current,
+          id: "__draft_annotation__",
+          start: annotationDraft.start,
+          strokeWidth: annotationStrokeWidth,
+        })
+      : annotationDraft.type === "arrow"
+        ? createArrowAnnotation({
+            color: annotationColor,
+            end: annotationDraft.current,
+            id: "__draft_annotation__",
+            start: annotationDraft.start,
+            strokeWidth: annotationStrokeWidth,
+          })
+        : createPenAnnotation({
+            color: annotationColor,
+            id: "__draft_annotation__",
+            points: annotationDraft.points,
+            strokeWidth: annotationStrokeWidth,
+          })
+    : null;
+  const visibleAnnotations = annotationDraftItem
+    ? [...imageAnnotations, annotationDraftItem]
+    : imageAnnotations;
+  const annotationStrokeScale = Math.max(mediaFrameSize.width, mediaFrameSize.height, 1);
+  const canAnnotateImage = Boolean(imageUrl) && !isFrameStrip && !isStarterPlaceholder;
 
   const activeGridCellCount = activeGridSelection
     ? activeGridSelection.rows * activeGridSelection.cols
@@ -3208,8 +3764,342 @@ function ImageNodeCardImpl({
                     </span>
                   </div>
                 </>
+              ) : annotationMode && canAnnotateImage ? (
+                <div data-image-annotation-toolbar="true" className="contents">
+                  {imageAnnotations.length > 0 && (
+                    <span className="flex h-8 shrink-0 whitespace-nowrap items-center rounded-[10px] border border-rose-300/16 bg-rose-400/[0.08] px-2 text-[11px] font-semibold leading-none text-rose-100/86">
+                      已标记 {imageAnnotations.length}
+                    </span>
+                  )}
+                  <div className={mediaNodeToolbarDividerClass} />
+                  <Tooltip content="选择标记" position="top">
+                    <button
+                      type="button"
+                      aria-label="选择标记"
+                      onClick={() => setAnnotationTool("select")}
+                      className={`${mediaNodeToolbarButtonClass} ${
+                        annotationTool === "select" ? "bg-violet-400/12 text-violet-50" : ""
+                      }`}
+                    >
+                      <MousePointer2 className="h-5 w-5" />
+                    </button>
+                  </Tooltip>
+                  <Tooltip content="矩形标记" position="top">
+                    <button
+                      type="button"
+                      aria-label="矩形标记"
+                      onClick={() => setAnnotationTool("rect")}
+                      className={`${mediaNodeToolbarButtonClass} ${
+                        annotationTool === "rect" ? "bg-violet-400/12 text-violet-50" : ""
+                      }`}
+                    >
+                      <Square className="h-5 w-5" />
+                    </button>
+                  </Tooltip>
+                  <Tooltip content="画笔标记" position="top">
+                    <button
+                      type="button"
+                      aria-label="画笔标记"
+                      onClick={() => setAnnotationTool("pen")}
+                      className={`${mediaNodeToolbarButtonClass} ${
+                        annotationTool === "pen" ? "bg-violet-400/12 text-violet-50" : ""
+                      }`}
+                    >
+                      <PenLine className="h-5 w-5" />
+                    </button>
+                  </Tooltip>
+                  <Tooltip content="箭头标记" position="top">
+                    <button
+                      type="button"
+                      aria-label="箭头标记"
+                      onClick={() => setAnnotationTool("arrow")}
+                      className={`${mediaNodeToolbarButtonClass} ${
+                        annotationTool === "arrow" ? "bg-violet-400/12 text-violet-50" : ""
+                      }`}
+                    >
+                      <ArrowRight className="h-5 w-5" />
+                    </button>
+                  </Tooltip>
+                  <Tooltip content="文字标记" position="top">
+                    <button
+                      type="button"
+                      aria-label="文字标记"
+                      onClick={() => setAnnotationTool("text")}
+                      className={`${mediaNodeToolbarButtonClass} ${
+                        annotationTool === "text" ? "bg-violet-400/12 text-violet-50" : ""
+                      }`}
+                    >
+                      <Type className="h-5 w-5" />
+                    </button>
+                  </Tooltip>
+                  <div ref={annotationStyleMenuRef} className="flex h-8 items-center gap-1">
+                    <div className="relative">
+                      <Tooltip content="标记颜色" position="top">
+                        <button
+                          ref={annotationColorButtonRef}
+                          type="button"
+                          aria-label="打开标记颜色选择"
+                          onClick={() => {
+                            const nextOpen = !annotationColorMenuOpen;
+                            setAnnotationColorMenuOpen(nextOpen);
+                            setAnnotationStrokeMenuOpen(false);
+                            setAnnotationStrokeMenuPosition(null);
+                            setAnnotationColorMenuPosition(
+                              nextOpen
+                                ? getAnnotationStyleMenuPosition(
+                                    annotationColorButtonRef.current,
+                                    IMAGE_ANNOTATION_COLOR_MENU_WIDTH
+                                  )
+                                : null
+                            );
+                          }}
+                          className={`flex h-8 min-w-[52px] items-center justify-center gap-1.5 rounded-[10px] border px-2 transition-colors ${
+                            annotationColorMenuOpen
+                              ? "border-violet-300/34 bg-violet-500/[0.14] text-violet-50"
+                              : "border-slate-400/12 bg-slate-950/10 text-slate-300/76 hover:bg-white/[0.055] hover:text-slate-50"
+                          }`}
+                        >
+                          <span
+                            className="h-5 w-5 rounded-full border border-white/38 shadow-[inset_0_1px_0_rgba(255,255,255,0.3),0_0_0_1px_rgba(15,23,42,0.45)]"
+                            style={{ backgroundColor: annotationColor }}
+                          />
+                          <ChevronDown
+                            className={`h-3.5 w-3.5 text-slate-300/62 transition-transform ${
+                              annotationColorMenuOpen ? "rotate-180" : ""
+                            }`}
+                          />
+                        </button>
+                      </Tooltip>
+                      {typeof document !== "undefined" &&
+                        createPortal(
+                          <AnimatePresence>
+                            {annotationColorMenuOpen && annotationColorMenuPosition && (
+                              <motion.div
+                                data-image-annotation-color-menu="true"
+                                initial={{
+                                  opacity: 0,
+                                  y: getAnnotationStyleMenuMotionOffset(annotationColorMenuPosition),
+                                  scale: 0.98,
+                                }}
+                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                exit={{
+                                  opacity: 0,
+                                  y: getAnnotationStyleMenuMotionOffset(annotationColorMenuPosition),
+                                  scale: 0.98,
+                                }}
+                                transition={{ duration: 0.14, ease: "easeOut" }}
+                                className="fixed z-[220] flex flex-col gap-1 overflow-y-auto rounded-[14px] border border-slate-300/14 bg-[#0c1220]/96 p-1.5 shadow-[0_22px_58px_-24px_rgba(0,0,0,0.96),inset_0_1px_0_rgba(255,255,255,0.07)] backdrop-blur-2xl custom-scrollbar"
+                                style={{
+                                  bottom: annotationColorMenuPosition.bottom,
+                                  left: annotationColorMenuPosition.left,
+                                  maxHeight: annotationColorMenuPosition.maxHeight,
+                                  top: annotationColorMenuPosition.top,
+                                  transformOrigin:
+                                    annotationColorMenuPosition.placement === "bottom"
+                                      ? "top left"
+                                      : "bottom left",
+                                  width: annotationColorMenuPosition.width,
+                                }}
+                                onPointerDown={(event) => event.stopPropagation()}
+                                onClick={(event) => event.stopPropagation()}
+                                onWheel={(event) => event.stopPropagation()}
+                              >
+                            {IMAGE_ANNOTATION_COLORS.map((color) => {
+                              const active = annotationColor === color;
+                              return (
+                                <button
+                                  key={color}
+                                  type="button"
+                                  aria-label={`${color} 标记颜色`}
+                                  onClick={() => handleSelectAnnotationColor(color)}
+                                  className={`flex h-8 w-full items-center gap-2 rounded-[10px] px-2 text-left text-[12px] font-semibold transition-colors ${
+                                    active
+                                      ? "bg-white/[0.1] text-white"
+                                      : "text-slate-300/78 hover:bg-white/[0.06] hover:text-slate-50"
+                                  }`}
+                                >
+                                  <span
+                                    className={`h-5 w-5 rounded-full border ${
+                                      active ? "border-white" : "border-white/24"
+                                    }`}
+                                    style={{ backgroundColor: color }}
+                                  />
+                                  <span className="min-w-0 flex-1 uppercase">{color}</span>
+                                  {active && <Check className="h-3.5 w-3.5 text-violet-100" />}
+                                </button>
+                              );
+                            })}
+                              </motion.div>
+                            )}
+                          </AnimatePresence>,
+                          document.body
+                        )}
+                    </div>
+                    <div className="relative">
+                      <Tooltip content="标记粗细" position="top">
+                        <button
+                          ref={annotationStrokeButtonRef}
+                          type="button"
+                          aria-label="打开标记粗细选择"
+                          onClick={() => {
+                            const nextOpen = !annotationStrokeMenuOpen;
+                            setAnnotationStrokeMenuOpen(nextOpen);
+                            setAnnotationColorMenuOpen(false);
+                            setAnnotationColorMenuPosition(null);
+                            setAnnotationStrokeMenuPosition(
+                              nextOpen
+                                ? getAnnotationStyleMenuPosition(
+                                    annotationStrokeButtonRef.current,
+                                    IMAGE_ANNOTATION_STROKE_MENU_WIDTH
+                                  )
+                                : null
+                            );
+                          }}
+                          className={`flex h-8 min-w-[62px] items-center justify-center gap-1.5 rounded-[10px] border px-2 transition-colors ${
+                            annotationStrokeMenuOpen
+                              ? "border-violet-300/34 bg-violet-500/[0.14] text-violet-50"
+                              : "border-slate-400/12 bg-slate-950/10 text-slate-300/76 hover:bg-white/[0.055] hover:text-slate-50"
+                          }`}
+                        >
+                          <span className="flex h-5 w-6 items-center justify-center">
+                            <span
+                              className="w-5 rounded-full bg-current"
+                              style={{ height: Math.max(2, Math.min(8, annotationStrokeWidth)) }}
+                            />
+                          </span>
+                          <span className="text-[12px] font-semibold tabular-nums">{annotationStrokeWidth}</span>
+                          <ChevronDown
+                            className={`h-3.5 w-3.5 text-slate-300/62 transition-transform ${
+                              annotationStrokeMenuOpen ? "rotate-180" : ""
+                            }`}
+                          />
+                        </button>
+                      </Tooltip>
+                      {typeof document !== "undefined" &&
+                        createPortal(
+                          <AnimatePresence>
+                            {annotationStrokeMenuOpen && annotationStrokeMenuPosition && (
+                              <motion.div
+                                data-image-annotation-stroke-menu="true"
+                                initial={{
+                                  opacity: 0,
+                                  y: getAnnotationStyleMenuMotionOffset(annotationStrokeMenuPosition),
+                                  scale: 0.98,
+                                }}
+                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                exit={{
+                                  opacity: 0,
+                                  y: getAnnotationStyleMenuMotionOffset(annotationStrokeMenuPosition),
+                                  scale: 0.98,
+                                }}
+                                transition={{ duration: 0.14, ease: "easeOut" }}
+                                className="fixed z-[220] flex flex-col gap-1 overflow-y-auto rounded-[14px] border border-slate-300/14 bg-[#0c1220]/96 p-1.5 shadow-[0_22px_58px_-24px_rgba(0,0,0,0.96),inset_0_1px_0_rgba(255,255,255,0.07)] backdrop-blur-2xl custom-scrollbar"
+                                style={{
+                                  bottom: annotationStrokeMenuPosition.bottom,
+                                  left: annotationStrokeMenuPosition.left,
+                                  maxHeight: annotationStrokeMenuPosition.maxHeight,
+                                  top: annotationStrokeMenuPosition.top,
+                                  transformOrigin:
+                                    annotationStrokeMenuPosition.placement === "bottom"
+                                      ? "top left"
+                                      : "bottom left",
+                                  width: annotationStrokeMenuPosition.width,
+                                }}
+                                onPointerDown={(event) => event.stopPropagation()}
+                                onClick={(event) => event.stopPropagation()}
+                                onWheel={(event) => event.stopPropagation()}
+                              >
+                            {IMAGE_ANNOTATION_STROKE_WIDTHS.map((width) => {
+                              const active = annotationStrokeWidth === width;
+                              return (
+                                <button
+                                  key={width}
+                                  type="button"
+                                  aria-label={`${width}px 标记粗细`}
+                                  onClick={() => handleSelectAnnotationStrokeWidth(width)}
+                                  className={`flex h-8 w-full items-center gap-2 rounded-[10px] px-2 text-[12px] font-semibold transition-colors ${
+                                    active
+                                      ? "bg-white/[0.1] text-white"
+                                      : "text-slate-300/78 hover:bg-white/[0.06] hover:text-slate-50"
+                                  }`}
+                                >
+                                  <span className="flex h-5 w-8 items-center">
+                                    <span
+                                      className="w-full rounded-full bg-current"
+                                      style={{ height: Math.max(1, Math.min(10, width)) }}
+                                    />
+                                  </span>
+                                  <span className="flex-1 text-left tabular-nums">{width}px</span>
+                                  {active && <Check className="h-3.5 w-3.5 text-violet-100" />}
+                                </button>
+                              );
+                            })}
+                              </motion.div>
+                            )}
+                          </AnimatePresence>,
+                          document.body
+                        )}
+                    </div>
+                  </div>
+                  <Tooltip content="撤销标记" position="top">
+                    <button
+                      type="button"
+                      aria-label="撤销标记"
+                      onClick={handleUndoAnnotation}
+                      disabled={annotationUndoStack.length === 0}
+                      className={mediaNodeToolbarButtonClass}
+                    >
+                      <Undo2 className="h-5 w-5" />
+                    </button>
+                  </Tooltip>
+                  <Tooltip content="重做标记" position="top">
+                    <button
+                      type="button"
+                      aria-label="重做标记"
+                      onClick={handleRedoAnnotation}
+                      disabled={annotationRedoStack.length === 0}
+                      className={mediaNodeToolbarButtonClass}
+                    >
+                      <Redo2 className="h-5 w-5" />
+                    </button>
+                  </Tooltip>
+                  <Tooltip content="删除选中标记" position="top">
+                    <button
+                      type="button"
+                      aria-label="删除选中标记"
+                      onClick={handleDeleteSelectedAnnotation}
+                      disabled={!selectedAnnotationId}
+                      className={mediaNodeToolbarButtonClass}
+                    >
+                      <Trash2 className="h-5 w-5" />
+                    </button>
+                  </Tooltip>
+                  <Tooltip content="清空标记" position="top">
+                    <button
+                      type="button"
+                      onClick={handleClearAnnotations}
+                      disabled={imageAnnotations.length === 0}
+                      className={mediaNodeToolbarButtonClass}
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+                  </Tooltip>
+                  <Tooltip content="退出标记" position="top">
+                    <button
+                      type="button"
+                      aria-label="退出标记"
+                      onClick={() => {
+                        setAnnotationMode(false);
+                        setAnnotationDraft(null);
+                      }}
+                      className={mediaNodeToolbarButtonClass}
+                    >
+                      <Check className="h-5 w-5" />
+                    </button>
+                  </Tooltip>
+                </div>
               ) : (
-                <>
+                <div data-image-default-toolbar="true" className="contents">
                   {shouldShowUploadButton && !isExtractedFrameNode && (
                     <>
                       {uploadControl}
@@ -3226,6 +4116,44 @@ function ImageNodeCardImpl({
                         <Download className="h-5 w-5" />
                       </button>
                     </Tooltip>
+                  )}
+                  {reviewOssId && (
+                    <Tooltip content={isReviewingAsset ? "送审中" : "送审"} position="top">
+                      <button
+                        type="button"
+                        onClick={handleReviewAsset}
+                        disabled={isReviewingAsset}
+                        aria-label={isReviewingAsset ? "送审中" : "送审"}
+                        className={mediaNodeToolbarButtonClass}
+                      >
+                        {isReviewingAsset ? (
+                          <Loader2 className="h-5 w-5 animate-spin" />
+                        ) : (
+                          <Send className="h-5 w-5" />
+                        )}
+                        <span className="sr-only">{isReviewingAsset ? "送审中" : "送审"}</span>
+                      </button>
+                    </Tooltip>
+                  )}
+                  {canAnnotateImage && (
+                    <>
+                      <Tooltip content={imageAnnotations.length > 0 ? `已标记${imageAnnotations.length}` : "标记"} position="top">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!annotationMode) setAnnotationTool("pen");
+                            setAnnotationMode((value) => !value);
+                            setAnnotationDraft(null);
+                            setActiveGridSelection(null);
+                          }}
+                          className={`${mediaNodeToolbarButtonClass} ${
+                            annotationMode ? "bg-rose-400/12 text-rose-50" : ""
+                          }`}
+                        >
+                          <PenLine className="h-5 w-5" />
+                        </button>
+                      </Tooltip>
+                    </>
                   )}
                   {isFrameStrip && (
                     <>
@@ -3396,7 +4324,7 @@ function ImageNodeCardImpl({
                       <Maximize2 className="h-5 w-5" />
                     </button>
                   </Tooltip>
-                </>
+                </div>
               )}
             </motion.div>
           )}
@@ -3830,6 +4758,200 @@ function ImageNodeCardImpl({
                   }}
                   onError={() => setImageLoadState({ status: "error", url: imageUrl })}
                 />
+              )}
+              {canAnnotateImage && (visibleAnnotations.length > 0 || annotationMode) ? (
+                <svg
+                  data-node-action="true"
+                  data-image-annotation-overlay="true"
+                  viewBox="0 0 1 1"
+                  preserveAspectRatio="none"
+                  className={`absolute inset-0 z-20 h-full w-full ${
+                    annotationMode ? "cursor-crosshair" : "pointer-events-none"
+                  }`}
+                  onPointerDown={handleAnnotationPointerDown}
+                  onPointerMove={handleAnnotationPointerMove}
+                  onPointerUp={handleAnnotationPointerUp}
+                  onPointerCancel={() => {
+                    annotationMoveRef.current = null;
+                    setAnnotationDraft(null);
+                  }}
+                  onClick={(event) => {
+                    if (annotationMode) event.stopPropagation();
+                  }}
+                >
+                  <defs>
+                    <marker
+                      id={`annotation-arrow-${node.id}`}
+                      markerHeight="10"
+                      markerWidth="10"
+                      orient="auto"
+                      refX="8"
+                      refY="3"
+                      markerUnits="strokeWidth"
+                    >
+                      <path d="M0,0 L0,6 L8,3 z" fill="context-stroke" />
+                    </marker>
+                  </defs>
+                  {visibleAnnotations.map((annotation) => {
+                    const isDraftAnnotation = annotation.id === "__draft_annotation__";
+                    const isSelectedAnnotation = annotation.id === selectedAnnotationId;
+                    const annotationStrokeWidthValue =
+                      annotation.type === "text" ? 2 : annotation.strokeWidth;
+                    const commonStroke = {
+                      opacity: isDraftAnnotation ? 0.72 : 1,
+                      stroke: annotation.color,
+                      strokeWidth: annotationStrokeWidthValue / annotationStrokeScale,
+                    };
+                    const selectionStrokeWidth = 2 / annotationStrokeScale;
+                    if (annotation.type === "rect") {
+                      return (
+                        <React.Fragment key={annotation.id}>
+                          <rect
+                            x={annotation.x}
+                            y={annotation.y}
+                            width={annotation.width}
+                            height={annotation.height}
+                            fill="none"
+                            {...commonStroke}
+                          />
+                          {isSelectedAnnotation && (
+                            <rect
+                              x={annotation.x}
+                              y={annotation.y}
+                              width={annotation.width}
+                              height={annotation.height}
+                              fill="none"
+                              stroke="#ffffff"
+                              strokeDasharray="0.012 0.008"
+                              strokeWidth={selectionStrokeWidth}
+                            />
+                          )}
+                        </React.Fragment>
+                      );
+                    }
+                    if (annotation.type === "arrow") {
+                      return (
+                        <React.Fragment key={annotation.id}>
+                          <line
+                            x1={annotation.start.x}
+                            y1={annotation.start.y}
+                            x2={annotation.end.x}
+                            y2={annotation.end.y}
+                            markerEnd={`url(#annotation-arrow-${node.id})`}
+                            strokeLinecap="round"
+                            {...commonStroke}
+                          />
+                          {isSelectedAnnotation && (
+                            <>
+                              <line
+                                x1={annotation.start.x}
+                                y1={annotation.start.y}
+                                x2={annotation.end.x}
+                                y2={annotation.end.y}
+                                fill="none"
+                                stroke="#ffffff"
+                                strokeDasharray="0.012 0.008"
+                                strokeLinecap="round"
+                                strokeWidth={selectionStrokeWidth}
+                              />
+                              {(["start", "end"] as const).map((resizeEndpoint) => {
+                                const point = annotation[resizeEndpoint];
+                                const isEndHandle = resizeEndpoint === "end";
+                                return (
+                                  <circle
+                                    key={`${annotation.id}-${resizeEndpoint}`}
+                                    data-image-annotation-arrow-handle={resizeEndpoint}
+                                    aria-label={isEndHandle ? "调整箭头终点" : "调整箭头起点"}
+                                    cx={point.x}
+                                    cy={point.y}
+                                    r={(isEndHandle ? 7 : 5.5) / annotationStrokeScale}
+                                    fill={isEndHandle ? annotation.color : "#0f172a"}
+                                    stroke="#ffffff"
+                                    strokeWidth={2 / annotationStrokeScale}
+                                    className="cursor-grab"
+                                    onPointerDown={(event) =>
+                                      handleArrowEndpointPointerDown(
+                                        annotation.id,
+                                        resizeEndpoint,
+                                        event
+                                      )
+                                    }
+                                  />
+                                );
+                              })}
+                            </>
+                          )}
+                        </React.Fragment>
+                      );
+                    }
+                    if (annotation.type === "text") {
+                      return (
+                        <text
+                          key={annotation.id}
+                          x={annotation.x}
+                          y={annotation.y}
+                          fill={annotation.color}
+                          fontSize={annotation.fontSize / annotationStrokeScale}
+                          fontWeight={700}
+                          paintOrder="stroke"
+                          stroke={isSelectedAnnotation ? "#ffffff" : "rgba(15,23,42,0.72)"}
+                          strokeWidth={isSelectedAnnotation ? 3 / annotationStrokeScale : 2 / annotationStrokeScale}
+                        >
+                          {annotation.text}
+                        </text>
+                      );
+                    }
+                    return (
+                      <path
+                        key={annotation.id}
+                        d={getAnnotationPenPath(annotation.points)}
+                        fill="none"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        {...commonStroke}
+                      />
+                    );
+                  })}
+                </svg>
+              ) : null}
+              {annotationMode && imageAnnotations.length > 0 && (
+                <div
+                  data-node-action="true"
+                  data-image-annotation-list="true"
+                  className="absolute left-[calc(100%+12px)] top-0 z-30 w-48 rounded-[12px] border border-slate-400/16 bg-[#101827]/92 p-2 text-xs text-slate-200 shadow-[0_20px_50px_-26px_rgba(0,0,0,0.92)] backdrop-blur-xl"
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <div className="mb-1.5 flex items-center gap-1.5 px-1 text-[11px] font-semibold text-slate-300/80">
+                    <ListChecks className="h-3.5 w-3.5 text-violet-200/80" />
+                    <span>批注列表</span>
+                  </div>
+                  <div className="max-h-44 overflow-y-auto pr-0.5 custom-scrollbar">
+                    {imageAnnotations.map((annotation, index) => (
+                      <button
+                        key={annotation.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedAnnotationId(annotation.id);
+                          setAnnotationTool("select");
+                        }}
+                        className={`mb-1 flex h-8 w-full items-center justify-between gap-2 rounded-[8px] px-2 text-left transition ${
+                          selectedAnnotationId === annotation.id
+                            ? "bg-violet-400/16 text-violet-50"
+                            : "text-slate-300/78 hover:bg-white/[0.06] hover:text-slate-50"
+                        }`}
+                      >
+                        <span className="min-w-0 truncate">
+                          {index + 1}. {annotation.type === "text" ? annotation.text : annotation.type}
+                        </span>
+                        <span
+                          className="h-2.5 w-2.5 shrink-0 rounded-full"
+                          style={{ backgroundColor: annotation.color }}
+                        />
+                      </button>
+                    ))}
+                  </div>
+                </div>
               )}
               {selected && activeGridSelection && onSplitImageGrid && (
                 <div
@@ -4353,6 +5475,7 @@ const ImageNodeCard = React.memo(
     prev.selected === next.selected &&
     prev.detachedCanvasTitle === next.detachedCanvasTitle &&
     prev.canvasZoom === next.canvasZoom &&
+    prev.isReviewingAsset === next.isReviewingAsset &&
     prev.apiConfig?.remoteModelsByType === next.apiConfig?.remoteModelsByType &&
     prev.resolvedInputs === next.resolvedInputs &&
     prev.references === next.references

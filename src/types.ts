@@ -19,6 +19,42 @@ export type NodeClass =
   | "audio_node"
   | "group";
 
+export type ImageAnnotation =
+  | {
+      id: string;
+      type: "rect";
+      color: string;
+      strokeWidth: number;
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    }
+  | {
+      id: string;
+      type: "pen";
+      color: string;
+      strokeWidth: number;
+      points: Array<{ x: number; y: number }>;
+    }
+  | {
+      id: string;
+      type: "arrow";
+      color: string;
+      strokeWidth: number;
+      start: { x: number; y: number };
+      end: { x: number; y: number };
+    }
+  | {
+      id: string;
+      type: "text";
+      color: string;
+      fontSize: number;
+      text: string;
+      x: number;
+      y: number;
+    };
+
 export interface GroupBox {
   id: string;
   title: string;
@@ -125,6 +161,7 @@ export interface GraphNode {
     loadingOperation?: "generate" | "frame-analysis" | "video-prompt" | "batch-replacement";
     progress?: number;
     status?: string;
+    annotations?: ImageAnnotation[];
     interruptedReason?: "refresh" | "navigation" | "upload";
     interruptedAt?: number;
     error?: string;

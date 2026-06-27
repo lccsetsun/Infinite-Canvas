@@ -10,3 +10,44 @@ describe("App preview overlay", () => {
     expect(source).toMatch(/\{previewContent && \(\s*<PreviewModal/);
   });
 });
+
+describe("App node context menu", () => {
+  it("positions node right-click menu with viewport coordinates instead of canvas-local offsets", () => {
+    const source = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain('import { getSearchMenuPosition } from "./utils/searchMenuPosition";');
+    expect(source).toContain("const NODE_CONTEXT_MENU_SIZE");
+    expect(source).toContain("x: event.clientX");
+    expect(source).toContain("y: event.clientY");
+    expect(source).not.toContain("x: event.clientX - (rect?.left ?? 0)");
+    expect(source).not.toContain("y: event.clientY - (rect?.top ?? 0)");
+    expect(source).toContain('className="fixed z-50');
+    expect(source).toContain("getSearchMenuPosition(");
+  });
+
+  it("adds image asset review to image node context menu and node layer wiring", () => {
+    const source = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
+    const nodeLayerSource = readFileSync(
+      new URL("./components/app/CanvasNodeLayer.tsx", import.meta.url),
+      "utf8"
+    );
+
+    expect(source).toContain('import { reviewAsset } from "./features/api/assetReview";');
+    expect(source).toContain("const handleReviewImageAsset = React.useCallback");
+    expect(source).toContain("await reviewAsset(ossId)");
+    expect(source).toContain('showNotice(`送审成功：${result || "已完成"}`');
+    expect(source).toContain('showNotice(`送审失败：${message}`');
+    expect(source).toContain("getPrimaryImageNodeOssId(nodeContextMenuNode,");
+    expect(source).toContain("nodeContextMenuNode?.type === \"image_node\"");
+    expect(source).toContain(
+      'reviewingAssetNodeId === nodeContextMenu.nodeId ? "送审中" : "送审"'
+    );
+    expect(source).toContain("送审");
+    expect(source).toContain("onReviewAsset={handleReviewImageAsset}");
+    expect(source).toContain("reviewingAssetNodeId={reviewingAssetNodeId}");
+    expect(nodeLayerSource).toContain("onReviewAsset?:");
+    expect(nodeLayerSource).toContain("reviewingAssetNodeId?:");
+    expect(nodeLayerSource).toContain("onReviewAsset={onReviewAsset}");
+    expect(nodeLayerSource).toContain("isReviewingAsset={reviewingAssetNodeId === node.id}");
+  });
+});
