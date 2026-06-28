@@ -1,14 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
   createArrowAnnotation,
+  createNumberAnnotation,
   createPenAnnotation,
   createRectAnnotation,
   createTextAnnotation,
   exportImageAnnotationsSvg,
+  getImageAnnotationPenPath,
+  getImageAnnotationArrowShape,
   getNormalizedAnnotationPoint,
+  getNextImageAnnotationNumber,
+  getNumberAnnotationTextColor,
   hitTestImageAnnotation,
   moveImageAnnotation,
   resizeImageArrowAnnotation,
+  resizeImageRectAnnotation,
   sanitizeImageAnnotations,
 } from "./imageAnnotations";
 
@@ -96,8 +102,17 @@ describe("imageAnnotations", () => {
             { x: 1, y: 1 },
           ],
         },
+        {
+          id: "text-1",
+          type: "text",
+          color: "#ff4d4f",
+          fontSize: 14,
+          text: "ABC123",
+          x: 0.4,
+          y: 0.5,
+        },
       ])
-    ).toHaveLength(2);
+    ).toHaveLength(3);
   });
 
   it("creates arrow and text annotations for review comments", () => {
@@ -137,6 +152,93 @@ describe("imageAnnotations", () => {
     });
   });
 
+  it("persists resized text annotation boxes for multiline comments", () => {
+    const annotation = (createTextAnnotation as (input: {
+      boxSize?: { width: number; height: number };
+      color: string;
+      fontSize?: number;
+      id: string;
+      point: { x: number; y: number };
+      text: string;
+    }) => ReturnType<typeof createTextAnnotation>)({
+      boxSize: { width: 0.42, height: 0.18 },
+      color: "#ff4d4f",
+      fontSize: 14,
+      id: "text-box-1",
+      point: { x: 0.3, y: 0.4 },
+      text: "第一行\n第二行\n第三行",
+    });
+
+    expect(annotation).toMatchObject({
+      id: "text-box-1",
+      type: "text",
+      width: 0.42,
+      height: 0.18,
+    });
+    expect(sanitizeImageAnnotations([annotation])).toHaveLength(1);
+  });
+
+  it("creates numbered markers and advances the next marker number", () => {
+    expect(
+      createNumberAnnotation({
+        color: "#ff4d4f",
+        id: "number-1",
+        number: 1,
+        point: { x: 0.35, y: 0.45 },
+        strokeWidth: 4,
+      })
+    ).toEqual({
+      id: "number-1",
+      type: "number",
+      color: "#ff4d4f",
+      number: 1,
+      strokeWidth: 4,
+      x: 0.35,
+      y: 0.45,
+    });
+
+    expect(
+      getNextImageAnnotationNumber([
+        {
+          id: "number-1",
+          type: "number",
+          color: "#ff4d4f",
+          number: 1,
+          strokeWidth: 4,
+          x: 0.2,
+          y: 0.2,
+        },
+        {
+          id: "number-4",
+          type: "number",
+          color: "#22c55e",
+          number: 4,
+          strokeWidth: 4,
+          x: 0.4,
+          y: 0.4,
+        },
+      ])
+    ).toBe(5);
+  });
+
+  it("builds a smoothed pen path instead of a jagged polyline", () => {
+    const path = getImageAnnotationPenPath([
+      { x: 0.1, y: 0.1 },
+      { x: 0.2, y: 0.3 },
+      { x: 0.4, y: 0.2 },
+      { x: 0.6, y: 0.5 },
+    ]);
+
+    expect(path).toContain("Q");
+    expect(path).toBe("M 0.1 0.1 Q 0.2 0.3 0.3 0.25 Q 0.4 0.2 0.5 0.35 L 0.6 0.5");
+  });
+
+  it("uses readable text colors for numbered marker badges", () => {
+    expect(getNumberAnnotationTextColor("#ff4d4f")).toBe("#ffffff");
+    expect(getNumberAnnotationTextColor("#facc15")).toBe("#111827");
+    expect(getNumberAnnotationTextColor("#ffffff")).toBe("#111827");
+  });
+
   it("moves annotations without leaving the image bounds", () => {
     const moved = moveImageAnnotation(
       {
@@ -173,6 +275,58 @@ describe("imageAnnotations", () => {
       start: { x: 0.4, y: 0.5 },
       end: { x: 0.8, y: 0.7 },
     });
+  });
+
+  it("resizes rectangle handles while keeping the rectangle valid", () => {
+    const rect = {
+      id: "rect-1",
+      type: "rect" as const,
+      color: "#ff4d4f",
+      strokeWidth: 4,
+      x: 0.2,
+      y: 0.3,
+      width: 0.4,
+      height: 0.2,
+    };
+
+    expect(resizeImageRectAnnotation(rect, "se", { x: 0.8, y: 0.7 })).toMatchObject({
+      x: 0.2,
+      y: 0.3,
+      width: 0.6,
+      height: 0.4,
+    });
+    expect(resizeImageRectAnnotation(rect, "nw", { x: -0.1, y: 0.1 })).toMatchObject({
+      x: 0,
+      y: 0.1,
+      width: 0.6,
+      height: 0.4,
+    });
+    expect(resizeImageRectAnnotation(rect, "w", { x: 0.9, y: 0.4 })).toMatchObject({
+      x: 0.598,
+      width: 0.002,
+    });
+  });
+
+  it("computes compact arrow geometry from the rendered image size", () => {
+    const shape = getImageAnnotationArrowShape(
+      {
+        id: "arrow-1",
+        type: "arrow",
+        color: "#ff4d4f",
+        strokeWidth: 4,
+        start: { x: 0.1, y: 0.2 },
+        end: { x: 0.8, y: 0.7 },
+      },
+      { width: 1000, height: 500 }
+    );
+
+    expect(shape.shaftStart).toEqual({ x: 0.1, y: 0.2 });
+    expect(shape.headLengthPx).toBe(17);
+    expect(shape.headWidthPx).toBe(13);
+    expect(shape.headPoints).toHaveLength(3);
+    expect(shape.headPoints[0]).toEqual({ x: 0.8, y: 0.7 });
+    expect(shape.shaftEnd.x).toBeLessThan(0.8);
+    expect(shape.shaftEnd.y).toBeLessThan(0.7);
   });
 
   it("hit tests review annotation objects from topmost to oldest", () => {
@@ -224,12 +378,56 @@ describe("imageAnnotations", () => {
           x: 0.4,
           y: 0.5,
         },
+        {
+          id: "rect-1",
+          type: "rect",
+          color: "#ff4d4f",
+          strokeWidth: 4,
+          x: 0.1,
+          y: 0.2,
+          width: 0.3,
+          height: 0.4,
+        },
+        {
+          id: "number-1",
+          type: "number",
+          color: "#111827",
+          number: 1,
+          strokeWidth: 4,
+          x: 0.2,
+          y: 0.2,
+        },
+        {
+          id: "pen-1",
+          type: "pen",
+          color: "#3b82f6",
+          strokeWidth: 4,
+          points: [
+            { x: 0.1, y: 0.1 },
+            { x: 0.2, y: 0.3 },
+            { x: 0.4, y: 0.2 },
+          ],
+        },
       ],
       { width: 1000, height: 500 }
     );
 
     expect(svg).toContain("<svg");
-    expect(svg).toContain("<marker");
+    expect(svg).not.toContain("<marker");
+    expect(svg).toContain('data-annotation-kind="arrow"');
+    expect(svg).toContain("<polygon");
     expect(svg).toContain("A&amp;B");
+    expect(svg).toContain('data-annotation-kind="rect"');
+    expect(svg).toContain('<rect x="100" y="100" width="300" height="4" fill="#ff4d4f" />');
+    expect(svg).toContain('<rect x="396" y="100" width="4" height="200" fill="#ff4d4f" />');
+    expect(svg).toContain('<rect x="100" y="296" width="300" height="4" fill="#ff4d4f" />');
+    expect(svg).toContain('<rect x="100" y="100" width="4" height="200" fill="#ff4d4f" />');
+    expect(svg).toContain('data-annotation-kind="number"');
+    expect(svg).toContain('data-annotation-kind="pen"');
+    expect(svg).toContain('stroke="rgba(15,23,42,0.32)"');
+    expect(svg).toContain(" Q ");
+    expect(svg).not.toContain('stroke="rgba(255,255,255');
+    expect(svg).toContain('r="12"');
+    expect(svg).toContain(">1</text>");
   });
 });

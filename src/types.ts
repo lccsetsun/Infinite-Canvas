@@ -51,6 +51,17 @@ export type ImageAnnotation =
       color: string;
       fontSize: number;
       text: string;
+      width?: number;
+      height?: number;
+      x: number;
+      y: number;
+    }
+  | {
+      id: string;
+      type: "number";
+      color: string;
+      number: number;
+      strokeWidth: number;
       x: number;
       y: number;
     };
