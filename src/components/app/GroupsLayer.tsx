@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { Box, Replace, X } from "lucide-react";
 import { GroupBox } from "../../types";
 import {
+  getReadableCanvasOverlayScale,
   mediaNodeFloatingToolbarClass,
   mediaNodeToolbarButtonClass,
   mediaNodeToolbarDividerClass,
@@ -104,6 +105,7 @@ function GroupsLayerImpl({
   const [drag, setDrag] = React.useState<DragState | null>(null);
   const [resize, setResize] = React.useState<ResizeState | null>(null);
   const [openColorGroupId, setOpenColorGroupId] = React.useState<string | null>(null);
+  const readableOverlayScale = getReadableCanvasOverlayScale(zoom);
 
   const handleHeaderPointerDown = (e: React.PointerEvent, group: GroupBox) => {
     if (e.button !== 0) return;
@@ -214,6 +216,7 @@ function GroupsLayerImpl({
 
               <div
                 className="absolute -top-12 left-0 z-30 flex items-center gap-1.5 text-slate-300/82 drop-shadow-[0_1px_10px_rgba(15,23,42,0.9)] cursor-grab active:cursor-grabbing pointer-events-auto"
+                style={{ scale: readableOverlayScale, transformOrigin: "left center" }}
                 onPointerDown={(e) => {
                   onSelectGroup?.(group.id);
                   handleHeaderPointerDown(e, group);
@@ -253,6 +256,12 @@ function GroupsLayerImpl({
                         className={`pointer-events-auto absolute z-40 grid h-7 w-7 place-items-center text-slate-200/82 transition hover:text-white ${cursorClass} ${
                           isLeft ? "-left-3.5" : "-right-3.5"
                         } ${isTop ? "-top-3.5" : "-bottom-3.5"}`}
+                        style={{
+                          scale: readableOverlayScale,
+                          transformOrigin: `${isLeft ? "right" : "left"} ${
+                            isTop ? "bottom" : "top"
+                          }`,
+                        }}
                         onPointerDown={(e) => handleResizePointerDown(e, group, corner)}
                         onPointerMove={handleResizePointerMove}
                         onPointerUp={handleResizePointerUp}
@@ -269,6 +278,7 @@ function GroupsLayerImpl({
                 <div
                   data-group-action="true"
                   className={`pointer-events-auto ${mediaNodeFloatingToolbarClass}`}
+                  style={{ scale: readableOverlayScale, transformOrigin: "bottom center" }}
                   onPointerDown={(e) => {
                     e.preventDefault();
                     e.stopPropagation();

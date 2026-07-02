@@ -8,8 +8,16 @@ import {
   type VideoBatchReplacementMode,
   type VideoBatchReplacementModeOption,
 } from "../../utils/videoBatchReplacementLayout";
+import type { CanvasAssetKind } from "../../utils/canvasAssets";
+
+export interface HistoryCanvasTabOption {
+  kind: CanvasAssetKind | "portrait";
+  label: string;
+  tabType: string;
+}
 
 export interface CanvasGenerationDictionaries {
+  historyCanvasTabs: HistoryCanvasTabOption[];
   imageResolutionGroups: ImageResolutionPresetGroup[];
   videoBatchReplacementModeOptions: VideoBatchReplacementModeOption[];
   videoResolutionGroups: ImageResolutionPresetGroup[];
@@ -131,6 +139,46 @@ function normalizeBatchEditImageModeValue(
   return null;
 }
 
+function normalizeHistoryCanvasTabKind(value: string, label: string): HistoryCanvasTabOption["kind"] | null {
+  const normalized = value.toLowerCase();
+  if (
+    normalized.includes("img") ||
+    normalized.includes("image") ||
+    normalized.includes("picture") ||
+    label.includes("图片")
+  ) {
+    return "image";
+  }
+  if (normalized.includes("video") || label.includes("视频")) return "video";
+  if (normalized.includes("audio") || label.includes("音频")) return "audio";
+  if (normalized.includes("portrait") || label.includes("人像")) return "portrait";
+  return null;
+}
+
+export const DEFAULT_HISTORY_CANVAS_TABS: HistoryCanvasTabOption[] = [
+  { kind: "image", label: "图片历史(0)", tabType: "img_his" },
+  { kind: "video", label: "视频历史(0)", tabType: "video_his" },
+  { kind: "audio", label: "音频历史(0)", tabType: "audio_his" },
+  { kind: "portrait", label: "人像过审资产(0)", tabType: "person_his" },
+];
+
+export function buildHistoryCanvasTabsFromDicts(rows: DictRow[]): HistoryCanvasTabOption[] {
+  const options = sortDictRows(rows)
+    .map((row) => {
+      const label = stringValue(row.dictLabel) || stringValue(row.dictValue);
+      const value = stringValue(row.dictValue);
+      const kind = normalizeHistoryCanvasTabKind(value, label);
+      return label && kind && value ? { kind, label, tabType: value } : null;
+    })
+    .filter((option): option is HistoryCanvasTabOption => Boolean(option));
+
+  const uniqueOptions = options.filter(
+    (option, index) => options.findIndex((item) => item.kind === option.kind) === index
+  );
+
+  return uniqueOptions.length > 0 ? uniqueOptions : DEFAULT_HISTORY_CANVAS_TABS;
+}
+
 export function buildVideoBatchReplacementModeOptionsFromDicts(
   rows: DictRow[]
 ): VideoBatchReplacementModeOption[] {
@@ -163,7 +211,7 @@ export async function fetchCanvasGenerationDictionaries(): Promise<CanvasGenerat
     .map((row) => stringValue(row.dictValue) || stringValue(row.dictLabel))
     .filter(Boolean);
 
-  const [imageRatioRows, videoRatioRows, videoResolutionRows, batchEditImageRows] =
+  const [imageRatioRows, videoRatioRows, videoResolutionRows, batchEditImageRows, historyCanvasRows] =
     await Promise.all([
       Promise.all(imageRatioKeys.map(async (key) => [key, await fetchDictRows(key)] as const)).then(
         (entries) => Object.fromEntries(entries)
@@ -171,9 +219,11 @@ export async function fetchCanvasGenerationDictionaries(): Promise<CanvasGenerat
       fetchDictRows("video_ratio"),
       fetchDictRows("video_p"),
       fetchDictRows("batch_edit_image_key"),
+      fetchDictRows("history_canvas"),
     ]);
 
   return {
+    historyCanvasTabs: buildHistoryCanvasTabsFromDicts(historyCanvasRows),
     imageResolutionGroups: buildImageResolutionGroupsFromDicts(imageKeyRows, imageRatioRows),
     videoBatchReplacementModeOptions:
       buildVideoBatchReplacementModeOptionsFromDicts(batchEditImageRows),

@@ -2,6 +2,7 @@ import React from "react";
 import { Box } from "lucide-react";
 import type { Rect } from "../../utils/multiSelection";
 import {
+  getReadableCanvasOverlayScale,
   mediaNodeFloatingToolbarClass,
   mediaNodeToolbarButtonClass,
 } from "../canvas/mediaNodeToolbarStyles";
@@ -25,6 +26,8 @@ export default function MultiSelectionLayer({
   onBeginSelectionDrag,
   onCreateGroup,
 }: MultiSelectionLayerProps) {
+  const readableOverlayScale = getReadableCanvasOverlayScale(zoom);
+
   return (
     <div
       className="pointer-events-none absolute inset-0 z-[34] origin-top-left"
@@ -76,6 +79,7 @@ export default function MultiSelectionLayer({
             <div
               data-node-action="true"
               className={`pointer-events-auto ${mediaNodeFloatingToolbarClass}`}
+              style={{ scale: readableOverlayScale, transformOrigin: "bottom center" }}
               onPointerDown={(event) => {
                 event.preventDefault();
                 event.stopPropagation();

@@ -35,6 +35,10 @@ describe("App node context menu", () => {
     expect(source).toContain('import { reviewAsset } from "./features/api/assetReview";');
     expect(source).toContain("const handleReviewImageAsset = React.useCallback");
     expect(source).toContain("await reviewAsset(ossId)");
+    expect(source).toContain("reviewedNode?.data?.assetReviewPassedOssIds");
+    expect(source).toContain("assetReviewLastResult: result || \"已完成\"");
+    expect(source).toContain("assetReviewLastReviewedAt: Date.now()");
+    expect(source).toContain("assetReviewPassedOssIds: Array.from(new Set([...existingPassedOssIds, ossId.trim()]))");
     expect(source).toContain('showNotice(`送审成功：${result || "已完成"}`');
     expect(source).toContain('showNotice(`送审失败：${message}`');
     expect(source).toContain("getPrimaryImageNodeOssId(nodeContextMenuNode,");

@@ -100,6 +100,9 @@ export interface GraphNode {
     imageUrls?: string[];
     ossId?: string;
     ossIds?: string[];
+    assetReviewPassedOssIds?: string[];
+    assetReviewLastReviewedAt?: number;
+    assetReviewLastResult?: string;
     frameImageOssIds?: string[];
     activeImageIndex?: number;
     imageNodeWidth?: number;

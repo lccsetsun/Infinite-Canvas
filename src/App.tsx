@@ -92,6 +92,7 @@ import {
   uploadCanvasFileAsNode,
 } from "./utils/canvasFileUpload";
 import { collectNodeInputReferences } from "./utils/textNodeReferences";
+import { collectCanvasAssets, type CanvasAsset } from "./utils/canvasAssets";
 import { ConfigProvider, theme } from "antd";
 import { GraphLink, GraphNode, GroupBox, NodeClass } from "./types";
 import type { VideoFrameCaptureItem } from "./features/video/frameCapture";
@@ -412,6 +413,10 @@ export default function App({ onLoggedOut }: AppProps) {
     });
     return map;
   }, [links, nodeOutputs, nodes]);
+  const canvasAssets = React.useMemo(
+    () => collectCanvasAssets({ nodes, nodeOutputs }),
+    [nodeOutputs, nodes]
+  );
 
   const {
     isWelcomeDismissed,
@@ -472,6 +477,23 @@ export default function App({ onLoggedOut }: AppProps) {
   } | null>(null);
   const [previewContent, setPreviewContent] = React.useState<PreviewContent | null>(null);
   const isPreviewOpen = Boolean(previewContent);
+  const handlePreviewCanvasAsset = React.useCallback(
+    (asset: CanvasAsset) => {
+      const relatedAssets = canvasAssets.filter((item) => item.kind === asset.kind);
+      const currentIndex = Math.max(
+        0,
+        relatedAssets.findIndex((item) => item.url === asset.url)
+      );
+      setPreviewContent({
+        content: asset.url,
+        currentIndex,
+        items: relatedAssets.map((item) => item.url),
+        nodeId: asset.nodeId,
+        title: `${asset.kind === "video" ? "视频" : asset.kind === "audio" ? "音频" : "图片"}资产 · ${asset.nodeTitle}`,
+      });
+    },
+    [canvasAssets]
+  );
   const [assistantPanelOpen, setAssistantPanelOpen] = React.useState(false);
   const [canvasSize, setCanvasSize] = React.useState({ width: 0, height: 0 });
   const [selectedGroupId, setSelectedGroupId] = React.useState<string | null>(null);
@@ -910,6 +932,17 @@ export default function App({ onLoggedOut }: AppProps) {
       setReviewingAssetNodeId(nodeId);
       try {
         const result = await reviewAsset(ossId);
+        const reviewedNode = nodes.find((node) => node.id === nodeId);
+        const existingPassedOssIds = Array.isArray(reviewedNode?.data?.assetReviewPassedOssIds)
+          ? reviewedNode.data.assetReviewPassedOssIds.filter(
+              (value): value is string => typeof value === "string" && value.trim().length > 0
+            )
+          : [];
+        updateNodeData(nodeId, {
+          assetReviewLastResult: result || "已完成",
+          assetReviewLastReviewedAt: Date.now(),
+          assetReviewPassedOssIds: Array.from(new Set([...existingPassedOssIds, ossId.trim()])),
+        });
         showNotice(`送审成功：${result || "已完成"}`, 1800);
       } catch (error) {
         const message = error instanceof Error ? error.message : "接口异常";
@@ -918,7 +951,7 @@ export default function App({ onLoggedOut }: AppProps) {
         setReviewingAssetNodeId((current) => (current === nodeId ? null : current));
       }
     },
-    [showNotice]
+    [nodes, showNotice, updateNodeData]
   );
 
   const handleGroupPointerDown = React.useCallback(
@@ -2233,6 +2266,8 @@ export default function App({ onLoggedOut }: AppProps) {
             )}
           {shouldRenderCanvasContent && currentView === "canvas" && (
             <CanvasControls
+              assets={canvasAssets}
+              assetTabs={generationDictionaries?.historyCanvasTabs}
               showGrid={showGrid}
               showMiniMap={showMiniMap}
               snapToGridEnabled={snapToGridEnabled}
@@ -2253,6 +2288,7 @@ export default function App({ onLoggedOut }: AppProps) {
                 setShowMiniMap((v) => !v);
                 showNotice(showMiniMap ? "已隐藏小地图" : "已显示小地图");
               }}
+              onPreviewAsset={handlePreviewCanvasAsset}
               onToggleSnapToGrid={() => {
                 setSnapToGridEnabled((v) => !v);
                 showNotice(snapToGridEnabled ? "已关闭网格吸附" : "已开启网格吸附");

@@ -1,15 +1,24 @@
 import React from "react";
-import { Eye, Grid3X3, LocateFixed, Magnet, Trash2 } from "lucide-react";
+import { Eye, Grid3X3, Images, LocateFixed, Magnet, Trash2 } from "lucide-react";
 import { motion } from "motion/react";
 import { Tooltip } from "../common/Tooltip";
+import CanvasAssetManagerPanel from "./CanvasAssetManagerPanel";
+import {
+  DEFAULT_HISTORY_CANVAS_TABS,
+  type HistoryCanvasTabOption,
+} from "../../features/api/canvasGenerationDictionaries";
+import type { CanvasAsset } from "../../utils/canvasAssets";
 
 interface CanvasControlsProps {
+  assets?: CanvasAsset[];
+  assetTabs?: HistoryCanvasTabOption[];
   showGrid: boolean;
   showMiniMap: boolean;
   snapToGridEnabled: boolean;
   zoom: number;
   onFitView: () => void;
   onClearCanvas: () => void;
+  onPreviewAsset?: (asset: CanvasAsset) => void;
   onToggleGrid: () => void;
   onToggleMiniMap: () => void;
   onToggleSnapToGrid: () => void;
@@ -45,84 +54,111 @@ function ControlButton({
 }
 
 export default function CanvasControls({
+  assets = [],
+  assetTabs = DEFAULT_HISTORY_CANVAS_TABS,
   showGrid,
   showMiniMap,
   snapToGridEnabled,
   zoom,
   onFitView,
   onClearCanvas,
+  onPreviewAsset,
   onToggleGrid,
   onToggleMiniMap,
   onToggleSnapToGrid,
 }: CanvasControlsProps) {
+  const [assetManagerOpen, setAssetManagerOpen] = React.useState(false);
+
   return (
-    <motion.div
-      data-no-canvas-context-menu="true"
-      initial={{ y: 20, opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      transition={{ delay: 0.18, duration: 0.28 }}
-      className="absolute bottom-4 left-4 z-30 inline-flex items-center gap-1 rounded-2xl border border-violet-200/[0.10] bg-[#151d2b]/88 px-2 py-1.5 shadow-[0_16px_34px_-24px_rgba(8,13,24,0.96),inset_0_1px_0_rgba(255,255,255,0.055)] backdrop-blur-xl"
-    >
-      <ControlButton
-        active={showGrid}
-        label={showGrid ? "隐藏网格" : "显示网格"}
-        onClick={(event) => {
-          event.stopPropagation();
-          onToggleGrid();
-        }}
+    <>
+      {assetManagerOpen && (
+        <CanvasAssetManagerPanel
+          assets={assets}
+          tabs={assetTabs}
+          onClose={() => setAssetManagerOpen(false)}
+          onPreviewAsset={onPreviewAsset}
+        />
+      )}
+
+      <motion.div
+        data-no-canvas-context-menu="true"
+        initial={{ y: 20, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ delay: 0.18, duration: 0.28 }}
+        className="absolute bottom-4 left-4 z-30 inline-flex items-center gap-1 rounded-2xl border border-violet-200/[0.10] bg-[#151d2b]/88 px-2 py-1.5 shadow-[0_16px_34px_-24px_rgba(8,13,24,0.96),inset_0_1px_0_rgba(255,255,255,0.055)] backdrop-blur-xl"
       >
-        <Grid3X3 className="h-4 w-4" />
-      </ControlButton>
+        <ControlButton
+          active={assetManagerOpen}
+          label="资产管理"
+          onClick={(event) => {
+            event.stopPropagation();
+            setAssetManagerOpen((open) => !open);
+          }}
+        >
+          <Images className="h-4 w-4" />
+        </ControlButton>
 
-      <ControlButton
-        active={snapToGridEnabled}
-        label={snapToGridEnabled ? "关闭网格吸附" : "开启网格吸附"}
-        onClick={(event) => {
-          event.stopPropagation();
-          onToggleSnapToGrid();
-        }}
-      >
-        <Magnet className="h-4 w-4" />
-      </ControlButton>
+        <ControlButton
+          active={showGrid}
+          label={showGrid ? "隐藏网格" : "显示网格"}
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggleGrid();
+          }}
+        >
+          <Grid3X3 className="h-4 w-4" />
+        </ControlButton>
 
-      <ControlButton
-        label="自适应居中"
-        onClick={(event) => {
-          event.stopPropagation();
-          onFitView();
-        }}
-      >
-        <LocateFixed className="h-4 w-4" />
-      </ControlButton>
+        <ControlButton
+          active={snapToGridEnabled}
+          label={snapToGridEnabled ? "关闭网格吸附" : "开启网格吸附"}
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggleSnapToGrid();
+          }}
+        >
+          <Magnet className="h-4 w-4" />
+        </ControlButton>
 
-      <ControlButton
-        active={showMiniMap}
-        label={showMiniMap ? "隐藏小地图" : "显示小地图"}
-        onClick={(event) => {
-          event.stopPropagation();
-          onToggleMiniMap();
-        }}
-      >
-        <Eye className="h-4 w-4" />
-      </ControlButton>
+        <ControlButton
+          label="自适应居中"
+          onClick={(event) => {
+            event.stopPropagation();
+            onFitView();
+          }}
+        >
+          <LocateFixed className="h-4 w-4" />
+        </ControlButton>
 
-      <div className="h-4 w-px bg-violet-200/[0.10]" />
+        <ControlButton
+          active={showMiniMap}
+          label={showMiniMap ? "隐藏小地图" : "显示小地图"}
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggleMiniMap();
+          }}
+        >
+          <Eye className="h-4 w-4" />
+        </ControlButton>
 
-      <ControlButton
-        label="清除画布"
-        onClick={(event) => {
-          event.stopPropagation();
-          onClearCanvas();
-        }}
-      >
-        <Trash2 className="h-4 w-4" />
-      </ControlButton>
+        <div className="h-4 w-px bg-violet-200/[0.10]" />
 
-      <div className="h-4 w-px bg-violet-200/[0.10]" />
+        <ControlButton
+          label="清除画布"
+          onClick={(event) => {
+            event.stopPropagation();
+            onClearCanvas();
+          }}
+        >
+          <Trash2 className="h-4 w-4" />
+        </ControlButton>
 
-      <div className="inline-flex select-none items-center px-1 py-1 text-[11px] text-slate-300/80">
-        <span className="font-semibold text-slate-100">{Math.round(zoom * 100)}%</span>
-      </div>
-    </motion.div>
+        <div className="h-4 w-px bg-violet-200/[0.10]" />
+
+        <div className="inline-flex select-none items-center px-1 py-1 text-[11px] text-slate-300/80">
+          <span className="font-semibold text-slate-100">{Math.round(zoom * 100)}%</span>
+        </div>
+      </motion.div>
+    </>
   );
 }

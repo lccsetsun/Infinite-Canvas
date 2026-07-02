@@ -541,6 +541,25 @@ function normalizeImageNodeOssId(value: unknown): string {
   return "";
 }
 
+function AssetReviewPassedIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+      role="img"
+      className="pointer-events-none h-3.5 w-3.5 shrink-0 text-[#09CAF5]"
+      viewBox="0 0 16 16"
+    >
+      <g transform="translate(1 1)">
+        <path
+          d="M7 0.641113C7.2515 0.641113 7.49564 0.720096 7.69922 0.864746L7.78418 0.930176L7.78906 0.934082C8.75179 1.77578 10.0859 2.39196 11.083 2.39209C11.3769 2.39209 11.6593 2.50849 11.8672 2.71631C12.0748 2.92404 12.1923 3.2058 12.1924 3.49951V7.5835C12.1923 9.18027 11.6258 10.4048 10.7178 11.3364C9.82404 12.2533 8.62182 12.8643 7.37109 13.3003L7.36719 13.3013C7.12963 13.3818 6.87152 13.3783 6.63574 13.2935C6.63189 13.2922 6.62787 13.2919 6.62402 13.2905C5.37422 12.8577 4.17415 12.2499 3.28223 11.3364C2.37326 10.4054 1.8087 9.18017 1.80859 7.5835V3.49951C1.80872 3.2058 1.92517 2.92404 2.13281 2.71631C2.34066 2.50849 2.62307 2.39209 2.91699 2.39209C3.91369 2.39195 5.25354 1.77039 6.21094 0.934082L6.21582 0.930176C6.4344 0.743601 6.71261 0.641113 7 0.641113ZM7 1.69189C6.96253 1.69189 6.92597 1.70469 6.89746 1.729C5.82515 2.66406 4.25161 3.44177 2.91699 3.44189C2.90171 3.44189 2.88688 3.4478 2.87598 3.4585C2.86515 3.46933 2.85852 3.48421 2.8584 3.49951V7.5835C2.8585 8.90294 3.31445 9.86589 4.03418 10.603C4.67647 11.2607 5.54713 11.7568 6.54395 12.1431L6.97852 12.3022L6.99121 12.3062C7.00351 12.3106 7.01686 12.3112 7.0293 12.3071C8.20335 11.8975 9.23396 11.3559 9.9668 10.604C10.6861 9.86598 11.1415 8.90289 11.1416 7.5835V3.49951C11.1415 3.48421 11.1349 3.46933 11.124 3.4585C11.1131 3.4478 11.0983 3.44189 11.083 3.44189C9.74882 3.44177 8.18115 2.67029 7.10254 1.729L7.08008 1.7124C7.05608 1.69835 7.02814 1.69189 7 1.69189ZM8.37891 5.4624C8.58392 5.25746 8.91608 5.25746 9.12109 5.4624C9.32593 5.66739 9.32593 5.9996 9.12109 6.20459L6.78809 8.5376C6.58306 8.74262 6.24995 8.74262 6.04492 8.5376L4.87891 7.37158C4.67407 7.16659 4.67407 6.83341 4.87891 6.62842C5.08383 6.42391 5.41617 6.42391 5.62109 6.62842L6.41699 7.42432L8.37891 5.4624Z"
+          fill="currentColor"
+        />
+      </g>
+    </svg>
+  );
+}
+
 export function getPrimaryImageNodeOssId(node: GraphNode, imageUrl: string): string {
   const imageUrls = Array.isArray(node.data?.imageUrls) ? node.data.imageUrls : [];
   const ossIds = Array.isArray(node.data?.ossIds) ? node.data.ossIds : [];
@@ -1194,7 +1213,6 @@ function ImageNodeCardImpl({
     () => sanitizeImageAnnotations(node.data?.annotations),
     [node.data?.annotations]
   );
-  const reviewOssId = getPrimaryImageNodeOssId(node, imageUrl);
   const isEmptyBatchReplacementSuccess =
     isBatchReplacementResultNode &&
     !isBatchReplacementResultLoading &&
@@ -1207,14 +1225,6 @@ function ImageNodeCardImpl({
   const batchReplacementResultColumnCount = isBatchReplacementResultNode
     ? Math.max(1, Math.min(resolvedImageUrls.length || 1, frameGridColumns))
     : 0;
-  const frameTileWidth =
-    typeof node.data?.frameTileWidth === "number" && node.data.frameTileWidth > 0
-      ? Math.round(node.data.frameTileWidth)
-      : FRAME_STRIP_TILE_MIN_WIDTH;
-  const frameTileHeight =
-    typeof node.data?.frameTileHeight === "number" && node.data.frameTileHeight > 0
-      ? Math.round(node.data.frameTileHeight)
-      : FRAME_STRIP_TILE_MIN_HEIGHT;
   const frameImageOssIds = Array.isArray(node.data?.frameImageOssIds)
     ? node.data.frameImageOssIds
     : Array.isArray(node.properties.frameImageOssIds)
@@ -1224,6 +1234,23 @@ function ImageNodeCardImpl({
     const ossId = frameImageOssIds[frameIndex];
     return typeof ossId === "string" ? ossId.trim() : "";
   };
+  const reviewOssId =
+    getPrimaryImageNodeOssId(node, imageUrl) ||
+    (isFrameStrip ? getFrameImageOssId(activeImageIndex) : "");
+  const assetReviewPassedOssIds = Array.isArray(node.data?.assetReviewPassedOssIds)
+    ? node.data.assetReviewPassedOssIds.map(normalizeImageNodeOssId).filter(Boolean)
+    : [];
+  const isCurrentImageReviewPassed = Boolean(
+    reviewOssId && assetReviewPassedOssIds.includes(reviewOssId)
+  );
+  const frameTileWidth =
+    typeof node.data?.frameTileWidth === "number" && node.data.frameTileWidth > 0
+      ? Math.round(node.data.frameTileWidth)
+      : FRAME_STRIP_TILE_MIN_WIDTH;
+  const frameTileHeight =
+    typeof node.data?.frameTileHeight === "number" && node.data.frameTileHeight > 0
+      ? Math.round(node.data.frameTileHeight)
+      : FRAME_STRIP_TILE_MIN_HEIGHT;
   const cleanupFrameExtractionDragListeners = React.useCallback(() => {
     frameExtractionDragCleanupRef.current?.();
     frameExtractionDragCleanupRef.current = null;
@@ -4428,8 +4455,11 @@ function ImageNodeCardImpl({
                       </button>
                     </Tooltip>
                   )}
-                  {reviewOssId && (
-                    <Tooltip content={isReviewingAsset ? "送审中" : "送审"} position="top">
+                  {onReviewAsset && (
+                    <Tooltip
+                      content={!reviewOssId ? "缺少 ossId，无法送审" : isReviewingAsset ? "送审中" : "送审"}
+                      position="top"
+                    >
                       <button
                         type="button"
                         onClick={handleReviewAsset}
@@ -4655,6 +4685,7 @@ function ImageNodeCardImpl({
                     nodeBadgeTitle
                   )}
                 </span>
+                {isCurrentImageReviewPassed && <AssetReviewPassedIcon />}
               </div>
             )}
             {!detachedCanvasTitle && (
@@ -4678,6 +4709,7 @@ function ImageNodeCardImpl({
                     nodeBadgeTitle
                   )}
                 </span>
+                {isCurrentImageReviewPassed && <AssetReviewPassedIcon />}
               </div>
             )}
             {batchReplacementElapsedLabel && !detachedCanvasTitle && (

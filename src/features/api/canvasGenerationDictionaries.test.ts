@@ -1,11 +1,28 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildHistoryCanvasTabsFromDicts,
   buildImageResolutionGroupsFromDicts,
   buildVideoBatchReplacementModeOptionsFromDicts,
   buildVideoResolutionGroupsFromDicts,
 } from "./canvasGenerationDictionaries";
 
 describe("canvas generation dictionaries", () => {
+  it("builds history canvas tabs from history_canvas dictionary labels", () => {
+    expect(
+      buildHistoryCanvasTabsFromDicts([
+        { dictLabel: "图片历史(8)", dictSort: 1, dictValue: "img_his" },
+        { dictLabel: "视频历史(4)", dictSort: 2, dictValue: "video_his" },
+        { dictLabel: "音频历史(0)", dictSort: 3, dictValue: "audio_his" },
+        { dictLabel: "人像过审资产(0)", dictSort: 4, dictValue: "person_his" },
+      ])
+    ).toEqual([
+      { kind: "image", label: "图片历史(8)", tabType: "img_his" },
+      { kind: "video", label: "视频历史(4)", tabType: "video_his" },
+      { kind: "audio", label: "音频历史(0)", tabType: "audio_his" },
+      { kind: "portrait", label: "人像过审资产(0)", tabType: "person_his" },
+    ]);
+  });
+
   it("builds image groups by first reading images_ratio_key dictionary values", () => {
     const groups = buildImageResolutionGroupsFromDicts(
       [

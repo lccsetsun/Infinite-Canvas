@@ -7,8 +7,10 @@ describe("MultiSelectionLayer source", () => {
 
     expect(source).toContain("canCreateGroup");
     expect(source).toContain("onCreateGroup");
+    expect(source).toContain("getReadableCanvasOverlayScale(zoom)");
     expect(source).toContain("mediaNodeFloatingToolbarClass");
     expect(source).toContain("mediaNodeToolbarButtonClass");
+    expect(source).toContain('style={{ scale: readableOverlayScale, transformOrigin: "bottom center" }}');
     expect(source).toContain("打组");
     expect(source).not.toContain("absolute left-0 top-0 flex h-8");
     expect(source).not.toContain("批量拖拽连线");

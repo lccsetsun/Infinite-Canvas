@@ -67,9 +67,19 @@ describe("image grid split helpers", () => {
     expect(props).not.toHaveProperty("__uploadedAssetUrl");
     expect(props.__nodeData).toEqual({
       activeImageIndex: 0,
+      imageDisplayHeight: 310,
+      imageDisplayWidth: 540,
+      imageNaturalHeight: 248,
+      imageNaturalWidth: 432,
       imageUrl: "data:image/png;base64,child",
       imageUrls: ["data:image/png;base64,child"],
       status: "success",
+    });
+    expect(props).toMatchObject({
+      imageDisplayHeight: 310,
+      imageDisplayWidth: 540,
+      imageNaturalHeight: 248,
+      imageNaturalWidth: 432,
     });
     expect(props.text).toBe("来自 图片节点 12 的 2x2 第 2 格 (432x248)");
   });

@@ -34,11 +34,23 @@ export interface GridSplitChildNodeInitialPropsInput {
 
 const CHILD_NODE_X_OFFSET = 380;
 const CHILD_NODE_Y_STEP = 130;
+const MEDIA_NODE_FOOTPRINT_WIDTH = 540;
+const MEDIA_NODE_FOOTPRINT_HEIGHT = 540;
 
 function normalizeGridShape(rowsOrGridSize: number, cols?: number) {
   const rows = Math.max(1, Math.floor(rowsOrGridSize));
   const normalizedCols = Math.max(1, Math.floor(cols ?? rowsOrGridSize));
   return { rows, cols: normalizedCols };
+}
+
+function fitGridChildPreviewSize(size: Pick<GridCellCrop, "sw" | "sh">) {
+  const width = Math.max(1, Math.floor(size.sw));
+  const height = Math.max(1, Math.floor(size.sh));
+  const scale = Math.min(MEDIA_NODE_FOOTPRINT_WIDTH / width, MEDIA_NODE_FOOTPRINT_HEIGHT / height);
+  return {
+    width: Math.max(1, Math.round(width * scale)),
+    height: Math.max(1, Math.round(height * scale)),
+  };
 }
 
 export function getGridCellCrop(
@@ -102,16 +114,25 @@ export function buildGridSplitChildNodeInitialProps({
   sourceTitle,
 }: GridSplitChildNodeInitialPropsInput): Record<string, unknown> {
   const displayIndex = Math.max(0, Math.floor(cellIndex)) + 1;
+  const displaySize = fitGridChildPreviewSize(crop);
   return {
     __nodeTitle: `宫格切分 ${gridRows}x${gridCols} #${displayIndex}`,
     __nodeData: {
       activeImageIndex: 0,
       imageUrl: dataUrl,
       imageUrls: [dataUrl],
+      imageNaturalWidth: crop.sw,
+      imageNaturalHeight: crop.sh,
+      imageDisplayWidth: displaySize.width,
+      imageDisplayHeight: displaySize.height,
       status: "success",
     },
     imageUrl: dataUrl,
     imageUrls: [dataUrl],
+    imageNaturalWidth: crop.sw,
+    imageNaturalHeight: crop.sh,
+    imageDisplayWidth: displaySize.width,
+    imageDisplayHeight: displaySize.height,
     text: `来自 ${sourceTitle} 的 ${gridRows}x${gridCols} 第 ${displayIndex} 格 (${crop.sw}x${crop.sh})`,
     status: "success",
   };

@@ -27,4 +27,16 @@ describe("CanvasControls styling", () => {
     expect(source).toContain("onClearCanvas");
     expect(source).toContain("清除画布");
   });
+
+  it("adds the asset manager as the first toolbar action", () => {
+    const source = readFileSync(new URL("./CanvasControls.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain("CanvasAssetManagerPanel");
+    expect(source).toContain("assets?: CanvasAsset[]");
+    expect(source).toContain("assetTabs?: HistoryCanvasTabOption[]");
+    expect(source).toContain("assetTabs = DEFAULT_HISTORY_CANVAS_TABS");
+    expect(source).toContain("assetManagerOpen");
+    expect(source).toContain('label="资产管理"');
+    expect(source.indexOf('label="资产管理"')).toBeLessThan(source.indexOf("隐藏网格"));
+  });
 });

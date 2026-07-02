@@ -242,12 +242,25 @@ describe("ImageNodeCard prompt composer fullscreen editor", () => {
     const source = readFileSync(new URL("./ImageNodeCard.tsx", import.meta.url), "utf8");
 
     expect(source).toContain("onReviewAsset?:");
-    expect(source).toContain("const reviewOssId = getPrimaryImageNodeOssId(node, imageUrl)");
+    expect(source).toContain("getPrimaryImageNodeOssId(node, imageUrl) ||");
+    expect(source).toContain("(isFrameStrip ? getFrameImageOssId(activeImageIndex) : \"\")");
     expect(source).toContain("onReviewAsset?.(node.id, reviewOssId)");
-    expect(source).toContain('Tooltip content={isReviewingAsset ? "送审中" : "送审"}');
+    expect(source).toContain("{onReviewAsset && (");
+    expect(source).toContain("缺少 ossId，无法送审");
+    expect(source).toContain('content={!reviewOssId ? "缺少 ossId，无法送审" : isReviewingAsset ? "送审中" : "送审"}');
     expect(source).toContain('aria-label={isReviewingAsset ? "送审中" : "送审"}');
     expect(source).toContain("{isReviewingAsset ? \"送审中\" : \"送审\"}");
     expect(source).toContain("isReviewingAsset ? (");
+  });
+
+  it("shows a passed-review badge on the current reviewed image", () => {
+    const source = readFileSync(new URL("./ImageNodeCard.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain("function AssetReviewPassedIcon()");
+    expect(source).toContain("assetReviewPassedOssIds");
+    expect(source).toContain("const isCurrentImageReviewPassed = Boolean(");
+    expect(source).toContain("reviewOssId && assetReviewPassedOssIds.includes(reviewOssId)");
+    expect(source).toContain("{isCurrentImageReviewPassed && <AssetReviewPassedIcon />}");
   });
 
   it("adds non-destructive image annotation controls and persists annotation data", () => {

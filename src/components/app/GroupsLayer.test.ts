@@ -9,6 +9,8 @@ describe("GroupsLayer source", () => {
     expect(source).toContain("{memberCount}");
     expect(source).toContain("absolute -top-12 left-0");
     expect(source).toContain("cursor-grab active:cursor-grabbing pointer-events-auto");
+    expect(source).toContain("getReadableCanvasOverlayScale(zoom)");
+    expect(source).toContain('style={{ scale: readableOverlayScale, transformOrigin: "left center" }}');
     expect(source).not.toContain("bg-[#0d1117]");
     expect(source).toContain("GROUP_COLOR_SWATCHES");
     expect(source).toContain("onChangeGroupColor?.(group.id");
@@ -24,8 +26,10 @@ describe("GroupsLayer source", () => {
     expect(source).not.toContain("squareCornerClass");
     expect(source).toContain("place-items-center");
     expect(source).toContain("h-3.5 w-3.5 rounded-[3px] bg-slate-100/90");
+    expect(source).toContain("scale: readableOverlayScale");
     expect(source).not.toContain("Maximize2");
     expect(source).toContain("mediaNodeFloatingToolbarClass");
+    expect(source).toContain('style={{ scale: readableOverlayScale, transformOrigin: "bottom center" }}');
     expect(source).toContain("mediaNodeToolbarDividerClass");
     expect(source).toContain("batchReplacementSourceCountByGroup");
     expect(source).toContain("onCreateBatchReplacement?.(group.id)");
