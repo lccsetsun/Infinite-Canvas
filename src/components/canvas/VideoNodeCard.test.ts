@@ -434,10 +434,14 @@ describe("VideoNodeCard preview branch", () => {
 
     expect(source).toContain("if (!videoUrl || isAnalyzingFramesLocal");
     expect(source).toContain("if (!videoUrl || isReversingPromptLocal");
+    expect(source).toContain("const superResolveVideo = React.useCallback");
     expect(source).toContain("disabled={isAnalyzingFrames}");
     expect(source).toContain("disabled={isReversingPrompt}");
+    expect(source).toContain("disabled={isSuperResolving}");
     expect(source).toContain('loadingOperation: "frame-analysis"');
     expect(source).toContain('loadingOperation: "video-prompt"');
+    expect(source).toContain('Tooltip content="视频超分"');
+    expect(source).toContain("onSuperResolveVideo?.(node, videoUrl)");
   });
 
   it("resumes pending frame analysis and prompt reversal after refresh", () => {

@@ -197,6 +197,7 @@ interface CanvasNodeLayerProps {
   ) => void;
   onAnalyzeVideo?: (node: GraphNode, captures: VideoFrameCaptureItem[]) => Promise<void> | void;
   onReverseVideoPrompt?: (node: GraphNode, videoUrl: string) => Promise<void> | void;
+  onSuperResolveVideo?: (node: GraphNode, videoUrl: string) => Promise<void> | void;
   onCreateVideoBatchReplacement?: (node: GraphNode) => void;
   onReviewAsset?: (nodeId: string, ossId: string) => void;
   reviewingAssetNodeId?: string | null;
@@ -291,6 +292,7 @@ export default function CanvasNodeLayer({
   onPreview,
   onAnalyzeVideo,
   onReverseVideoPrompt,
+  onSuperResolveVideo,
   onCreateVideoBatchReplacement,
   onReviewAsset,
   reviewingAssetNodeId,
@@ -538,6 +540,7 @@ export default function CanvasNodeLayer({
                     onPreview={onPreview}
                     onAnalyzeVideo={onAnalyzeVideo}
                     onReverseVideoPrompt={onReverseVideoPrompt}
+                    onSuperResolveVideo={onSuperResolveVideo}
                     onCreateVideoFrameImage={onCreateVideoFrameImage}
                     onCompleteVideoFrameImage={onCompleteVideoFrameImage}
                     onFailVideoFrameImage={onFailVideoFrameImage}

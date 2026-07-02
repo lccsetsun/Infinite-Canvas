@@ -109,6 +109,7 @@ import {
 } from "./features/api/canvasGenerationDictionaries";
 import { reviewAsset } from "./features/api/assetReview";
 import { batchEditImages } from "./features/api/videoBatchReplacement";
+import { submitVideoSuperResolution } from "./features/api/videoSuperResolution";
 import { resolveVideoBatchReplacementSourceFrames } from "./utils/videoBatchReplacementSubmit";
 import { clearAuthSession } from "./features/auth/authStorage";
 import { logout } from "./features/auth/authApi";
@@ -339,6 +340,10 @@ export default function App({ onLoggedOut }: AppProps) {
     createVideoFrameImageNode,
     completeVideoFrameImageNode,
     failVideoFrameImageNode,
+    createVideoSuperResolutionNode,
+    attachVideoSuperResolutionTask,
+    completeVideoSuperResolutionNode,
+    failVideoSuperResolutionNode,
     replaceFrameImageUrl,
     linkFromNodeId,
     linkToNodeId,
@@ -1156,6 +1161,48 @@ export default function App({ onLoggedOut }: AppProps) {
       showNotice("已生成视频反推提示词文本节点。");
     },
     [addVideoPromptTextNode, showNotice]
+  );
+
+  const handleSuperResolveVideo = React.useCallback(
+    async (node: GraphNode, videoUrl: string) => {
+      const sourceVideoUrl = videoUrl.trim();
+      if (!sourceVideoUrl) {
+        showNotice("当前视频节点没有可用于超分的视频。");
+        return;
+      }
+
+      const childNodeId = createVideoSuperResolutionNode(node.id, sourceVideoUrl);
+      if (!childNodeId) {
+        showNotice("无法创建视频超分节点。");
+        return;
+      }
+
+      try {
+        const result = await submitVideoSuperResolution({
+          videoUrl: sourceVideoUrl,
+        });
+
+        if (result.videoUrl) {
+          completeVideoSuperResolutionNode(childNodeId, result.videoUrl);
+          showNotice("视频超分已完成。");
+          return;
+        }
+
+        attachVideoSuperResolutionTask(childNodeId, result.taskId);
+        showNotice("视频超分任务已提交，正在生成。");
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        failVideoSuperResolutionNode(childNodeId, message);
+        showNotice(`视频超分提交失败：${message}`);
+      }
+    },
+    [
+      completeVideoSuperResolutionNode,
+      attachVideoSuperResolutionTask,
+      createVideoSuperResolutionNode,
+      failVideoSuperResolutionNode,
+      showNotice,
+    ]
   );
 
   const handleCreateVideoBatchReplacement = React.useCallback(
@@ -2121,6 +2168,7 @@ export default function App({ onLoggedOut }: AppProps) {
               }
               onAnalyzeVideo={handleAnalyzeVideo}
               onReverseVideoPrompt={handleReverseVideoPrompt}
+              onSuperResolveVideo={handleSuperResolveVideo}
               onCreateVideoBatchReplacement={handleCreateVideoBatchReplacement}
               onReviewAsset={handleReviewImageAsset}
               reviewingAssetNodeId={reviewingAssetNodeId}

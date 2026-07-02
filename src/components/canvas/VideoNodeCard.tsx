@@ -14,6 +14,7 @@ import {
   ScanSearch,
   Upload,
   Video,
+  Sparkles,
   Volume2,
   VolumeX,
   Wand2,
@@ -89,6 +90,7 @@ interface VideoNodeCardProps {
   onFailVideoFrameImage?: (nodeId: string, error: string) => void;
   onAnalyzeVideo?: (node: GraphNode, captures: VideoFrameCaptureItem[]) => Promise<void> | void;
   onReverseVideoPrompt?: (node: GraphNode, videoUrl: string) => Promise<void> | void;
+  onSuperResolveVideo?: (node: GraphNode, videoUrl: string) => Promise<void> | void;
   resolvedInputs?: Record<string, unknown>;
   references?: ReferencePreviewItem[];
   resolutionPresetGroups?: ImageResolutionPresetGroup[];
@@ -486,6 +488,7 @@ function VideoNodeCardImpl({
   onFailVideoFrameImage,
   onAnalyzeVideo,
   onReverseVideoPrompt,
+  onSuperResolveVideo,
   references,
   resolvedInputs,
   resolutionPresetGroups,
@@ -518,6 +521,7 @@ function VideoNodeCardImpl({
   const [frameMenuOpen, setFrameMenuOpen] = React.useState(false);
   const [isAnalyzingFramesLocal, setIsAnalyzingFrames] = React.useState(false);
   const [isReversingPromptLocal, setIsReversingPrompt] = React.useState(false);
+  const [isSuperResolvingLocal, setIsSuperResolving] = React.useState(false);
   const [isUploadingVideo, setIsUploadingVideo] = React.useState(false);
   const isUploadingAsset = isNodeUploadingAsset || isUploadingVideo;
   const floatingCanvasUiScale = 1 / Math.max(0.55, Math.min(3, canvasZoom));
@@ -602,6 +606,7 @@ function VideoNodeCardImpl({
     Boolean(videoUrl);
   const isAnalyzingFrames = isAnalyzingFramesLocal || hasPersistedFrameAnalysisPending;
   const isReversingPrompt = isReversingPromptLocal || hasPersistedPromptReversePending;
+  const isSuperResolving = isSuperResolvingLocal;
   const videoGenerationStartedAt =
     typeof node.data?.generationStartedAt === "number"
       ? node.data.generationStartedAt
@@ -1643,6 +1648,16 @@ function VideoNodeCardImpl({
     ]
   );
 
+  const superResolveVideo = React.useCallback(async () => {
+    if (!videoUrl || isSuperResolvingLocal) return;
+    setIsSuperResolving(true);
+    try {
+      await onSuperResolveVideo?.(node, videoUrl);
+    } finally {
+      setIsSuperResolving(false);
+    }
+  }, [isSuperResolvingLocal, node, onSuperResolveVideo, videoUrl]);
+
   React.useEffect(() => {
     if (!videoUrl || node.data?.loading !== true || node.data?.status !== "loading") return;
     if (loadingOperation !== "frame-analysis" && loadingOperation !== "video-prompt") return;
@@ -2022,6 +2037,20 @@ function VideoNodeCardImpl({
                       <Loader2 className="h-5 w-5 animate-spin" />
                     ) : (
                       <Wand2 className="h-5 w-5" />
+                    )}
+                  </button>
+                </Tooltip>
+                <Tooltip content="视频超分" position="top">
+                  <button
+                    type="button"
+                    onClick={() => void superResolveVideo()}
+                    disabled={isSuperResolving}
+                    className={`${mediaNodeToolbarButtonClass} disabled:cursor-wait disabled:text-amber-200`}
+                  >
+                    {isSuperResolving ? (
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                    ) : (
+                      <Sparkles className="h-5 w-5" />
                     )}
                   </button>
                 </Tooltip>

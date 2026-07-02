@@ -63,6 +63,13 @@ import type { RemoteVideoTaskResult } from "../features/video/remoteVideoGenerat
 import { queryRemoteVideoGenerationTask } from "../features/video/remoteVideoGeneration";
 import type { BatchEditImagesTaskResult } from "../features/api/videoBatchReplacement";
 import { queryBatchEditImagesTask } from "../features/api/videoBatchReplacement";
+import type { VideoSuperResolutionTaskResult } from "../features/api/videoSuperResolution";
+import { queryVideoSuperResolutionTask } from "../features/api/videoSuperResolution";
+import {
+  completeVideoSuperResolutionChildSnapshot,
+  createVideoSuperResolutionChildSnapshot,
+  failVideoSuperResolutionChildSnapshot,
+} from "../utils/videoSuperResolutionLayout";
 import {
   REMOTE_FULL_SNAPSHOT_MIN_INTERVAL_MS,
   getLeaveProtectionState,
@@ -82,6 +89,7 @@ const TRASH_RETENTION_DAYS = 30;
 const TRASH_RETENTION_MS = TRASH_RETENTION_DAYS * 86_400_000;
 const TRASH_PURGE_INTERVAL_MS = 60 * 60 * 1000;
 const REMOTE_VIDEO_POLL_INTERVAL_MS = 3_000;
+const VIDEO_SUPER_RESOLUTION_POLL_INTERVAL_MS = 30_000;
 const VIDEO_BATCH_REPLACEMENT_RESULT_GAP_X = 160;
 const VIDEO_BATCH_REPLACEMENT_RESULT_GAP_Y = 96;
 const VIDEO_BATCH_REPLACEMENT_NODE_WIDTH = 760;
@@ -1230,12 +1238,27 @@ export function isPendingVideoAuxiliaryNode(node: GraphNode): boolean {
   );
 }
 
+export function isPendingVideoSuperResolutionNode(node: GraphNode): boolean {
+  const data = node.data || {};
+  return (
+    node.type === "video_node" &&
+    data.videoSuperResolutionChild === true &&
+    typeof data.videoSuperResolutionTaskId === "string" &&
+    data.videoSuperResolutionTaskId.trim().length > 0 &&
+    data.loading === true &&
+    data.loadingOperation === "video-super-resolution" &&
+    data.status !== "success" &&
+    data.status !== "error"
+  );
+}
+
 export function isPersistablePendingRuntimeNode(node: GraphNode): boolean {
   return (
     isPendingRemoteVideoNode(node) ||
     isPendingBatchEditImagesNode(node) ||
     isPendingBatchEditImagesResultNode(node) ||
-    isPendingVideoAuxiliaryNode(node)
+    isPendingVideoAuxiliaryNode(node) ||
+    isPendingVideoSuperResolutionNode(node)
   );
 }
 
@@ -1263,6 +1286,16 @@ export function collectPendingRemoteVideoPollTargets(nodes: GraphNode[]) {
     .map((node) => ({
       nodeId: node.id,
       taskId: node.data?.remoteVideoTaskId?.trim() ?? "",
+    }))
+    .filter((target) => target.taskId);
+}
+
+export function collectPendingVideoSuperResolutionPollTargets(nodes: GraphNode[]) {
+  return nodes
+    .filter(isPendingVideoSuperResolutionNode)
+    .map((node) => ({
+      nodeId: node.id,
+      taskId: node.data?.videoSuperResolutionTaskId?.trim() ?? "",
     }))
     .filter((target) => target.taskId);
 }
@@ -1452,6 +1485,89 @@ export function applyRemoteVideoTaskResultSnapshot({
   });
 
   return { nodes: nextNodes, nodeOutputs: nextOutputs };
+}
+
+export function applyVideoSuperResolutionTaskResultSnapshot({
+  nodes,
+  nodeOutputs,
+  nodeId,
+  taskId,
+  result,
+}: {
+  nodes: GraphNode[];
+  nodeOutputs: NodeOutputMap;
+  nodeId: string;
+  taskId: string;
+  result: VideoSuperResolutionTaskResult;
+}) {
+  if (result.status === "success") {
+    const completeResult = completeVideoSuperResolutionChildSnapshot({
+      nodeId,
+      nodes,
+      videoUrl: result.videoUrl,
+    });
+    const nextOutputs = new Map(nodeOutputs);
+    nextOutputs.set(nodeId, new Map([[0, completeResult.nodeOutputValue]]));
+    return {
+      nodes: completeResult.nodes.map((node) =>
+        node.id === nodeId
+          ? {
+              ...node,
+              data: {
+                ...(node.data || {}),
+                videoSuperResolutionTaskStatus: result.rawStatus || "success",
+                videoSuperResolutionTaskError: undefined,
+              },
+            }
+          : node
+      ),
+      nodeOutputs: nextOutputs,
+    };
+  }
+
+  if (result.status === "error") {
+    return {
+      nodes: failVideoSuperResolutionChildSnapshot({
+        error: result.error || "视频超分任务失败",
+        nodeId,
+        nodes,
+      }).map((node) =>
+        node.id === nodeId
+          ? {
+              ...node,
+              data: {
+                ...(node.data || {}),
+                videoSuperResolutionTaskStatus: result.rawStatus || "error",
+                videoSuperResolutionTaskError: result.error || "视频超分任务失败",
+              },
+            }
+          : node
+      ),
+      nodeOutputs,
+    };
+  }
+
+  return {
+    nodes: nodes.map((node) => {
+      if (node.id !== nodeId || node.type !== "video_node") return node;
+      if (node.data?.videoSuperResolutionTaskId !== taskId) return node;
+      return {
+        ...node,
+        properties: {
+          ...node.properties,
+          status: "loading",
+        },
+        data: {
+          ...(node.data || {}),
+          loading: true,
+          loadingOperation: "video-super-resolution",
+          status: "loading",
+          videoSuperResolutionTaskStatus: result.rawStatus || "pending",
+        },
+      };
+    }),
+    nodeOutputs,
+  };
 }
 
 export function applyPendingBatchEditImagesTaskSnapshot({
@@ -1906,6 +2022,9 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
   const currentNodeOutputsRef = useRef(outputsToMap(initialWf?.data.nodeOutputs ?? []));
   const remoteVideoPollsRef = useRef(new Map<string, { cancelled: boolean; timeoutId?: number }>());
   const batchEditImagesPollsRef = useRef(
+    new Map<string, { cancelled: boolean; timeoutId?: number }>()
+  );
+  const videoSuperResolutionPollsRef = useRef(
     new Map<string, { cancelled: boolean; timeoutId?: number }>()
   );
   const canUndo = historyState.pointer > 0;
@@ -3118,6 +3237,118 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     [markRemoteDirty, syncCurrentWorkflowMeta]
   );
 
+  const createVideoSuperResolutionNode = useCallback(
+    (sourceNodeId: string, sourceVideoUrl: string) => {
+      const snapshot = createVideoSuperResolutionChildSnapshot({
+        links: currentLinksRef.current,
+        makeId,
+        nodes: currentNodesRef.current,
+        sourceNodeId,
+        sourceVideoUrl,
+      });
+      if (!snapshot) {
+        appendLog("warning", "无法创建视频超分节点");
+        return null;
+      }
+
+      currentNodesRef.current = snapshot.nodes;
+      currentLinksRef.current = snapshot.links;
+      markRemoteDirty("structure");
+      setNodes(snapshot.nodes);
+      setLinks(snapshot.links);
+      setSelectedNodeId(snapshot.createdNode.id);
+      syncCurrentWorkflowMeta((wf) => ({
+        ...wf,
+        summary: { ...wf.summary, updatedAt: Date.now() },
+        data: { ...wf.data, nodes: snapshot.nodes, links: snapshot.links },
+      }));
+      pushHistory({ nodes: snapshot.nodes, links: snapshot.links });
+      appendLog("success", `已创建${snapshot.createdNode.title}节点`);
+      return snapshot.createdNode.id;
+    },
+    [appendLog, markRemoteDirty, pushHistory, syncCurrentWorkflowMeta]
+  );
+
+  const attachVideoSuperResolutionTask = useCallback(
+    (nodeId: string, taskId: string) => {
+      const nextNodes = currentNodesRef.current.map((node) =>
+        node.id === nodeId && node.type === "video_node"
+          ? {
+              ...node,
+              properties: {
+                ...node.properties,
+                status: "loading",
+              },
+              data: {
+                ...(node.data || {}),
+                videoSuperResolutionTaskId: taskId,
+                videoSuperResolutionTaskStatus: "pending",
+                videoSuperResolutionTaskError: undefined,
+                loading: true,
+                loadingOperation: "video-super-resolution",
+                status: "loading",
+              },
+            }
+          : node
+      );
+      currentNodesRef.current = nextNodes;
+      markRemoteDirty("content");
+      setNodes(nextNodes);
+      syncCurrentWorkflowMeta((wf) => ({
+        ...wf,
+        summary: { ...wf.summary, updatedAt: Date.now() },
+        data: { ...wf.data, nodes: nextNodes },
+      }));
+    },
+    [markRemoteDirty, syncCurrentWorkflowMeta]
+  );
+
+  const completeVideoSuperResolutionNode = useCallback(
+    (nodeId: string, videoUrl: string) => {
+      const result = completeVideoSuperResolutionChildSnapshot({
+        nodeId,
+        nodes: currentNodesRef.current,
+        videoUrl,
+      });
+      currentNodesRef.current = result.nodes;
+      const nextNodeOutputs: NodeOutputMap = new Map(currentNodeOutputsRef.current);
+      nextNodeOutputs.set(nodeId, new Map([[0, result.nodeOutputValue]]));
+      currentNodeOutputsRef.current = nextNodeOutputs;
+      markRemoteDirty("content");
+      setNodes(result.nodes);
+      setNodeOutputs(nextNodeOutputs);
+      syncCurrentWorkflowMeta((wf) => ({
+        ...wf,
+        summary: { ...wf.summary, updatedAt: Date.now() },
+        data: {
+          ...wf.data,
+          nodes: result.nodes,
+          nodeOutputs: mapToOutputs(nextNodeOutputs),
+        },
+      }));
+    },
+    [markRemoteDirty, syncCurrentWorkflowMeta]
+  );
+
+  const failVideoSuperResolutionNode = useCallback(
+    (nodeId: string, error: string) => {
+      const nextNodes = failVideoSuperResolutionChildSnapshot({
+        error,
+        nodeId,
+        nodes: currentNodesRef.current,
+      });
+      currentNodesRef.current = nextNodes;
+      markRemoteDirty("content");
+      setNodes(nextNodes);
+      syncCurrentWorkflowMeta((wf) => ({
+        ...wf,
+        summary: { ...wf.summary, updatedAt: Date.now() },
+        data: { ...wf.data, nodes: nextNodes },
+      }));
+    },
+    [markRemoteDirty, syncCurrentWorkflowMeta]
+  );
+
   const replaceExtractedFrameImage = useCallback(
     (childNodeId: string) => {
       const snapshot = replaceFrameImageFromChildSnapshot({
@@ -3886,6 +4117,129 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
 
   useEffect(() => {
     const pollMap = batchEditImagesPollsRef.current;
+    return () => {
+      pollMap.forEach((entry) => {
+        entry.cancelled = true;
+        if (entry.timeoutId !== undefined) window.clearTimeout(entry.timeoutId);
+      });
+      pollMap.clear();
+    };
+  }, []);
+
+  useEffect(() => {
+    const activeKeys = new Set<string>();
+
+    const stopPoll = (key: string) => {
+      const entry = videoSuperResolutionPollsRef.current.get(key);
+      if (!entry) return;
+      entry.cancelled = true;
+      if (entry.timeoutId !== undefined) window.clearTimeout(entry.timeoutId);
+      videoSuperResolutionPollsRef.current.delete(key);
+    };
+
+    collectPendingVideoSuperResolutionPollTargets(nodes).forEach(({ nodeId, taskId }) => {
+      const key = `${nodeId}:${taskId}`;
+      activeKeys.add(key);
+      if (videoSuperResolutionPollsRef.current.has(key)) return;
+
+      const entry: { cancelled: boolean; timeoutId?: number } = { cancelled: false };
+      videoSuperResolutionPollsRef.current.set(key, entry);
+
+      const poll = async () => {
+        if (entry.cancelled) return;
+        const latestNode = currentNodesRef.current.find((candidate) => candidate.id === nodeId);
+        if (
+          !latestNode ||
+          latestNode.data?.videoSuperResolutionTaskId !== taskId ||
+          !isPendingVideoSuperResolutionNode(latestNode)
+        ) {
+          stopPoll(key);
+          return;
+        }
+
+        try {
+          const result = await queryVideoSuperResolutionTask(taskId);
+          const snapshot = applyVideoSuperResolutionTaskResultSnapshot({
+            nodes: currentNodesRef.current,
+            nodeOutputs: currentNodeOutputsRef.current,
+            nodeId,
+            taskId,
+            result,
+          });
+
+          currentNodesRef.current = snapshot.nodes;
+          currentNodeOutputsRef.current = snapshot.nodeOutputs;
+          setNodes(snapshot.nodes);
+          setNodeOutputs(snapshot.nodeOutputs);
+          syncCurrentWorkflowMeta((workflow) => ({
+            ...workflow,
+            summary: { ...workflow.summary, updatedAt: Date.now() },
+            data: {
+              ...workflow.data,
+              nodes: snapshot.nodes,
+              nodeOutputs: mapToOutputs(snapshot.nodeOutputs),
+            },
+          }));
+
+          if (result.status === "success") {
+            appendLog("success", `[${latestNode.title}] 视频超分完成`);
+            stopPoll(key);
+            return;
+          }
+
+          if (result.status === "error") {
+            appendLog("error", `[${latestNode.title}] 视频超分失败:${result.error || "任务失败"}`);
+            stopPoll(key);
+            return;
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          const nextNodes = currentNodesRef.current.map((candidate) =>
+              candidate.id === nodeId && candidate.data?.videoSuperResolutionTaskId === taskId
+                ? {
+                    ...candidate,
+                    properties: {
+                      ...candidate.properties,
+                      status: "loading",
+                    },
+                    data: {
+                      ...(candidate.data || {}),
+                      loading: true,
+                      status: "loading",
+                      loadingOperation: "video-super-resolution",
+                      videoSuperResolutionTaskError: message,
+                    },
+                  }
+                : candidate
+          );
+          currentNodesRef.current = nextNodes;
+          setNodes(nextNodes);
+          syncCurrentWorkflowMeta((workflow) => ({
+            ...workflow,
+            summary: { ...workflow.summary, updatedAt: Date.now() },
+            data: {
+              ...workflow.data,
+              nodes: nextNodes,
+              nodeOutputs: mapToOutputs(currentNodeOutputsRef.current),
+            },
+          }));
+        }
+
+        if (!entry.cancelled) {
+          entry.timeoutId = window.setTimeout(poll, VIDEO_SUPER_RESOLUTION_POLL_INTERVAL_MS);
+        }
+      };
+
+      void poll();
+    });
+
+    Array.from(videoSuperResolutionPollsRef.current.keys() as Iterable<string>).forEach((key) => {
+      if (!activeKeys.has(key)) stopPoll(key);
+    });
+  }, [appendLog, nodes, syncCurrentWorkflowMeta]);
+
+  useEffect(() => {
+    const pollMap = videoSuperResolutionPollsRef.current;
     return () => {
       pollMap.forEach((entry) => {
         entry.cancelled = true;
@@ -4707,6 +5061,10 @@ export function useWorkflowState(options: UseWorkflowStateOptions) {
     createVideoFrameImageNode,
     completeVideoFrameImageNode,
     failVideoFrameImageNode,
+    createVideoSuperResolutionNode,
+    attachVideoSuperResolutionTask,
+    completeVideoSuperResolutionNode,
+    failVideoSuperResolutionNode,
     replaceExtractedFrameImage,
     replaceFrameImageUrl,
     addVideoFrameAnalysis,

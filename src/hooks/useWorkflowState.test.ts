@@ -12,11 +12,13 @@ import {
   sanitizeNodeRuntimeState,
   hasNodeRuntimeState,
   applyRemoteVideoTaskResultSnapshot,
+  applyVideoSuperResolutionTaskResultSnapshot,
   applyPendingRemoteVideoTaskSnapshot,
   applyBatchEditImagesTaskResultSnapshot,
   applyPendingBatchEditImagesTaskSnapshot,
   collectLinkedMediaReferences,
   collectPendingBatchEditImagesPollTargets,
+  collectPendingVideoSuperResolutionPollTargets,
   collectPendingRemoteVideoPollTargets,
   createBatchEditImagesResultRunSnapshot,
   interruptNonRecoverableRuntimeNode,
@@ -161,6 +163,60 @@ describe("video helper operations", () => {
 
     expect(replaceFrameBlock).toContain("replacementOssId?: string");
     expect(replaceFrameBlock).toContain("replacementOssId,");
+  });
+
+  it("polls video super-resolution tasks every 30 seconds and keeps them persistable", () => {
+    const source = readFileSync(new URL("./useWorkflowState.ts", import.meta.url), "utf8");
+
+    expect(source).toContain("const VIDEO_SUPER_RESOLUTION_POLL_INTERVAL_MS = 30_000");
+    expect(source).toContain("window.setTimeout(poll, VIDEO_SUPER_RESOLUTION_POLL_INTERVAL_MS)");
+    expect(source).toContain("isPendingVideoSuperResolutionNode(node)");
+    expect(source).toContain("collectPendingVideoSuperResolutionPollTargets(nodes)");
+  });
+
+  it("updates the super-resolution child video node when polling returns a data url", () => {
+    const child: GraphNode = {
+      id: "child-video",
+      type: "video_node",
+      title: "视频节点 1 超分",
+      x: 0,
+      y: 0,
+      inputs: [],
+      outputs: [{ name: "视频", type: "VIDEO" }],
+      properties: { videoUrl: "", status: "loading" },
+      data: {
+        loading: true,
+        loadingOperation: "video-super-resolution",
+        status: "loading",
+        videoSuperResolutionChild: true,
+        videoSuperResolutionTaskId: "vsr-task-1",
+      },
+    };
+
+    expect(collectPendingVideoSuperResolutionPollTargets([child])).toEqual([
+      { nodeId: "child-video", taskId: "vsr-task-1" },
+    ]);
+
+    const result = applyVideoSuperResolutionTaskResultSnapshot({
+      nodes: [child],
+      nodeOutputs: new Map(),
+      nodeId: "child-video",
+      taskId: "vsr-task-1",
+      result: {
+        status: "success",
+        videoUrl: "https://example.com/upscaled.mp4",
+        error: "",
+        rawStatus: "success",
+      },
+    });
+
+    expect(result.nodes[0].properties["videoUrl"]).toBe("https://example.com/upscaled.mp4");
+    expect(result.nodes[0].properties.status).toBe("success");
+    expect(result.nodes[0].data?.videoUrl).toBe("https://example.com/upscaled.mp4");
+    expect(result.nodes[0].data?.loading).toBe(false);
+    expect(result.nodeOutputs.get("child-video")?.get(0)).toBe(
+      "https://example.com/upscaled.mp4"
+    );
   });
 });
 

@@ -90,6 +90,7 @@ export interface GraphNode {
   data?: {
     image?: string;
     videoUrl?: string;
+    sourceVideoUrl?: string;
     text?: string;
     number?: number;
     response?: string;
@@ -169,7 +170,12 @@ export interface GraphNode {
     generationStartedAt?: number;
     generationFinishedAt?: number;
     loading?: boolean;
-    loadingOperation?: "generate" | "frame-analysis" | "video-prompt" | "batch-replacement";
+    loadingOperation?:
+      | "generate"
+      | "frame-analysis"
+      | "video-prompt"
+      | "batch-replacement"
+      | "video-super-resolution";
     progress?: number;
     status?: string;
     annotations?: ImageAnnotation[];
@@ -181,6 +187,11 @@ export interface GraphNode {
     remoteVideoTaskError?: string;
     remoteModelApiId?: string;
     remoteModelId?: string;
+    videoSuperResolutionChild?: boolean;
+    videoSuperResolutionSourceNodeId?: string;
+    videoSuperResolutionTaskId?: string;
+    videoSuperResolutionTaskStatus?: string;
+    videoSuperResolutionTaskError?: string;
   };
 }
 
