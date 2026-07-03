@@ -2,6 +2,7 @@ import React from "react";
 import App from "./App";
 import AllProjectsPage from "./pages/AllProjectsPage";
 import HomePage from "./pages/HomePage";
+import LandingPage from "./pages/LandingPage";
 import LoginPage from "./pages/LoginPage";
 import { API_NOTICE_EVENT, type ApiNoticeDetail } from "./features/auth/apiNotice";
 import { AUTH_SESSION_CHANGED_EVENT, clearAuthSession, hasAuthSession, setAccessToken } from "./features/auth/authStorage";
@@ -53,8 +54,8 @@ export default function RootApp() {
 
   React.useEffect(() => {
     if (!isLoggedIn) {
-      if (pathname !== LOGIN_PATH) {
-        navigate(LOGIN_PATH, true);
+      if (pathname !== DEFAULT_PATH && pathname !== LOGIN_PATH) {
+        navigate(DEFAULT_PATH, true);
       }
       return;
     }
@@ -130,7 +131,7 @@ export default function RootApp() {
   if (!isLoggedIn) {
     return (
       <>
-        <LoginPage onLogin={handleLogin} />
+        {pathname === LOGIN_PATH ? <LoginPage onLogin={handleLogin} /> : <LandingPage onOpenLogin={() => navigate(LOGIN_PATH)} />}
         {noticeNode}
       </>
     );
