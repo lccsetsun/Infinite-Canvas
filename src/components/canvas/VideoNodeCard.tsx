@@ -65,6 +65,8 @@ interface VideoNodeCardProps {
   selected: boolean;
   detachedCanvasTitle?: boolean;
   canvasZoom?: number;
+  mediaLoadAllowed?: boolean;
+  videoPosterUrl?: string;
   apiConfig?: {
     remoteModelsByType?: AiModelsByType;
   };
@@ -475,6 +477,8 @@ function VideoNodeCardImpl({
   selected,
   detachedCanvasTitle = false,
   canvasZoom = 1,
+  mediaLoadAllowed = true,
+  videoPosterUrl = "",
   apiConfig,
   onSelect,
   onDelete: _onDelete,
@@ -517,7 +521,9 @@ function VideoNodeCardImpl({
   const [isVideoFrameHovered, setIsVideoFrameHovered] = React.useState(false);
   const [currentTime, setCurrentTime] = React.useState(0);
   const [mediaDuration, setMediaDuration] = React.useState(0);
+  const [passiveVideoReady, setPassiveVideoReady] = React.useState(false);
   const [muted, setMuted] = React.useState(false);
+  const [hoverAutoplayMuted, setHoverAutoplayMuted] = React.useState(false);
   const [frameMenuOpen, setFrameMenuOpen] = React.useState(false);
   const [isAnalyzingFramesLocal, setIsAnalyzingFrames] = React.useState(false);
   const [isReversingPromptLocal, setIsReversingPrompt] = React.useState(false);
@@ -681,7 +687,8 @@ function VideoNodeCardImpl({
   const durationSeconds = normalizeVideoDurationSeconds(node.properties.duration);
   const durationSliderPercent = getVideoDurationSliderPercent(durationSeconds);
   const audioEnabled = node.properties.audio !== false;
-  const isVideoMuted = muted || !audioEnabled;
+  const userMuted = muted || !audioEnabled;
+  const isVideoMuted = userMuted || hoverAutoplayMuted;
   const videoModelOptionGroups = React.useMemo(
     () => getModelOptionGroups([], apiConfig?.remoteModelsByType?.[AI_MODEL_TYPES[2]] ?? []),
     [apiConfig?.remoteModelsByType]
@@ -782,8 +789,18 @@ function VideoNodeCardImpl({
         portCenterY: Math.round(resultVideoSize.height / 2),
       };
   const shouldShowVideoLoadingOverlay = Boolean(isUploadingAsset || (isRunning && hasVideoPreview));
+  const shouldShowStaticVideoPoster = Boolean(videoPosterUrl && mediaLoadAllowed && !passiveVideoReady);
+  const shouldMountVideoElement = hasVideoPreview && mediaLoadAllowed;
+  const videoPreloadMode =
+    selected || isVideoFrameHovered || isPlaying || frameMenuOpen
+      ? getVideoPreloadMode({
+          hovered: isVideoFrameHovered,
+          playing: isPlaying,
+          selected,
+        })
+      : "auto";
   const showVideoCustomControls = shouldShowVideoCustomControls({
-    hasVideoPreview,
+    hasVideoPreview: shouldMountVideoElement,
     isHovered: isVideoFrameHovered,
   });
   const portTopStyle = getVideoNodePortTopStyle({
@@ -809,21 +826,40 @@ function VideoNodeCardImpl({
     setIsPlaying(false);
     setMediaDuration(0);
     setFrameMenuOpen(false);
-    videoRef.current?.load();
+    setPassiveVideoReady(false);
+    setHoverAutoplayMuted(false);
   }, [videoUrl]);
 
   React.useEffect(() => {
     const video = videoRef.current;
-    if (!video || !hasVideoPreview) return;
+    if (!video || !shouldMountVideoElement) return;
 
     if (!isVideoFrameHovered) {
       video.pause();
       setFrameMenuOpen(false);
+      setHoverAutoplayMuted(false);
       return;
     }
 
-    void video.play().catch(() => undefined);
-  }, [hasVideoPreview, isVideoFrameHovered, videoUrl]);
+    let cancelled = false;
+
+    const playOnHover = async () => {
+      try {
+        await video.play();
+      } catch {
+        if (cancelled || userMuted) return;
+        video.muted = true;
+        setHoverAutoplayMuted(true);
+        await video.play().catch(() => undefined);
+      }
+    };
+
+    void playOnHover();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [shouldMountVideoElement, isVideoFrameHovered, userMuted, videoUrl]);
 
   React.useEffect(() => {
     if (node.properties.model !== currentModel) {
@@ -1247,6 +1283,8 @@ function VideoNodeCardImpl({
   const togglePlay = async () => {
     const video = videoRef.current;
     if (!video) return;
+    setHoverAutoplayMuted(false);
+    video.muted = userMuted;
     if (video.paused) {
       await video.play().catch(() => undefined);
     } else {
@@ -2105,53 +2143,75 @@ function VideoNodeCardImpl({
             onMouseEnter={() => setIsVideoFrameHovered(true)}
             onMouseLeave={() => setIsVideoFrameHovered(false)}
           >
-            <video
-              key={videoUrl}
-              ref={videoRef}
-              src={videoUrl}
-              preload={getVideoPreloadMode({
-                hovered: isVideoFrameHovered,
-                playing: isPlaying,
-                selected,
-              })}
-              className="block h-full w-full object-contain"
-              muted={isVideoMuted}
-              playsInline
-              onLoadedMetadata={(e) => {
-                const video = e.currentTarget;
-                const naturalSize = {
-                  width: video.videoWidth || resultVideoSize.width,
-                  height: video.videoHeight || resultVideoSize.height,
-                };
-                const displaySize = fitVideoSize(
-                  naturalSize,
-                  aspectRatio,
-                  EMPTY_NODE_FOOTPRINT_WIDTH,
-                  EMPTY_NODE_FOOTPRINT_HEIGHT
-                );
-                setNaturalVideoSize(naturalSize);
-                setMediaDuration(video.duration || 0);
-                if (
-                  node.data?.videoNaturalWidth !== naturalSize.width ||
-                  node.data?.videoNaturalHeight !== naturalSize.height ||
-                  node.data?.videoDisplayWidth !== displaySize.width ||
-                  node.data?.videoDisplayHeight !== displaySize.height
-                ) {
-                  onUpdateData?.(node.id, {
-                    videoNaturalWidth: naturalSize.width,
-                    videoNaturalHeight: naturalSize.height,
-                    videoDisplayWidth: displaySize.width,
-                    videoDisplayHeight: displaySize.height,
-                  });
-                }
-              }}
-              onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
-              onDurationChange={(e) => setMediaDuration(e.currentTarget.duration || 0)}
-              onPlay={() => setIsPlaying(true)}
-              onPause={() => setIsPlaying(false)}
-              onEnded={() => setIsPlaying(false)}
-              draggable={false}
-            />
+            {shouldMountVideoElement ? (
+              <video
+                key={videoUrl}
+                ref={videoRef}
+                src={videoUrl}
+                preload={videoPreloadMode}
+                className={`block h-full w-full object-contain transition-opacity duration-200 ${
+                  shouldShowStaticVideoPoster ? "opacity-0" : "opacity-100"
+                }`}
+                muted={isVideoMuted}
+                playsInline
+                onLoadedMetadata={(e) => {
+                  const video = e.currentTarget;
+                  const naturalSize = {
+                    width: video.videoWidth || resultVideoSize.width,
+                    height: video.videoHeight || resultVideoSize.height,
+                  };
+                  const displaySize = fitVideoSize(
+                    naturalSize,
+                    aspectRatio,
+                    EMPTY_NODE_FOOTPRINT_WIDTH,
+                    EMPTY_NODE_FOOTPRINT_HEIGHT
+                  );
+                  setNaturalVideoSize(naturalSize);
+                  setMediaDuration(video.duration || 0);
+                  if (
+                    node.data?.videoNaturalWidth !== naturalSize.width ||
+                    node.data?.videoNaturalHeight !== naturalSize.height ||
+                    node.data?.videoDisplayWidth !== displaySize.width ||
+                    node.data?.videoDisplayHeight !== displaySize.height
+                  ) {
+                    onUpdateData?.(node.id, {
+                      videoNaturalWidth: naturalSize.width,
+                      videoNaturalHeight: naturalSize.height,
+                      videoDisplayWidth: displaySize.width,
+                      videoDisplayHeight: displaySize.height,
+                    });
+                  }
+                }}
+                onLoadedData={() => setPassiveVideoReady(true)}
+                onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
+                onDurationChange={(e) => setMediaDuration(e.currentTarget.duration || 0)}
+                onPlay={() => setIsPlaying(true)}
+                onPause={() => setIsPlaying(false)}
+                onEnded={() => setIsPlaying(false)}
+                draggable={false}
+              />
+            ) : (
+              <div className="relative flex h-full w-full items-center justify-center overflow-hidden bg-[radial-gradient(circle_at_50%_34%,rgba(99,102,241,0.18),transparent_42%),linear-gradient(135deg,#060914,#111827)] text-slate-200/68">
+                <div className="relative flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-slate-950/34 backdrop-blur-sm">
+                  <Video className="h-4 w-4 text-violet-200/70" />
+                </div>
+              </div>
+            )}
+            {shouldShowStaticVideoPoster && (
+              <img
+                src={videoPosterUrl}
+                alt="视频首帧"
+                className="pointer-events-none absolute inset-0 z-[1] block h-full w-full object-contain"
+                draggable={false}
+              />
+            )}
+            {shouldMountVideoElement && !passiveVideoReady && !shouldShowVideoLoadingOverlay && (
+              <div className="pointer-events-none absolute inset-0 z-[2] overflow-hidden">
+                <div className="absolute inset-0 animate-[video-node-light-breathe_1.9s_ease-in-out_infinite] bg-[radial-gradient(circle_at_44%_36%,rgba(103,232,249,0.12),transparent_36%),radial-gradient(circle_at_62%_66%,rgba(167,139,250,0.1),transparent_42%)]" />
+                <div className="absolute inset-y-[-20%] left-[-46%] w-[32%] animate-[video-node-light-sweep_1.7s_ease-in-out_infinite] bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.22),transparent)]" />
+                <span className="absolute left-1/2 top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-cyan-200 shadow-[0_0_12px_rgba(125,211,252,0.95)]" />
+              </div>
+            )}
             {shouldShowVideoLoadingOverlay && (
               <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center overflow-hidden bg-[#050812]/20">
                 <div className="absolute inset-0 animate-[video-node-light-breathe_1.9s_ease-in-out_infinite] bg-[radial-gradient(circle_at_38%_34%,rgba(125,211,252,0.16),transparent_34%),radial-gradient(circle_at_68%_62%,rgba(167,139,250,0.14),transparent_38%)]" />
@@ -2178,7 +2238,7 @@ function VideoNodeCardImpl({
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: 10 }}
                   transition={{ duration: 0.16, ease: "easeOut" }}
-                  className="absolute inset-x-0 bottom-0 flex h-[52px] items-center gap-2.5 rounded-b-[8px] border-t border-white/[0.08] bg-[linear-gradient(180deg,rgba(3,7,18,0.42),rgba(3,7,18,0.88)_34%,rgba(3,7,18,0.96))] px-3 text-white shadow-[0_-20px_54px_-30px_rgba(0,0,0,0.98),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-xl transition-colors duration-200 group-hover:border-cyan-100/16"
+                  className="absolute inset-x-0 bottom-0 z-20 flex h-[52px] items-center gap-2.5 rounded-b-[8px] border-t border-white/[0.08] bg-[linear-gradient(180deg,rgba(3,7,18,0.42),rgba(3,7,18,0.88)_34%,rgba(3,7,18,0.96))] px-3 text-white shadow-[0_-20px_54px_-30px_rgba(0,0,0,0.98),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-xl transition-colors duration-200 group-hover:border-cyan-100/16"
                   onPointerDown={(e) => e.stopPropagation()}
                   onClick={(e) => e.stopPropagation()}
                 >
@@ -2212,7 +2272,10 @@ function VideoNodeCardImpl({
                   />
                   <button
                     type="button"
-                    onClick={() => setMuted((value) => !value)}
+                    onClick={() => {
+                      setHoverAutoplayMuted(false);
+                      setMuted((value) => !value);
+                    }}
                     className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-slate-200/82 transition hover:bg-white/[0.08] hover:text-white"
                     title={isVideoMuted ? "打开声音" : "静音"}
                   >
@@ -2625,6 +2688,8 @@ const VideoNodeCard = React.memo(
     prev.selected === next.selected &&
     prev.detachedCanvasTitle === next.detachedCanvasTitle &&
     prev.canvasZoom === next.canvasZoom &&
+    prev.mediaLoadAllowed === next.mediaLoadAllowed &&
+    prev.videoPosterUrl === next.videoPosterUrl &&
     prev.apiConfig?.remoteModelsByType === next.apiConfig?.remoteModelsByType &&
     prev.resolvedInputs === next.resolvedInputs &&
     prev.references === next.references

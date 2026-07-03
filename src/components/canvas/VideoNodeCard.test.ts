@@ -461,7 +461,7 @@ describe("VideoNodeCard preview branch", () => {
     expect(source).not.toContain("shouldShowBatchReplacementAction");
   });
 
-  it("limits hover autoplay to the video frame without forcing the video to stay muted", () => {
+  it("limits hover autoplay to the video frame and retries blocked autoplay muted", () => {
     const source = readFileSync(new URL("./VideoNodeCard.tsx", import.meta.url), "utf8").replace(
       /\r\n/g,
       "\n"
@@ -476,12 +476,36 @@ describe("VideoNodeCard preview branch", () => {
     expect(source).toContain("onMouseLeave={() => setIsVideoFrameHovered(false)}");
     expect(hoverAutoplayBlock).toContain("if (!isVideoFrameHovered)");
     expect(source).toContain("hovered: isVideoFrameHovered");
-    expect(source).toContain("const isVideoMuted = muted || !audioEnabled");
+    expect(source).toContain("const userMuted = muted || !audioEnabled");
+    expect(source).toContain("const isVideoMuted = userMuted || hoverAutoplayMuted");
     expect(source).toContain("muted={isVideoMuted}");
     expect(source).toContain('title={isVideoMuted ? "打开声音" : "静音"}');
     expect(source).not.toContain("muted={isVideoFrameHovered || muted || !audioEnabled}");
-    expect(hoverAutoplayBlock).not.toContain("video.muted = true;");
+    expect(source).toContain("const [hoverAutoplayMuted, setHoverAutoplayMuted]");
+    expect(hoverAutoplayBlock).toContain("video.muted = true;");
+    expect(hoverAutoplayBlock).toContain("setHoverAutoplayMuted(true)");
+    expect(source).toContain("setHoverAutoplayMuted(false);");
     expect(source).not.toContain("if (!isHovered) {");
+  });
+
+  it("mounts the real video element only for active media previews", () => {
+    const source = readFileSync(new URL("./VideoNodeCard.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain("mediaLoadAllowed = true");
+    expect(source).toContain('videoPosterUrl = ""');
+    expect(source).toContain("const shouldMountVideoElement");
+    expect(source).toContain("const shouldShowStaticVideoPoster");
+    expect(source).toContain('const [passiveVideoReady, setPassiveVideoReady]');
+    expect(source).toContain("mediaLoadAllowed");
+    expect(source).toContain(': "auto"');
+    expect(source).toContain("shouldMountVideoElement ? (");
+    expect(source).toContain('alt="视频首帧"');
+    expect(source).toContain("pointer-events-none absolute inset-0 z-[1]");
+    expect(source).toContain("bottom-0 z-20 flex");
+    expect(source).toContain("onLoadedData={() => setPassiveVideoReady(true)}");
+    expect(source).toContain("prev.videoPosterUrl === next.videoPosterUrl");
+    expect(source).not.toContain("悬停加载");
+    expect(source).not.toContain("videoRef.current?.load();");
   });
 
   it("rerenders when input reference thumbnails change", () => {

@@ -7,7 +7,7 @@ import ImageNodeCard from "../canvas/ImageNodeCard";
 import VideoNodeCard from "../canvas/VideoNodeCard";
 import VideoBatchReplacementNodeCard from "../canvas/VideoBatchReplacementNodeCard";
 import AudioNodeCard from "../canvas/AudioNodeCard";
-import { getInputAnchor, getNodeWidth, getOutputAnchor } from "../canvas/geometry";
+import { getInputAnchor, getNodeHeight, getNodeWidth, getOutputAnchor } from "../canvas/geometry";
 import { GraphLink, GraphNode } from "../../types";
 import type { VideoFrameCaptureItem } from "../../features/video/frameCapture";
 import type { TextNodeReferenceItem } from "../../utils/textNodeReferences";
@@ -17,12 +17,79 @@ import type { CanvasGraphIndex } from "../../utils/canvasGraphIndex";
 import { hasCanvasPointerDragExceededClickThreshold } from "../../utils/canvasPointerPolicy";
 import type { ImageResolutionPresetGroup } from "../../features/nodes/imageResolutionPresets";
 import { getVisibleCanvasNodeIds } from "../../utils/canvasViewportCulling";
+import { getCanvasMediaLoadAllowance } from "../../utils/mediaPreviewPolicy";
 import type { VideoFrameImageCaptureMode } from "../../utils/videoFrameImageExtraction";
 import {
   type VideoBatchReplacementMode,
   type VideoBatchReplacementModeOption,
   type VideoBatchReplacementSlotKey,
 } from "../../utils/videoBatchReplacementLayout";
+
+function getFirstString(values: unknown): string {
+  if (typeof values === "string") return values.trim();
+  if (!Array.isArray(values)) return "";
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
+function getImageNodePreviewUrl(node: GraphNode): string {
+  if (node.type !== "image_node") return "";
+  return (
+    getFirstString(node.data?.imageUrls) ||
+    getFirstString(node.properties?.imageUrls) ||
+    getFirstString(node.data?.imageUrl) ||
+    getFirstString(node.properties?.imageUrl)
+  );
+}
+
+function getFrameCaptureSourceNodeId(node: GraphNode): string {
+  const value = node.data?.frameCaptureSourceNodeId ?? node.properties?.frameCaptureSourceNodeId;
+  return typeof value === "string" ? value.trim() : "";
+}
+
+export function getCanvasVideoPosterUrls(nodes: GraphNode[]): Map<string, string> {
+  const videoNodesById = new Map(nodes.filter((node) => node.type === "video_node").map((node) => [node.id, node]));
+  const frameImageNodesBySourceId = new Map<string, GraphNode[]>();
+  const segmentVideoNodesBySourceId = new Map<string, GraphNode[]>();
+
+  nodes.forEach((node) => {
+    const sourceNodeId = getFrameCaptureSourceNodeId(node);
+    if (!sourceNodeId) return;
+
+    if (node.type === "image_node" && getImageNodePreviewUrl(node)) {
+      const current = frameImageNodesBySourceId.get(sourceNodeId) ?? [];
+      current.push(node);
+      frameImageNodesBySourceId.set(sourceNodeId, current);
+    }
+
+    if (node.type === "video_node") {
+      const current = segmentVideoNodesBySourceId.get(sourceNodeId) ?? [];
+      current.push(node);
+      segmentVideoNodesBySourceId.set(sourceNodeId, current);
+    }
+  });
+
+  const posterUrls = new Map<string, string>();
+
+  frameImageNodesBySourceId.forEach((frameNodes, sourceNodeId) => {
+    frameNodes.sort((left, right) => left.y - right.y || left.x - right.x);
+    const firstSourcePoster = getImageNodePreviewUrl(frameNodes[0]);
+    if (firstSourcePoster && videoNodesById.has(sourceNodeId)) {
+      posterUrls.set(sourceNodeId, firstSourcePoster);
+    }
+
+    const segmentNodes = segmentVideoNodesBySourceId.get(sourceNodeId) ?? [];
+    segmentNodes.sort((left, right) => left.y - right.y || left.x - right.x);
+    segmentNodes.forEach((segmentNode, index) => {
+      const posterUrl = getImageNodePreviewUrl(frameNodes[index]) || firstSourcePoster;
+      if (posterUrl) posterUrls.set(segmentNode.id, posterUrl);
+    });
+  });
+
+  return posterUrls;
+}
 
 function getDetachedMediaNodeTitle(node: GraphNode) {
   if (node.type === "text_node") {
@@ -147,6 +214,57 @@ function DetachedMediaNodeTitle({
       </div>
     </div>
   );
+}
+
+function isCanvasMediaNode(node: GraphNode) {
+  return ["image_node", "video_node", "video_batch_replacement_node", "audio_node"].includes(
+    node.type
+  );
+}
+
+function hasMeasuredCanvasSize(canvasSize: { width: number; height: number }) {
+  return canvasSize.width > 0 && canvasSize.height > 0;
+}
+
+function getFallbackCanvasSize() {
+  if (typeof window === "undefined") return { width: 0, height: 0 };
+  return {
+    width: window.innerWidth,
+    height: window.innerHeight,
+  };
+}
+
+function getViewportPrioritizedMediaNodeIds({
+  canvasSize,
+  nodes,
+  pan,
+  zoom,
+}: {
+  canvasSize: { width: number; height: number };
+  nodes: GraphNode[];
+  pan: { x: number; y: number };
+  zoom: number;
+}) {
+  if (!hasMeasuredCanvasSize(canvasSize)) return [];
+
+  const safeZoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+  const viewportCenter = {
+    x: (canvasSize.width / 2 - pan.x) / safeZoom,
+    y: (canvasSize.height / 2 - pan.y) / safeZoom,
+  };
+
+  return nodes
+    .filter(isCanvasMediaNode)
+    .map((node) => {
+      const centerX = node.x + getNodeWidth(node) / 2;
+      const centerY = node.y + getNodeHeight(node) / 2;
+      return {
+        distance: Math.hypot(centerX - viewportCenter.x, centerY - viewportCenter.y),
+        nodeId: node.id,
+      };
+    })
+    .sort((a, b) => a.distance - b.distance)
+    .map((item) => item.nodeId);
 }
 
 interface CanvasNodeLayerProps {
@@ -322,6 +440,9 @@ export default function CanvasNodeLayer({
     startY: number;
     startedAt: number;
   } | null>(null);
+  const [retainedMediaLoadNodeIds, setRetainedMediaLoadNodeIds] = React.useState<Set<string>>(
+    () => new Set()
+  );
 
   const alwaysVisibleNodeIds = React.useMemo(() => {
     const ids = new Set<string>();
@@ -341,22 +462,73 @@ export default function CanvasNodeLayer({
     selectedNodeIds,
   ]);
 
+  const renderPinnedNodeIds = React.useMemo(() => {
+    const ids = new Set(alwaysVisibleNodeIds);
+    retainedMediaLoadNodeIds.forEach((nodeId) => ids.add(nodeId));
+    return ids;
+  }, [alwaysVisibleNodeIds, retainedMediaLoadNodeIds]);
+
+  const effectiveCanvasSize = hasMeasuredCanvasSize(canvasSize)
+    ? canvasSize
+    : getFallbackCanvasSize();
+
   const visibleNodeIds = React.useMemo(
     () =>
       getVisibleCanvasNodeIds({
-        alwaysVisibleNodeIds,
-        canvasSize,
+        alwaysVisibleNodeIds: renderPinnedNodeIds,
+        canvasSize: effectiveCanvasSize,
         nodes,
         pan,
         zoom,
       }),
-    [alwaysVisibleNodeIds, canvasSize, nodes, pan, zoom]
+    [effectiveCanvasSize, nodes, pan, renderPinnedNodeIds, zoom]
   );
 
   const visibleNodes = React.useMemo(
     () => nodes.filter((node) => visibleNodeIds.has(node.id)),
     [nodes, visibleNodeIds]
   );
+
+  const viewportMediaNodeIds = React.useMemo(
+    () =>
+      getViewportPrioritizedMediaNodeIds({
+        canvasSize: effectiveCanvasSize,
+        nodes: visibleNodes,
+        pan,
+        zoom,
+      }),
+    [effectiveCanvasSize, pan, visibleNodes, zoom]
+  );
+
+  const validNodeIds = React.useMemo(() => new Set(nodes.map((node) => node.id)), [nodes]);
+
+  React.useEffect(() => {
+    setRetainedMediaLoadNodeIds((current) => {
+      const next = new Set<string>();
+      current.forEach((nodeId) => {
+        if (validNodeIds.has(nodeId)) next.add(nodeId);
+      });
+      viewportMediaNodeIds.forEach((nodeId) => next.add(nodeId));
+      alwaysVisibleNodeIds.forEach((nodeId) => next.add(nodeId));
+
+      if (next.size === current.size && Array.from(next).every((nodeId) => current.has(nodeId))) {
+        return current;
+      }
+
+      return next;
+    });
+  }, [alwaysVisibleNodeIds, validNodeIds, viewportMediaNodeIds]);
+
+  const mediaLoadAllowedNodeIds = React.useMemo(
+    () =>
+      getCanvasMediaLoadAllowance({
+        activeNodeIds: alwaysVisibleNodeIds,
+        mediaNodeIds: viewportMediaNodeIds,
+        retainedNodeIds: retainedMediaLoadNodeIds,
+      }),
+    [alwaysVisibleNodeIds, retainedMediaLoadNodeIds, viewportMediaNodeIds]
+  );
+  const videoPosterUrls = React.useMemo(() => getCanvasVideoPosterUrls(nodes), [nodes]);
 
   const handleNodeDragStart = React.useCallback(
     (event: React.PointerEvent, node: GraphNode) => {
@@ -474,6 +646,7 @@ export default function CanvasNodeLayer({
                     selected={selectedNodeId === node.id}
                     detachedCanvasTitle
                     canvasZoom={zoom}
+                    mediaLoadAllowed={mediaLoadAllowedNodeIds.has(node.id)}
                     apiConfig={apiConfig}
                     onSelect={(e) => handleNodeSelect(node.id, e)}
                     onDelete={() => onDeleteNode(node.id)}
@@ -523,6 +696,8 @@ export default function CanvasNodeLayer({
                     selected={selectedNodeId === node.id}
                     detachedCanvasTitle
                     canvasZoom={zoom}
+                    mediaLoadAllowed={mediaLoadAllowedNodeIds.has(node.id)}
+                    videoPosterUrl={videoPosterUrls.get(node.id)}
                     apiConfig={apiConfig}
                     onSelect={(e) => handleNodeSelect(node.id, e)}
                     onDelete={() => onDeleteNode(node.id)}
@@ -565,6 +740,7 @@ export default function CanvasNodeLayer({
                   <VideoBatchReplacementNodeCard
                     node={node}
                     selected={selectedNodeId === node.id}
+                    mediaLoadAllowed={mediaLoadAllowedNodeIds.has(node.id)}
                     apiConfig={apiConfig}
                     onSelect={(e) => handleNodeSelect(node.id, e)}
                     onDelete={() => onDeleteNode(node.id)}

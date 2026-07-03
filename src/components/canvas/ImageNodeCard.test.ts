@@ -409,7 +409,7 @@ describe("ImageNodeCard prompt composer fullscreen editor", () => {
     expect(source).toContain("BATCH_REPLACEMENT_FRAME_PLACEHOLDER");
     expect(source).toContain("isBatchReplacementPlaceholder");
     expect(source).toContain("正在生成图片");
-    expect(source).toContain("!isBatchReplacementPlaceholder &&");
+    expect(source).toContain("shouldRenderFrameImage &&");
     expect(source).toContain("batchReplacementResultCount");
     expect(source).toContain("isLegacyBatchReplacementResultTitle");
     expect(source).toContain('node.data?.loadingOperation === "batch-replacement"');
@@ -523,6 +523,17 @@ describe("ImageNodeCard prompt composer fullscreen editor", () => {
     expect(syncBoundsBlock).toContain(
       "if (!imageUrl || isBatchReplacementResultNode || !previewNodeRef.current) return;"
     );
+  });
+
+  it("renders lightweight media placeholders when canvas loading is throttled", () => {
+    const source = readFileSync(new URL("./ImageNodeCard.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain("mediaLoadAllowed = true");
+    expect(source).toContain("const shouldLoadImageMedia = mediaLoadAllowed");
+    expect(source).not.toContain("排队加载");
+    expect(source).not.toContain("缩放预览");
+    expect(source).toContain("shouldRenderFrameImage");
+    expect(source).toContain("shouldLoadImageMedia ? (");
   });
 });
 

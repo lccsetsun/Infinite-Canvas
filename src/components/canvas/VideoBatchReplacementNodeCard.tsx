@@ -30,6 +30,7 @@ import {
 interface VideoBatchReplacementNodeCardProps {
   node: GraphNode;
   selected: boolean;
+  mediaLoadAllowed?: boolean;
   onSelect: (e?: React.MouseEvent) => void;
   onDelete: () => void;
   onDragStart: (event: React.PointerEvent, node: GraphNode) => void;
@@ -236,6 +237,7 @@ function getDroppedImageUrl(event: React.DragEvent) {
 export default function VideoBatchReplacementNodeCard({
   node,
   selected,
+  mediaLoadAllowed = true,
   onSelect,
   onDelete,
   onDragStart,
@@ -289,6 +291,7 @@ export default function VideoBatchReplacementNodeCard({
   const isSubmitting =
     node.data?.loading === true && node.data.loadingOperation === "batch-replacement";
   const controlsDisabled = isSubmitting;
+  const shouldLoadSlotImages = mediaLoadAllowed;
   const batchReplacementStartedAt =
     typeof node.data?.batchReplacementStartedAt === "number"
       ? node.data.batchReplacementStartedAt
@@ -834,12 +837,18 @@ export default function VideoBatchReplacementNodeCard({
                 <div className="relative flex h-[112px] items-center justify-center overflow-hidden rounded-[6px] bg-black/28">
                   {slot.imageUrl ? (
                     <>
-                      <img
-                        src={slot.imageUrl}
-                        alt={slot.title}
-                        className="h-full w-full object-cover"
-                        draggable={false}
-                      />
+                      {shouldLoadSlotImages ? (
+                        <img
+                          src={slot.imageUrl}
+                          alt={slot.title}
+                          className="h-full w-full object-cover"
+                          draggable={false}
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_50%_30%,rgba(99,102,241,0.18),transparent_42%),linear-gradient(135deg,#050914,#111827)] text-slate-300/72">
+                          <ImageIcon className="h-5 w-5 text-violet-200/70" />
+                        </div>
+                      )}
                       <button
                         type="button"
                         disabled={controlsDisabled}

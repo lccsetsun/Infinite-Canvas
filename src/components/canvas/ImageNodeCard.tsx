@@ -56,7 +56,6 @@ import {
 import { cropImageGridCell } from "../../utils/imageGridSplit";
 import { stringifyInputReferenceValues } from "../../utils/inputReferenceValues";
 import { InlineNodePortHandle } from "./InlineNodePortHandle";
-import { getImageLoadingMode, getStripThumbnailLoadingMode } from "../../utils/mediaPreviewPolicy";
 import {
   createArrowAnnotation,
   createNumberAnnotation,
@@ -94,6 +93,7 @@ interface ImageNodeCardProps {
   selected: boolean;
   detachedCanvasTitle?: boolean;
   canvasZoom?: number;
+  mediaLoadAllowed?: boolean;
   apiConfig?: {
     remoteModelsByType?: AiModelsByType;
   };
@@ -920,6 +920,7 @@ function ImageNodeCardImpl({
   selected,
   detachedCanvasTitle = false,
   canvasZoom = 1,
+  mediaLoadAllowed = true,
   apiConfig,
   onSelect,
   onDelete: _onDelete,
@@ -2210,6 +2211,7 @@ function ImageNodeCardImpl({
   const isImageLoadFailed = Boolean(
     imageUrl && imageLoadState.url === imageUrl && imageLoadState.status === "error"
   );
+  const shouldLoadImageMedia = mediaLoadAllowed;
   const rawAspectRatio = (node.properties.aspect_ratio as string) || "16:9";
   const rawResolution = (node.properties.resolution as string) || "1K";
   const currentCustomSize =
@@ -4746,20 +4748,26 @@ function ImageNodeCardImpl({
             style={{ width: mediaFrameSize.width, height: mediaFrameSize.height }}
           >
             <div className="relative h-full w-full">
-              {!isFrameStrip && !isStarterPlaceholder && !isImageLoaded && (
+              {!isFrameStrip && !isStarterPlaceholder && (!isImageLoaded || !shouldLoadImageMedia) && (
                 <div
                   aria-hidden="true"
                   className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center overflow-hidden bg-[linear-gradient(135deg,rgba(15,23,42,0.96),rgba(17,24,39,0.92)_48%,rgba(30,41,59,0.96))]"
                 >
                   <div className="absolute inset-0 bg-[radial-gradient(circle_at_28%_18%,rgba(129,140,248,0.16),transparent_32%),radial-gradient(circle_at_74%_72%,rgba(34,211,238,0.08),transparent_38%)]" />
-                  <div className="animate-shimmer absolute inset-y-0 left-[-45%] w-1/2 bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.08),transparent)]" />
+                  {shouldLoadImageMedia && (
+                    <div className="animate-shimmer absolute inset-y-0 left-[-45%] w-1/2 bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.08),transparent)]" />
+                  )}
                   <div className="relative flex items-center gap-2 rounded-full border border-slate-400/16 bg-[#0b1220]/72 px-3 py-1.5 text-[12px] font-semibold text-slate-200/72 shadow-[0_16px_42px_-24px_rgba(0,0,0,0.9),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-md">
                     {isImageLoadFailed ? (
                       <ImageIcon className="h-3.5 w-3.5 text-rose-200/72" />
-                    ) : (
+                    ) : shouldLoadImageMedia ? (
                       <Loader2 className="h-3.5 w-3.5 animate-spin text-cyan-200/72" />
+                    ) : (
+                      <ImageIcon className="h-3.5 w-3.5 text-violet-200/72" />
                     )}
-                    <span>{isImageLoadFailed ? "图片加载失败" : "图片加载中"}</span>
+                    {shouldLoadImageMedia || isImageLoadFailed ? (
+                      <span>{isImageLoadFailed ? "图片加载失败" : "图片加载中"}</span>
+                    ) : null}
                   </div>
                 </div>
               )}
@@ -4792,6 +4800,8 @@ function ImageNodeCardImpl({
                       url === BATCH_REPLACEMENT_FRAME_PLACEHOLDER ||
                       !url ||
                       url.startsWith("data:image/svg+xml");
+                    const shouldRenderFrameImage =
+                      shouldLoadImageMedia && !isBatchReplacementPlaceholder;
                     return (
                       <div
                         key={`${url}-${index}`}
@@ -4804,21 +4814,20 @@ function ImageNodeCardImpl({
                         data-frame-index={index}
                         aria-label={`第 ${index + 1} 张批量替换结果，拖拽到画布生成图片子节点`}
                         onPointerDown={(event) => {
-                          if (!isBatchReplacementPlaceholder)
+                          if (shouldRenderFrameImage)
                             beginFrameExtractionDrag(event, index, url, getFrameImageOssId(index));
                         }}
                         onPointerMove={(event) => {
-                          if (!isBatchReplacementPlaceholder) moveFrameExtractionDrag(event);
+                          if (shouldRenderFrameImage) moveFrameExtractionDrag(event);
                         }}
                         onPointerUp={(event) => {
-                          if (!isBatchReplacementPlaceholder)
-                            endFrameExtractionDrag(event, index, url);
+                          if (shouldRenderFrameImage) endFrameExtractionDrag(event, index, url);
                         }}
                         onPointerCancel={(event) => {
-                          if (!isBatchReplacementPlaceholder) cancelFrameExtractionDrag(event);
+                          if (shouldRenderFrameImage) cancelFrameExtractionDrag(event);
                         }}
                         onKeyDown={(event) => {
-                          if (isBatchReplacementPlaceholder) return;
+                          if (!shouldRenderFrameImage) return;
                           if (event.key !== "Enter" && event.key !== " ") return;
                           event.preventDefault();
                           setActiveImageIndex(index);
@@ -4827,14 +4836,18 @@ function ImageNodeCardImpl({
                         className={`group/frame relative overflow-hidden bg-[#050914] shadow-[inset_0_0_0_1px_rgba(15,23,42,0.92),inset_0_0_32px_rgba(15,23,42,0.3)] transition-all duration-200 hover:z-10 hover:scale-[1.018] hover:shadow-[0_0_0_2px_rgba(125,211,252,0.88),0_18px_44px_-22px_rgba(34,211,238,0.78),inset_0_0_0_1px_rgba(236,254,255,0.34)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300/70 ${onExtractFrameImage ? "cursor-grab active:cursor-grabbing" : ""}`}
                         style={{ height: frameTileHeight, width: frameTileWidth }}
                       >
-                        {isBatchReplacementPlaceholder ? (
+                        {!shouldRenderFrameImage ? (
                           <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-[linear-gradient(135deg,rgba(15,23,42,0.98),rgba(17,24,39,0.94)_50%,rgba(30,41,59,0.98))] text-slate-300/72">
                             <div className="absolute inset-0 bg-[radial-gradient(circle_at_28%_18%,rgba(34,211,238,0.14),transparent_34%),radial-gradient(circle_at_78%_72%,rgba(129,140,248,0.12),transparent_38%)]" />
-                            <div className="animate-shimmer absolute inset-y-0 left-[-45%] w-1/2 bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.08),transparent)]" />
+                            {isBatchReplacementPlaceholder && (
+                              <div className="animate-shimmer absolute inset-y-0 left-[-45%] w-1/2 bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.08),transparent)]" />
+                            )}
                             <ImageIcon className="relative h-7 w-7 text-slate-300/70" />
                             <div className="relative inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-200/76">
-                              <Loader2 className="h-3 w-3 animate-spin text-cyan-200/80" />
-                              <span>正在生成图片</span>
+                              {isBatchReplacementPlaceholder ? (
+                                <Loader2 className="h-3 w-3 animate-spin text-cyan-200/80" />
+                              ) : null}
+                              {isBatchReplacementPlaceholder ? <span>正在生成图片</span> : null}
                             </div>
                           </div>
                         ) : (
@@ -4869,7 +4882,7 @@ function ImageNodeCardImpl({
                         <span className="pointer-events-none absolute right-2 top-2 z-10 flex h-6 min-w-[24px] items-center justify-center rounded-full border border-white/18 bg-[#0b1018]/82 px-1.5 text-[11px] font-bold tabular-nums text-white shadow-[0_8px_18px_-12px_rgba(0,0,0,0.95)] transition-all duration-200 group-hover/frame:border-cyan-100/42 group-hover/frame:bg-cyan-100/18 group-hover/frame:text-cyan-50 group-hover/frame:shadow-[0_0_20px_rgba(103,232,249,0.26)]">
                           {index + 1}
                         </span>
-                        {!isBatchReplacementPlaceholder &&
+                        {shouldRenderFrameImage &&
                           (onExtractFrameImage || downloadVisibility.showFrameTileDownload) && (
                             <>
                               <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(236,254,255,0.1)_0%,rgba(236,254,255,0.04)_38%,rgba(2,12,22,0.62)_100%)] opacity-0 transition-opacity duration-200 group-hover/frame:opacity-100" />
@@ -4928,6 +4941,8 @@ function ImageNodeCardImpl({
                         const isBatchReplacementPlaceholder =
                           isBatchReplacementResultNode &&
                           url === BATCH_REPLACEMENT_FRAME_PLACEHOLDER;
+                        const shouldRenderFrameImage =
+                          shouldLoadImageMedia && !isBatchReplacementPlaceholder;
                         return (
                           <div
                             key={`${url}-${index}`}
@@ -4939,7 +4954,7 @@ function ImageNodeCardImpl({
                             data-frame-index={index}
                             aria-label={`第 ${index + 1} 帧，拖拽到画布生成图片子节点`}
                             onPointerDown={(event) => {
-                              if (!isBatchReplacementPlaceholder)
+                              if (shouldRenderFrameImage)
                                 beginFrameExtractionDrag(
                                   event,
                                   index,
@@ -4948,17 +4963,16 @@ function ImageNodeCardImpl({
                                 );
                             }}
                             onPointerMove={(event) => {
-                              if (!isBatchReplacementPlaceholder) moveFrameExtractionDrag(event);
+                              if (shouldRenderFrameImage) moveFrameExtractionDrag(event);
                             }}
                             onPointerUp={(event) => {
-                              if (!isBatchReplacementPlaceholder)
-                                endFrameExtractionDrag(event, index, url);
+                              if (shouldRenderFrameImage) endFrameExtractionDrag(event, index, url);
                             }}
                             onPointerCancel={(event) => {
-                              if (!isBatchReplacementPlaceholder) cancelFrameExtractionDrag(event);
+                              if (shouldRenderFrameImage) cancelFrameExtractionDrag(event);
                             }}
                             onKeyDown={(event) => {
-                              if (isBatchReplacementPlaceholder) return;
+                              if (!shouldRenderFrameImage) return;
                               if (event.key !== "Enter" && event.key !== " ") return;
                               event.preventDefault();
                               setActiveImageIndex(index);
@@ -4967,14 +4981,20 @@ function ImageNodeCardImpl({
                             className={`group/frame relative shrink-0 overflow-hidden bg-[#050914] shadow-[inset_0_0_0_1px_rgba(15,23,42,0.92),inset_0_0_32px_rgba(15,23,42,0.3)] transition-all duration-200 group-hover/framegrid:opacity-70 hover:z-10 hover:scale-[1.018] hover:opacity-100 hover:shadow-[0_0_0_2px_rgba(125,211,252,0.88),0_18px_44px_-22px_rgba(34,211,238,0.78),inset_0_0_0_1px_rgba(236,254,255,0.34)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300/70 ${onExtractFrameImage ? "cursor-grab active:cursor-grabbing" : ""}`}
                             style={{ height: tileSize.height, width: tileSize.width }}
                           >
-                            {isBatchReplacementPlaceholder ? (
+                            {!shouldRenderFrameImage ? (
                               <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-[linear-gradient(135deg,rgba(15,23,42,0.98),rgba(17,24,39,0.94)_50%,rgba(30,41,59,0.98))] text-slate-300/72">
                                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_28%_18%,rgba(34,211,238,0.14),transparent_34%),radial-gradient(circle_at_78%_72%,rgba(129,140,248,0.12),transparent_38%)]" />
-                                <div className="animate-shimmer absolute inset-y-0 left-[-45%] w-1/2 bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.08),transparent)]" />
+                                {isBatchReplacementPlaceholder && (
+                                  <div className="animate-shimmer absolute inset-y-0 left-[-45%] w-1/2 bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.08),transparent)]" />
+                                )}
                                 <ImageIcon className="relative h-7 w-7 text-slate-300/70" />
                                 <div className="relative inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-200/76">
-                                  <Loader2 className="h-3 w-3 animate-spin text-cyan-200/80" />
-                                  <span>正在生成图片</span>
+                                  {isBatchReplacementPlaceholder ? (
+                                    <Loader2 className="h-3 w-3 animate-spin text-cyan-200/80" />
+                                  ) : null}
+                                  {isBatchReplacementPlaceholder ? (
+                                    <span>正在生成图片</span>
+                                  ) : null}
                                 </div>
                               </div>
                             ) : (
@@ -4982,10 +5002,7 @@ function ImageNodeCardImpl({
                                 src={url}
                                 alt={`\u9010\u5e27\u5206\u6790 ${index + 1}`}
                                 className="h-full w-full object-contain transition-all duration-200 group-hover/frame:brightness-110 group-hover/frame:saturate-110"
-                                loading={getStripThumbnailLoadingMode({
-                                  activeIndex: activeImageIndex,
-                                  index,
-                                })}
+                                loading="eager"
                                 decoding="async"
                                 draggable={false}
                                 onLoad={(event) => {
@@ -5013,7 +5030,7 @@ function ImageNodeCardImpl({
                             <span className="pointer-events-none absolute right-2 top-2 z-10 flex h-6 min-w-[24px] items-center justify-center rounded-full border border-white/18 bg-[#0b1018]/82 px-1.5 text-[11px] font-bold tabular-nums text-white shadow-[0_8px_18px_-12px_rgba(0,0,0,0.95)] transition-all duration-200 group-hover/frame:border-cyan-100/42 group-hover/frame:bg-cyan-100/18 group-hover/frame:text-cyan-50 group-hover/frame:shadow-[0_0_20px_rgba(103,232,249,0.26)]">
                               {index + 1}
                             </span>
-                            {!isBatchReplacementPlaceholder &&
+                            {shouldRenderFrameImage &&
                               (onExtractFrameImage || downloadVisibility.showFrameTileDownload) && (
                                 <>
                                   <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(236,254,255,0.1)_0%,rgba(236,254,255,0.04)_38%,rgba(2,12,22,0.62)_100%)] opacity-0 transition-opacity duration-200 group-hover/frame:opacity-100" />
@@ -5066,13 +5083,13 @@ function ImageNodeCardImpl({
                     </div>
                   ))}
                 </div>
-              ) : (
+              ) : shouldLoadImageMedia ? (
                 <img
                   ref={imageElementRef}
                   src={imageUrl}
                   alt="\u751f\u6210\u56fe\u7247"
                   className={`block h-full w-full transition-opacity duration-200 ${isStarterPlaceholder || isImageLoaded ? "opacity-100" : "opacity-0"} ${isStarterPlaceholder ? "object-cover" : "object-contain"}`}
-                  loading={getImageLoadingMode({ selected, visible: true })}
+                  loading="eager"
                   decoding="async"
                   draggable={false}
                   onPointerDown={beginImageFrameDropDrag}
@@ -5101,6 +5118,12 @@ function ImageNodeCardImpl({
                   }}
                   onError={() => setImageLoadState({ status: "error", url: imageUrl })}
                 />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_50%_34%,rgba(99,102,241,0.16),transparent_42%),linear-gradient(135deg,#060914,#111827)] text-slate-200/68">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-slate-950/34 backdrop-blur-sm">
+                    <ImageIcon className="h-4 w-4 text-violet-200/70" />
+                  </div>
+                </div>
               )}
               {canAnnotateImage && (visibleAnnotations.length > 0 || annotationMode) ? (
                 <svg
@@ -5589,17 +5612,20 @@ function ImageNodeCardImpl({
                       }`}
                       title={`查看第 ${index + 1} 张`}
                     >
-                      <img
-                        src={url}
-                        alt={`生成图片 ${index + 1}`}
-                        className="h-full w-full object-cover"
-                        loading={getStripThumbnailLoadingMode({
-                          activeIndex: activeImageIndex,
-                          index,
-                        })}
-                        decoding="async"
-                        draggable={false}
-                      />
+                      {shouldLoadImageMedia ? (
+                        <img
+                          src={url}
+                          alt={`生成图片 ${index + 1}`}
+                          className="h-full w-full object-cover"
+                          loading="eager"
+                          decoding="async"
+                          draggable={false}
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center bg-slate-950/70 text-slate-400">
+                          <ImageIcon className="h-4 w-4" />
+                        </div>
+                      )}
                       <div className="absolute inset-x-0 bottom-0 flex h-5 items-center justify-center bg-black/42 text-[10px] font-semibold text-white/90">
                         {index + 1}
                       </div>
@@ -6018,6 +6044,7 @@ const ImageNodeCard = React.memo(
     prev.selected === next.selected &&
     prev.detachedCanvasTitle === next.detachedCanvasTitle &&
     prev.canvasZoom === next.canvasZoom &&
+    prev.mediaLoadAllowed === next.mediaLoadAllowed &&
     prev.isReviewingAsset === next.isReviewingAsset &&
     prev.apiConfig?.remoteModelsByType === next.apiConfig?.remoteModelsByType &&
     prev.resolvedInputs === next.resolvedInputs &&

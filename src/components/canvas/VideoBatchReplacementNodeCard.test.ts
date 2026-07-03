@@ -31,6 +31,18 @@ function makeBatchNode(data: GraphNode["data"] = {}): GraphNode {
 }
 
 describe("VideoBatchReplacementNodeCard helpers", () => {
+  it("defers slot images when canvas media loading is throttled", () => {
+    const source = readFileSync(
+      new URL("./VideoBatchReplacementNodeCard.tsx", import.meta.url),
+      "utf8"
+    );
+
+    expect(source).toContain("mediaLoadAllowed = true");
+    expect(source).toContain("const shouldLoadSlotImages = mediaLoadAllowed");
+    expect(source).not.toContain("排队加载");
+    expect(source).not.toContain("缩放预览");
+  });
+
   it("defaults batch replacement mode to product", () => {
     expect(getVideoBatchReplacementMode(makeBatchNode())).toBe("product");
     expect(getVideoBatchReplacementMode(makeBatchNode({ batchReplacementMode: "scene" }))).toBe(
