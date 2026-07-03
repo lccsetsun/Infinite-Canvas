@@ -2231,8 +2231,12 @@ export default function App({ onLoggedOut }: AppProps) {
               bounds={multiSelectionBounds}
               canCreateGroup={selectedNodes.length > 1}
               dragRect={selectionDragRect}
+              hasLinkableSources={batchLinkSources.length > 1}
               pan={pan}
               zoom={zoom}
+              onBeginBatchLink={(clientX, clientY) =>
+                beginBatchCanvasLink(batchLinkSources, clientX, clientY)
+              }
               onBeginSelectionDrag={handleSelectionDragStart}
               onCreateGroup={handleCreateGroupFromSelection}
             />
