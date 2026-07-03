@@ -35,6 +35,7 @@ function navigate(to: string, replace = false) {
 export default function RootApp() {
   const [pathname, setPathname] = React.useState(() => getPathname());
   const [isLoggedIn, setIsLoggedIn] = React.useState(() => hasAuthSession());
+  const [shouldOpenLandingLogin, setShouldOpenLandingLogin] = React.useState(false);
   const [apiNotice, setApiNotice] = React.useState<ApiNoticeDetail | null>(null);
   const apiNoticeTimerRef = React.useRef<number | null>(null);
 
@@ -97,6 +98,7 @@ export default function RootApp() {
   const handleLogin = React.useCallback((accessToken: string) => {
     setAccessToken(accessToken);
     setIsLoggedIn(true);
+    setShouldOpenLandingLogin(false);
     navigate(DEFAULT_PATH, true);
   }, []);
 
@@ -105,7 +107,8 @@ export default function RootApp() {
       clearSession: clearAuthSession,
       onLoggedOut: () => {
         setIsLoggedIn(false);
-        navigate(LOGIN_PATH, true);
+        setShouldOpenLandingLogin(true);
+        navigate(DEFAULT_PATH, true);
       },
     });
   }, []);
@@ -116,7 +119,8 @@ export default function RootApp() {
       clearSession: clearAuthSession,
       onLoggedOut: () => {
         setIsLoggedIn(false);
-        navigate(LOGIN_PATH, true);
+        setShouldOpenLandingLogin(true);
+        navigate(DEFAULT_PATH, true);
       },
     });
   }, []);
@@ -131,7 +135,7 @@ export default function RootApp() {
   if (!isLoggedIn) {
     return (
       <>
-        {pathname === LOGIN_PATH ? <LoginPage onLogin={handleLogin} /> : <LandingPage onOpenLogin={() => navigate(LOGIN_PATH)} />}
+        {pathname === LOGIN_PATH ? <LoginPage onLogin={handleLogin} /> : <LandingPage onLogin={handleLogin} initialLoginOpen={shouldOpenLandingLogin} />}
         {noticeNode}
       </>
     );
